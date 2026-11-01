@@ -267,7 +267,7 @@ window.onload = function() {
 	Swal2.fire({
 		  title: '<strong>Rollback Snapshot<br>'+escapeHtml(snapshot)+'</strong>',
 		  icon: 'warning',
-		  html: 'This operation discards changes made after the snapshot and cannot be undone.<?=$destructive_mode ? '' : '<br><br>Turn on Destructive Mode in ZFS Master settings to also destroy newer snapshots.'?>',
+		  html: 'This operation discards changes made after the snapshot and cannot be undone.<?=$destructive_mode ? '' : '<br><br>Turn on Destructive Mode in ZFS Master NG settings to also destroy newer snapshots.'?>',
 <?php if ($destructive_mode): ?>
 		  input: 'checkbox',
 		  inputPlaceholder: 'Also destroy snapshots and bookmarks newer than this snapshot',

@@ -329,7 +329,7 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 		$pools = array($pool => $pools[$pool]);
 	}
 	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
-	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master settings.';
+	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master NG settings.';
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
 		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
