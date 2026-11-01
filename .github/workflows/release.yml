@@ -29,6 +29,7 @@ permissions:
 concurrency:
   group: plg-release
   cancel-in-progress: false
+  queue: max # the default keeps one pending run, so a beta run could drop a waiting stable release
 
 jobs:
   release:
