@@ -257,7 +257,8 @@ function listDirectories($path, $childs, $zexc_pattern) {
 	return $dirs;
 }
 
-function saveConfig($array) {
+// Newlines stay: directory_listing holds one dataset per line inside its quotes.
+function zfsmConfigText($array) {
 	$content = '';
 	foreach ($array as $key => $elem) {
 		if (!is_array($elem)) continue;
@@ -265,12 +266,29 @@ function saveConfig($array) {
 		foreach ($elem as $key2 => $elem2) {
 			$values = is_array($elem2) ? $elem2 : array($elem2);
 			foreach ($values as $value) {
-				$value = str_replace(array('\\', '"', "\r", "\n"), array('\\\\', '\\"', '', ''), (string)$value);
+				$value = str_replace(array('\\', '"', "\r"), array('\\\\', '\\"', ''), (string)$value);
 				$content .= $key2.(is_array($elem2) ? '[]' : '').' = "'.$value."\"\n";
 			}
 		}
 	}
-	return file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', $content, LOCK_EX) !== false;
+	return $content;
+}
+
+// A short write on a full flash drive must leave the old file in place.
+function zfsmWriteFileAtomic($path, $content) {
+	$temp = $path.'.tmp'.getmypid();
+	$handle = @fopen($temp, 'wb');
+	if ($handle === false) return false;
+	$written = @fwrite($handle, $content);
+	$flushed = @fflush($handle);
+	$closed = @fclose($handle);
+	if ($written === strlen($content) && $flushed && $closed && @rename($temp, $path)) return true;
+	@unlink($temp);
+	return false;
+}
+
+function saveConfig($array) {
+	return zfsmWriteFileAtomic('/boot/config/plugins/zfs.master/zfs.master.cfg', zfsmConfigText($array));
 }
 
 function addToDirectoryListing($zdataset) {

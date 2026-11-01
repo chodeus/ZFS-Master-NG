@@ -23,6 +23,11 @@ function same($expected, $actual, $message) {
 }
 function env($settings) { foreach ($settings as $key => $value) putenv($key.'='.$value); }
 
+// Saved settings
+$saved = parse_ini_string(zfsmConfigText(array('general' => array('directory_listing' => "tank/a\ntank/b", 'snap_prefix' => 'say "hi"'))), true);
+same(array('tank/a', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), 'a second directory listing entry keeps its own line');
+same('say "hi"', $saved['general']['snap_prefix'], 'a quote survives a save');
+
 // Destroy preview
 $preview = zfsmDestroyPreview('tank/data', 0);
 same(array('tank/data'), $preview['objects'], 'plain destroy lists the dataset');

@@ -64,6 +64,18 @@ check(is_file($root.'/parent/own'), 'refused delete still removed files beside t
 exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
+// A full filesystem must not cost the settings already saved.
+$small = '/tmp/zfsm-small-fs';
+if (!is_dir($small)) mkdir($small);
+exec('mount -t tmpfs -o size=16k tmpfs '.escapeshellarg($small), $out, $mounted);
+check($mounted === 0, 'test needs a tmpfs mount');
+check(zfsmWriteFileAtomic($small.'/cfg', 'first'), 'a write that fits failed');
+check(zfsmWriteFileAtomic($small.'/cfg', 'second') && file_get_contents($small.'/cfg') === 'second', 'a write did not replace the old file');
+check(!zfsmWriteFileAtomic($small.'/cfg', str_repeat('x', 1024 * 1024)), 'a short write reported success');
+check(file_get_contents($small.'/cfg') === 'second', 'a short write damaged the saved file');
+check(glob($small.'/cfg.tmp*') === array(), 'a short write left its temp file');
+exec('umount '.escapeshellarg($small));
+
 // A child dataset's own mountpoint resolves to its parent: a forced delete would empty the child.
 mkdir($root.'/mounted', 0777, true);
 exec('mount -t tmpfs tmpfs '.escapeshellarg($root.'/mounted'), $out, $mounted);
