@@ -45,6 +45,12 @@ jobs:
             --changelog CHANGELOG.md --plg zfs.master.plg \
             --channel "$channel" --branch "$BRANCH"
 
+      - name: Plugin function checker tests
+        run: php .github/scripts/check-plugin-functions.test.php
+
+      - name: Every plugin function that is called is defined
+        run: php .github/scripts/check-plugin-functions.php zfs.master
+
       - name: Frontend and package tests
         run: |
           node tests/frontend_startup_test.cjs
