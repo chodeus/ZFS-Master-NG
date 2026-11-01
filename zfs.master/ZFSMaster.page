@@ -258,7 +258,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
 
-	$('#zfsm-last-refresh').text('Last refresh at '+data.timestamp);
+	const notes = zfsmInventoryNotes(data);
+	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');
 
 	processHiddenDatasets();
 	return true;

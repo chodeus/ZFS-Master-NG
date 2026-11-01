@@ -1,4 +1,10 @@
 /* Inventory uses authenticated HTTP; Nchan is optional copy-progress only. */
+// What a status line must add to a timestamp, whether the data is live or cached.
+function zfsmInventoryNotes(data) {
+    const errors = Object.values(data.errors || {});
+    return (errors.length ? ' — Query errors: ' + errors.join('; ') : '') + (data.warning ? ' — ' + data.warning : '');
+}
+
 function createZFSMInventoryController(options) {
     let config = options.config;
     let busy = false;
@@ -73,12 +79,10 @@ function createZFSMInventoryController(options) {
 
             function complete() {
                 options.render(data, true);
-                const errors = Object.values(data.errors || {});
                 let message = 'Last refresh at ' + new Date().toLocaleString('en-US', {hour12: false});
                 if (answer.publishing_paused) message += ' — Unraid push updates paused; inventory loaded directly.';
-                if (errors.length) message += ' — Query errors: ' + errors.join('; ');
-                if (data.warning) message += ' — ' + data.warning;
-                options.status(message, errors.length > 0 || Boolean(data.warning));
+                const notes = zfsmInventoryNotes(data);
+                options.status(message + notes, notes !== '');
                 finish();
             }
 
