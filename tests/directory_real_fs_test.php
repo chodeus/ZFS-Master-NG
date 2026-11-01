@@ -6,6 +6,13 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+// convertDirectory runs zfs create and destroy, so never let this reach the host's real zfs.
+$bin_dir = getenv('ZFSM_TEST_BIN_DIR');
+if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
+	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zfs\n");
+	exit(1);
+}
+
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 
 function check($condition, $message) {
@@ -57,8 +64,22 @@ check(is_file($root.'/parent/own'), 'refused delete still removed files beside t
 exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
+// A child dataset's own mountpoint resolves to its parent: a forced delete would empty the child.
+mkdir($root.'/mounted', 0777, true);
+exec('mount -t tmpfs tmpfs '.escapeshellarg($root.'/mounted'), $out, $mounted);
+check($mounted === 0, 'test needs a tmpfs mount');
+file_put_contents($root.'/mounted/data', 'keep');
+$result = deleteDirectory($root.'/mounted', 1);
+check(empty($result['succeeded']), 'forced delete of a mount point reported success');
+check(is_file($root.'/mounted/data'), 'forced delete emptied a mounted filesystem');
+$result = convertDirectory($root.'/mounted', 'tank');
+check(empty($result['succeeded']), 'converting a mount point reported success');
+check(is_file($root.'/mounted/data'), 'converting a mount point lost its data');
+exec('umount '.escapeshellarg($root.'/mounted'));
+rmdir($root.'/mounted');
+
 // A symlink to outside must not let delete reach the outside tree.
-mkdir('/tmp/zfsm-outside');
+if (!is_dir('/tmp/zfsm-outside')) mkdir('/tmp/zfsm-outside');
 file_put_contents('/tmp/zfsm-outside/data', 'keep');
 symlink('/tmp/zfsm-outside', $root.'/escape');
 $result = deleteDirectory($root.'/escape', 1);

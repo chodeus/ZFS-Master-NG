@@ -17,6 +17,10 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open, pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
 - **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
 
+## Requirements
+
+Unraid 6.9.2 or later. ZFS is built into Unraid from 6.12; older versions need a ZFS plugin.
+
 ## Install
 
 Available once the first beta is released. Go to **Plugins → Install Plugin** and paste:

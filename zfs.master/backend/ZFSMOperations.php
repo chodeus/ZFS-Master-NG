@@ -538,12 +538,13 @@ function moveDirectory($directory, $new_name) {
 	return zfsmFailure($new_name, $error['message'] ?? 'Unable to move directory');
 }
 
-// The reason to refuse work on a directory with something mounted inside it; '' when there is none.
+// The reason to refuse work on a directory that is a mount point or holds one; '' when there is none.
 function zfsmNestedMountProblem($path) {
 	$table = @file('/proc/self/mountinfo', FILE_IGNORE_NEW_LINES);
 	if ($table === false) return 'Unable to read the mount table';
 	foreach ($table as $line) {
 		$mount = preg_replace_callback('/\\\\([0-7]{3})/', function($match) { return chr(octdec($match[1])); }, explode(' ', $line)[4] ?? '');
+		if ($mount === rtrim($path, '/')) return 'This directory is itself a mount point, so its contents belong to another filesystem; destroy or unmount that instead.';
 		if (zfsmStartsWith($mount, rtrim($path, '/').'/')) return 'Another filesystem is mounted inside this directory at '.$mount.'; unmount or move it first';
 	}
 	return '';
