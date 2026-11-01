@@ -100,3 +100,17 @@ jobs:
           PHP_VERSION: ${{ matrix.php }}
           UNRAID_VERSION: ${{ matrix.unraid }}
         run: docker run --rm -v "$PWD:/repo" -w /repo "php:${PHP_VERSION}-cli" bash tests/unraid_compat_test.sh .webgui "$UNRAID_VERSION"
+
+  notify-failure:
+    needs: [validate, php, unraid]
+    if: failure() && github.event_name != 'pull_request'
+    permissions: {}
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@bd052317750d1e3a8de3f2767f1f73eaa20a83a5 # main
+    with:
+      event_type: build
+      status: failure
+      title: "❌ CI failed: ${{ github.ref_name }}"
+      description: Validation failed; see the run.
+      commit_sha: ${{ github.sha }}
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
