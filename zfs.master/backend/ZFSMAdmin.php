@@ -30,11 +30,22 @@ function zfsmResolveAnswerCodes($answer) {
 
 function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_notify = false) {
 	$answer = zfsmResolveAnswerCodes($ret);
+	foreach (zfsmActionLogLines($title, $answer) as $line) zfsmLog($line, LOG_NOTICE);
 	if ($unraid_notify) {
 		if ($answer['succeeded']) zfsnotify($title, $success_text.' for:<br>'.implodeWithKeys('<br>', $answer['succeeded']), '', 'normal');
 		if ($answer['failed']) zfsnotify($title, $failed_text.' for:<br>'.implodeWithKeys('<br>', $answer['failed']), '', 'warning');
 	}
 	echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+}
+
+// A dry run can still block on a slow pool, so it shares the inventory time limit.
+function zfsmWithReadLimit($read) {
+	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 45;
+	try {
+		return $read();
+	} finally {
+		unset($GLOBALS['zfsm_inventory_deadline']);
+	}
 }
 
 function zfsmRequireDestructiveMode($config, $subject) {
@@ -78,6 +89,16 @@ try {
 			echo json_encode(getAllDatasetProperties(zfsmPostString('zdataset'), $zfsm_cfg['znapzend_data'] ?? 0), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
+		case 'previewdestroy':
+			$target = zfsmPostString('target');
+			echo json_encode(zfsmWithReadLimit(function() use ($target) { return zfsmDestroyPreview($target, zfsmPostString('force')); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
+		case 'previewrollback':
+			$snapshot = zfsmPostString('snapshot');
+			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
 		case 'validateexclusion':
 			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;
@@ -97,11 +118,11 @@ try {
 		case 'destroydataset':
 			$dataset = zfsmPostString('zdataset');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
-			zfsmReturnAnswer($blocked ?? destroyDataset($dataset, zfsmPostString('force')), 'ZFS Dataset Destroy', 'Dataset destroyed successfully', 'Unable to destroy dataset');
+			zfsmReturnAnswer($blocked ?? zfsmDestroyReviewed($dataset, zfsmPostString('force'), zfsmPostString('token')), 'ZFS Dataset Destroy', 'Dataset destroyed successfully', 'Unable to destroy dataset');
 			break;
 
 		case 'lockdataset':
-			zfsmReturnAnswer(lockDataset(zfsmPostString('zdataset')), 'ZFS Dataset Lock', 'Dataset locked successfully', 'Unable to lock dataset');
+			zfsmReturnAnswer(zfsmExplainBusy(lockDataset(zfsmPostString('zdataset')), zfsmPostString('zdataset')), 'ZFS Dataset Lock', 'Dataset locked successfully', 'Unable to lock dataset');
 			break;
 
 		case 'unlockdataset':
@@ -131,7 +152,7 @@ try {
 		case 'rollbacksnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			$blocked = zfsmPostString('destroy_newer') === '1' ? zfsmRequireDestructiveMode($zfsm_cfg, $snapshot) : null;
-			zfsmReturnAnswer($blocked ?? rollbackDatasetSnapshot($snapshot, zfsmPostString('destroy_newer')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot');
+			zfsmReturnAnswer($blocked ?? zfsmRollbackReviewed($snapshot, zfsmPostString('destroy_newer'), zfsmPostString('token')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot');
 			break;
 
 		case 'renamesnapshot':
@@ -155,7 +176,7 @@ try {
 		case 'destroysnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			$blocked = zfsmPostString('recursive') === '1' ? zfsmRequireDestructiveMode($zfsm_cfg, $snapshot) : null;
-			zfsmReturnAnswer($blocked ?? deleteDatasetSnapshot($snapshot, zfsmPostString('recursive')), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
+			zfsmReturnAnswer($blocked ?? zfsmExplainBusy(deleteDatasetSnapshot($snapshot, zfsmPostString('recursive')), explode('@', $snapshot, 2)[0]), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
 			break;
 
 		case 'snapshotdataset':
@@ -167,7 +188,7 @@ try {
 			zfsmReturnAnswer(zfsmFailure('request', 'Unknown or missing command'), 'Request', '', '');
 	}
 } catch (Throwable $error) {
-	error_log('ZFS Master NG backend exception: '.$error->getMessage());
+	zfsmLog('ZFS Master NG backend exception: '.$error->getMessage());
 	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
 }
 

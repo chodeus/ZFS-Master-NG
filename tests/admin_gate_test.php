@@ -19,6 +19,8 @@ $cases = array(
 	'encrypt_other_value' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'on', 'passphrase' => '')), '0', '', 'refused'),
 	'encrypt_inherit_passphrase' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'yes', 'passphrase' => 'inherit')), '0', '', 'refused'),
 	'encrypt_no_passphrase' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'yes', 'passphrase' => '')), '0', '', 'refused'),
+	'preview_destroy' => array(array('cmd' => 'previewdestroy', 'target' => 'tank/data', 'force' => '0'), '0', '', 'previewed'),
+	'preview_rollback' => array(array('cmd' => 'previewrollback', 'snapshot' => 'tank/data@daily'), '0', '', 'previewed'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -33,6 +35,9 @@ $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 $_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $post;
 
+require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+if (($_POST['cmd'] ?? '') === 'rollbacksnapshot') $_POST['token'] = zfsmRollbackPreview($_POST['snapshot'])['token'];
+
 ob_start();
 require $docroot.'/plugins/zfs.master/backend/ZFSMAdmin.php';
 $answer = json_decode(ob_get_clean(), true);
@@ -40,6 +45,7 @@ $answer = json_decode(ob_get_clean(), true);
 $passed = false;
 if ($expected === 'blocked') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Destructive Mode') !== false;
 if ($expected === 'refused') $passed = empty($answer['succeeded']) && preg_match('/passphrase|Yes or No/', implode(' ', $answer['failed'] ?? array())) === 1;
+if ($expected === 'previewed') $passed = !empty($answer['can_proceed']) && !empty($answer['token']);
 if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($answer['failed']);
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);

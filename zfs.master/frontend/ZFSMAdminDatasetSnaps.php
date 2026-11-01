@@ -207,6 +207,7 @@ window.onload = function() {
 </html>
 
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
   installZFSMActionRefresh(function() {
@@ -227,12 +228,27 @@ window.onload = function() {
 	var checkedVals = $('.snapl-check:checkbox:checked').map(function() {
 		return {snapshot: this.value, rowId: $(this).data('row-id')};
 	}).get();
+	if (!checkedVals.length) return;
 
-	for (const selected of checkedVals) {
-		$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': selected.snapshot, 'csrf_token': zfsm_csrf_token}, function(data) {
-			updateStatusOnDeletion(parseJSONResponse(data), selected.snapshot, selected.rowId);
+	const dataset = checkedVals[0].snapshot.split('@')[0];
+	const target = dataset+'@'+checkedVals.map(selected => selected.snapshot.split('@')[1]).join(',');
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewdestroy', target: target, force: 0, 'csrf_token': zfsm_csrf_token}, function(preview) {
+		Swal2.fire({
+			title: '<strong>Review: Delete Snapshots</strong>',
+			icon: preview.can_proceed ? 'warning' : 'error',
+			html: zfsmImpactHtml(preview, zfsmImpactSummary(preview, 'deletes')),
+			showConfirmButton: preview.can_proceed,
+			confirmButtonText: 'Delete',
+			showCancelButton: true
+		}).then((result) => {
+			if (!result.isConfirmed) return;
+			for (const selected of checkedVals) {
+				$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': selected.snapshot, 'csrf_token': zfsm_csrf_token}, function(answer) {
+					updateStatusOnDeletion(parseJSONResponse(answer), selected.snapshot, selected.rowId);
+				});
+			}
 		});
-	}
+	});
   });
 
   $("#checkAll").click(function(){
@@ -257,28 +273,31 @@ window.onload = function() {
   }
 
   function rollbackSnapshot(snapshot) {
-	Swal2.fire({
-		  title: '<strong>Rollback Snapshot<br>'+escapeHtml(snapshot)+'</strong>',
-		  icon: 'warning',
-		  html: 'This operation discards changes made after the snapshot and cannot be undone.<?=$destructive_mode ? '' : '<br><br>Turn on Destructive Mode in ZFS Master NG settings to also destroy newer snapshots.'?>',
-<?php if ($destructive_mode): ?>
-		  input: 'checkbox',
-		  inputPlaceholder: 'Also destroy snapshots and bookmarks newer than this snapshot',
-<?php endif; ?>
-		  showConfirmButton: true,
-		  confirmButtonText: "Rollback",
-		  showCancelButton: true
-	  }).then((result) => {
-		  if (result.isConfirmed) {
-			$.post('<?=$urlzmadmin?>',{cmd: 'rollbacksnapshot', 'snapshot': snapshot, 'destroy_newer': result.value, 'csrf_token': zfsm_csrf_token}, function(data){
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewrollback', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}, function(preview) {
+		const newer = preview.newer || [];
+		const destructive = <?=$destructive_mode ? 'true' : 'false'?>;
+		const blocked = preview.error || !preview.can_proceed || (newer.length > 0 && !destructive);
+		let heading = 'This discards every change made after the snapshot and cannot be undone.';
+		if (newer.length) heading += destructive ? ' Rolling back also destroys these newer items:' : ' These newer items block it. Turn on Destructive Mode in ZFS Master NG settings to destroy them as part of the rollback:';
+		const options = {
+			title: '<strong>Rollback Snapshot<br>'+escapeHtml(snapshot)+'</strong>',
+			icon: blocked ? 'error' : 'warning',
+			html: zfsmImpactHtml(preview, heading),
+			showConfirmButton: !blocked,
+			confirmButtonText: "Rollback",
+			showCancelButton: true
+		};
+		Swal2.fire(options).then((result) => {
+			if (!result.isConfirmed) return;
+			$.post('<?=$urlzmadmin?>',{cmd: 'rollbacksnapshot', 'snapshot': snapshot, 'destroy_newer': newer.length ? 1 : 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}, function(answer){
 				Swal2.fire({
 					title: 'Rollback Result',
 					icon: 'info',
-					html: formatAnswer(parseJSONResponse(data))
+					html: formatAnswer(parseJSONResponse(answer))
 				}).then((result) => window.location.reload());
 			});
-		  }
-	  });
+		});
+	});
   }
 
   function renameSnapshot(snapshot) {
