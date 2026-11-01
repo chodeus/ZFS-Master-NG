@@ -85,6 +85,28 @@ switch ($check) {
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
 		break;
 
+	case 'menu_order':
+		// Real find_pages: the ZFS guard works and the tab sits below the boot device.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/webGui/include/PageBuilder.php';
+		$site = array();
+		// Other pages' conditions read live array state this harness doesn't have.
+		build_pages($docroot.'/plugins/zfs.master/*.page');
+		build_pages($docroot.'/plugins/dynamix/BootDevice.page');
+		$names = array_column(array_values(find_pages('Main')), 'name');
+		$position = array_search('ZFSMaster', $names, true);
+		if (is_file('/usr/sbin/zpool')) {
+			$boot = array_search('BootDevice', $names, true);
+			if ($position === false) { fwrite(STDERR, "tab missing with ZFS present\n"); exit(1); }
+			if ($boot !== false && $position < $boot) { fwrite(STDERR, 'tab above the boot device: '.implode(',', $names)."\n"); exit(1); }
+		} elseif ($position !== false) {
+			fwrite(STDERR, "tab shown without ZFS\n");
+			exit(1);
+		}
+		$GLOBALS['zfsm_problems'] = array();
+		break;
+
 	case 'settings_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		require_once $docroot.'/webGui/include/Helpers.php';

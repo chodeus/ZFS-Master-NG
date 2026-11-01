@@ -62,4 +62,8 @@ for (const id of buttons) assert.match(id, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a menu i
 const spaced = context.generateDatasetArrayRows('tank', bare('tank/My Share'), '', true, 0, 30, {}).match(/<button type="button" id="([^"]+)"/)[1];
 assert.match(spaced, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a name with a space too');
 
+for (const [a, b] of [['tank/a b', 'tank/a_2520b'], ['tank/a%20b', 'tank/a_20b'], ['tank/a_b', 'tank/a b']]) {
+	assert.notEqual(context.elementToken(a), context.elementToken(b), a+' and '+b+' need different ids');
+}
+
 console.log('dataset row class tests passed');

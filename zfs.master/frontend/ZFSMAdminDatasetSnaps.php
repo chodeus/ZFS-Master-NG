@@ -129,7 +129,9 @@ window.onload = function() {
 
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
+<?php if (is_file($docroot.'/webGui/styles/default-popup.css')): // gone from Unraid 7.1 ?>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-popup.css'); ?>">
+<?php endif; ?>
 
 <script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
 
@@ -213,9 +215,6 @@ window.onload = function() {
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
-  $.ajaxSetup({
-	headers: { 'X-CSRF-Token': zfsm_csrf_token }
-  });
   installZFSMActionRefresh(function() {
 	if (window.parent && typeof window.parent.requestRefresh === 'function') window.parent.requestRefresh();
   });
