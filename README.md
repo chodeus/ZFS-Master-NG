@@ -4,7 +4,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chodeus/ZFS-Master-NG/ci.yml?branch=beta&label=CI)](https://github.com/chodeus/ZFS-Master-NG/actions/workflows/ci.yml)
 [![Unraid 6.9.2+](https://img.shields.io/badge/Unraid-6.9.2%2B-orange)](#requirements)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](zfs.master/LICENSE)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](LICENSE)
 
 ## Features
 
@@ -48,7 +48,12 @@ Found a bug or have an idea? [Open an issue](https://github.com/chodeus/ZFS-Mast
 
 ## Credits
 
-Created by [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid), with Unraid 7.3 and backend work by [dlang123](https://github.com/dlang123/ZFS-Master-Unraid). Released under the GPL, version 2 or later; see [LICENSE](zfs.master/LICENSE).
+- [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid) — original creator of ZFS Master
+- [dlang123](https://github.com/dlang123/ZFS-Master-Unraid) — Unraid 7.3 port and backend rewrite
+
+## License
+
+GPL, version 2 or later, the same as the original ZFS Master. See [LICENSE](LICENSE).
 
 ## Development
 

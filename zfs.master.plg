@@ -233,9 +233,17 @@ rmdir &plugdir;/nchan &plugdir;/scripts 2>/dev/null || true
 rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"
-echo " &name; has been installed."
+echo " ZFS Master NG has been installed."
 echo " Version: &version;"
 echo " Hard-refresh your browser if the Main tab looks wrong."
+echo ""
+echo " Maintained by:"
+echo "   2026-present  chodeus (ZFS Master NG)"
+echo "   2026          dlang123 (Unraid 7.3 port)"
+echo "   2021-2024     IkerSaint (ZFS Master)"
+echo ""
+echo " GitHub: github.com/&github;"
+echo " Issues: github.com/&github;/issues"
 echo "-----------------------------------------------------------"
 echo ""
 </INLINE>
@@ -257,7 +265,7 @@ rm -rf &plugdir;
 rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"
-echo " &name; has been removed."
+echo " ZFS Master NG has been removed."
 echo "-----------------------------------------------------------"
 echo ""
 </INLINE>
