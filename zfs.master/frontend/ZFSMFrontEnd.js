@@ -23,26 +23,9 @@ function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-function crc16(str) {
-	const crcTable = [];
-	const polynomial = 0xA001;
-  
-	for (let i = 0; i < 256; i++) {
-		let crc = i;
-		for (let j = 0; j < 8; j++) {
-			crc = (crc & 1) ? ((crc >>> 1) ^ polynomial) : (crc >>> 1);
-		}
-		crcTable[i] = crc;
-	}
-	
-	let crc = 0xFFFF;
-
-	for (let i = 0; i < str.length; i++) {
-		const charCode = str.charCodeAt(i);
-		crc = ((crc >>> 8) ^ crcTable[(crc ^ charCode) & 0xFF]) & 0xFFFF;
-	}
-	
-	return crc.toString(16).toUpperCase().padStart(4, '0');
+// One id per name, safe in a # selector: a short checksum let two datasets share a menu button.
+function elementToken(name) {
+	return 'zfsm-'+encodeURIComponent(String(name ?? '')).replace(/[^A-Za-z0-9]/g, char => '_'+char.charCodeAt(0).toString(16));
 }
 
 function nl2br(str, is_xhtml) {
@@ -268,7 +251,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var tr = '<tr id="tr-dir-'+crc16(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+		var tr = '<tr id="tr-dir-'+elementToken(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 		tr += '<td></td><td></td><td>';
 
 		for (let i = 1; i <= depth; i++) {
@@ -283,7 +266,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		// Actions
 
 		tr += '<td>';
-		var id = crc16(directory);
+		var id = elementToken(directory);
 
 		tr += '<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>';
 		tr += '</td>';
@@ -321,7 +304,7 @@ function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var row = document.getElementById('tr-dir-'+crc16(directory));
+		var row = document.getElementById('tr-dir-'+elementToken(directory));
 		if (!row) return;
 
 		tds = row.getElementsByTagName('td');
@@ -472,7 +455,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	// Actions
 
 	tr += '<td>';
-	var id = crc16(zdataset['name']);
+	var id = elementToken(zdataset['name']);
 
 	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
 	tr += '</td>';
@@ -698,7 +681,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 	// Actions
 
 	tmp = '<td>';
-	var id = crc16(data.dataset['name']);
+	var id = elementToken(data.dataset['name']);
 
 	tmp += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(data.pool)+', '+safeJsArg(data.dataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(data.dataset['keystatus'])+', '+safeJsArg(data.dataset['origin'] ?? '')+', '+safeJsArg(data.dataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
 	tmp += '</td>';

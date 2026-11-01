@@ -44,4 +44,22 @@ const sources = frontend+page;
 assert.doesNotMatch(sources, /'tr-'\+(?!encodeURIComponent)/, 'every dataset row id goes through datasetRowId');
 assert.doesNotMatch(sources, /Spaces are not supported/, 'converting a folder with a space is left to the backend, which allows it');
 
+// Two names with the same 16-bit checksum used to share a button id, so one could open the other's menu.
+const crc = text => { let value = 0; for (const char of text) { value ^= char.charCodeAt(0); for (let bit = 0; bit < 8; bit++) value = value & 1 ? (value >>> 1) ^ 0xA001 : value >>> 1; } return value; };
+const seen = new Map();
+let first = null, second = null;
+for (let n = 0; !first; n++) {
+	const name = 'tank/ds'+n;
+	if (seen.has(crc(name))) { first = seen.get(crc(name)); second = name; }
+	seen.set(crc(name), name);
+}
+const bare = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/'+name, snapshots: [], directories: [], child: {}});
+const pair = context.generateDatasetArrayRows('tank', bare(first), '', true, 0, 30, {})+context.generateDatasetArrayRows('tank', bare(second), '', true, 0, 30, {});
+const buttons = [...pair.matchAll(/<button type="button" id="([^"]+)"/g)].map(match => match[1]);
+assert.equal(buttons.length, 2, 'each row has a menu button');
+assert.notEqual(buttons[0], buttons[1], first+' and '+second+' must not share a menu button id');
+for (const id of buttons) assert.match(id, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a menu id works as a # selector');
+const spaced = context.generateDatasetArrayRows('tank', bare('tank/My Share'), '', true, 0, 30, {}).match(/<button type="button" id="([^"]+)"/)[1];
+assert.match(spaced, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a name with a space too');
+
 console.log('dataset row class tests passed');
