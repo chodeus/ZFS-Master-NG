@@ -20,8 +20,8 @@ sudo unshare --mount --propagation private sh tests/run_http_inventory_tests.sh 
 ```
 
 PHP and its libraries must reside outside `/tmp`, which the runner overlays.
-Set `ZFSM_TEST_POSIX` to a custom `posix.so` path if necessary. The default is
-the runtime's `posix` extension. Do not run this test runner on a production
+Set `ZFSM_TEST_POSIX` to a `posix.so` path if your PHP does not build it in.
+Do not run this test runner on a production
 Unraid host. Testing uses simulated ZFS results, not real pool administration.
 
 For live Unraid 7.3.2 verification after installation, confirm the plugin version

@@ -1,18 +1,17 @@
 <?xml version='1.0' standalone='yes'?>
 <!DOCTYPE PLUGIN [
-<!ENTITY name		"zfs.master">
-<!ENTITY author "dlang123">
-<!ENTITY version "2026.09.25.112">
-<!ENTITY launch     "Main">
-<!ENTITY gitURL		"https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main">
-<!ENTITY pluginURL	"&gitURL;/&name;.plg">
+<!ENTITY name "zfs.master">
+<!ENTITY author "chodeus">
+<!ENTITY github "&author;/ZFS-Master-Unraid">
+<!ENTITY launch "Main">
+<!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
+<!ENTITY version "2026.09.25">
+<!ENTITY md5 "205ed4702dea3cdb335af4cbc880fd93">
+<!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
-<PLUGIN name="&name;"
-		author="&author;"
-		version="&version;"
-		pluginURL="&pluginURL;"
-		min="7.3.2">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.12.0">
 <CHANGES>
 
 ###2026.09.25
@@ -74,7 +73,7 @@
 - Add - "-X" option for Connvert Dataset rsync command 
 - Fix - Directory Listing detecting datasets as folders
 
-###2024.02.9
+###2024.02.09
 - Add - Convert directory to dataset functionality
 - Add - Written property for snapshots
 - Add - Directory listing for root datasets
@@ -84,11 +83,11 @@
 - Fix - Pool information parsing errors
 - Remove - Unraid Notifications 
 
-###2023.12.8
+###2023.12.08
 - Add - Directory Listing functionality
 - Fix - Optimize multiple operations
 
-###2023.12.4
+###2023.12.04
 - Fix - Used and Free % bars/texts are now consistent with unraid theme and config
 - Fix - Set time format for the last refresh to short date and time
 - Fix - Detect Pools with used % under 0%
@@ -189,14 +188,12 @@
 ###2022.04.08
 - Add - Set permissions for new Datasets
 
-###2021.11.09a
-
+###2021.11.09
 - Add - List of current Datasets at Dataset Creation
 - Add - Option for export a Pool (In construction)
 - Fix - Compatibility with unRAID RC versions
 
-###2021.10.08e
-
+###2021.10.08
 - Add - SweetAlert2 for notifications
 - Add - Refresh and Settings Buttons
 - Add - Mountpoint information for Pools
@@ -209,59 +206,62 @@
 
 ###2021.10.04
 - Initial Release.
-
 </CHANGES>
 
-<!-- PRE-INSTALL SCRIPT -->
+<!-- Stop the inventory daemon of older versions; a stale nchan.pid entry would restart it on every page load -->
 <FILE Run="/bin/bash">
 <INLINE>
-# stop nchan script
 pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
-if [[ -e /var/run/nchan.pid ]]; then
-  sed -ri '/zfs_master$/d' /var/run/nchan.pid
+if [ -e /var/run/nchan.pid ]; then
+  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
 fi
+rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -v '&pkgname;')
 </INLINE>
 </FILE>
 
-<!-- SOURCE FILE -->
-<FILE Name="/boot/config/plugins/&name;/&name;-&version;.tgz">
-<URL>"&gitURL;/&name;-&version;.tgz"</URL>
-<MD5>205ed4702dea3cdb335af4cbc880fd93</MD5>
+<!-- A failed download never reaches upgradepkg, so the running install stays intact -->
+<FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
+<URL>https://github.com/&github;/releases/download/v&version;/&pkgname;.txz</URL>
+<MD5>&md5;</MD5>
 </FILE>
 
-<!-- PLUGIN INSTALL FILE -->
 <FILE Run="/bin/bash">
 <INLINE>
-set -e
-tar -xf /boot/config/plugins/&name;/&name;-&version;.tgz -C /usr/local/emhttp/plugins
-chmod +x /usr/local/emhttp/plugins/&name;/nchan/zfs_master
-
+for p in /var/log/packages/&name;-*; do
+  [ -e "$p" ] || continue
+  case "$(basename "$p")" in &pkgname;) continue;; esac
+  rm -f "$p"
+done
+# Older versions unpacked a tar with no package record, so upgradepkg leaves these behind
+rm -rf &plugdir;/nchan &plugdir;/scripts
+rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"
 echo " &name; has been installed."
-echo " Copyright 2023, &author;"
 echo " Version: &version;"
+echo " Hard-refresh your browser if the Main tab looks wrong."
 echo "-----------------------------------------------------------"
 echo ""
 </INLINE>
 </FILE>
 
-
-<!-- PLUGIN REMOVAL -->
 <FILE Run="/bin/bash" Method="remove">
 <INLINE>
 echo "Removing &name;..."
 pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
-if [[ -e /var/run/nchan.pid ]]; then
-  sed -ri '/zfs_master$/d' /var/run/nchan.pid
+if [ -e /var/run/nchan.pid ]; then
+  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
 fi
+for p in /var/log/packages/&name;-*; do
+  [ -e "$p" ] || continue
+  removepkg "$(basename "$p")"
+done
 rm -rf /boot/config/plugins/&name;
-rm -rf /usr/local/emhttp/plugins/&name;
+rm -rf &plugdir;
+rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"
 echo " &name; has been removed."
-echo " Copyright 2023, &author;"
-echo " Version: &version;"
 echo "-----------------------------------------------------------"
 echo ""
 </INLINE>

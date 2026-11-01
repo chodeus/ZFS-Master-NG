@@ -21,7 +21,7 @@ for mode in full lazy pool invalid missing gone pool_failure snapshot_failure re
     "$zfsm_php" -n "$zfsm_repo/tests/inventory_route_test.php" "$mode"
 done
 "$zfsm_php" -n "$zfsm_repo/tests/inventory_timeout_test.php"
-"$zfsm_php" -n -d "extension=${ZFSM_TEST_POSIX:-posix}" "$zfsm_repo/tests/backend_logic_test.php"
+"$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/backend_logic_test.php"
 for route in createdataset editdatasetproperty snapshotdataset rollbacksnapshot renamesnapshot destroysnapshot destroydataset; do
-    "$zfsm_php" -n -d "extension=${ZFSM_TEST_POSIX:-posix}" "$zfsm_repo/tests/admin_route_test.php" "$route"
+    "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"
 done

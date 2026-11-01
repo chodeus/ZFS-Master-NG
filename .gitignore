@@ -1,1 +1,6 @@
+dist/
+tmp/
+.ops/
+.DS_Store
+node_modules/
 .scannerwork
