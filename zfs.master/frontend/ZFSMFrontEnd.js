@@ -10,6 +10,11 @@ function safeJsArg(value) {
 	return "decodeURIComponent('"+encodeURIComponent(String(value ?? '')).replace(/'/g, '%27')+"')";
 }
 
+// Row class for a dataset's descendants. Encoded so spaces stay one token; prefixed so a pool named "red" can't hit a theme class.
+function datasetChildClass(name) {
+	return 'zfsm-child-'+encodeURIComponent(String(name ?? ''));
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
@@ -431,7 +436,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+zdataset['name']+'\');"></i>';
+	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 
 	var znap_properties = getZnapProperties(zdataset);
@@ -442,7 +447,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		tr += '<i class="fa fa-minus-square fa-append" name="'+zdataset['name']+'"></i>';
+		tr += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {
@@ -526,7 +531,7 @@ function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructi
 		tr += generateDatasetDirectoryRows(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
 	}
 	Object.values(dataset.child || {}).forEach((child) => {
-		tr += generateDatasetArrayRows(zpool, child, parent+' '+dataset['name'], show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetArrayRows(zpool, child, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
 	});
 
 	return tr;
@@ -606,7 +611,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {
 			html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">ZFS query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_error'])+'</td></tr>';
 		} else {
-			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], zpool['Pool'], show_status, destructive_mode, snap_max_days_alert, display);
+			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], datasetChildClass(zpool['Pool']), show_status, destructive_mode, snap_max_days_alert, display);
 			if (data['datasets'][zpool['Pool']]['_snapshot_error']) {
 				html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">Snapshot query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_snapshot_error'])+'</td></tr>';
 			}
@@ -655,7 +660,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
     	tmp += '&emsp;&emsp;';
 	}
 
-	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+data.dataset['name']+'\');"></i>';
+	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(data.dataset['name'])+');"></i>';
 	tmp += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 
 	var znap_properties = getZnapProperties(data.dataset);
@@ -666,7 +671,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 	}
 
 	if (Object.keys(data.dataset['child']).length > 0 || hasDirectories(data.dataset)) {
-		tmp += '<i class="fa fa-minus-square fa-append" name="'+data.dataset['name']+'"></i>';
+		tmp += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(data.dataset['name'])+'"></i>';
 	}
 
 	if (data.dataset['origin'] !== undefined) {

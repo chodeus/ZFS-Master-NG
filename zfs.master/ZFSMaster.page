@@ -271,7 +271,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return;
 
 	for (let zdataset of datasets.hidden) {
-		var myRows = document.getElementsByClassName(zdataset);
+		var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 		
 		for (let row of myRows) {
 			$(row).hide(0);
@@ -296,7 +296,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		datasets.hidden.push(zdataset);
 	}
 
-	var myRows = document.getElementsByClassName(zdataset);
+	var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 
 	for (let row of myRows) {
 		if (index == -1) {

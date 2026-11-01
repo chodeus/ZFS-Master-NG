@@ -76,6 +76,10 @@ try {
 			echo json_encode(getAllDatasetProperties(zfsmPostString('zdataset'), $zfsm_cfg['znapzend_data'] ?? 0), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
+		case 'validateexclusion':
+			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
+			break;
+
 		case 'adddirectortlisting':
 			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
 			break;
@@ -123,7 +127,9 @@ try {
 			break;
 
 		case 'rollbacksnapshot':
-			zfsmReturnAnswer(rollbackDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('destroy_newer')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot');
+			$snapshot = zfsmPostString('snapshot');
+			$blocked = zfsmPostString('destroy_newer') === '1' ? zfsmRequireDestructiveMode($zfsm_cfg, $snapshot) : null;
+			zfsmReturnAnswer($blocked ?? rollbackDatasetSnapshot($snapshot, zfsmPostString('destroy_newer')), 'ZFS Snapshot Rollback', 'Snapshot rolled back successfully', 'Unable to rollback snapshot');
 			break;
 
 		case 'renamesnapshot':
@@ -145,7 +151,9 @@ try {
 			break;
 
 		case 'destroysnapshot':
-			zfsmReturnAnswer(deleteDatasetSnapshot(zfsmPostString('snapshot'), zfsmPostString('recursive')), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
+			$snapshot = zfsmPostString('snapshot');
+			$blocked = zfsmPostString('recursive') === '1' ? zfsmRequireDestructiveMode($zfsm_cfg, $snapshot) : null;
+			zfsmReturnAnswer($blocked ?? deleteDatasetSnapshot($snapshot, zfsmPostString('recursive')), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
 			break;
 
 		case 'snapshotdataset':

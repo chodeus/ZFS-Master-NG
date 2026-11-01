@@ -48,6 +48,7 @@ jobs:
       - name: Frontend and package tests
         run: |
           node tests/frontend_startup_test.cjs
+          node tests/frontend_rows_test.cjs
           node tests/package_test.cjs
 
   php:
