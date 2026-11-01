@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 7.4 = Unraid before 6.12, 8.2 = 6.12, 8.4 = current 7.x
+        # These follow the PHP Unraid ships, not PHP releases: 7.4 = before 6.12, 8.2 = 6.12, 8.4 = current 7.x
         php: ['7.4', '8.2', '8.4']
     steps:
       - name: Checkout
@@ -80,6 +80,7 @@ jobs:
           - {unraid: '6.11.5', php: '7.4'}
           - {unraid: '6.12.15', php: '8.2'}
           - {unraid: '7.2.0', php: '8.3'}
+          # renovate: newest Unraid
           - {unraid: '7.3.2', php: '8.4'}
     steps:
       - name: Checkout
