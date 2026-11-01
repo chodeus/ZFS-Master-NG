@@ -30,11 +30,16 @@ function zfsmValidPoolName($name) {
 		&& preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $name) === 1;
 }
 
+// Mirrors valid_char() in OpenZFS zfs_namecheck.c; Unraid shares with spaces become datasets.
+function zfsmValidNameComponent($part) {
+	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
+}
+
 function zfsmValidDatasetName($name) {
-	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024 || strpos($name, '@') !== false || strpos($name, '#') !== false) return false;
+	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
 	$parts = explode('/', $name);
 	foreach ($parts as $part) {
-		if ($part === '' || $part === '.' || $part === '..' || preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:%-]*$/D', $part) !== 1) return false;
+		if (!zfsmValidNameComponent($part)) return false;
 	}
 	return zfsmValidPoolName($parts[0]);
 }
@@ -42,8 +47,7 @@ function zfsmValidDatasetName($name) {
 function zfsmValidSnapshotName($name) {
 	if (!is_string($name) || substr_count($name, '@') !== 1) return false;
 	list($dataset, $snapshot) = explode('@', $name, 2);
-	return zfsmValidDatasetName($dataset) && $snapshot !== '' && strlen($snapshot) <= 255
-		&& preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:%-]*$/D', $snapshot) === 1;
+	return zfsmValidDatasetName($dataset) && strlen($snapshot) <= 255 && zfsmValidNameComponent($snapshot);
 }
 
 function zfsmDatasetExists($name, $types = 'filesystem,volume') {
@@ -95,15 +99,56 @@ function zfsmParseTable($output, $columns) {
 	return $rows;
 }
 
-function zfsmMatchesExclusion($name, $pattern) {
-	if (!is_string($pattern) || trim($pattern) === '') return false;
-	$regex = '#'.str_replace('#', '\\#', $pattern).'#i';
-	$result = @preg_match($regex, $name);
-	if ($result === false) {
-		error_log('ZFS Master NG ignored invalid dataset exclusion pattern: '.$pattern);
-		return false;
+// A saved pattern with '%' is Lua, the original format ('%' is not valid in a ZFS name). Anything else is a regex.
+function zfsmExclusionToRegex($pattern) {
+	if (strpos($pattern, '%') === false) return "\x01".$pattern."\x01i";
+	$classes = array('a' => 'alpha', 'c' => 'cntrl', 'd' => 'digit', 'l' => 'lower', 'p' => 'punct', 's' => 'space', 'u' => 'upper', 'w' => 'alnum', 'x' => 'xdigit');
+	$regex = '';
+	$in_set = false;
+	$repeatable = false;
+	$length = strlen($pattern);
+	for ($i = 0; $i < $length; $i++) {
+		$char = $pattern[$i];
+		if ($char === '%') {
+			if (++$i >= $length) return null;
+			$next = $pattern[$i];
+			$class = $classes[strtolower($next)] ?? null;
+			if ($class === null && ctype_alnum($next)) return null; // %b, %f and %1 have no regex equivalent
+			$posix = '[:'.(ctype_upper($next) ? '^' : '').$class.':]';
+			$regex .= $class === null ? preg_quote($next, "\x01") : ($in_set ? $posix : '['.$posix.']');
+			$repeatable = !$in_set;
+		} elseif ($in_set) {
+			$regex .= $char === '\\' ? '\\\\' : $char;
+			if ($char === ']') {
+				$in_set = false;
+				$repeatable = true;
+			}
+		} elseif ($char === '[') {
+			$regex .= $char;
+			$in_set = true;
+		} elseif ($char === '-') {
+			$regex .= $repeatable ? '*?' : '\\-'; // Lua's lazy repeat
+			$repeatable = false;
+		} elseif (strpos('()^$*+?', $char) !== false) {
+			$regex .= $char;
+			$repeatable = false;
+		} else {
+			$regex .= strpos('\\|{}', $char) !== false ? '\\'.$char : $char;
+			$repeatable = true;
+		}
 	}
-	return $result === 1;
+	return "\x01".$regex."\x01";
+}
+
+function zfsmExclusionIsValid($pattern) {
+	if (!is_string($pattern) || trim($pattern) === '') return true;
+	$regex = zfsmExclusionToRegex($pattern);
+	return $regex !== null && @preg_match($regex, '') !== false;
+}
+
+function zfsmMatchesExclusion($name, $pattern) {
+	if (!is_string($pattern) || trim($pattern) === '' || !zfsmExclusionIsValid($pattern)) return false;
+	return preg_match(zfsmExclusionToRegex($pattern), $name) === 1;
 }
 
 function zfsmLoadUserProperties($dataset_root, &$datasets) {
@@ -284,6 +329,7 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 		$pools = array($pool => $pools[$pool]);
 	}
 	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
+	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master NG settings.';
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
 		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
@@ -492,11 +538,71 @@ function moveDirectory($directory, $new_name) {
 	return zfsmFailure($new_name, $error['message'] ?? 'Unable to move directory');
 }
 
+// The reason to refuse work on a directory that is a mount point or holds one; '' when there is none.
+function zfsmNestedMountProblem($path) {
+	$table = @file('/proc/self/mountinfo', FILE_IGNORE_NEW_LINES);
+	if ($table === false) return 'Unable to read the mount table';
+	foreach ($table as $line) {
+		$mount = preg_replace_callback('/\\\\([0-7]{3})/', function($match) { return chr(octdec($match[1])); }, explode(' ', $line)[4] ?? '');
+		if ($mount === rtrim($path, '/')) return 'This directory is itself a mount point, so its contents belong to another filesystem; destroy or unmount that instead.';
+		if (zfsmStartsWith($mount, rtrim($path, '/').'/')) return 'Another filesystem is mounted inside this directory at '.$mount.'; unmount or move it first';
+	}
+	return '';
+}
+
 function deleteDirectory($directory, $force) {
 	$resolved = zfsmResolveDirectory($directory, true);
 	if (!$resolved) return zfsmFailure($directory, 'Directory is outside a mounted ZFS filesystem');
-	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--', $resolved['path'])));
+	$mounted = (string)$force === '1' ? zfsmNestedMountProblem($resolved['path']) : '';
+	if ($mounted !== '') return zfsmFailure($directory, $mounted);
+	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path'])));
 	return commandAnswer($resolved['path'], runProcess('rmdir', array('--', $resolved['path'])));
+}
+
+// null when rsync cannot run. Unraid builds may lack ACL support, and -A would then abort the copy.
+function zfsmRsyncArgs() {
+	$version = runProcess('rsync', array('--version'));
+	if (($version['code'] ?? 1) !== 0) return null;
+	$args = array('-aHX', '--numeric-ids', '--one-file-system', '--filter=P /.zfs');
+	if (preg_match('/(?<!no )\bACLs\b/', $version['output'] ?? '') === 1) $args[] = '-A';
+	return $args;
+}
+
+// Progress is optional: a missing feed must not abort a copy already under way.
+function zfsmCopyProgress($op, $data) {
+	if (function_exists('publish')) publish('zfs_master', json_encode(array('op' => $op, 'data' => $data)));
+}
+
+function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {
+	$spec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('redirect', 1));
+	$pipes = array();
+	$command = array_merge(array('rsync'), $rsync_args, array('--stats', '--info=progress2', rtrim($from, '/').'/', rtrim($to, '/').'/'));
+	$process = @proc_open($command, $spec, $pipes, null, null, array('bypass_shell' => true));
+	if (!is_resource($process)) return -1;
+	fclose($pipes[0]);
+	stream_set_blocking($pipes[1], false);
+	zfsmCopyProgress('start_directory_copy', array('dataset' => $dataset_name));
+	do {
+		$output = stream_get_contents($pipes[1]);
+		if ($output !== '') zfsmCopyProgress('directory_copy', array('line' => $output, 'dataset' => $dataset_name));
+		$status = proc_get_status($process);
+		if ($status['running']) usleep(100000);
+	} while ($status['running']);
+	$remaining = stream_get_contents($pipes[1]);
+	if ($remaining !== '') zfsmCopyProgress('directory_copy', array('line' => $remaining, 'dataset' => $dataset_name));
+	fclose($pipes[1]);
+	$closed_code = proc_close($process);
+	zfsmCopyProgress('stop_directory_copy', array('dataset' => $dataset_name));
+	return $status['exitcode'] >= 0 ? $status['exitcode'] : $closed_code;
+}
+
+// Empty only when a checksum comparison of the two trees finds nothing to change.
+function zfsmCopyDifferences($rsync_args, $from, $to) {
+	$args = array_merge($rsync_args, array('--checksum', '--dry-run', '--delete', '--itemize-changes', rtrim($from, '/').'/', rtrim($to, '/').'/'));
+	$result = runProcess('rsync', $args);
+	if (($result['code'] ?? 1) !== 0) return 'rsync exit code '.($result['code'] ?? 1);
+	$changes = preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array();
+	return $changes ? count($changes).' differing, first: '.$changes[0] : '';
 }
 
 function convertDirectory($directory, $pool) {
@@ -507,6 +613,9 @@ function convertDirectory($directory, $pool) {
 	$relative = ltrim(substr($source['path'], strlen($source['mountpoint'])), '/');
 	$dataset_name = $source['dataset'].($relative !== '' ? '/'.$relative : '');
 	if (!zfsmValidDatasetName($dataset_name) || zfsmDatasetExists($dataset_name)) return zfsmFailure($directory, 'Target dataset name is invalid or already exists');
+	$mounted = zfsmNestedMountProblem($source['path']);
+	if ($mounted !== '') return zfsmFailure($directory, $mounted);
+	if (file_exists($source['path'].'/.zfs')) return zfsmFailure($directory, 'A top-level .zfs entry cannot exist in a dataset; rename it first');
 	$temp = $source['path'].'_zfsm_tmp_'.date('YmdHis');
 	$moved = moveDirectory($source['path'], $temp);
 	if (!$moved['succeeded']) return $moved;
@@ -521,26 +630,13 @@ function convertDirectory($directory, $pool) {
 		if (($cleanup['code'] ?? 1) === 0 && moveDirectory($temp, $source['path'])['succeeded']) return zfsmFailure($directory, 'Dataset mountpoint was unavailable; the new dataset was removed and the original directory was restored');
 		return zfsmFailure($directory, 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required');
 	}
-	$spec = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('redirect', 1));
-	$pipes = array();
-	$process = @proc_open(array('rsync', '-aX', '--stats', '--info=progress2', rtrim($temp, '/').'/', rtrim($mountpoint, '/').'/'), $spec, $pipes, null, null, array('bypass_shell' => true));
-	if (!is_resource($process)) return zfsmFailure($directory, 'Unable to start rsync; original data remains at '.$temp);
-	fclose($pipes[0]);
-	stream_set_blocking($pipes[1], false);
-	publish('zfs_master', json_encode(array('op' => 'start_directory_copy', 'data' => array('dataset' => $dataset_name))));
-	do {
-		$output = stream_get_contents($pipes[1]);
-		if ($output !== '') publish('zfs_master', json_encode(array('op' => 'directory_copy', 'data' => array('line' => $output, 'dataset' => $dataset_name))));
-		$status = proc_get_status($process);
-		if ($status['running']) usleep(100000);
-	} while ($status['running']);
-	$remaining = stream_get_contents($pipes[1]);
-	if ($remaining !== '') publish('zfs_master', json_encode(array('op' => 'directory_copy', 'data' => array('line' => $remaining, 'dataset' => $dataset_name))));
-	fclose($pipes[1]);
-	$closed_code = proc_close($process);
-	$exit_code = $status['exitcode'] >= 0 ? $status['exitcode'] : $closed_code;
-	publish('zfs_master', json_encode(array('op' => 'stop_directory_copy', 'data' => array('dataset' => $dataset_name))));
-	if ($exit_code !== 0) return zfsmFailure($directory, 'rsync failed with exit code '.$exit_code.'; original data remains at '.$temp.' and the partial dataset was retained for inspection');
+	$retained = 'original data remains at '.$temp.' and the partial dataset was retained for inspection';
+	$rsync_args = zfsmRsyncArgs();
+	if ($rsync_args === null) return zfsmFailure($directory, 'Unable to run rsync; '.$retained);
+	$exit_code = zfsmCopyWithProgress($rsync_args, $temp, $mountpoint, $dataset_name);
+	if ($exit_code !== 0) return zfsmFailure($directory, 'rsync failed with exit code '.$exit_code.'; '.$retained);
+	$differences = zfsmCopyDifferences($rsync_args, $temp, $mountpoint);
+	if ($differences !== '') return zfsmFailure($directory, 'The copy did not verify ('.$differences.'); '.$retained);
 	$deleted = deleteDirectory($temp, 1);
 	if (!$deleted['succeeded']) return zfsmFailure($directory, 'Copy completed, but temporary source could not be removed: '.$temp);
 	$ret = buildArrayRet();
@@ -549,7 +645,7 @@ function convertDirectory($directory, $pool) {
 }
 
 function createDatasetSnapshot($zdataset, $snapshot_name, $recursive) {
-	if (!zfsmDatasetExists($zdataset) || !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:%-]*$/D', $snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
+	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
 	$args = array('snapshot');
 	if ((string)$recursive === '1') $args[] = '-r';
 	$full_name = $zdataset.'@'.$snapshot_name;
@@ -566,7 +662,7 @@ function rollbackDatasetSnapshot($snapshot, $destroy_newer = 0) {
 }
 
 function renameDatasetSnapshot($zpool, $snapshot, $new_name) {
-	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot) || !preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:%-]*$/D', $new_name)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
+	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot) || !zfsmValidNameComponent($new_name)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
 	$destination = explode('@', $snapshot, 2)[0].'@'.$new_name;
 	return commandAnswer($destination, runProcess('zfs', array('rename', $snapshot, $destination)));
 }

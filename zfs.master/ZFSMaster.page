@@ -136,9 +136,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  	});
 	} else if (msg.op == 'directory_copy') {
 		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').html(htmlProgress);
+		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
-		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').text('');
+		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').text('');
 	}
 
 	processHiddenDatasets();
@@ -258,7 +258,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
 
-	$('#zfsm-last-refresh').text('Last refresh at '+data.timestamp);
+	const notes = zfsmInventoryNotes(data);
+	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');
 
 	processHiddenDatasets();
 	return true;
@@ -271,7 +272,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return;
 
 	for (let zdataset of datasets.hidden) {
-		var myRows = document.getElementsByClassName(zdataset);
+		var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 		
 		for (let row of myRows) {
 			$(row).hide(0);
@@ -296,7 +297,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		datasets.hidden.push(zdataset);
 	}
 
-	var myRows = document.getElementsByClassName(zdataset);
+	var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 
 	for (let row of myRows) {
 		if (index == -1) {
@@ -326,16 +327,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let mytr of myArray) {
 		if (visibility == 'hide') {
 			var classList = $(mytr).attr('class').split(/\s+/);
-			var cont = false;
-			
-			for (var i = 0; i < classList.length; i++) {
-				if (datasets.hidden.indexOf(classList[i]) != -1) {
-					cont = true;
-					break;
-				}
-			}
-
-			if (cont) {
+			if (datasets.hidden.some(function(name) { return classList.includes(datasetChildClass(name)); })) {
 				continue;
 			}
 
@@ -826,16 +818,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   function convertDirectory(directory, pool) {
-	if (directory.match(/[^a-zA-Z0-9_\-\./:%]/)) {
-		Swal2.fire({
-			title: 'Invalid dataset name',
-			icon: 'warning',
-			html: 'Directory name contains characters ZFS cannot use in a dataset name. Spaces are not supported.'
-		});
-
-		return;
-	}	
-
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',

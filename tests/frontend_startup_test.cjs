@@ -95,6 +95,15 @@ state.requests[1].reject({status: 403}, 'error');
 assert.match(state.status(), /HTTP 403.*stale/);
 assert.match(state.body.innerHTML, /No imported ZFS pools/);
 
+// Cached rows keep the warnings they were saved with, not just a timestamp.
+const cachedInventory = extra => JSON.stringify({pools: {}, devices: {}, datasets: {}, errors: {}, timestamp: 'T', ...extra});
+state = launch({cache: cachedInventory({warning: 'Invalid exclusion'}), interval: 0});
+assert.match(state.status(), /Last refresh at T.*Invalid exclusion/);
+state = launch({cache: cachedInventory({errors: {tank: 'zpool failed'}}), interval: 0});
+assert.match(state.status(), /Last refresh at T.*Query errors: zpool failed/);
+state = launch({cache: cachedInventory({}), interval: 0});
+assert.equal(state.status(), 'Last refresh at T');
+
 state = launch({cache: '{bad json', interval: 0});
 assert.match(state.status(), /no cached data/);
 state = launch({storageThrows: true});
@@ -129,6 +138,12 @@ assert.match(state.status(), /zpool failed.*stale/);
 state = launch();
 state.requests[0].reject({status: 0}, 'timeout');
 assert.match(state.status(), /timeout.*stale/);
+
+// An ignored exclusion pattern is reported, even on an otherwise clean read.
+state = launch();
+state.context.updateFullBodyTable = () => {};
+state.requests[0].resolve({...empty(), data: {...empty().data, warning: 'pattern ignored'}});
+assert.match(state.status(), /pattern ignored/);
 
 // Actions update manual mode; errors and read-only results do not.
 state = launch({interval: 0});

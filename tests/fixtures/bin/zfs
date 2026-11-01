@@ -43,6 +43,11 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; 
 	exit 0
 fi
 
+if [ "$1" = "list" ] && [ "$last_arg" = "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
+	printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2
+	exit 1
+fi
+
 if [ "$1" = "list" ]; then
 	printf '%s\n' "$last_arg"
 	exit 0
@@ -55,7 +60,7 @@ if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
 fi
 
 if [ "$1" = "get" ]; then
-	printf '/mnt/tank/data\n'
+	printf '%s\n' "${ZFSM_TEST_DATASET_MOUNT:-/mnt/tank/data}"
 	exit 0
 fi
 

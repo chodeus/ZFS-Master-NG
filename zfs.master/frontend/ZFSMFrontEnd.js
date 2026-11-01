@@ -10,30 +10,22 @@ function safeJsArg(value) {
 	return "decodeURIComponent('"+encodeURIComponent(String(value ?? '')).replace(/'/g, '%27')+"')";
 }
 
+// Row class for a dataset's descendants. Encoded so spaces stay one token; prefixed so a pool named "red" can't hit a theme class.
+function datasetChildClass(name) {
+	return 'zfsm-child-'+encodeURIComponent(String(name ?? ''));
+}
+
+function datasetRowId(name) {
+	return 'tr-'+encodeURIComponent(String(name ?? ''));
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-function crc16(str) {
-	const crcTable = [];
-	const polynomial = 0xA001;
-  
-	for (let i = 0; i < 256; i++) {
-		let crc = i;
-		for (let j = 0; j < 8; j++) {
-			crc = (crc & 1) ? ((crc >>> 1) ^ polynomial) : (crc >>> 1);
-		}
-		crcTable[i] = crc;
-	}
-	
-	let crc = 0xFFFF;
-
-	for (let i = 0; i < str.length; i++) {
-		const charCode = str.charCodeAt(i);
-		crc = ((crc >>> 8) ^ crcTable[(crc ^ charCode) & 0xFF]) & 0xFFFF;
-	}
-	
-	return crc.toString(16).toUpperCase().padStart(4, '0');
+// One id per name, safe in a # selector: a short checksum let two datasets share a menu button.
+function elementToken(name) {
+	return 'zfsm-'+encodeURIComponent(String(name ?? '')).replace(/[^A-Za-z0-9]/g, char => '_'+char.charCodeAt(0).toString(16));
 }
 
 function nl2br(str, is_xhtml) {
@@ -259,7 +251,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var tr = '<tr id="tr-dir-'+crc16(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+		var tr = '<tr id="tr-dir-'+elementToken(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 		tr += '<td></td><td></td><td>';
 
 		for (let i = 1; i <= depth; i++) {
@@ -274,7 +266,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		// Actions
 
 		tr += '<td>';
-		var id = crc16(directory);
+		var id = elementToken(directory);
 
 		tr += '<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>';
 		tr += '</td>';
@@ -312,7 +304,7 @@ function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var row = document.getElementById('tr-dir-'+crc16(directory));
+		var row = document.getElementById('tr-dir-'+elementToken(directory));
 		if (!row) return;
 
 		tds = row.getElementsByTagName('td');
@@ -401,7 +393,7 @@ function getZnapProperties(zdataset) {
 }
 
 function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
-	var tr = '<tr id="tr-'+escapeHtml(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+	var tr = '<tr id="'+datasetRowId(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 	tr += '<td></td><td></td><td>';
 
 	var properties = getPropertiesByType(zdataset);
@@ -431,7 +423,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+zdataset['name']+'\');"></i>';
+	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 
 	var znap_properties = getZnapProperties(zdataset);
@@ -442,7 +434,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		tr += '<i class="fa fa-minus-square fa-append" name="'+zdataset['name']+'"></i>';
+		tr += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {
@@ -463,7 +455,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	// Actions
 
 	tr += '<td>';
-	var id = crc16(zdataset['name']);
+	var id = elementToken(zdataset['name']);
 
 	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
 	tr += '</td>';
@@ -523,10 +515,10 @@ function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructi
 	if (!dataset || dataset['_error']) return tr;
 	tr += generateDatasetRow(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
 	if (hasDirectories(dataset)) {
-		tr += generateDatasetDirectoryRows(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetDirectoryRows(zpool, dataset, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
 	}
 	Object.values(dataset.child || {}).forEach((child) => {
-		tr += generateDatasetArrayRows(zpool, child, parent+' '+dataset['name'], show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetArrayRows(zpool, child, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
 	});
 
 	return tr;
@@ -606,7 +598,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {
 			html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">ZFS query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_error'])+'</td></tr>';
 		} else {
-			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], zpool['Pool'], show_status, destructive_mode, snap_max_days_alert, display);
+			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], '', show_status, destructive_mode, snap_max_days_alert, display);
 			if (data['datasets'][zpool['Pool']]['_snapshot_error']) {
 				html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">Snapshot query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_snapshot_error'])+'</td></tr>';
 			}
@@ -617,7 +609,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 }
 
 async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, directory_listing) {
-	var row = document.getElementById('tr-'+data.dataset['name']);
+	var row = document.getElementById(datasetRowId(data.dataset['name']));
 	if (!row) return;
 
 	tds = row.getElementsByTagName('td');
@@ -655,7 +647,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
     	tmp += '&emsp;&emsp;';
 	}
 
-	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+data.dataset['name']+'\');"></i>';
+	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(data.dataset['name'])+');"></i>';
 	tmp += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 
 	var znap_properties = getZnapProperties(data.dataset);
@@ -666,7 +658,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 	}
 
 	if (Object.keys(data.dataset['child']).length > 0 || hasDirectories(data.dataset)) {
-		tmp += '<i class="fa fa-minus-square fa-append" name="'+data.dataset['name']+'"></i>';
+		tmp += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(data.dataset['name'])+'"></i>';
 	}
 
 	if (data.dataset['origin'] !== undefined) {
@@ -689,7 +681,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 	// Actions
 
 	tmp = '<td>';
-	var id = crc16(data.dataset['name']);
+	var id = elementToken(data.dataset['name']);
 
 	tmp += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(data.pool)+', '+safeJsArg(data.dataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(data.dataset['keystatus'])+', '+safeJsArg(data.dataset['origin'] ?? '')+', '+safeJsArg(data.dataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
 	tmp += '</td>';
