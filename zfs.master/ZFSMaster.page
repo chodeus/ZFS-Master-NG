@@ -1,6 +1,7 @@
 Menu="Main:2"
-Title="ZFS Master"
+Title="ZFS Master NG"
 Tag="database"
+Cond="file_exists('/usr/sbin/zpool') || file_exists('/sbin/zpool')"
 ---
 <?php
 $plugin = "zfs.master";
@@ -59,10 +60,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 <div id="zfs-master-title" class="title zfs_master_title">
 	<span class="left zfs_bar_text">
-		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh">Starting ZFS Master…</i></a>
+		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh">Starting ZFS Master NG…</i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="ZFS Master Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="ZFS Master NG Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
 		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
@@ -84,13 +85,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		</tr>
 	</thead>
 	<tbody id="zfs_master_body">
-		<tr id="zfsm-loading"><td colspan="9">Waiting for ZFS Master to start. If this message remains, check the browser console for an error.</td></tr>
+		<tr id="zfsm-loading"><td colspan="9">Waiting for ZFS Master NG to start. If this message remains, check the browser console for an error.</td></tr>
 	</tbody>
 	</table>
 </div>
 
 :zfs_master_help_plug:
-> **ZFS Master.**
+> **ZFS Master NG.**
 >
 > ZPool Information Tool.
 :end
@@ -135,14 +136,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  	});
 	} else if (msg.op == 'directory_copy') {
 		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').html(htmlProgress);
+		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').text('');
+		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').text('');
 	}
 
 	processHiddenDatasets();
 	} catch (error) {
-		console.error('ZFS Master copy-progress message failed', error);
+		console.error('ZFS Master NG copy-progress message failed', error);
 	}
   }
 
@@ -169,8 +170,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			requestRefresh();
 		}
 	} catch (error) {
-		console.error('ZFS Master startup failed', error);
-		zfsmStatus('ZFS Master startup failed: '+error.message, true);
+		console.error('ZFS Master NG startup failed', error);
+		zfsmStatus('ZFS Master NG startup failed: '+error.message, true);
 	}
 	// Optional progress feed: its absence cannot block inventory or actions.
 	try {
@@ -178,7 +179,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		zfs_sub.on('message', zfsmHandleMessage);
 		zfs_sub.start();
 	} catch (error) {
-		console.warn('ZFS Master live copy progress is unavailable', error);
+		console.warn('ZFS Master NG live copy progress is unavailable', error);
 	}
 	window.addEventListener('pagehide', function() { if (zfsm_inventory) zfsm_inventory.stop(); });
   });
@@ -198,9 +199,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   
   function getUnraidParentElement() {
 	  if (zfsm_config['version'].localeCompare('6.11.9', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
-		return $('.title .left').filter(function(){return $(this).text() === 'ZFS Master';}).parent();
+		return $('.title .left').filter(function(){return $(this).text() === 'ZFS Master NG';}).parent();
 	  }
-	  return $('div#title > span.left').filter(function(){return $(this).text() === 'ZFS Master';}).parent();
+	  return $('div#title > span.left').filter(function(){return $(this).text() === 'ZFS Master NG';}).parent();
   }
 
   function saveCache(data) {

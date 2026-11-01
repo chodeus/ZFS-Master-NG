@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main, beta]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Manifest, frontend, package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
+
+      - name: Validate plugin manifest (XML)
+        run: xmllint --noout zfs.master.plg
+
+      - name: Checkout release scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          repository: chodeus/chodeus-ops
+          ref: 1ff57bdeb4e0ae53ea92fe9d9d3b0b0f1fd9a0be # main
+          path: .ops
+          sparse-checkout: scripts
+
+      # Add --verify-asset once the first release exists on this repo.
+      - name: Verify changelog and manifest agree
+        env:
+          BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: |
+          channel=stable
+          [ "$BRANCH" != beta ] || channel=beta
+          python3 .ops/scripts/plg_release.py check \
+            --changelog CHANGELOG.md --plg zfs.master.plg \
+            --channel "$channel" --branch "$BRANCH"
+
+      - name: Frontend and package tests
+        run: |
+          node tests/frontend_startup_test.cjs
+          node tests/package_test.cjs
+
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # These follow the PHP Unraid ships, not PHP releases: 7.4 = before 6.12, 8.2 = 6.12, 8.4 = current 7.x
+        php: ['7.4', '8.2', '8.4']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Lint and backend tests
+        env:
+          PHP_VERSION: ${{ matrix.php }}
+        run: docker run --rm --privileged -v "$PWD:/repo" -w /repo "php:${PHP_VERSION}-cli" sh tests/ci_php.sh
+
+  unraid:
+    name: Unraid ${{ matrix.unraid }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {unraid: '6.9.2', php: '7.4'}
+          - {unraid: '6.11.5', php: '7.4'}
+          - {unraid: '6.12.15', php: '8.2'}
+          - {unraid: '7.2.0', php: '8.3'}
+          # renovate: newest Unraid
+          - {unraid: '7.3.4', php: '8.4'}
+          # Pre-release under test; drop once Renovate moves the entry above to a stable 7.4.
+          - {unraid: '7.4.0-rc.2.3', php: '8.4'}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Checkout the Unraid webGUI at this version
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          repository: unraid/webgui
+          ref: ${{ matrix.unraid }}
+          path: .webgui
+
+      - name: Installer, CSRF, backend and pages on real webGUI code
+        env:
+          PHP_VERSION: ${{ matrix.php }}
+          UNRAID_VERSION: ${{ matrix.unraid }}
+        run: docker run --rm -v "$PWD:/repo" -w /repo "php:${PHP_VERSION}-cli" bash tests/unraid_compat_test.sh .webgui "$UNRAID_VERSION"
+
+  notify-failure:
+    needs: [validate, php, unraid]
+    if: failure() && github.event_name != 'pull_request'
+    permissions: {}
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@1ff57bdeb4e0ae53ea92fe9d9d3b0b0f1fd9a0be # main
+    with:
+      event_type: build
+      status: failure
+      title: "❌ CI failed: ${{ github.ref_name }}"
+      description: Validation failed; see the run.
+      commit_sha: ${{ github.sha }}
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

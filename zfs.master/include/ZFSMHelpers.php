@@ -38,7 +38,7 @@ function loadConfig($config) {
 
 function zfsnotify( $subject, $description, $message, $type="normal") {	
 	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
-	runProcess($notify, array('-e', 'ZFS Master', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
+	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
 }
 
 function fromBytesToString($bytes) {

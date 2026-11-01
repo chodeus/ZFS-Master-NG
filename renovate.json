@@ -1,0 +1,48 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>chodeus/chodeus-ops"],
+  "forkProcessing": "enabled",
+  "baseBranchPatterns": ["beta"],
+  "ignorePaths": ["**/node_modules/**"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The newest Unraid version CI tests against, so a new release gets the compatibility suite before users hit it.",
+      "managerFilePatterns": ["/^\\.github/workflows/ci\\.yml$/"],
+      "matchStrings": [
+        "# renovate: newest Unraid\\s+- \\{unraid: '(?<currentValue>[^']+)'"
+      ],
+      "datasourceTemplate": "github-tags",
+      "depNameTemplate": "unraid/webgui",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "description": "Bundled libraries released on npm; vendor-sync.yml copies the new files in.",
+      "managerFilePatterns": ["/^vendor\\.json$/"],
+      "matchStrings": [
+        "\"npm\":\\s*\"(?<depName>[^\"]+)\",\\s*\"version\":\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "npm",
+      "depTypeTemplate": "bundled"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Only stable Unraid releases; its tags also carry betas and release candidates.",
+      "matchDepNames": ["unraid/webgui"],
+      "allowedVersions": "/^\\d+\\.\\d+\\.\\d+$/"
+    },
+    {
+      "description": "Bundled libraries ship to users, so their updates are fix(deps).",
+      "matchDepTypes": ["bundled"],
+      "semanticCommitType": "fix"
+    },
+    {
+      "description": "A new npm release waits 7 days before it is bundled; a hijacked publish is normally pulled within that.",
+      "matchDepTypes": ["bundled"],
+      "matchDatasources": ["npm"],
+      "minimumReleaseAge": "7 days"
+    }
+  ]
+}

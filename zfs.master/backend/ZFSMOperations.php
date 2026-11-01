@@ -10,8 +10,9 @@ $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
 if (is_file($unraid_publish)) require_once $unraid_publish;
 
-function refreshData() {
-	return touch('/tmp/zfsm_reload');
+// Unraid before 6.12 runs PHP 7.4, which has no str_starts_with.
+function zfsmStartsWith($text, $prefix) {
+	return strncmp($text, $prefix, strlen($prefix)) === 0;
 }
 
 function buildArrayRet() {
@@ -99,7 +100,7 @@ function zfsmMatchesExclusion($name, $pattern) {
 	$regex = '#'.str_replace('#', '\\#', $pattern).'#i';
 	$result = @preg_match($regex, $name);
 	if ($result === false) {
-		error_log('ZFS Master ignored invalid dataset exclusion pattern: '.$pattern);
+		error_log('ZFS Master NG ignored invalid dataset exclusion pattern: '.$pattern);
 		return false;
 	}
 	return $result === 1;
@@ -135,7 +136,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', implode(',', $columns), $pool));
 	if (($result['code'] ?? 1) !== 0) {
 		$error = trim($result['output'] ?? 'Unable to list datasets');
-		error_log('ZFS Master dataset inventory failed for '.$pool.': '.$error);
+		error_log('ZFS Master NG dataset inventory failed for '.$pool.': '.$error);
 		return zfsmEmptyDatasetTree($pool, $error);
 	}
 
@@ -144,7 +145,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 	foreach (zfsmParseTable($result['output'], $columns) as $row) {
 		$name = $row['name'] ?? '';
 		$excluded = zfsmMatchesExclusion($name, $exclusion_pattern);
-		foreach ($excluded_roots as $root) if ($name === $root || str_starts_with($name, $root.'/')) $excluded = true;
+		foreach ($excluded_roots as $root) if ($name === $root || zfsmStartsWith($name, $root.'/')) $excluded = true;
 		if ($excluded) {
 			$excluded_roots[] = $name;
 			continue;
@@ -164,7 +165,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 		$snap_result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'snapshot', '-o', implode(',', $snapshot_columns), $pool));
 		if (($snap_result['code'] ?? 1) !== 0) {
 			$error = trim($snap_result['output'] ?? 'Unable to list snapshots');
-			error_log('ZFS Master snapshot inventory failed for '.$pool.': '.$error);
+			error_log('ZFS Master NG snapshot inventory failed for '.$pool.': '.$error);
 			$datasets[$pool]['_snapshot_error'] = $error;
 		} else {
 			foreach (zfsmParseTable($snap_result['output'], $snapshot_columns) as $snapshot) {
@@ -248,7 +249,7 @@ function getZFSPools($strict = false) {
 	$result = runProcess('zpool', array('list', '-H', '-o', 'name,size,alloc,free,health'));
 	if (($result['code'] ?? 1) !== 0) {
 		if (stripos($result['output'] ?? '', 'no pools available') === false) {
-			$error = 'ZFS Master pool inventory failed: '.($result['output'] ?? 'unknown error');
+			$error = 'ZFS Master NG pool inventory failed: '.($result['output'] ?? 'unknown error');
 			if ($strict) throw new RuntimeException($error);
 			error_log($error);
 		}
@@ -307,7 +308,7 @@ function getZFSPoolDevices($zpool) {
 	foreach (preg_split('/\r\n|\r|\n/', $result['output'] ?? '') ?: array() as $line) {
 		if (trim($line) === 'config:') { $in_config = true; continue; }
 		if (!$in_config) continue;
-		if (str_starts_with(trim($line), 'errors:')) break;
+		if (zfsmStartsWith(trim($line), 'errors:')) break;
 		$parts = preg_split('/\s+/', trim($line), -1, PREG_SPLIT_NO_EMPTY);
 		if (!$parts || $parts[0] === 'NAME' || count($parts) < 2) continue;
 		if (!$skipped_pool && $parts[0] === $zpool) { $skipped_pool = true; continue; }
@@ -473,7 +474,7 @@ function zfsmResolveDirectory($path, $must_exist = true) {
 	if ($resolved === false) return null;
 	if (!$must_exist) $resolved = rtrim($resolved, '/').'/'.basename($path);
 	foreach (zfsmFilesystemMounts() as $dataset => $mountpoint) {
-		if ($resolved !== $mountpoint && str_starts_with($resolved, $mountpoint.'/')) return array('path' => $resolved, 'dataset' => $dataset, 'mountpoint' => $mountpoint);
+		if ($resolved !== $mountpoint && zfsmStartsWith($resolved, $mountpoint.'/')) return array('path' => $resolved, 'dataset' => $dataset, 'mountpoint' => $mountpoint);
 	}
 	return null;
 }
@@ -542,7 +543,6 @@ function convertDirectory($directory, $pool) {
 	if ($exit_code !== 0) return zfsmFailure($directory, 'rsync failed with exit code '.$exit_code.'; original data remains at '.$temp.' and the partial dataset was retained for inspection');
 	$deleted = deleteDirectory($temp, 1);
 	if (!$deleted['succeeded']) return zfsmFailure($directory, 'Copy completed, but temporary source could not be removed: '.$temp);
-	refreshData();
 	$ret = buildArrayRet();
 	$ret['succeeded'][$directory] = 0;
 	return $ret;

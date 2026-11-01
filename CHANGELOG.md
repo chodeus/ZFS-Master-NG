@@ -1,0 +1,227 @@
+# Changelog
+
+## 2026.09.25
+
+- Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon
+- Fix - Preserve progressive snapshot loading, refresh intervals, and manual refresh mode
+- Fix - Refresh the inventory after successful actions, including popup actions
+- Fix - Remove unnecessary nginx reloads during plugin installation and removal
+- Fix - Show status for disabled refresh, failed requests, missing data, and connection errors
+- Fix - Tolerate unavailable or corrupt browser cache without stopping live rendering
+- Fix - Clear the daemon filesystem stat cache before checking refresh and configuration changes
+- Fix - Rebuild the archive from current source, including the popup CSRF fixes
+
+## 2026.09.03
+
+- Fix - Replaced Lua channel-program inventory with machine-readable OpenZFS CLI queries
+- Fix - Correct dataset hierarchy, root-dataset snapshots, lazy snapshot totals, and query error reporting
+- Fix - Dataset, snapshot, encryption, property, and directory operations use argument-safe process execution
+- Fix - Snapshot delete reporting, rename support, and explicit rollback of newer snapshots
+- Fix - PHP 8.4 compatibility, daemon resilience, output escaping, and request validation
+- Fix - Unraid 7.3.2 packaging, CSRF integration, Nchan startup, and installer handling
+
+## 2024.12.08
+
+- Add - Config for pulling ZnapZend plans
+- Fix - Refresh and settings icon
+- Fix - Corner case if no information is loaded
+
+## 2024.11.17
+
+- Add - ZnapZend plans information
+
+## 2024.11.11.87
+
+- Fix - Lazy load bug
+
+## 2024.11.11
+
+- Fix - Style for Unraid 7
+- Add - Properties extraction for ZFS Volumes
+- Fix - for folder listing corner cases
+
+## 2024.05.05
+
+- Fix - Malicious content in SweetAlert2 package. Thanks @Ubsefor
+- Add - Initial support for ZFS Vols (Just detection, more is coming)
+- Fix - Exclussion patterns keywords
+
+## 2024.03.31
+
+- Fix - Compatibility with 6.13 beta
+- Change - Convert to dataset reporting on dataset row
+- Add - Unraid notifications for Convert to Dataset
+- Fix - for folder listing corner cases
+- Fix - for zvols
+
+## 2024.03.03
+
+- Fix - Dataset name validation before convertion
+- Fix - rsync command for folders with whitespaces or special characters
+- Fix - Errors on empty exclusion patterns
+- Add - Compatibility with 6.13 beta
+
+## 2024.02.15
+
+- Fix - Directory Listing not Working
+
+## 2024.02.10
+
+- Add - "-X" option for Connvert Dataset rsync command 
+- Fix - Directory Listing detecting datasets as folders
+
+## 2024.02.09
+
+- Add - Convert directory to dataset functionality
+- Add - Written property for snapshots
+- Add - Directory listing for root datasets
+- Fix - Tabbed view support
+- Fix - Configuration file associated errors
+- Fix - Units nomenclature
+- Fix - Pool information parsing errors
+- Remove - Unraid Notifications 
+
+## 2023.12.08
+
+- Add - Directory Listing functionality
+- Fix - Optimize multiple operations
+
+## 2023.12.04
+
+- Fix - Used and Free % bars/texts are now consistent with unraid theme and config
+- Fix - Set time format for the last refresh to short date and time
+- Fix - Detect Pools with used % under 0%
+- Fix - ZPool regex not caching some pools with dots or Underscore in the name
+
+## 2023.10.07
+
+- Add - Cache last data in Local Storage when using "no refresh"
+- Fix - Dataset admin Dialog - Error on select all datasets 
+- Fix - Multiple typos
+- Fix - Special condition crashing the backend
+- Fix - Status refresh on Snapshots admin dialog
+- Change - Date format across multiple dialogs
+- Change - Local Storage for datasets and pools view options
+
+## 2023.09.27
+
+- Change - "No refresh" option now doesn't load information on page refresh
+- Fix - Dynamic Config reload
+
+## 2023.09.25
+
+- Fix - Config load 
+- Fix - Exclusion patterns for datasets with spaces
+- Fix - Destroy dataset functionality
+
+## 2023.09.25
+
+- Add - Lazy load functionality
+- Add - Nchan for updates
+- Add - Refresh options (Including On demand)
+- Add - Last refresh timestamp
+- Add - Dynamic refresh after an operation
+- Change - Migration to zfs programs for most operations
+- Change - Quota setting on Create Dataset Dialog
+- Change - Notifications and messages improvement
+- Change - Edit datasets UI as a dropdown menu
+- Fix - Dataset passphrase input not masked
+- Fix - ZPool regex not caching some pools
+- Fix - Dataset passphrase size difference
+- Fix - Multiple typos
+- Fix - PHP 8 Compatibility
+
+## 2023.07.04
+
+- Fix - Dataset names with spaces not being properly handled
+
+## 2023.04.03
+
+- Add - Snapshots admin UI
+- Add - Rename datasets UI
+- Add - Edit datasets UI
+- Add - unRaid 6.12 compatiblity 
+- Add - Lazy load for snapshots admin UI
+- Fix - Improve PHP 8 Compatibility
+
+## 2023.03.07
+
+- Fix - PHP 8 Upgrades
+- Change - Sanpshots admin UI
+- Add - Rename datasets capabilities
+- Add - Lazy load for snapshots admin UI
+
+## 2023.02.28
+
+- Fix - PHP 8 Upgrades
+- Fix - Export pool command
+- Fix - Error on parsing dataset origin property
+
+## 2022.12.04
+
+- Fix - Error on counting childs
+
+## 2022.11.12
+
+- Fix - Error on dialogs and input controls
+- Add - Clone capabilities for snapshots
+- Add - Promote capabilities for datasets
+
+## 2022.11.05
+
+- Fix - Error on pools with snapshots but without datasets
+- Fix - Dialogs not sizing properly
+- Add - Snapshot Batch Deletion
+
+## 2022.08.21
+
+- Change - UI into "folder" structure
+- Add - Support for ZFS Encryption
+- Add - Unlock and Lock actions for encrypted datasets
+- Fix - Error on unRaid 6.9.2 associated with session management
+
+## 2022.08.02
+
+- Warning - Please Update your exclusion pattern!
+- Add - Browse Button for Datasets
+- Add - Support for listing volumes!!
+- Add - Lua script backend for loading dataset information
+- Change - Exclusion pattern for datasets (Please check http://lua-users.org/wiki/PatternsTutorial)
+- Change - UI columns re-organized to the unraid way (sort of)
+
+## 2022.04.13
+
+- Add - Dataset Snapshot Creation Option
+- Add - Settings for Snapshot Creation (pattern and prefix)
+- Change - "Destroy" and "Snapshots" buttons merged to "Actions"
+
+## 2022.04.10
+
+- Add - Dataset Snapshot management (rollback, hold, release, destroy)
+- Fix - Installation script bug
+
+## 2022.04.08
+
+- Add - Set permissions for new Datasets
+
+## 2021.11.09
+
+- Add - List of current Datasets at Dataset Creation
+- Add - Option for export a Pool (In construction)
+- Fix - Compatibility with unRAID RC versions
+
+## 2021.10.08
+
+- Add - SweetAlert2 for notifications
+- Add - Refresh and Settings Buttons
+- Add - Mountpoint information for Pools
+- Add - Configurable Settings for Refresh Time, Destructive Mode, Dataset Exclusions, Alert Max Days Snapshot Icon 
+- Fix - Compatibility with Other Themes (Dark, Grey, etc.)
+- Fix - Improper dataset parsing
+- Fix - Regex warnings
+- Fix - UI freeze error on some system at destroying a Dataset
+- Remove - Unassigned Devices Plugin dependency
+
+## 2021.10.04
+
+- Initial Release.

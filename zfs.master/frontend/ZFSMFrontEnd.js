@@ -105,7 +105,7 @@ function saveToLocalStorage(key, value, encode=true) {
 	try {
 		localStorage.setItem(key, encode ? JSON.stringify(value) : value);
 	} catch (error) {
-		console.warn('ZFS Master could not save its browser cache', error);
+		console.warn('ZFS Master NG could not save its browser cache', error);
 	}
 }
 
@@ -114,14 +114,14 @@ function loadFromLocalStorage(key, decode=true) {
 		const value = localStorage.getItem(key);
 		return value === null ? null : (decode ? JSON.parse(value) : value);
 	} catch (error) {
-		console.warn('ZFS Master ignored an unavailable or invalid browser cache', error);
+		console.warn('ZFS Master NG ignored an unavailable or invalid browser cache', error);
 		return null;
 	}
 }
 
 function removeFromLocalStorage(key) {
 	try { localStorage.removeItem(key); } catch (error) {
-		console.warn('ZFS Master could not clear its browser cache', error);
+		console.warn('ZFS Master NG could not clear its browser cache', error);
 	}
 }
 
