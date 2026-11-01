@@ -73,7 +73,7 @@ _(Datasets Exclusion Patterns (Just One!))_:
 
 :zc_settings_datasets_exclusion_plug:
 > Regular expression used for dataset-listing exclusion. Descendant datasets and snapshots are also excluded.
-> Patterns saved in the older Lua format, such as `/docker%-old/.*`, keep working.
+> A pattern containing `%` is read as a Lua pattern, the format older versions used, such as `/docker%-old/.*`.
 > This definitely speed up the Information refresh process!.
 :end
 

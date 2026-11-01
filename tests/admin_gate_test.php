@@ -35,7 +35,7 @@ $answer = json_decode(ob_get_clean(), true);
 $passed = false;
 if ($expected === 'blocked') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Destructive Mode') !== false;
 if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($answer['failed']);
-if ($expected === 'warned') $passed = !empty($answer['data']['errors']['exclusion']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
+if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {
 	fwrite(STDERR, $name.' failed: '.json_encode($answer)."\n");

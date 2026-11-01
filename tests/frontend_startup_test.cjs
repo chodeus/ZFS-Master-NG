@@ -130,6 +130,12 @@ state = launch();
 state.requests[0].reject({status: 0}, 'timeout');
 assert.match(state.status(), /timeout.*stale/);
 
+// An ignored exclusion pattern is reported, even on an otherwise clean read.
+state = launch();
+state.context.updateFullBodyTable = () => {};
+state.requests[0].resolve({...empty(), data: {...empty().data, warning: 'pattern ignored'}});
+assert.match(state.status(), /pattern ignored/);
+
 // Actions update manual mode; errors and read-only results do not.
 state = launch({interval: 0});
 state.action({succeeded: {}, failed: {dataset: 'blocked'}});

@@ -99,37 +99,45 @@ function zfsmParseTable($output, $columns) {
 	return $rows;
 }
 
-// Saved patterns may be Lua (the original format) or PCRE. '%' is not valid in a ZFS name, so '%x' is always Lua.
+// A saved pattern with '%' is Lua, the original format ('%' is not valid in a ZFS name). Anything else is a regex.
 function zfsmExclusionToRegex($pattern) {
+	if (strpos($pattern, '%') === false) return "\x01".$pattern."\x01i";
 	$classes = array('a' => 'alpha', 'c' => 'cntrl', 'd' => 'digit', 'l' => 'lower', 'p' => 'punct', 's' => 'space', 'u' => 'upper', 'w' => 'alnum', 'x' => 'xdigit');
 	$regex = '';
 	$in_set = false;
+	$repeatable = false;
 	$length = strlen($pattern);
 	for ($i = 0; $i < $length; $i++) {
 		$char = $pattern[$i];
-		if ($char === '\\' && $i + 1 < $length) {
-			$regex .= $char.$pattern[++$i];
-			continue;
-		}
-		if ($char === '[') $in_set = true;
-		if ($char === ']') $in_set = false;
-		if ($char !== '%') {
-			$regex .= $char;
-			continue;
-		}
-		if ($i + 1 >= $length) return null;
-		$next = $pattern[++$i];
-		$class = $classes[strtolower($next)] ?? null;
-		if ($class !== null) {
+		if ($char === '%') {
+			if (++$i >= $length) return null;
+			$next = $pattern[$i];
+			$class = $classes[strtolower($next)] ?? null;
+			if ($class === null && ctype_alnum($next)) return null; // %b, %f and %1 have no regex equivalent
 			$posix = '[:'.(ctype_upper($next) ? '^' : '').$class.':]';
-			$regex .= $in_set ? $posix : '['.$posix.']';
-		} elseif (ctype_alnum($next)) {
-			return null; // %b, %f and %1 have no regex equivalent
+			$regex .= $class === null ? preg_quote($next, "\x01") : ($in_set ? $posix : '['.$posix.']');
+			$repeatable = !$in_set;
+		} elseif ($in_set) {
+			$regex .= $char === '\\' ? '\\\\' : $char;
+			if ($char === ']') {
+				$in_set = false;
+				$repeatable = true;
+			}
+		} elseif ($char === '[') {
+			$regex .= $char;
+			$in_set = true;
+		} elseif ($char === '-') {
+			$regex .= $repeatable ? '*?' : '\\-'; // Lua's lazy repeat
+			$repeatable = false;
+		} elseif (strpos('()^$*+?', $char) !== false) {
+			$regex .= $char;
+			$repeatable = false;
 		} else {
-			$regex .= preg_quote($next, "\x01");
+			$regex .= strpos('\\|{}', $char) !== false ? '\\'.$char : $char;
+			$repeatable = true;
 		}
 	}
-	return "\x01".$regex."\x01i";
+	return "\x01".$regex."\x01";
 }
 
 function zfsmExclusionIsValid($pattern) {
@@ -321,7 +329,7 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 		$pools = array($pool => $pools[$pool]);
 	}
 	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
-	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['errors']['exclusion'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master settings.';
+	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master settings.';
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
 		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
@@ -530,9 +538,22 @@ function moveDirectory($directory, $new_name) {
 	return zfsmFailure($new_name, $error['message'] ?? 'Unable to move directory');
 }
 
+// The reason to refuse work on a directory with something mounted inside it; '' when there is none.
+function zfsmNestedMountProblem($path) {
+	$table = @file('/proc/self/mountinfo', FILE_IGNORE_NEW_LINES);
+	if ($table === false) return 'Unable to read the mount table';
+	foreach ($table as $line) {
+		$mount = preg_replace_callback('/\\\\([0-7]{3})/', function($match) { return chr(octdec($match[1])); }, explode(' ', $line)[4] ?? '');
+		if (zfsmStartsWith($mount, rtrim($path, '/').'/')) return 'Another filesystem is mounted inside this directory at '.$mount.'; unmount or move it first';
+	}
+	return '';
+}
+
 function deleteDirectory($directory, $force) {
 	$resolved = zfsmResolveDirectory($directory, true);
 	if (!$resolved) return zfsmFailure($directory, 'Directory is outside a mounted ZFS filesystem');
+	$mounted = (string)$force === '1' ? zfsmNestedMountProblem($resolved['path']) : '';
+	if ($mounted !== '') return zfsmFailure($directory, $mounted);
 	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path'])));
 	return commandAnswer($resolved['path'], runProcess('rmdir', array('--', $resolved['path'])));
 }
@@ -541,7 +562,7 @@ function deleteDirectory($directory, $force) {
 function zfsmRsyncArgs() {
 	$version = runProcess('rsync', array('--version'));
 	if (($version['code'] ?? 1) !== 0) return null;
-	$args = array('-aHX', '--numeric-ids', '--one-file-system', '--exclude=/.zfs');
+	$args = array('-aHX', '--numeric-ids', '--one-file-system', '--filter=P /.zfs');
 	if (preg_match('/(?<!no )\bACLs\b/', $version['output'] ?? '') === 1) $args[] = '-A';
 	return $args;
 }
@@ -591,6 +612,9 @@ function convertDirectory($directory, $pool) {
 	$relative = ltrim(substr($source['path'], strlen($source['mountpoint'])), '/');
 	$dataset_name = $source['dataset'].($relative !== '' ? '/'.$relative : '');
 	if (!zfsmValidDatasetName($dataset_name) || zfsmDatasetExists($dataset_name)) return zfsmFailure($directory, 'Target dataset name is invalid or already exists');
+	$mounted = zfsmNestedMountProblem($source['path']);
+	if ($mounted !== '') return zfsmFailure($directory, $mounted);
+	if (file_exists($source['path'].'/.zfs')) return zfsmFailure($directory, 'A top-level .zfs entry cannot exist in a dataset; rename it first');
 	$temp = $source['path'].'_zfsm_tmp_'.date('YmdHis');
 	$moved = moveDirectory($source['path'], $temp);
 	if (!$moved['succeeded']) return $moved;

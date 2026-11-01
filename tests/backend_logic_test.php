@@ -55,6 +55,11 @@ assertSameValue(false, zfsmMatchesExclusion('tank/a-b', 'tank/[%w_]+$'), 'Lua se
 assertSameValue(true, zfsmMatchesExclusion('tank/ab', 'tank/%D+$'), 'Negated Lua class failed');
 assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer\\d$'), 'PCRE escape stopped matching');
 assertSameValue(true, zfsmMatchesExclusion('tank/a#b', 'a#b'), 'A hash in the pattern must not end the regex');
+assertSameValue(true, zfsmMatchesExclusion('tank/docker-old/x', '/docker%-.-/'), 'Lua lazy repeat failed');
+assertSameValue(false, zfsmMatchesExclusion('tank/abc', 'tank/%u'), 'Lua upper class matched lowercase');
+assertSameValue(false, zfsmMatchesExclusion('tank/Docker-old', 'tank/docker%-old'), 'Lua patterns are case sensitive');
+assertSameValue(true, zfsmMatchesExclusion('tank/Docker-old', 'tank/docker-old'), 'Regex patterns stay case insensitive');
+assertSameValue(false, zfsmMatchesExclusion('tank/a', 'b|a%d'), 'A Lua pipe is literal');
 foreach (array('tank/(', '%', '%bxy', 'a%1', '[') as $invalid_pattern) {
 	assertSameValue(false, zfsmExclusionIsValid($invalid_pattern), 'Invalid pattern accepted: '.$invalid_pattern);
 	assertSameValue(false, zfsmMatchesExclusion('tank/data', $invalid_pattern), 'Invalid pattern must exclude nothing: '.$invalid_pattern);

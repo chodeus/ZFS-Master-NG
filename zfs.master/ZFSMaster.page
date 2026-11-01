@@ -326,16 +326,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let mytr of myArray) {
 		if (visibility == 'hide') {
 			var classList = $(mytr).attr('class').split(/\s+/);
-			var cont = false;
-			
-			for (var i = 0; i < classList.length; i++) {
-				if (datasets.hidden.indexOf(classList[i]) != -1) {
-					cont = true;
-					break;
-				}
-			}
-
-			if (cont) {
+			if (datasets.hidden.some(function(name) { return classList.includes(datasetChildClass(name)); })) {
 				continue;
 			}
 

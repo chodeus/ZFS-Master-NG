@@ -51,8 +51,9 @@ exec('mount -t tmpfs tmpfs '.escapeshellarg($root.'/parent/inner'), $out, $mount
 check($mounted === 0, 'test needs a tmpfs mount');
 file_put_contents($root.'/parent/inner/data', 'keep');
 $result = deleteDirectory($root.'/parent', 1);
-check(!empty($result['failed']), 'delete across a mount must report failure');
+check(strpos(reset($result['failed']), 'mounted inside') !== false, 'delete around a mount must say why it refused');
 check(is_file($root.'/parent/inner/data'), 'forced delete crossed a mount boundary');
+check(is_file($root.'/parent/own'), 'refused delete still removed files beside the mount');
 exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
@@ -81,6 +82,28 @@ mkdir($mount.'/.zfs');
 $result = convertDirectory($target, 'tank');
 check(!empty($result['succeeded']), '.zfs broke verification: '.json_encode($result));
 check(is_dir($mount.'/.zfs'), 'verification or copy touched .zfs');
+
+// A real .zfs folder in the source can't live in a dataset: refuse before moving anything.
+reset_tree($target, $mount, $root);
+mkdir($target.'/.zfs');
+file_put_contents($target.'/.zfs/mine', 'keep');
+$result = convertDirectory($target, 'tank');
+check(empty($result['succeeded']), 'a source .zfs folder must refuse the conversion');
+check(is_file($target.'/.zfs/mine'), 'refused conversion lost the .zfs folder');
+check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the source');
+exec('rm -rf '.escapeshellarg($target));
+
+// A filesystem mounted inside the source: refuse before moving anything.
+reset_tree($target, $mount, $root);
+mkdir($target.'/inner');
+exec('mount -t tmpfs tmpfs '.escapeshellarg($target.'/inner'), $out, $mounted);
+check($mounted === 0, 'test needs a tmpfs mount');
+file_put_contents($target.'/inner/data', 'keep');
+$result = convertDirectory($target, 'tank');
+check(strpos(reset($result['failed']) ?: '', 'mounted inside') !== false, 'a nested mount must refuse the conversion');
+check(is_file($target.'/inner/data') && is_file($target.'/sub dir/file'), 'refused conversion changed the source');
+check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the source');
+exec('umount '.escapeshellarg($target.'/inner'));
 
 // A failed copy keeps the source.
 reset_tree($target, $mount, $root);
