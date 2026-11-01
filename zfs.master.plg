@@ -208,16 +208,6 @@
 - Initial Release.
 </CHANGES>
 
-<!-- Stop the inventory daemon of older versions; a stale nchan.pid entry would restart it on every page load -->
-<FILE Run="/bin/bash">
-<INLINE>
-pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
-if [ -e /var/run/nchan.pid ]; then
-  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
-fi
-</INLINE>
-</FILE>
-
 <!-- A failed download never reaches upgradepkg: the running install and the archive the next boot needs stay intact -->
 <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
 <URL>https://github.com/&github;/releases/download/v&version;/&pkgname;.txz</URL>
@@ -226,6 +216,11 @@ fi
 
 <FILE Run="/bin/bash">
 <INLINE>
+# Older versions ran an inventory daemon; a stale nchan.pid entry would restart it on every page load
+pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
+if [ -e /var/run/nchan.pid ]; then
+  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
+fi
 for p in /var/log/packages/&name;-*; do
   [ -e "$p" ] || continue
   case "$(basename "$p")" in &pkgname;) continue;; esac

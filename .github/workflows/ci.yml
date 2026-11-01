@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils
@@ -26,8 +28,9 @@ jobs:
       - name: Checkout release scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           repository: chodeus/chodeus-ops
-          ref: 142009888448ef52954f652a3f0f1a69e59fdd2a # main
+          ref: bd052317750d1e3a8de3f2767f1f73eaa20a83a5 # main
           path: .ops
           sparse-checkout: scripts
 
@@ -58,6 +61,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Lint and backend tests
         env:
@@ -79,10 +84,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Checkout the Unraid webGUI at this version
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           repository: unraid/webgui
           ref: ${{ matrix.unraid }}
           path: .webgui

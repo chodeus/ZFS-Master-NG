@@ -2,6 +2,8 @@
 # Runs this plugin through a real Unraid webGUI tree: its plugin installer, CSRF prepend, helpers and pages.
 # Disposable container only, as root. Usage: unraid_compat_test.sh <webgui-tree> <unraid-version>
 set -u
+# This script replaces plugin files and system binaries, so it must never touch a real server.
+if [ -e /etc/unraid-version ] || [ -d /boot/config ]; then echo 'Refusing to run on an Unraid system' >&2; exit 2; fi
 web=$(cd "$1" && pwd); version=$2; repo=$(pwd)
 fail() { echo "FAILED [$version]: $*"; exit 1; }
 command -v xz >/dev/null || { apt-get update -qq && apt-get install -y -qq xz-utils >/dev/null; } || fail 'xz unavailable'
@@ -69,6 +71,7 @@ reset; legacy; cp "$live/nchan/zfs_master" "$work/old-file"
 $plugin install "$work/zfs.master.plg" > "$work/failed.log" 2>&1 && fail 'install succeeded without its package'
 [ -f "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'failed download deleted the archive the next boot needs'
 [ -f "$live/nchan/zfs_master" ] || fail 'failed download changed the running install'
+grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid || fail 'failed download changed nchan.pid'
 
 # A failed upgradepkg must also leave the old install, its archive and its registration.
 build_version() {

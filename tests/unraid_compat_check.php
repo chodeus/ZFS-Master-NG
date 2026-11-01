@@ -18,6 +18,10 @@ register_shutdown_function(function() {
 		fwrite(STDERR, 'fatal: '.$fatal['message'].' in '.$fatal['file'].':'.$fatal['line']."\n");
 		exit(1);
 	}
+	if (empty($GLOBALS['zfsm_check_finished'])) {
+		fwrite(STDERR, "check ended before its assertions ran\n");
+		exit(1);
+	}
 });
 
 $var = array('csrf_token' => $token);
@@ -40,6 +44,7 @@ switch ($check) {
 	case 'body_token':
 	case 'no_token':
 	case 'wrong_token':
+		$GLOBALS['zfsm_check_finished'] = true; // asserts in its own shutdown function: csrf_terminate exits
 		$_SERVER['REQUEST_METHOD'] = 'POST';
 		$_POST = array('cmd' => 'inventory');
 		if ($check === 'body_token') $_POST['csrf_token'] = $token;
@@ -97,6 +102,7 @@ switch ($check) {
 		exit(2);
 }
 
+$GLOBALS['zfsm_check_finished'] = true;
 if ($GLOBALS['zfsm_problems']) {
 	fwrite(STDERR, implode("\n", $GLOBALS['zfsm_problems'])."\n");
 	exit(1);

@@ -31,9 +31,9 @@ mutations only on an explicitly disposable dataset/snapshot. No changes to the
 system publishing flag, nginx configuration, or Unraid API are required.
 
 Run the plugin through a real Unraid webGUI tree (its plugin installer, CSRF prepend, helpers and pages), in a
-disposable container, from a checkout of `unraid/webgui` at the tag under test:
+disposable container, with `unraid/webgui` checked out at the tag under test inside this repository:
 
 ```sh
-docker run --rm -v "$PWD:/repo" -w /repo php:7.4-cli bash tests/unraid_compat_test.sh path/to/webgui 6.9.2
+docker run --rm -v "$PWD:/repo" -w /repo php:7.4-cli bash tests/unraid_compat_test.sh .webgui 6.9.2
 ```
 

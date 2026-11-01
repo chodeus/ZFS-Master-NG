@@ -36,7 +36,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-release.yml@142009888448ef52954f652a3f0f1a69e59fdd2a # main
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-release.yml@bd052317750d1e3a8de3f2767f1f73eaa20a83a5 # main
     with:
       plg_file: zfs.master.plg
       stable_branch: main
