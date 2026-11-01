@@ -15,6 +15,10 @@ function datasetChildClass(name) {
 	return 'zfsm-child-'+encodeURIComponent(String(name ?? ''));
 }
 
+function datasetRowId(name) {
+	return 'tr-'+encodeURIComponent(String(name ?? ''));
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
@@ -406,7 +410,7 @@ function getZnapProperties(zdataset) {
 }
 
 function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
-	var tr = '<tr id="tr-'+escapeHtml(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+	var tr = '<tr id="'+datasetRowId(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 	tr += '<td></td><td></td><td>';
 
 	var properties = getPropertiesByType(zdataset);
@@ -622,7 +626,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 }
 
 async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, directory_listing) {
-	var row = document.getElementById('tr-'+data.dataset['name']);
+	var row = document.getElementById(datasetRowId(data.dataset['name']));
 	if (!row) return;
 
 	tds = row.getElementsByTagName('td');

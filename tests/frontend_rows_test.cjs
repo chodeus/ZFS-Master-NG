@@ -14,7 +14,8 @@ const leaf = {name: 'red/My Share/child', type: 'filesystem', used: 1, available
 const share = {name: 'red/My Share', type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/red/My Share', snapshots: [], directories: [], child: {'red/My Share/child': leaf}};
 const pool = {name: 'red', type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/red', snapshots: [], directories: [], child: {'red/My Share': share}};
 const html = context.generateDatasetArrayRows('red', pool, context.datasetChildClass('red'), true, 0, 30, {});
-const rows = [...html.matchAll(/<tr id="tr-([^"]+)" class="([^"]+)"/g)].map(match => ({id: match[1], classes: match[2].split(' ')}));
+const rows = [...html.matchAll(/<tr id="tr-([^"]+)" class="([^"]+)"/g)].map(match => ({id: decodeURIComponent(match[1]), rawId: match[1], classes: match[2].split(' ')}));
+for (const row of rows) assert.doesNotMatch(row.rawId, /[\s/]/, 'a row id is one encoded token');
 assert.equal(rows.length, 3, 'one row per dataset');
 
 const shareClass = context.datasetChildClass('red/My Share');
@@ -38,5 +39,9 @@ let toggled;
 context.toggleDataset = name => { toggled = name; };
 vm.runInContext(handler, context);
 assert.equal(toggled, 'red/My Share');
+
+const sources = frontend+page;
+assert.doesNotMatch(sources, /'tr-'\+(?!encodeURIComponent)/, 'every dataset row id goes through datasetRowId');
+assert.doesNotMatch(sources, /Spaces are not supported/, 'converting a folder with a space is left to the backend, which allows it');
 
 console.log('dataset row class tests passed');

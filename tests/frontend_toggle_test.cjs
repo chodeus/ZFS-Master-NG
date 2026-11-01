@@ -42,7 +42,7 @@ const pool = {name: 'tank', type: 'filesystem', used: 1, available: 1, mountpoin
 apps.directories = ['/mnt/tank/apps/config'];
 const html = context.generateDatasetArrayRows('tank', pool, '', true, 0, 30, {});
 assert.doesNotMatch(frontend, /datasetChildClass\(zpool\['Pool'\]\), show_status/, 'the page starts the root row without its own child class');
-for (const match of html.matchAll(/<tr id="tr-([^"]+)" class="([^"]+)"/g)) rows.push({id: match[1], classes: match[2].split(/\s+/), visible: true});
+for (const match of html.matchAll(/<tr id="tr-([^"]+)" class="([^"]+)"/g)) rows.push({id: decodeURIComponent(match[1]), classes: match[2].split(/\s+/), visible: true});
 const row = id => rows.find(r => r.id === id);
 
 // Collapse tank/apps: its child row and its own directory rows hide.
