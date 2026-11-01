@@ -1,22 +1,56 @@
-#### ZFS Master for Unraid
+# <img src="zfs.master/images/zfs.master.png" width="32" height="32" alt=""> ZFS Master NG for Unraid
 
-[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://paypal.me/DML)
+See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab.
 
-The ZFS Master plugin provides information and control over the ZFS Pools in your Unraid server. Available ZFS Pools are listed under the "Main/ZFSMaster" tab.
+[![CI](https://img.shields.io/github/actions/workflow/status/chodeus/ZFS-Master-NG/ci.yml?branch=beta&label=CI)](https://github.com/chodeus/ZFS-Master-NG/actions/workflows/ci.yml)
+[![Unraid 6.9.2+](https://img.shields.io/badge/Unraid-6.9.2%2B-orange)](#requirements)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](zfs.master/LICENSE)
 
-### About this Fork
-This project is a fork of the original [ZFS Master plugin created by IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid). All credit for the original design, architecture, and features goes to IkerSaint and contributors.
+## Features
 
-This fork has been updated and modernized to ensure full compatibility with modern Unraid releases (**Unraid 7.3.2+**):
-- **PHP 8 Compatibility:** Resolved PHP 8 CLI syntax requirements (standard `<?php` tags) so the background monitor daemon runs reliably under Unraid 7.x.
-- **CSRF Token Hardening:** Integrated CSRF token authentication across all WebGUI forms and AJAX endpoints in accordance with Unraid 7.3.2 security updates (CVE-2026-3838 patch).
-- **OpenZFS 2.4 Inventory:** Uses machine-readable `zfs list`/`zfs get` output for datasets, volumes, user properties, and snapshots without channel-program limits.
-- **Safe Administration:** Dataset, snapshot, encryption, and directory operations use argument-safe process execution with server-side validation and useful ZFS errors.
-- **WebGUI Modernization:** Fixed header alignment and layout conflicts with the Unraid 7 navbar, and updated FontAwesome icon references.
+- **Pools at a glance** — health, size, used and free space, and snapshot counts
+- **Datasets** — create, rename, promote and destroy, and edit properties such as compression, quota, record size and access time
+- **Snapshots** — take them singly or recursively, then roll back, rename, clone, hold, release or delete them, with an icon that warns when the newest one is getting old
+- **Encryption** — create encrypted datasets, and lock or unlock them
+- **Directories** — list the folders inside a dataset, move or delete them, or convert one to its own dataset
+- **ZnapZend** — optionally show the backup plans set on each dataset
+- **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open, pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
+- **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
 
-### Requirements
-* Unraid **7.3.2 or newer** with a native ZFS pool.
+## Install
 
-### Support & Donations
-If you find this updated fork helpful, donations are appreciated:
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/DML)
+Available once the first beta is released. Go to **Plugins → Install Plugin** and paste:
+
+```text
+https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
+```
+
+Then open **Main** and look for **ZFS Master NG**. Settings are under **Settings → ZFS Master NG**.
+
+### Coming from ZFS Master
+
+It installs straight over ZFS Master, either the original or the 7.3 fork, and keeps your settings. There's nothing to uninstall first. From then on, updates come from this repository.
+
+## Requirements
+
+- Unraid 6.9.2 or newer with a ZFS pool
+- Before Unraid 6.12, ZFS itself comes from the ZFS plugin
+
+## Staying safe
+
+Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Snapshot rollback and delete don't need it, so check their warnings before confirming.
+
+A snapshot is a restore point on the same pool, not a backup.
+
+## Support
+
+Found a bug or have an idea? [Open an issue](https://github.com/chodeus/ZFS-Master-NG/issues).
+
+## Credits
+
+Created by [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid), with Unraid 7.3 and backend work by [dlang123](https://github.com/dlang123/ZFS-Master-Unraid). Released under the GPL, version 2 or later; see [LICENSE](zfs.master/LICENSE).
+
+## Development
+
+- `bash pkg_build.sh --version 0000.00.00 --out /tmp/zfsm` builds a package. It also rewrites the manifest's version and md5, so restore that file afterwards.
+- [tests/README.md](tests/README.md) explains the test suites. They use fake `zfs` and `zpool` binaries and real Unraid webGUI code.
