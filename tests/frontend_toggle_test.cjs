@@ -39,13 +39,25 @@ const leaf = {name: 'tank/apps/db', type: 'filesystem', used: 1, available: 1, m
 const apps = {name: 'tank/apps', type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/tank/apps', snapshots: [], directories: [], child: {'tank/apps/db': leaf}};
 const other = {name: 'tank/media', type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/tank/media', snapshots: [], directories: [], child: {}};
 const pool = {name: 'tank', type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/tank', snapshots: [], directories: [], child: {'tank/apps': apps, 'tank/media': other}};
-const html = context.generateDatasetArrayRows('tank', pool, context.datasetChildClass('tank'), true, 0, 30, {});
+apps.directories = ['/mnt/tank/apps/config'];
+const html = context.generateDatasetArrayRows('tank', pool, '', true, 0, 30, {});
+assert.doesNotMatch(frontend, /datasetChildClass\(zpool\['Pool'\]\), show_status/, 'the page starts the root row without its own child class');
 for (const match of html.matchAll(/<tr id="tr-([^"]+)" class="([^"]+)"/g)) rows.push({id: match[1], classes: match[2].split(/\s+/), visible: true});
 const row = id => rows.find(r => r.id === id);
 
-// Collapse tank/apps: its child row hides.
+// Collapse tank/apps: its child row and its own directory rows hide.
 context.toggleDataset('tank/apps');
 assert.equal(row('tank/apps/db').visible, false, 'collapsing tank/apps hides tank/apps/db');
+const directoryRow = rows.find(r => r.id.startsWith('dir-'));
+assert.ok(directoryRow, 'the fixture has a directory row');
+assert.equal(directoryRow.visible, false, 'collapsing tank/apps hides its directories');
+
+// Collapse the pool root: the root row stays, so it can be expanded again.
+context.toggleDataset('tank');
+assert.notEqual(row('tank').visible, false, 'collapsing the root must not hide the root row');
+assert.equal(row('tank/media').visible, false, 'collapsing the root hides its children');
+context.toggleDataset('tank');
+assert.equal(row('tank/media').visible, true, 'expanding the root shows them again');
 
 // Hide the pool table, then show it again. The collapsed dataset's children must stay hidden.
 context.togglePoolTable('show-zpool-tank', 'zdataset-tank');

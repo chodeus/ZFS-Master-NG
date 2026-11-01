@@ -528,7 +528,7 @@ function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructi
 	if (!dataset || dataset['_error']) return tr;
 	tr += generateDatasetRow(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
 	if (hasDirectories(dataset)) {
-		tr += generateDatasetDirectoryRows(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetDirectoryRows(zpool, dataset, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
 	}
 	Object.values(dataset.child || {}).forEach((child) => {
 		tr += generateDatasetArrayRows(zpool, child, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
@@ -611,7 +611,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {
 			html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">ZFS query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_error'])+'</td></tr>';
 		} else {
-			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], datasetChildClass(zpool['Pool']), show_status, destructive_mode, snap_max_days_alert, display);
+			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], '', show_status, destructive_mode, snap_max_days_alert, display);
 			if (data['datasets'][zpool['Pool']]['_snapshot_error']) {
 				html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">Snapshot query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_snapshot_error'])+'</td></tr>';
 			}
