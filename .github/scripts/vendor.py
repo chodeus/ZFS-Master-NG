@@ -15,6 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 # Unraid's own pages call swal(); the library's default exports would replace it on the shared Main tab.
 SWAL_EXPORTS = re.compile(rb'this\.swal\s*=\s*this\.sweetAlert\s*=\s*this\.Swal\s*=\s*this\.SweetAlert\s*=')
+# :where() gives rules no weight, so Unraid's theme would restyle the dialogs: Destroy and Cancel end up identical.
+ZERO_WEIGHT = re.compile(rb':where\(([^()]*)\)')
 # Past releases played audio and blocked the page on some hosts. Refuse anything like it rather than ship it.
 REFUSED = re.compile(rb"anthem|\.mp3|xn--p1ai|navigator\.language|createElement\(['\"]audio", re.IGNORECASE)
 
@@ -47,6 +49,8 @@ def prepare(name, src, data):
         data, count = SWAL_EXPORTS.subn(b'this.Swal2=this.SweetAlert=', data)
         if count != 1:
             raise SystemExit(f'{name}: expected one global export line in {src}, found {count}')
+    if name == 'sweetalert2':
+        data = ZERO_WEIGHT.sub(rb'\1', data)
     return data
 
 

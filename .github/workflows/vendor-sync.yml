@@ -30,6 +30,8 @@ jobs:
           if [ -z "$(git status --porcelain -- zfs.master/assets)" ]; then
             echo "Bundled files already match vendor.json."
             echo "changed=false" >> "$GITHUB_OUTPUT"
+            # A re-run after a failed dispatch finds its own commit: CI still has to start.
+            [ "$(git log -1 --format=%ae)" != '41898282+github-actions[bot]@users.noreply.github.com' ] || echo "redispatch=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "$summary"
@@ -41,12 +43,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # A push made with GITHUB_TOKEN starts no workflow, so the check is dispatched by hand.
-      - name: Commit and re-run CI
+      - name: Commit the files
         if: steps.sync.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
-          BASE_REF: ${{ github.base_ref }}
           SUMMARY: ${{ steps.sync.outputs.summary }}
         run: |
           set -euo pipefail
@@ -55,4 +55,11 @@ jobs:
           git add -A -- zfs.master/assets
           git commit -q -m "chore(deps): copy the updated bundled libraries in" -m "$SUMMARY"
           git push origin "HEAD:${HEAD_REF}"
-          gh workflow run ci.yml --ref "$HEAD_REF" -f base="$BASE_REF"
+
+      - name: Run CI on them
+        if: steps.sync.outputs.changed == 'true' || steps.sync.outputs.redispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: gh workflow run ci.yml --ref "$HEAD_REF" -f base="$BASE_REF"

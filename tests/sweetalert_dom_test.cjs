@@ -54,15 +54,15 @@ async function dialog(window, options, act = () => {}) {
   let opened = false;
   const custom = window.Swal2.fire({
     title: 'Rename',
-    html: '<input id="swal2-input" class="swal2-input" value="tank/data">'
-      + '<label for="swal2-checkbox" class="swal2-checkbox" style="display: flex;"><input type="checkbox" id="swal2-checkbox" checked><span class="swal2-label">Force</span></label>',
+    html: '<input id="zfsm-swal-input" class="swal2-input" value="tank/data">'
+      + '<label for="zfsm-swal-checkbox" class="swal2-checkbox" style="display: flex;"><input type="checkbox" id="zfsm-swal-checkbox" checked><span class="swal2-label">Force</span></label>',
     didOpen: () => { opened = true; },
-    preConfirm: () => [window.document.getElementById('swal2-input').value, window.document.getElementById('swal2-checkbox').checked ? 1 : 0]
+    preConfirm: () => [window.document.getElementById('zfsm-swal-input').value, window.document.getElementById('zfsm-swal-checkbox').checked ? 1 : 0]
   });
   const container = window.document.querySelector('.swal2-html-container');
   assert.ok(container, 'the page restyles this container immediately after fire()');
   container.setAttribute('style', 'display: grid;');
-  assert.ok(window.document.querySelector('.swal2-html-container #swal2-input'), 'the plugin reads its controls by these ids');
+  assert.ok(window.document.querySelector('.swal2-html-container #zfsm-swal-input'), 'the plugin reads its controls by these ids');
   await new Promise(resolve => window.setTimeout(resolve, 0));
   window.Swal2.clickConfirm();
   assert.deepEqual([...(await custom).value], ['tank/data', 1]);

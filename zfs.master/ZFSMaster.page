@@ -588,33 +588,33 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	switch (property) {
 		case 'mountpoint':
-			return '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+escapeHtml(value)+'" type="text" style="display: flex;">';
+			return '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+escapeHtml(value)+'" type="text" style="display: flex;">';
 		case 'quota':
 			if (value) {
 				value = fromBytesToString(value).replace(/ +/g, '');
 			}
 
-			return '<input id="swal2-input" name="quota" class="swal2-input zfsm-w10" maxlength="16" value="'+escapeHtml(value)+'">';
+			return '<input id="zfsm-swal-input" name="quota" class="swal2-input zfsm-w10" maxlength="16" value="'+escapeHtml(value)+'">';
 		case 'compression':
-			tmpHTML = '<select id="swal2-input" name="compression" class="swal2-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="compression" class="swal2-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select>';
 			break;
 		case 'recordsize':
-			tmpHTML ='<select id="swal2-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512">512 B</option><option value="4096">4 KiB</option><option value="8192">8 KiB</option><option value="16384">16 KiB</option><option value="65536">64 KiB</option><option value="131072">128 KiB</option><option value="1048576">1 MiB</option></select>';
+			tmpHTML ='<select id="zfsm-swal-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512">512 B</option><option value="4096">4 KiB</option><option value="8192">8 KiB</option><option value="16384">16 KiB</option><option value="65536">64 KiB</option><option value="131072">128 KiB</option><option value="1048576">1 MiB</option></select>';
 			break;
 		case 'atime':
-			tmpHTML = '<select id="swal2-input" name="atime" class="zfsm-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="on">On</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="atime" class="zfsm-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="on">On</option></select>';
 			break;
 		case 'xattr':
-			tmpHTML = '<select id="swal2-input" name="xattr" class="zfsm-input"><option value="inherit">Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="xattr" class="zfsm-input"><option value="inherit">Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select>';
 			break;
 		case 'primarycache':
-			tmpHTML = '<select id="swal2-input" name="primarycache" class="zfsm-input"><option value="inherit">Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="primarycache" class="zfsm-input"><option value="inherit">Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select>';
 			break;
 		case 'readonly':
-			tmpHTML = '<select id="swal2-input" name="readonly" class="zfsm-input"><option value="off">Off</option><option value="on">On</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="readonly" class="zfsm-input"><option value="off">Off</option><option value="on">On</option></select>';
 			break;
 		case 'sync':
-			tmpHTML = '<select id="swal2-input" name="sync" class="zfsm-input"><option value="standard">Standard</option><option value="always">Always</option><option value="disabled">Disabled</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="sync" class="zfsm-input"><option value="standard">Standard</option><option value="always">Always</option><option value="disabled">Disabled</option></select>';
 			break;
 	}
 
@@ -644,7 +644,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			preConfirm: function () {
 				return new Promise(function (resolve) {
 					resolve([
-						$('#swal2-input').val()
+						$('#zfsm-swal-input').val()
 					])
 				})
 			}
@@ -715,23 +715,23 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function renameDataset(zdataset) {
 	  Swal2.fire({
 		  title: '<strong>New name for '+escapeHtml(zdataset)+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+escapeHtml(zdataset)+'" type="mytext" style="display: flex;">'+
-				'<label for="swal2-checkbox" class="swal2-checkbox" style="display: flex;">'+
-				'<input type="checkbox" id="swal2-checkbox">'+
+		  html: '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+escapeHtml(zdataset)+'" type="mytext" style="display: flex;">'+
+				'<label for="zfsm-swal-checkbox" class="swal2-checkbox" style="display: flex;">'+
+				'<input type="checkbox" id="zfsm-swal-checkbox">'+
 				'<span class="swal2-label">Force unmount any file systems that need to be unmounted in the process</span>'+
 				'</label>',
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
 			return new Promise(function (resolve) {
-			  if ($('#swal2-input').val() == '') {
+			  if ($('#zfsm-swal-input').val() == '') {
 				Swal2.showValidationMessage('Enter a value for the dataset name');
 				Swal2.enableButtons(); // Enable the confirm button again.
               } else {
 				Swal2.resetValidationMessage();
 				resolve([
-				  $('#swal2-input').val(),
-				  $('#swal2-checkbox').prop('checked') ? 1 : 0
+				  $('#zfsm-swal-input').val(),
+				  $('#zfsm-swal-checkbox').prop('checked') ? 1 : 0
 				])
 			  }
 		    })
@@ -796,18 +796,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function moveDirectory(directory) {
 	  Swal2.fire({
 		  title: '<strong>New name for '+escapeHtml(directory)+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
+		  html: '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
 			return new Promise(function (resolve) {
-			  if ($('#swal2-input').val() == '') {
+			  if ($('#zfsm-swal-input').val() == '') {
 				Swal2.showValidationMessage('Enter a value for the directory name');
 				Swal2.enableButtons(); // Enable the confirm button again.
               } else {
 				Swal2.resetValidationMessage();
 				resolve([
-				  $('#swal2-input').val()
+				  $('#zfsm-swal-input').val()
 				])
 			  }
 		    })

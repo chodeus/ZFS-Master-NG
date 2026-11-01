@@ -121,6 +121,9 @@ jobs:
           ref: ${{ matrix.unraid }}
           path: .webgui
 
+      - name: Dialogs in a real browser with this version's themes
+        run: node tests/sweetalert_render_test.cjs .webgui
+
       - name: Installer, CSRF, backend and pages on real webGUI code
         env:
           PHP_VERSION: ${{ matrix.php }}
@@ -129,7 +132,7 @@ jobs:
 
   notify-failure:
     needs: [validate, php, unraid]
-    if: failure() && github.event_name != 'pull_request'
+    if: failure() && github.event_name != 'pull_request' && !inputs.base
     permissions: {}
     uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
     with:
