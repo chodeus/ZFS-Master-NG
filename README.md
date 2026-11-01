@@ -6,7 +6,7 @@ Requires Unraid **6.9.2 or newer** with a ZFS pool. Before 6.12, ZFS comes from 
 
 ## Install
 
-**Plugins → Install Plugin**, then paste:
+Available once the first beta is released. **Plugins → Install Plugin**, then paste:
 
 ```text
 https://raw.githubusercontent.com/chodeus/ZFS-Master-Unraid/beta/zfs.master.plg

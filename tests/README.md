@@ -24,8 +24,8 @@ Set `ZFSM_TEST_POSIX` to a `posix.so` path if your PHP does not build it in.
 Do not run this test runner on a production
 Unraid host. Testing uses simulated ZFS results, not real pool administration.
 
-For live Unraid 7.3.2 verification after installation, confirm the plugin version
-is 2026.09.25.112, hard-reload Main, and check the `inventory` HTTP response and
+For live verification after installation, confirm the plugin version, hard-reload
+Main, and check the `inventory` HTTP response and
 displayed dataset/snapshot counts. Check manual and automatic refresh and test
 mutations only on an explicitly disposable dataset/snapshot. No changes to the
 system publishing flag, nginx configuration, or Unraid API are required.

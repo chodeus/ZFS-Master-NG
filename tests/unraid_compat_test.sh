@@ -41,7 +41,7 @@ set_version() { printf 'version="%s"\n' "$1" > /etc/unraid-version; }
 reset() { rm -rf "$flash" "$live" /var/log/plugins/zfs.master.plg /boot/config/plugins/zfs.master.plg /var/log/packages/zfs.master-* /tmp/zfsm_reload; mkdir -p "$flash"; }
 legacy() {
 	mkdir -p "$live/nchan" "$live/scripts"
-	touch "$live/nchan/zfs_master" "$live/scripts/old.lua" "$flash/zfs.master-2024.12.09.104.tgz" /tmp/zfsm_reload
+	touch "$live/nchan/zfs_master" "$live/scripts/zfs_pool_get_datasets.lua" "$flash/zfs.master-2024.12.09.104.tgz" /tmp/zfsm_reload
 	printf 'exclusion = "/docker%%-old/.*"\n' > "$flash/zfs.master.cfg"
 	printf 'webGui/nchan/notify_poller\nplugins/zfs.master/nchan/zfs_master\nplugins/zfs.master/nchan/zfs_master:stop\nplugins/other/nchan/keep:1\n' > /var/run/nchan.pid
 }
@@ -69,6 +69,37 @@ reset; legacy; cp "$live/nchan/zfs_master" "$work/old-file"
 $plugin install "$work/zfs.master.plg" > "$work/failed.log" 2>&1 && fail 'install succeeded without its package'
 [ -f "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'failed download deleted the archive the next boot needs'
 [ -f "$live/nchan/zfs_master" ] || fail 'failed download changed the running install'
+
+# A failed upgradepkg must also leave the old install, its archive and its registration.
+build_version() {
+	local dir="$work/v$1"; mkdir -p "$dir"; cp -R "$repo/zfs.master" "$repo/zfs.master.plg" "$repo/pkg_build.sh" "$dir/"
+	(cd "$dir" && bash pkg_build.sh --version "$1" --branch beta --out "$dir/dist" >/dev/null) || fail "build $1"
+}
+register_old() {
+	cp "$repo/tests/fixtures/installed_old.plg" /boot/config/plugins/zfs.master.plg
+	ln -sfn /boot/config/plugins/zfs.master.plg /var/log/plugins/zfs.master.plg
+}
+build_version 2026.11.01; build_version 2026.11.02
+first=zfs.master-2026.11.01-x86_64-1; second=zfs.master-2026.11.02-x86_64-1
+reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+cp /sbin/upgradepkg "$work/upgradepkg"; printf '#!/bin/bash\nexit 1\n' > /sbin/upgradepkg
+$plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/broken.log" 2>&1 && fail 'install reported success though upgradepkg failed'
+cp "$work/upgradepkg" /sbin/upgradepkg
+[ -f "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'failed upgradepkg deleted the old archive'
+[ -e "$live/nchan/zfs_master" ] || fail 'failed upgradepkg removed the old files'
+grep -q '2026.09.25.112' /boot/config/plugins/zfs.master.plg || fail 'failed upgradepkg replaced the installed manifest'
+
+# Over a registered old version, then package to package, then what a reboot does.
+reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+$plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/over-old.log" 2>&1 || { cat "$work/over-old.log"; fail 'upgrade over a registered old version refused'; }
+grep -q '"2026.11.01"' /boot/config/plugins/zfs.master.plg || fail 'manifest not updated on upgrade'
+cp "$work/v2026.11.02/dist/$second.txz" "$flash/"
+$plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { cat "$work/next.log"; fail 'package upgrade refused'; }
+[ ! -e "$flash/$first.txz" ] && [ ! -e "/var/log/packages/$first" ] || fail 'package upgrade left the previous version behind'
+[ -f "$flash/$second.txz" ] && [ -e "/var/log/packages/$second" ] || fail 'package upgrade lost the current version'
+rm -f /var/log/plugins/zfs.master.plg
+$plugin install /boot/config/plugins/zfs.master.plg > "$work/boot.log" 2>&1 || { cat "$work/boot.log"; fail 'reinstall at boot failed'; }
+[ -f "$flash/$second.txz" ] || fail 'reinstall at boot deleted its own archive'
 
 # The manifest's floor is enforced by the real installer.
 reset; set_version 6.8.3; cp "$work/dist/$package" "$flash/"
