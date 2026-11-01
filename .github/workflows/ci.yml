@@ -5,6 +5,11 @@ on:
     branches: [main, beta]
   pull_request:
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Branch the code is headed for, when dispatched on a PR branch'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -37,7 +42,7 @@ jobs:
       # Add --verify-asset once the first release exists on this repo.
       - name: Verify changelog and manifest agree
         env:
-          BRANCH: ${{ github.base_ref || github.ref_name }}
+          BRANCH: ${{ inputs.base || github.base_ref || github.ref_name }}
         run: |
           channel=stable
           [ "$BRANCH" != beta ] || channel=beta
@@ -58,6 +63,15 @@ jobs:
           node tests/frontend_toggle_test.cjs
           node tests/frontend_inventory_failure_test.cjs
           node tests/package_test.cjs
+
+      - name: Bundled library in a real DOM
+        working-directory: tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node sweetalert_dom_test.cjs
+
+      - name: Bundled libraries match vendor.json
+        run: python3 .github/scripts/vendor.py check
 
   php:
     name: PHP ${{ matrix.php }}
