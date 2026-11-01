@@ -100,7 +100,7 @@ function zfsmMatchesExclusion($name, $pattern) {
 	$regex = '#'.str_replace('#', '\\#', $pattern).'#i';
 	$result = @preg_match($regex, $name);
 	if ($result === false) {
-		error_log('ZFS Master ignored invalid dataset exclusion pattern: '.$pattern);
+		error_log('ZFS Master NG ignored invalid dataset exclusion pattern: '.$pattern);
 		return false;
 	}
 	return $result === 1;
@@ -136,7 +136,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', implode(',', $columns), $pool));
 	if (($result['code'] ?? 1) !== 0) {
 		$error = trim($result['output'] ?? 'Unable to list datasets');
-		error_log('ZFS Master dataset inventory failed for '.$pool.': '.$error);
+		error_log('ZFS Master NG dataset inventory failed for '.$pool.': '.$error);
 		return zfsmEmptyDatasetTree($pool, $error);
 	}
 
@@ -165,7 +165,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 		$snap_result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'snapshot', '-o', implode(',', $snapshot_columns), $pool));
 		if (($snap_result['code'] ?? 1) !== 0) {
 			$error = trim($snap_result['output'] ?? 'Unable to list snapshots');
-			error_log('ZFS Master snapshot inventory failed for '.$pool.': '.$error);
+			error_log('ZFS Master NG snapshot inventory failed for '.$pool.': '.$error);
 			$datasets[$pool]['_snapshot_error'] = $error;
 		} else {
 			foreach (zfsmParseTable($snap_result['output'], $snapshot_columns) as $snapshot) {
@@ -249,7 +249,7 @@ function getZFSPools($strict = false) {
 	$result = runProcess('zpool', array('list', '-H', '-o', 'name,size,alloc,free,health'));
 	if (($result['code'] ?? 1) !== 0) {
 		if (stripos($result['output'] ?? '', 'no pools available') === false) {
-			$error = 'ZFS Master pool inventory failed: '.($result['output'] ?? 'unknown error');
+			$error = 'ZFS Master NG pool inventory failed: '.($result['output'] ?? 'unknown error');
 			if ($strict) throw new RuntimeException($error);
 			error_log($error);
 		}

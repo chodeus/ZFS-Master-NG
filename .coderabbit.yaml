@@ -1,4 +1,4 @@
-# CodeRabbit config: ZFS Master (Unraid plugin; a root PHP backend runs zfs/zpool, rsync and rm on user storage)
+# CodeRabbit config: ZFS Master NG (Unraid plugin; a root PHP backend runs zfs/zpool, rsync and rm on user storage)
 language: "en-US"
 reviews:
   profile: "assertive"

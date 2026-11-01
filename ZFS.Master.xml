@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Containers>
   <Plugin>True</Plugin>
-  <PluginURL>https://raw.githubusercontent.com/chodeus/ZFS-Master-Unraid/main/zfs.master.plg</PluginURL>
+  <PluginURL>https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/main/zfs.master.plg</PluginURL>
   <PluginAuthor>chodeus</PluginAuthor>
   <Category>Tools:System</Category>
-  <Name>ZFS Master</Name>
-  <Description>The ZFS Master plugin provides information and control over the ZFS Pools in your Unraid. Available ZFS Pools are listed under the "Main/ZFSMaster" tab.
+  <Name>ZFS Master NG</Name>
+  <Description>The ZFS Master NG plugin provides information and control over the ZFS Pools in your Unraid. It installs over ZFS Master and keeps your settings. Available ZFS Pools are listed under the "Main/ZFSMaster" tab.
   </Description>
   <MinVer>6.9.2</MinVer>
-  <Support>https://github.com/chodeus/ZFS-Master-Unraid/issues</Support>
-  <Icon>https://raw.githubusercontent.com/chodeus/ZFS-Master-Unraid/main/zfs.master/images/zfs.master.png</Icon>
+  <Support>https://github.com/chodeus/ZFS-Master-NG/issues</Support>
+  <Icon>https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/main/zfs.master/images/zfs.master.png</Icon>
 </Containers>

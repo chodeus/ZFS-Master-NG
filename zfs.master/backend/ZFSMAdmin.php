@@ -38,7 +38,7 @@ function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_not
 }
 
 function zfsmRequireDestructiveMode($config, $subject) {
-	return (int)($config['destructive_mode'] ?? 0) === 1 ? null : zfsmFailure($subject, 'Destructive Mode is disabled in ZFS Master settings');
+	return (int)($config['destructive_mode'] ?? 0) === 1 ? null : zfsmFailure($subject, 'Destructive Mode is disabled in ZFS Master NG settings');
 }
 
 try {
@@ -57,7 +57,7 @@ try {
 
 		case 'refresh':
 			// Only a browser tab left open across an upgrade still sends this.
-			zfsmReturnAnswer(zfsmFailure('refresh', 'Reload the updated ZFS Master page to use direct inventory.'), 'Refresh', '', '');
+			zfsmReturnAnswer(zfsmFailure('refresh', 'Reload the updated ZFS Master NG page to use direct inventory.'), 'Refresh', '', '');
 			break;
 
 		case 'createdataset':
@@ -157,7 +157,7 @@ try {
 			zfsmReturnAnswer(zfsmFailure('request', 'Unknown or missing command'), 'Request', '', '');
 	}
 } catch (Throwable $error) {
-	error_log('ZFS Master backend exception: '.$error->getMessage());
+	error_log('ZFS Master NG backend exception: '.$error->getMessage());
 	zfsmReturnAnswer(zfsmFailure('request', $error->getMessage()), 'Request', '', '');
 }
 

@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name "zfs.master">
 <!ENTITY author "chodeus">
-<!ENTITY github "&author;/ZFS-Master-Unraid">
+<!ENTITY github "&author;/ZFS-Master-NG">
 <!ENTITY launch "Main">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
