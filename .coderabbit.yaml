@@ -27,8 +27,8 @@ reviews:
   path_instructions:
     - path: "zfs.master/**/*.{php,page}"
       instructions: |
-        Shipped PHP runs as root inside Unraid's webGUI. Floor is Unraid 6.12 (PHP 8.2, OpenZFS 2.1) and it must also work on current 7.x (OpenZFS 2.4).
-        - PHP 8.2 syntax and functions only. Flag ZFS flags newer than 2.1 (`zfs list -j`, `zpool status -j`) unless guarded, and webGUI files or globals missing on 6.12.
+        Shipped PHP runs as root inside Unraid's webGUI. Floor is Unraid 6.9.2 (PHP 7.4; ZFS from a third-party plugin before 6.12) and it must also work on current 7.x (PHP 8.4, OpenZFS 2.4).
+        - PHP 7.4 syntax and functions only: flag str_contains, str_starts_with, str_ends_with, match, nullsafe `?->`, named arguments and union types. Flag ZFS flags newer than 2.0 (`zfs list -j`, `zpool status -j`) unless guarded, and webGUI files or globals missing on 6.9.2 or removed on 7.x (default-popup.css is gone from 7.x).
         - CSRF: do not re-validate. local_prepend.php checks the token and unsets it. The `X-CSRF-Token` header and `$csrf_token` global exist only on 7.3 and later, so never depend on them; send `csrf_token` in the POST body.
         - Commands go through runProcess() with an argument array and no shell. Flag string commands, exec, shell_exec, backticks. Passphrases go over stdin, never argv.
         - Validate every request value before use. Dataset and snapshot names follow OpenZFS: letters, digits, `-_.: ` and spaces are valid, so do not reject them.
@@ -46,7 +46,7 @@ reviews:
         Install manifest, run as root. No removepkg outside Method="remove". A failed download must leave the running install intact. The script must be safe on upgrade from older versions that unpacked a tar with no package record. CI already validates XML and the changelog render, so do not flag version, md5 or CHANGES values, which the release flow owns.
     - path: "tests/**"
       instructions: |
-        Tests use fake zfs and zpool binaries and must never run real ZFS commands. Flag a test that stubs the code it claims to check. tests/ may use newer language features than shipped code.
+        Tests use fake zfs and zpool binaries and must never run real ZFS commands. Flag a test that stubs the code it claims to check. Tests also run on PHP 7.4.
     - path: ".github/workflows/**"
       instructions: |
         Pin third-party actions by commit SHA. Least-privilege permissions. Untrusted PR data must not reach `run:` via `${{ }}` interpolation.

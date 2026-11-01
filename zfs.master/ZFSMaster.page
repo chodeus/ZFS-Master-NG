@@ -1,6 +1,7 @@
 Menu="Main:2"
 Title="ZFS Master"
 Tag="database"
+Cond="file_exists('/usr/sbin/zpool')"
 ---
 <?php
 $plugin = "zfs.master";
@@ -135,9 +136,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  	});
 	} else if (msg.op == 'directory_copy') {
 		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').html(htmlProgress);
+		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').text('');
+		$(document.getElementById('tr-'+msg.data.dataset)).children('td:nth-child(1)').text('');
 	}
 
 	processHiddenDatasets();

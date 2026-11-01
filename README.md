@@ -2,7 +2,7 @@
 
 Information and control over the ZFS pools on your Unraid server, under **Main → ZFS Master**: datasets, snapshots, encryption, and directory-to-dataset conversion.
 
-Requires Unraid **6.12 or newer** with a ZFS pool.
+Requires Unraid **6.9.2 or newer** with a ZFS pool. Before 6.12, ZFS comes from the ZFS plugin.
 
 ## Install
 

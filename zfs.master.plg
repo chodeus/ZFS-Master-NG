@@ -11,7 +11,7 @@
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.12.0">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
 
 ###2026.09.25
@@ -215,11 +215,10 @@ pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
 if [ -e /var/run/nchan.pid ]; then
   sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
 fi
-rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -v '&pkgname;')
 </INLINE>
 </FILE>
 
-<!-- A failed download never reaches upgradepkg, so the running install stays intact -->
+<!-- A failed download never reaches upgradepkg: the running install and the archive the next boot needs stay intact -->
 <FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
 <URL>https://github.com/&github;/releases/download/v&version;/&pkgname;.txz</URL>
 <MD5>&md5;</MD5>
@@ -232,6 +231,7 @@ for p in /var/log/packages/&name;-*; do
   case "$(basename "$p")" in &pkgname;) continue;; esac
   rm -f "$p"
 done
+rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -vF '&pkgname;')
 # Older versions unpacked a tar with no package record, so upgradepkg leaves these behind
 rm -rf &plugdir;/nchan &plugdir;/scripts
 rm -f /tmp/zfsm_reload

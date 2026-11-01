@@ -29,3 +29,11 @@ is 2026.09.25.112, hard-reload Main, and check the `inventory` HTTP response and
 displayed dataset/snapshot counts. Check manual and automatic refresh and test
 mutations only on an explicitly disposable dataset/snapshot. No changes to the
 system publishing flag, nginx configuration, or Unraid API are required.
+
+Run the plugin through a real Unraid webGUI tree (its plugin installer, CSRF prepend, helpers and pages), in a
+disposable container, from a checkout of `unraid/webgui` at the tag under test:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo php:7.4-cli bash tests/unraid_compat_test.sh path/to/webgui 6.9.2
+```
+
