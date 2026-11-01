@@ -18,7 +18,11 @@ function assertSameValue($expected, $actual, $message) {
 assertSameValue(true, zfsmValidPoolName('tank-1'), 'Valid pool name rejected');
 assertSameValue(false, zfsmValidPoolName('../tank'), 'Unsafe pool name accepted');
 assertSameValue(true, zfsmValidDatasetName('tank/appdata/plex'), 'Valid dataset name rejected');
-assertSameValue(false, zfsmValidDatasetName('tank/app data'), 'Dataset containing whitespace accepted');
+foreach (array('tank/app data', 'tank/_tmp', 'tank/.system', 'tank/a:b', 'tank/-dash') as $valid_dataset) assertSameValue(true, zfsmValidDatasetName($valid_dataset), 'OpenZFS-valid dataset rejected: '.$valid_dataset);
+foreach (array('tank/..', 'tank/.', 'tank//a', 'tank/a@b', 'tank/a#b', 'tank/a%b', "tank/a\nb", 'tank/a;b', '../tank') as $bad_dataset) assertSameValue(false, zfsmValidDatasetName($bad_dataset), 'Invalid dataset accepted: '.$bad_dataset);
+assertSameValue(true, zfsmValidSnapshotName('tank/app data@my snap'), 'Snapshot with spaces rejected');
+assertSameValue(true, zfsmValidSnapshotName('tank/a@_auto'), 'Snapshot with leading underscore rejected');
+assertSameValue(false, zfsmValidSnapshotName('tank/a@'), 'Empty snapshot name accepted');
 assertSameValue(true, zfsmValidSnapshotName('tank/appdata@daily-1'), 'Valid snapshot name rejected');
 assertSameValue(false, zfsmValidSnapshotName('tank/appdata@bad/name'), 'Invalid snapshot name accepted');
 
@@ -42,6 +46,25 @@ assertSameValue('tank/a/b', $tree['child']['tank/a']['child']['tank/a/b']['name'
 
 assertSameValue(true, zfsmMatchesExclusion('tank/dockerfiles/abc', '/dockerfiles/.*'), 'Dataset exclusion did not match');
 assertSameValue(false, zfsmMatchesExclusion('tank/media', '/dockerfiles/.*'), 'Dataset exclusion matched the wrong dataset');
+assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker%-old/.*'), 'Saved Lua escape stopped matching');
+assertSameValue(false, zfsmMatchesExclusion('cache/dockerXold/abc', '/docker%-old/.*'), 'Lua escape must be literal');
+assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker-old/.*'), 'Unescaped hyphen must stay literal');
+assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer%d$'), 'Lua digit class failed');
+assertSameValue(true, zfsmMatchesExclusion('tank/a_b', 'tank/[%w_]+$'), 'Lua class inside a set failed');
+assertSameValue(false, zfsmMatchesExclusion('tank/a-b', 'tank/[%w_]+$'), 'Lua set matched too much');
+assertSameValue(true, zfsmMatchesExclusion('tank/ab', 'tank/%D+$'), 'Negated Lua class failed');
+assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer\\d$'), 'PCRE escape stopped matching');
+assertSameValue(true, zfsmMatchesExclusion('tank/a#b', 'a#b'), 'A hash in the pattern must not end the regex');
+assertSameValue(true, zfsmMatchesExclusion('tank/docker-old/x', '/docker%-.-/'), 'Lua lazy repeat failed');
+assertSameValue(false, zfsmMatchesExclusion('tank/abc', 'tank/%u'), 'Lua upper class matched lowercase');
+assertSameValue(false, zfsmMatchesExclusion('tank/Docker-old', 'tank/docker%-old'), 'Lua patterns are case sensitive');
+assertSameValue(true, zfsmMatchesExclusion('tank/Docker-old', 'tank/docker-old'), 'Regex patterns stay case insensitive');
+assertSameValue(false, zfsmMatchesExclusion('tank/a', 'b|a%d'), 'A Lua pipe is literal');
+foreach (array('tank/(', '%', '%bxy', 'a%1', '[') as $invalid_pattern) {
+	assertSameValue(false, zfsmExclusionIsValid($invalid_pattern), 'Invalid pattern accepted: '.$invalid_pattern);
+	assertSameValue(false, zfsmMatchesExclusion('tank/data', $invalid_pattern), 'Invalid pattern must exclude nothing: '.$invalid_pattern);
+}
+assertSameValue(true, zfsmExclusionIsValid(''), 'An empty pattern is valid');
 assertSameValue(array(), listDirectories('', array(), ''), 'Empty mountpoint must never be enumerated');
 assertSameValue(array(), listDirectories('/', array(), ''), 'Filesystem root must never be enumerated');
 
