@@ -3,6 +3,7 @@
   "extends": ["github>chodeus/chodeus-ops"],
   "forkProcessing": "enabled",
   "baseBranchPatterns": ["beta"],
+  "ignorePaths": ["**/node_modules/**"],
   "customManagers": [
     {
       "customType": "regex",
