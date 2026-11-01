@@ -45,7 +45,7 @@ legacy() {
 	mkdir -p "$live/nchan" "$live/scripts"
 	touch "$live/nchan/zfs_master" "$live/scripts/zfs_pool_get_datasets.lua" "$flash/zfs.master-2024.12.09.104.tgz" /tmp/zfsm_reload
 	printf 'exclusion = "/docker%%-old/.*"\n' > "$flash/zfs.master.cfg"
-	printf 'webGui/nchan/notify_poller\nplugins/zfs.master/nchan/zfs_master\nplugins/zfs.master/nchan/zfs_master:stop\nplugins/other/nchan/keep:1\n' > /var/run/nchan.pid
+	printf 'webGui/nchan/notify_poller\nplugins/zfs.master/nchan/zfs_master\nplugins/zfs.master/nchan/zfs_master:stop\nplugins/other/nchan/zfs_master:1\n' > /var/run/nchan.pid
 }
 set_version "$version"
 
@@ -58,8 +58,8 @@ $plugin install "$work/zfs.master.plg" > "$work/install.log" 2>&1 || { cat "$wor
 [ ! -e "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'old archive left on the flash'
 [ -f "$flash/$package" ] || fail 'current archive removed from the flash'
 grep -q 'docker%-old' "$flash/zfs.master.cfg" || fail 'settings lost on upgrade'
-grep -q zfs_master /var/run/nchan.pid && fail 'old daemon still in nchan.pid'
-grep -q 'other/nchan/keep:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
+grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid && fail 'old daemon still in nchan.pid'
+grep -q 'plugins/other/nchan/zfs_master:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
 
 # Real plugin removal.
 $plugin remove zfs.master.plg > "$work/remove.log" 2>&1 || { cat "$work/remove.log"; fail 'remove failed'; }

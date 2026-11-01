@@ -219,7 +219,7 @@
 # Older versions ran an inventory daemon; a stale nchan.pid entry would restart it on every page load
 pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
 if [ -e /var/run/nchan.pid ]; then
-  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
+  sed -ri '\#^plugins/zfs\.master/nchan/zfs_master(:|$)#d' /var/run/nchan.pid
 fi
 for p in /var/log/packages/&name;-*; do
   [ -e "$p" ] || continue
@@ -246,7 +246,7 @@ echo ""
 echo "Removing &name;..."
 pkill -f '/plugins/zfs.master/nchan/zfs_master' 2>/dev/null || true
 if [ -e /var/run/nchan.pid ]; then
-  sed -ri '/zfs_master(:|$)/d' /var/run/nchan.pid
+  sed -ri '\#^plugins/zfs\.master/nchan/zfs_master(:|$)#d' /var/run/nchan.pid
 fi
 for p in /var/log/packages/&name;-*; do
   [ -e "$p" ] || continue
