@@ -12,7 +12,7 @@ Available once the first beta is released. **Plugins → Install Plugin**, then 
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
 ```
 
-It installs over ZFS Master (the original or the 7.3 fork) and keeps your settings. Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Snapshot rollback and delete don't need it, so check their warnings before confirming.
+It installs over ZFS Master (the original or the 7.3 fork) and keeps your settings. Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Plain snapshot rollback and delete don't need it, so check their warnings before confirming; the options that also remove other snapshots do.
 
 ## Credits
 
