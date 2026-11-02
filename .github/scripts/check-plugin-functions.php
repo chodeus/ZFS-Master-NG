@@ -8,8 +8,12 @@ $defined = $called = array();
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
 foreach ($it as $file) {
     if (!$file->isFile() || !preg_match('/\.(php|page)$/', $file->getFilename())) continue;
-    $tokens = @token_get_all(file_get_contents($file->getPathname()));
-    if (!is_array($tokens)) continue;
+    $source = @file_get_contents($file->getPathname());
+    if ($source === false) {
+        fwrite(STDERR, "cannot read " . $file->getPathname() . "\n");
+        exit(2);
+    }
+    $tokens = @token_get_all($source);
 
     // index of the previous and next meaningful tokens, skipping whitespace and comments
     $meaningful = array();
@@ -69,8 +73,8 @@ foreach ($it as $file) {
             if (!$inClassAt[$i]) $defined[$name] = true;
             continue;
         }
-        // a method call ($x->n(), $x?->n(), Cls::n()) is not one of ours
-        $methodOps = array(T_OBJECT_OPERATOR, T_DOUBLE_COLON);
+        // a method call ($x->n(), $x?->n(), Cls::n()) or new n() is not one of ours
+        $methodOps = array(T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_NEW);
         if (defined('T_NULLSAFE_OBJECT_OPERATOR')) $methodOps[] = T_NULLSAFE_OBJECT_OPERATOR;
         if (is_array($prev) && in_array($prev[0], $methodOps, true)) continue;
         if ($next === "(") $called[$name] = true;

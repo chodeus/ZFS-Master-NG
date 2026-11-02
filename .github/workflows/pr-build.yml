@@ -10,8 +10,9 @@ on:
 permissions:
   contents: read
 
+# Runs start before the job's if: another label sharing this group would cancel a waiting build.
 concurrency:
-  group: pr-build-${{ github.event.pull_request.number }}
+  group: pr-build-${{ github.event.pull_request.number }}-${{ github.event.label.name == 'test-build' && 'build' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
