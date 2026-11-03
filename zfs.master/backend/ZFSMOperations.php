@@ -185,6 +185,25 @@ function zfsmEmptyDatasetTree($pool, $error = '') {
 	return $tree;
 }
 
+// Dates in the user's Unraid display format, through Unraid's own my_time().
+function zfsmTime($epoch) {
+	global $display;
+	if (!is_array($display ?? null) && function_exists('parse_plugin_cfg')) $display = parse_plugin_cfg('dynamix', true)['display'] ?? array();
+	$text = function_exists('my_time') && !empty($display['date']) ? my_time((int)$epoch) : '';
+	return is_string($text) && $text !== '' ? $text : date('Y-m-d H:i', (int)$epoch);
+}
+
+function zfsmAddTimeText(&$dataset) {
+	if (isset($dataset['creation'])) $dataset['creation_text'] = zfsmTime($dataset['creation']);
+	foreach ($dataset['snapshots'] ?? array() as $index => $snapshot) {
+		if (isset($snapshot['creation'])) $dataset['snapshots'][$index]['creation_text'] = zfsmTime($snapshot['creation']);
+	}
+	foreach ($dataset['child'] ?? array() as $name => $child) {
+		zfsmAddTimeText($child);
+		$dataset['child'][$name] = $child;
+	}
+}
+
 function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extended) {
 	if (!zfsmValidPoolName($pool)) return zfsmEmptyDatasetTree($pool, 'Invalid pool name');
 	$columns = zfsmDatasetColumns();
@@ -356,12 +375,13 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 		if (!isset($pools[$pool])) throw new RuntimeException('Pool is no longer imported: '.$pool);
 		$pools = array($pool => $pools[$pool]);
 	}
-	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
+	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array(), 'generated_text' => zfsmTime(time()));
 	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master NG settings.';
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
 		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
 		$tree = $loader($name, $config['dataset_exclusion'], $config['znapzend_data'], $config['directory_listing']);
+		zfsmAddTimeText($tree);
 		$data['datasets'][$name] = $tree;
 		$data['pools'][$name]['MountPoint'] = $tree['mountpoint'] ?? '';
 		$data['pools'][$name]['Snapshots'] = $include_snapshots ? ($tree['total_snapshots'] ?? 0) : null;

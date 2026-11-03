@@ -359,12 +359,12 @@ function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
 }
 
 function getPropertiesByType(zdataset) {
-	const creationDate = new Date(zdataset['creation'] * 1000);
+	const created = zdataset['creation_text'] ?? new Date(zdataset['creation'] * 1000).toLocaleString();
 	var properties = {};
 
 	if (zdataset['type'] !== undefined && zdataset['type'] == "filesystem".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Compression' : zdataset['compression'],
 			'Compress Ratio' : zdataset['compressratio']/100,
@@ -384,7 +384,7 @@ function getPropertiesByType(zdataset) {
 
 	} else if (zdataset['type'] !== undefined && zdataset['type'] == "volume".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Block Size' : fromBytesToString(zdataset['volblocksize']),
 			'Compression' : zdataset['compression'],
@@ -434,7 +434,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 			icon_color = '#486dba';
 		}
 
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
+		properties['Last Snap Date'] = snap['creation_text'] ?? snapdate.toLocaleString();
 		properties['Last Snap'] = snap['name'];
 
 		snap_count = zdataset['snapshots'].length;
@@ -647,7 +647,7 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 			icon_color = '#486dba';
 		}
 
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
+		properties['Last Snap Date'] = snap['creation_text'] ?? snapdate.toLocaleString();
 		properties['Last Snap'] = snap['name'];
 
 		snap_count = data['snapshots'].length;

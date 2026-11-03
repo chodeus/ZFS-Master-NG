@@ -125,6 +125,19 @@ switch ($check) {
 		$GLOBALS['zfsm_problems'] = array();
 		break;
 
+	case 'time_format':
+		// Dates must come out exactly as this Unraid's own my_time() writes them, in the user's display format.
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$at = 1793700000;
+		if (zfsmTime($at) !== my_time($at)) { fwrite(STDERR, "zfsmTime differs from my_time: ".zfsmTime($at).' vs '.my_time($at)."\n"); exit(1); }
+		if (function_exists('my_date')) {
+			$display['date'] = 'd-m-Y';
+			$display['time'] = 'H:i';
+			if (zfsmTime($at) !== date('d-m-Y, H:i', $at)) { fwrite(STDERR, "display format ignored: ".zfsmTime($at)."\n"); exit(1); }
+		}
+		break;
+
 	case 'settings_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		require_once $docroot.'/webGui/include/Helpers.php';

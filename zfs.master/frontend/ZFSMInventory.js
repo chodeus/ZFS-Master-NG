@@ -107,7 +107,7 @@ function createZFSMInventoryController(options) {
                 options.render(data, !snapshotsMissing && !Object.keys(data.pools).some(errored));
                 // A pool that answers with a query error is not slow, so only unanswered reads back off.
                 failures = snapshotsMissing ? failures + 1 : 0;
-                let message = 'Last refresh at ' + new Date().toLocaleString('en-US', {hour12: false});
+                let message = 'Last refresh at ' + (data.generated_text || new Date().toLocaleString());
                 if (answer.publishing_paused) message += ' — Unraid push updates paused; inventory loaded directly.';
                 const notes = zfsmInventoryNotes(data);
                 options.status(message + notes, notes !== '');

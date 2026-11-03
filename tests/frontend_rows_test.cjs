@@ -130,4 +130,9 @@ assert.equal(context.zfsmMoveStatusIntoTitle(tabbed), false, 'a tabbed page has 
 assert.equal(tabbed.children.length, 1);
 assert.equal(context.zfsmMoveStatusIntoTitle(null), false);
 
+// Dates come from the server in Unraid's display format; the page must not reformat them.
+const dated = {...bare('tank/dated'), creation: 1793700000, creation_text: '03-11-2026, 18:40', snapshots: [{name: 'tank/dated@a', creation: 1793700000, creation_text: '03-11-2026, 18:40'}]};
+assert.equal(context.getPropertiesByType(dated)['Creation Date'], '03-11-2026, 18:40');
+assert.doesNotMatch(context.generateDatasetArrayRows('tank', dated, '', true, 0, 30, {}), /11\/3\/2026/, 'no forced American date');
+
 console.log('dataset row class tests passed');

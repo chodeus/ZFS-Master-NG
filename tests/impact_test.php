@@ -28,6 +28,12 @@ $saved = parse_ini_string(zfsmConfigText(array('general' => array('directory_lis
 same(array('tank/a', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), 'a second directory listing entry keeps its own line');
 same('say "hi"', $saved['general']['snap_prefix'], 'a quote survives a save');
 
+// Dates without Unraid's helpers fall back to one plain format, and every dataset and snapshot gets one.
+same(date('Y-m-d H:i', 1793700000), zfsmTime(1793700000), 'fallback date format');
+$tree = array('creation' => 1, 'snapshots' => array(array('creation' => 2)), 'child' => array('tank/a' => array('creation' => 3, 'snapshots' => array(array('creation' => 4)), 'child' => array())));
+zfsmAddTimeText($tree);
+same(array(zfsmTime(1), zfsmTime(2), zfsmTime(3), zfsmTime(4)), array($tree['creation_text'], $tree['snapshots'][0]['creation_text'], $tree['child']['tank/a']['creation_text'], $tree['child']['tank/a']['snapshots'][0]['creation_text']), 'every level gets its date text');
+
 // Destroy preview
 $preview = zfsmDestroyPreview('tank/data', 0);
 same(array('tank/data'), $preview['objects'], 'plain destroy lists the dataset');
