@@ -79,4 +79,39 @@ assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
 assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
 
+// The status bar moves onto Unraid's title line, which then skips the reads/writes toggle.
+const element = (tagName, classes = []) => {
+	const node = {tagName, children: [], previousElementSibling: null, parent: null, className: classes.join(' '),
+		classList: {contains: name => node.className.split(' ').includes(name), add: name => { if (!node.classList.contains(name)) node.className += ' '+name; }},
+		get firstChild() { return node.children[0] || null; },
+		appendChild(child) { if (child.parent) child.parent.children.splice(child.parent.children.indexOf(child), 1); child.parent = node; node.children.push(child); return child; },
+		querySelector(selector) { const [tag, cls] = selector.split('.'); return node.children.find(c => c.tagName === tag.toUpperCase() && c.classList.contains(cls)) || null; },
+		remove() { node.removed = true; }};
+	return node;
+};
+context.document = {createElement: tag => element(tag.toUpperCase())};
+const layout = withRight => {
+	const title = element('DIV', ['title']);
+	if (withRight) title.appendChild(element('SPAN', ['right']));
+	const note = element('P');
+	note.previousElementSibling = title;
+	const bar = element('DIV', ['title', 'zfs_master_title']);
+	bar.previousElementSibling = note;
+	for (const part of ['refresh time', 'settings', 'refresh']) bar.appendChild(element('SPAN', [part]));
+	return {title, bar};
+};
+for (const withRight of [true, false]) {
+	const {title, bar} = layout(withRight);
+	assert.equal(context.zfsmMoveStatusIntoTitle(bar), true);
+	assert.ok(title.classList.contains('disable_diskio'), 'the title opts out of the reads/writes toggle');
+	const right = title.children.find(c => c.classList.contains('right'));
+	assert.deepEqual(right.children[0].children.map(c => c.className), ['refresh time', 'settings', 'refresh'], 'all three move, in order'+(withRight ? '' : ', into a right span made for them'));
+	assert.ok(bar.removed, 'the empty bar goes');
+}
+const tabbed = element('DIV', ['title', 'zfs_master_title']);
+tabbed.appendChild(element('SPAN', ['refresh time']));
+assert.equal(context.zfsmMoveStatusIntoTitle(tabbed), false, 'a tabbed page has no title line, so the bar stays');
+assert.equal(tabbed.children.length, 1);
+assert.equal(context.zfsmMoveStatusIntoTitle(null), false);
+
 console.log('dataset row class tests passed');

@@ -28,6 +28,27 @@ function snapshotCell(color, count, browsePath) {
 	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span><span class="zfsm-snap-browse">'+browse+'</span>';
 }
 
+// Puts the refresh time and buttons on Unraid's own title line and opts it out of the reads/writes toggle.
+// Tabbed pages have no title line, so the bar stays where it is.
+function zfsmMoveStatusIntoTitle(bar) {
+	let title = bar ? bar.previousElementSibling : null;
+	while (title && !(title.tagName === 'DIV' && title.classList.contains('title'))) title = title.previousElementSibling;
+	if (!title) return false;
+	title.classList.add('disable_diskio');
+	let right = title.querySelector('span.right');
+	if (!right) {
+		right = document.createElement('span');
+		right.className = 'right zfsm-title-right';
+		title.appendChild(right);
+	}
+	const status = document.createElement('span');
+	status.className = 'zfsm-title-status';
+	while (bar.firstChild) status.appendChild(bar.firstChild);
+	right.appendChild(status);
+	bar.remove();
+	return true;
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
