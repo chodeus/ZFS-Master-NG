@@ -45,13 +45,13 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 		<details class="zfsm-section" open>
 			<summary>Basic</summary>
 			<div>
-				<dl><dt>Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
+				<dl><dt>Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
 				<dl><dt>Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
-				<dl><dt>Mount point:</dt><dd><input id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
+				<dl><dt>Mount point:</dt><dd><input type="text" id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
 				<dl><dt>Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
 				<dl><dt>Case sensitivity:</dt><dd><select id="casesensitivity" name="casesensitivity"><option value="sensitive" selected>Sensitive (default)</option><option value="insensitive">Insensitive</option><option value="mixed">Mixed</option></select></dd></dl>
 				<dl><dt>Compression:</dt><dd><select id="compression" name="compression"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select></dd></dl>
-				<dl><dt>Quota:</dt><dd><input id="quota" name="quota" maxlength="5" size="6" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
+				<dl><dt>Quota:</dt><dd><input type="text" id="quota" name="quota" maxlength="5" size="6" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
 			</div>
 		</details>
 		<details class="zfsm-section">
