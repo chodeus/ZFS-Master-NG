@@ -51,11 +51,6 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		margin-left: 10%;
 	}
 
-	.zfs_table tr>td{
-		width:auto!important;
-		white-space: normal!important;
-	}
-
 	.zfs_delete_btn {
 		text-align: center !important;
   	}
@@ -133,7 +128,6 @@ window.onload = function() {
 <link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
 <?php endforeach; ?>
 
-<script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">

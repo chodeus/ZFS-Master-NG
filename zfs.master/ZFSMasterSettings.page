@@ -12,17 +12,7 @@ $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true), false);
 
 ?>
    
-<style>
-/* Collapsible groups, as in FolderView3's folder editor; neutral colours so every theme works */
-.zfsm-section{margin-bottom:6px;border:1px solid rgba(128,128,128,.3);border-radius:4px;overflow:hidden}
-.zfsm-section>summary{padding:10px 16px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;background:rgba(128,128,128,.08);user-select:none}
-.zfsm-section[open]>summary{border-bottom:1px solid rgba(128,128,128,.3)}
-.zfsm-section>summary::-webkit-details-marker{display:none}
-.zfsm-section>summary::before{content:'\f054';font-family:FontAwesome;font-size:.75em;transition:transform .15s;display:inline-block;width:1em;text-align:center}
-.zfsm-section[open]>summary::before{transform:rotate(90deg)}
-.zfsm-section>summary:hover{background:rgba(128,128,128,.15)}
-.zfsm-section>:not(summary){padding:0 16px}
-</style>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
 
 <form markdown="1" name="<?=$plugin?>_settings" method="POST" action="/update.php" target="progressFrame">
 <input type="hidden" name="csrf_token" value="<?=$var['csrf_token'] ?? ''?>"/>

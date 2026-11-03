@@ -24,240 +24,53 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="same-origin">
 
-<style>
-#spinner_image{position:fixed;left:46%;top:46%;width:16px;height:16px;display:none}
-#control_panel{position:fixed;left:0;right:0;top:0;padding-top:8px;line-height:24px;white-space:nowrap}
-.four{text-align:center;box-sizing:border-box;-moz-box-sizing:border-box;-webkit-box-sizing:border-box}
-.four label:first-child{margin-left:0}
-.four label{margin-left:2%;cursor:pointer}
-.allpanels{display:none;position:absolute;left:0;right:0;top:40px;bottom:25px;overflow:auto;margin:15px}
-#footer_panel{position:fixed;left:0;right:0;bottom:0;height:30px;line-height:10px;text-align:center}
-textarea{width:96%;height:250px;margin:10px 0;resize:none}
-input[type=button]{margin-right:0;float:right}
-input[type=email]{margin-top:8px;float:left}
-</style>
-
-<style type="text/css">	
-  .zfsm-dialog {
-	  width: 90%;
-	  height: 90%;
-	  margin: auto;
-  }
-  
-  .zfsm-form {
-	  font-size: 14px;
-	  text-align: center;
-  }
-  
-  .zfsm-title {
-	  font-weight: 400;
-	  position: relative;
-	  display: block;
-	  font-size: 25px;
-	  text-align: center;
-	  margin-bottom: 0;
-  }
-  
-  /* Theme variables exist from Unraid 7.1; the fallbacks are the older popup look. */
-  .zfsm-row {
-	  margin: 14px 0;
-  }
-
-  .zfsm-form select.zfsm-input {
-	  padding-right: 24px;
-  }
-
-  .zfsm-form .zfsm-input:disabled {
-	  background-color: var(--mild-background-color, lightgrey);
-	  color: var(--disabled-text-color, inherit);
-  }
-  
-  .zfsm-form .zfsm-input {
-	  background-color: var(--input-bg-color, #fff);
-	  color: var(--text-color, #000);
-	  width: auto;
-	  margin: 0 4px;
-	  border: 1px solid var(--input-border-color, rgba(0,0,0,.10));
-	  display: inline-block;
-	  padding: 10px 5px;
-	  border-radius: 5px;
-  }
-  
-  .zfsm-zpool {
-	  color: #ff8c2f;
-	  width: auto;
-	  border: 1px solid rgba(0,0,0,.10);
-	  display: inline-block;
-	  padding: 10px 5px;
-	  border-radius: 5px;
-	  background: linear-gradient(90deg,#e22828 0,#ff8c2f) 0 0 no-repeat,linear-gradient(90deg,#e22828 0,#ff8c2f) 0 100% no-repeat,linear-gradient(0deg,#e22828 0,#e22828) 0 100% no-repeat,linear-gradient(0deg,#ff8c2f 0,#ff8c2f) 100% 100% no-repeat;
-	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
-  }
-  
-  .zfsm-form .zfsm-unraid-border {
-	  border: 1px solid rgba(0,0,0,.10);
-	  background-color: var(--input-bg-color, #fff)!important;
-	  background: linear-gradient(90deg,#e22828 0,#ff8c2f) 0 0 no-repeat,linear-gradient(90deg,#e22828 0,#ff8c2f) 0 100% no-repeat,linear-gradient(0deg,#e22828 0,#e22828) 0 100% no-repeat,linear-gradient(0deg,#ff8c2f 0,#ff8c2f) 100% 100% no-repeat;
-	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
-  }
-  
-  .zfsm-form .zfsm-wauto {
-	  width: auto;
-  }
-
-  .zfsm-form .zfsm-w5 {
-	  width: 5%;
-  }
-  
-  .zfsm-form .zfsm-w10 {
-	  width: 10%;
-  }
-  
-  .zfsm-form .zfsm-w15 {
-	  width: 15%;
-  }
-  
-  .zfsm-form .zfsm-w50 {
-	  width: 50%;
-  }
-  
-  .zfsm-form .zfsm-w70 {
-	  width: 70%;
-  }
-  
-  .zfsm-form .zfsm-w75 {
-	  width: 75%;
-  }
-  
-</style>
-
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/font-awesome.css'); ?>">
 <?php foreach (zfsmPopupStylesheets($docroot) as $sheet): ?>
 <link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
 <?php endforeach; ?>
-
-<script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
-
-<script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
-<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
+<style>
+  .zfsm-form{max-width:760px;margin:16px auto}
+  .zfsm-pool{color:var(--orange-500, #ff8c2f);font-weight:600}
+  .zfsm-footer{display:flex;justify-content:center;padding:12px 0}
+</style>
 
 </head>
 
 <body>
-	<div id="dataset-form-div" class="zfsm-dialog">
-		<form id="dataset-form" name="dataset-form" class="zfsm-form" method="POST">
-			<hr>
-				<div class="zfsm-title">Base Options</div>
-			<hr>
-			<div id="dataset-base-options">
-				<div class="zfsm-row">
-					Dataset Name<br>
-					<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
-					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" maxlength="768" pattern="[A-Za-z0-9][A-Za-z0-9_.:%/-]*" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
-					<datalist id="zpool-datasets">
-					<?php
-						generatePoolDatasetOptions($zpool_datasets);
-					?>
-					</datalist>
-				</div>
-				<div class="zfsm-row">
-					Mount
-					<select id="mount" name="mount" class="zfsm-input">
-						<option value="yes" selected>Yes</option>
-						<option value="no">No</option>
-					</select>
-					<input id="mountpoint" name="mountpoint" class="zfsm-input zfsm-w0 zfsm-unraid-border" placeholder="Empty for default, otherwise complete mountpoint path. ">
-					Access Time
-					<select id="atime" name="atime" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="off">Off</option>
-						<option value="on">On</option>
-					</select>
-				</div>
-				<div class="zfsm-row">
-					Case Sensitivity
-					<select id="casesensitivity" name="casesensitivity" class="zfsm-input">
-						<option value="sensitive" selected>Sensitive (Default)</option>
-						<option value="insensitive">Insensitive</option>
-						<option value="mixed">Mixed</option>
-					</select>
-					Compression
-					<select id="compression" name="compression" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="off">Off</option>
-						<option value="lz4">lz4</option>
-						<option value="gzip">gzip</option>
-						<option value="zstd">zstd</option>
-					</select>
-					Quota
-					<input id="quota" name="quota" class="zfsm-input zfsm-w5" maxlength="5">
-					<select id="quotaunit" name="quotaunit" class="zfsm-input">
-						<option value="M" selected>MiB</option>
-						<option value="G">GiB</option>
-						<option value="T">TiB</option>
-					</select>
-				</div>
+	<form id="dataset-form" name="dataset-form" class="zfsm-form" method="POST">
+		<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
+		<details class="zfsm-section" open>
+			<summary>Basic</summary>
+			<div>
+				<dl><dt>Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
+				<dl><dt>Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
+				<dl><dt>Mount point:</dt><dd><input id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
+				<dl><dt>Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
+				<dl><dt>Case sensitivity:</dt><dd><select id="casesensitivity" name="casesensitivity"><option value="sensitive" selected>Sensitive (default)</option><option value="insensitive">Insensitive</option><option value="mixed">Mixed</option></select></dd></dl>
+				<dl><dt>Compression:</dt><dd><select id="compression" name="compression"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select></dd></dl>
+				<dl><dt>Quota:</dt><dd><input id="quota" name="quota" maxlength="5" size="6" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
 			</div>
-			<hr>
-				<div class="zfsm-title">Advanced Options</div>
-			<hr>
-			<div id="dataset-advanced-options">
-				<div class="zfsm-row">
-					Encryption
-					<select id="encryption" name="encryption" class="zfsm-input">
-						<option value="yes">Yes</option>
-						<option value="no" selected>No</option>
-					</select>
-					<input id="passphrase" name="passphrase" autocomplete="off" type="password" class="zfsm-input zfsm-w50 zfsm-unraid-border" placeholder="Encryption PassPhrase" disabled>
-				</div>
-				<div class="zfsm-row">
-					Extended Attributes:
-					<select id="xattr" name="xattr" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="sa">sa</option>
-						<option value="on">on</option>
-						<option value="off">off</option>
-					</select>
-					Record Size:
-					<select id="recordsize" name="recordsize" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="512">512</option>
-						<option value="4K">4KB</option>
-						<option value="8K">8KB</option>
-						<option value="16K">16KB</option>
-						<option value="64K">64KB</option>
-						<option value="128K">128KB</option>
-						<option value="1M">1MB</option>
-					</select>
-				</div>
-				<div class="zfsm-row">
-					Primary Cache:
-					<select id="primarycache" name="primarycache" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="all">All</option>
-						<option value="metadata">Metadata</option>
-						<option value="none">None</option>
-					</select>
-					Read Only:
-					<select id="readonly" name="readonly" class="zfsm-input">
-						<option value="off" selected>Off (Default)</option>
-						<option value="on">On</option>
-					</select>
-					Sync:
-					<select id="sync" name="sync" class="zfsm-input">
-						<option value="standard" selected>Standard (Default)</option>
-						<option value="always">Always</option>
-						<option value="disabled">Disabled</option>
-					</select>
-				</div>
+		</details>
+		<details class="zfsm-section">
+			<summary>Advanced</summary>
+			<div>
+				<dl><dt>Encryption:</dt><dd><select id="encryption" name="encryption"><option value="yes">Yes</option><option value="no" selected>No</option></select></dd></dl>
+				<dl><dt>Passphrase:</dt><dd><input id="passphrase" class="zfsm-wide" name="passphrase" autocomplete="off" type="password" disabled></dd></dl>
+				<dl><dt>Extended attributes:</dt><dd><select id="xattr" name="xattr"><option value="inherit" selected>Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select></dd></dl>
+				<dl><dt>Record size:</dt><dd><select id="recordsize" name="recordsize"><option value="inherit" selected>Inherit</option><option value="512">512</option><option value="4K">4KB</option><option value="8K">8KB</option><option value="16K">16KB</option><option value="64K">64KB</option><option value="128K">128KB</option><option value="1M">1MB</option></select></dd></dl>
+				<dl><dt>Primary cache:</dt><dd><select id="primarycache" name="primarycache"><option value="inherit" selected>Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select></dd></dl>
+				<dl><dt>Read only:</dt><dd><select id="readonly" name="readonly"><option value="off" selected>Off (default)</option><option value="on">On</option></select></dd></dl>
+				<dl><dt>Sync:</dt><dd><select id="sync" name="sync"><option value="standard" selected>Standard (default)</option><option value="always">Always</option><option value="disabled">Disabled</option></select></dd></dl>
 			</div>
-			<hr>
-			<div id="dataset-footer" class="zfsm-footer">
-				<button type="submit">Create</button>
-			</div>
-		</form>
-	</div>
+		</details>
+		<datalist id="zpool-datasets">
+		<?php generatePoolDatasetOptions($zpool_datasets); ?>
+		</datalist>
+		<div class="zfsm-footer"><button type="submit">Create</button></div>
+	</form>
 </body>
 </html>
 
