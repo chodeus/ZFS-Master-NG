@@ -40,6 +40,15 @@ function run_page($path, $strip_header) {
 	return ob_get_clean();
 }
 
+// Every stylesheet a dialog links must exist in this Unraid, and one of them must carry the theme.
+function popup_styles($html, $docroot) {
+	preg_match_all('#href="(/webGui/styles/[^"?]+)#', $html, $matches);
+	foreach ($matches[1] as $sheet) {
+		if (!is_file($docroot.$sheet)) { fwrite(STDERR, "dialog links a stylesheet this Unraid lacks: $sheet\n"); exit(1); }
+	}
+	if (!preg_grep('#/(default-popup|themes/[a-z]+)\.css$#', $matches[1])) { fwrite(STDERR, "dialog has no theme stylesheet: ".implode(' ', $matches[1])."\n"); exit(1); }
+}
+
 switch ($check) {
 	case 'body_token':
 	case 'no_token':
@@ -121,6 +130,7 @@ switch ($check) {
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMCreateDataset.php';
 		$html = ob_get_clean();
 		if (strpos($html, 'zfsm_csrf_token') === false) { fwrite(STDERR, "create popup did not render\n"); exit(1); }
+		popup_styles($html, $docroot);
 		break;
 
 	case 'snapshot_popup':
@@ -130,6 +140,7 @@ switch ($check) {
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
 		$html = ob_get_clean();
 		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		popup_styles($html, $docroot);
 		break;
 
 	default:

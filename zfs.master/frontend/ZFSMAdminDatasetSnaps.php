@@ -129,9 +129,9 @@ window.onload = function() {
 
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
-<?php if (is_file($docroot.'/webGui/styles/default-popup.css')): // gone from Unraid 7.1 ?>
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-popup.css'); ?>">
-<?php endif; ?>
+<?php foreach (zfsmPopupStylesheets($docroot) as $sheet): ?>
+<link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
+<?php endforeach; ?>
 
 <script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
 

@@ -104,6 +104,15 @@ function runProcess($command, $args = array(), $stdin = null) {
 	return array('code' => $code, 'output' => trim((string)$output));
 }
 
+// Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.
+function zfsmPopupStylesheets($docroot) {
+	if (is_file($docroot.'/webGui/styles/default-popup.css')) return array('/webGui/styles/default-popup.css');
+	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
+	$theme = preg_match('/^[a-z]+$/', (string)($display['theme'] ?? '')) === 1 ? $display['theme'] : 'black';
+	$sheets = array('/webGui/styles/default-color-palette.css', '/webGui/styles/default-base.css', '/webGui/styles/themes/'.$theme.'.css');
+	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
+}
+
 function commandAnswer($subject, $result) {
 	$answer = array('succeeded' => array(), 'failed' => array());
 	if (($result['code'] ?? 1) === 0) {
