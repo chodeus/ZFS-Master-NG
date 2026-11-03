@@ -61,7 +61,8 @@ function zfsmDatasetMissing($name) {
 	if (!zfsmValidDatasetName($name)) return null;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', $name));
 	if (($result['code'] ?? 1) === 0) return false;
-	return stripos($result['output'] ?? '', 'dataset does not exist') !== false ? true : null;
+	// Only the closing diagnostic counts: a name may itself contain the words.
+	return preg_match('/: dataset does not exist\s*\z/', $result['output'] ?? '') === 1 ? true : null;
 }
 
 function zfsmSnapshotExists($name) {

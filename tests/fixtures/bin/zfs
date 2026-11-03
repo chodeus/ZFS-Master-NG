@@ -44,7 +44,7 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; 
 fi
 
 if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_LIST_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_LIST_FAIL" ]; then
-	printf 'simulated list failure\n' >&2
+	printf "cannot open '%s': permission denied\n" "$last_arg" >&2
 	exit 2
 fi
 

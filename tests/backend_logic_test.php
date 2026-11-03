@@ -188,6 +188,11 @@ putenv('ZFSM_TEST_LIST_FAIL=tank/broken');
 assertSameValue(true, zfsmDatasetMissing('tank/newparent'), 'a missing dataset is reported missing');
 assertSameValue(null, zfsmDatasetMissing('tank/broken'), 'a failed read is reported as unknown');
 assertSameValue(false, zfsmDatasetMissing('tank/data'), 'an existing dataset is not reported missing');
+putenv('ZFSM_TEST_LIST_FAIL=tank/dataset does not exist');
+assertSameValue(null, zfsmDatasetMissing('tank/dataset does not exist'), 'a failed read of a dataset named like the error is not an absence');
+putenv('ZFSM_TEST_MISSING_DATASET=tank/dataset does not exist');
+putenv('ZFSM_TEST_LIST_FAIL');
+assertSameValue(true, zfsmDatasetMissing('tank/dataset does not exist'), 'a dataset named like the error can still be missing');
 putenv('ZFSM_TEST_MISSING_DATASET');
 putenv('ZFSM_TEST_LIST_FAIL');
 
