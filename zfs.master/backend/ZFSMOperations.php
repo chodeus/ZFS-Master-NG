@@ -437,6 +437,15 @@ function createDataset($zdataset, $zoptions) {
 	$passphrase = (string)($zoptions['passphrase'] ?? '');
 	unset($zoptions['passphrase']);
 	$allowed = array('mountpoint', 'compression', 'quota', 'recordsize', 'atime', 'xattr', 'primarycache', 'readonly', 'casesensitivity', 'sync', 'encryption', 'keylocation', 'keyformat');
+	// Read-only is set last, or the share owner below could not be applied.
+	$readonly = ($zoptions['readonly'] ?? '') === 'on';
+	if ($readonly) unset($zoptions['readonly']);
+	$parts = explode('/', $zdataset);
+	$created = array();
+	for ($depth = 2; $depth <= count($parts); $depth++) {
+		$name = implode('/', array_slice($parts, 0, $depth));
+		if (!zfsmDatasetExists($name)) $created[] = $name;
+	}
 	$args = array('create', '-p');
 	foreach ($zoptions as $property => $value) {
 		if (!in_array($property, $allowed, true) || !zfsmSafePropertyValue($property, (string)$value)) return zfsmFailure($zdataset, 'Invalid dataset property: '.$property);
@@ -448,14 +457,18 @@ function createDataset($zdataset, $zoptions) {
 	$args[] = $zdataset;
 	$result = runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
 	$answer = commandAnswer($zdataset, $result);
-	if (($result['code'] ?? 1) === 0) {
-		$mountpoint = getDatasetProperty($pool, $zdataset, 'mountpoint');
+	if (($result['code'] ?? 1) !== 0) return $answer;
+	// zfs create -p also makes missing parents; they get Unraid's share owner too.
+	foreach ($created as $name) {
+		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
 		if (is_string($mountpoint) && $mountpoint !== '' && $mountpoint[0] === '/' && is_dir($mountpoint)) {
 			@chown($mountpoint, 'nobody');
 			@chgrp($mountpoint, 'users');
 		}
 	}
-	return $answer;
+	if (!$readonly) return $answer;
+	$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
+	return ($set['code'] ?? 1) === 0 ? $answer : zfsmFailure($zdataset, 'Created, but it could not be made read-only: '.trim($set['output'] ?? ''));
 }
 
 function renameDataset($zdataset, $new_name, $force) {

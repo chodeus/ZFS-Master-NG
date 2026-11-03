@@ -132,10 +132,10 @@ var zfsm_tips = <?=json_encode(array(
 	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
 	'lazy_load' => _('Show datasets first, then load snapshots one pool at a time.'),
 	'znapzend_data' => _('Show ZnapZend backup plans on each dataset.'),
-	'destructive_mode' => _('Allow destroy, rollback and other actions that delete data.'),
-	'exclusion' => _('Hide datasets whose names match this pattern.'),
+	'destructive_mode' => _('Show rename, edit and destroy, and allow deletes of folders and newer snapshots.'),
+	'exclusion' => _('Hide datasets and listed folders whose names match this pattern.'),
 	'directory_listing' => _('Datasets whose folders are listed on the Main tab, one per line.'),
-	'snap_max_days_alert' => _('Days without a snapshot before the camera icon turns orange.'),
+	'snap_max_days_alert' => _('Days since the last snapshot before the camera icon turns orange.'),
 	'snap_pattern' => _('Date format for new snapshot names, using PHP date() letters.'),
 	'snap_prefix' => _('Text placed before the date in new snapshot names.'),
 ))?>;
