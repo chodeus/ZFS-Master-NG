@@ -121,6 +121,12 @@ switch ($check) {
 		require_once $docroot.'/webGui/include/Helpers.php';
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
 		if (strpos($html, 'name="exclusion"') === false) { fwrite(STDERR, "settings page did not render\n"); exit(1); }
+		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
+		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
+		$rendered = Markdown($html);
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern') as $section => $field) {
+			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
+		}
 		break;
 
 	case 'create_popup':
