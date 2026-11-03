@@ -66,4 +66,16 @@ for (const [a, b] of [['tank/a b', 'tank/a_2520b'], ['tank/a%20b', 'tank/a_20b']
 	assert.notEqual(context.elementToken(a), context.elementToken(b), a+' and '+b+' need different ids');
 }
 
+// Every snapshot cell has the same slots, so the camera icons line up down the column.
+const cells = source => [...source.matchAll(/<i class="fa fa-camera-retro icon"[^>]*><\/i>(.*?)<\/td>/g)].map(match => match[1]);
+const datasetCells = cells(context.generateDatasetArrayRows('tank', {...bare('tank'), mountpoint: 'none', child: {a: bare('tank/a')}}, '', true, 0, 30, {}));
+const poolCell = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1T', MountPoint: '/mnt/tank', Refer: '', Used: '1', Free: '1', Snapshots: 3}, '', true, {})+'</tr>');
+for (const cell of [...datasetCells, ...poolCell]) assert.match(cell, /^<span class="zfsm-snap-count">[^<]*<\/span><span class="zfsm-snap-browse">/, 'a snapshot cell keeps the count and browse slots: '+cell);
+assert.equal(datasetCells.length + poolCell.length, 3, 'pool, unmounted root and mounted child all checked');
+assert.doesNotMatch(datasetCells[0], /Main\/Browse/, 'no browse link without a mountpoint');
+assert.match(datasetCells[1], /Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"/);
+const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=alert(1)>');
+assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
+assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
+
 console.log('dataset row class tests passed');

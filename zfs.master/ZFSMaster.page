@@ -29,6 +29,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   .zfs_table tr>td+td+td{text-align:left!important}
   .zfs_table tr>td+td+td+td+td+td+td+td{text-align:left!important}
   .zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center!important}
+  .zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
+  .zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0}
   
   .zfs_bar_button {
 	  padding-right: 8px;
