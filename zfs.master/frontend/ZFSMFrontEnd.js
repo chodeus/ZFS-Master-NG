@@ -36,6 +36,7 @@ function zfsmMoveStatusIntoTitle(bar) {
 	while (title && !(title.tagName === 'DIV' && (title.id === 'title' || title.classList.contains('title')))) title = title.previousElementSibling;
 	if (!title) return false;
 	title.classList.add('disable_diskio');
+	title.classList.add('zfsm-title');
 	let right = title.querySelector('span.right');
 	if (!right) {
 		right = document.createElement('span');

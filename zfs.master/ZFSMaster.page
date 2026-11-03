@@ -48,6 +48,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   .zfsm-title-right{float:right;padding-right:10px}
   .zfsm-title-status{display:inline-flex;align-items:center;gap:14px}
   .zfsm-title-status .zfs_bar_button{float:none;padding-right:0}
+  /* Phones: the status drops under the name, so the name keeps one line. */
+  @media (max-width:768px){
+  div.title.zfsm-title,div#title.zfsm-title{flex-wrap:wrap;height:auto;row-gap:4px}
+  div.title.zfsm-title>span.left,div#title.zfsm-title>span.left{white-space:nowrap}
+  div.title.zfsm-title>span.right,div#title.zfsm-title>span.right{margin-left:auto}
+  div#title.zfsm-title .zfsm-title-right,div.title.zfsm-title .zfsm-title-right{float:none;display:block}
+  }
 
   #zfs-master-title.zfs_master_title {
 	margin-top: <?=$is_unraid7 ? '5px' : '-45px'?>;

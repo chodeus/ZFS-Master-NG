@@ -78,6 +78,7 @@ const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=aler
 assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
 assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
+assert.match(page, /@media \(max-width:768px\)\{\s*div\.title\.zfsm-title,div#title\.zfsm-title\{flex-wrap:wrap/, 'on phones only the plugin title line wraps');
 
 // The status bar moves onto Unraid's title line, which then skips the reads/writes toggle.
 const element = (tagName, classes = []) => {
@@ -104,6 +105,7 @@ for (const withRight of [true, false]) {
 	const {title, bar} = layout(withRight);
 	assert.equal(context.zfsmMoveStatusIntoTitle(bar), true);
 	assert.ok(title.classList.contains('disable_diskio'), 'the title opts out of the reads/writes toggle');
+	assert.ok(title.classList.contains('zfsm-title'), 'the title is marked so only it wraps on phones');
 	const right = title.children.find(c => c.classList.contains('right'));
 	assert.deepEqual(right.children[0].children.map(c => c.className), ['refresh time', 'settings', 'refresh'], 'all three move, in order'+(withRight ? '' : ', into a right span made for them'));
 	assert.ok(bar.removed, 'the empty bar goes');
