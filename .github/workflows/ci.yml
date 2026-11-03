@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
           repository: chodeus/chodeus-ops
-          ref: 1ff57bdeb4e0ae53ea92fe9d9d3b0b0f1fd9a0be # main
+          ref: f2a43b46d158b76831c8e8e63126b22baef761bb # main
           path: .ops
           sparse-checkout: scripts
 
@@ -44,6 +44,12 @@ jobs:
           python3 .ops/scripts/plg_release.py check \
             --changelog CHANGELOG.md --plg zfs.master.plg \
             --channel "$channel" --branch "$BRANCH"
+
+      - name: Plugin function checker tests
+        run: php .github/scripts/check-plugin-functions.test.php
+
+      - name: Every plugin function that is called is defined
+        run: php .github/scripts/check-plugin-functions.php zfs.master
 
       - name: Frontend and package tests
         run: |
@@ -110,7 +116,7 @@ jobs:
     needs: [validate, php, unraid]
     if: failure() && github.event_name != 'pull_request'
     permissions: {}
-    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@1ff57bdeb4e0ae53ea92fe9d9d3b0b0f1fd9a0be # main
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
     with:
       event_type: build
       status: failure

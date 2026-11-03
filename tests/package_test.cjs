@@ -18,6 +18,23 @@ try {
   for (const file of ['zfs.master.plg', 'pkg_build.sh']) fs.copyFileSync(path.join(root, file), path.join(work, file));
   execFileSync('bash', ['pkg_build.sh', '--version', '0000.00.00', '--branch', 'beta', '--out', path.join(work, 'dist')], {cwd: work, stdio: 'pipe'});
 
+  const urlFromBuild = (args) => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-branch-'));
+    try {
+      fs.cpSync(path.join(root, 'zfs.master'), path.join(copy, 'zfs.master'), {recursive: true});
+      for (const file of ['zfs.master.plg', 'pkg_build.sh']) fs.copyFileSync(path.join(root, file), path.join(copy, file));
+      execFileSync('bash', ['pkg_build.sh', '--version', '0000.00.00', '--out', path.join(copy, 'dist'), ...args], {cwd: copy, stdio: 'pipe'});
+      return fs.readFileSync(path.join(copy, 'zfs.master.plg'), 'utf8').match(/<!ENTITY pluginURL "([^"]+)">/)[1];
+    } finally {
+      fs.rmSync(copy, {recursive: true, force: true});
+    }
+  };
+  assert.equal(urlFromBuild(['--branch', 'beta']), 'https://raw.githubusercontent.com/&github;/beta/&name;.plg');
+  assert.equal(urlFromBuild(['--branch', 'feat/my-test_1.2']), 'https://raw.githubusercontent.com/&github;/feat/my-test_1.2/&name;.plg', 'a named branch keeps its own update check');
+  assert.equal(urlFromBuild([]), 'https://raw.githubusercontent.com/&github;/main/&name;.plg', 'an undetected local branch falls back to main');
+  assert.equal(urlFromBuild(['--branch', 'feature/a+b']), 'https://raw.githubusercontent.com/&github;/feature/a+b/&name;.plg', 'git allows + in a branch name');
+  assert.throws(() => urlFromBuild(['--branch', 'a&b|c']), /Command failed/, 'a branch name that cannot go in a URL is refused');
+
   const built = fs.readFileSync(path.join(work, 'zfs.master.plg'), 'utf8');
   const archive = path.join(work, 'dist', 'zfs.master-0000.00.00-x86_64-1.txz');
   assert.match(built, /<!ENTITY version "0000\.00\.00">/);

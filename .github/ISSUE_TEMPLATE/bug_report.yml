@@ -1,0 +1,53 @@
+name: Bug Report
+description: Report a bug or unexpected behavior with ZFS Master NG
+labels: ["bug"]
+body:
+  - type: input
+    id: unraid-version
+    attributes:
+      label: Unraid Version
+      placeholder: "e.g. 7.3.4"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: ZFS Master NG Plugin Version
+      placeholder: "e.g. 2026.11.01"
+    validations:
+      required: true
+
+  - type: input
+    id: zfs-version
+    attributes:
+      label: ZFS Version
+      description: "The first line of `zfs version` in a terminal."
+      placeholder: "e.g. zfs-2.4.4"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      placeholder: "Describe the issue and how to reproduce it."
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: "Optional: drag and drop or paste any relevant screenshots."
+    validations:
+      required: false
+
+  - type: textarea
+    id: console-log
+    attributes:
+      label: Browser Console
+      description: "Optional: open the Main tab, press F12, reproduce the problem, then paste anything from the Console tab that mentions ZFS Master NG. Remove any pool or dataset names you'd rather not share."
+      render: shell
+    validations:
+      required: false

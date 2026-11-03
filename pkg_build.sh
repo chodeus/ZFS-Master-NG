@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Usage: pkg_build.sh --version YYYY.MM.DD[.N] [--branch main|beta] [--out DIR]
+# Usage: pkg_build.sh --version YYYY.MM.DD[.N] [--branch NAME] [--out DIR]
 # The release workflow owns version numbering; local test builds pass any version explicitly.
 # Capability checks, not uname: a Mac can have GNU sed and tar first on PATH
 md5_of() { if command -v md5sum >/dev/null; then md5sum "$1" | awk '{print $1}'; else md5 -q "$1"; fi; }
@@ -18,7 +18,7 @@ root=$(cd "$(dirname "$0")" && pwd)
 plg="$root/zfs.master.plg"
 out="$root/dist"
 version=""
-branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+branch=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --version) version="$2"; shift 2 ;;
@@ -28,7 +28,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$version" ] || { echo "ERROR: --version is required (e.g. --version 0000.00.00 for a test build)"; exit 1; }
-case "$branch" in main|beta) ;; *) echo "Warning: branch '$branch' is not a channel, pointing pluginURL at main"; branch=main ;; esac
+# Only a guessed branch falls back: a build asked for a branch keeps that branch's update check.
+if [ -z "$branch" ]; then
+    branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+    case "$branch" in main|beta) ;; *) echo "Warning: branch '$branch' is not a channel, pointing pluginURL at main"; branch=main ;; esac
+fi
+[[ "$branch" =~ ^[A-Za-z0-9._/+-]+$ ]] || { echo "ERROR: branch '$branch' cannot go in pluginURL"; exit 1; }
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
@@ -38,6 +43,8 @@ trap 'rm -rf "$work"' EXIT
 dest="$work/usr/local/emhttp/plugins/zfs.master"
 mkdir -p "$dest"
 cp -R "$root/zfs.master/." "$dest/"
+filecount=$(find "$work" -type f | wc -l | tr -d ' ')
+[ "$filecount" -ge 10 ] || { echo "ERROR: only $filecount files copied to the package (expected at least 10)"; exit 1; }
 find "$work" -type d -exec chmod 0755 {} +
 find "$work" -type f -exec chmod 0644 {} +
 xattr -cr "$work" 2>/dev/null || true
@@ -50,7 +57,8 @@ md5=$(md5_of "$filename")
 
 rewrite_plg "s/<!ENTITY version \"[^\"]*\">/<!ENTITY version \"$version\">/"
 rewrite_plg "s/<!ENTITY md5 \"[^\"]*\">/<!ENTITY md5 \"$md5\">/"
-rewrite_plg "s|&github;/[a-zA-Z]*/&name;.plg|\&github;/$branch/\&name;.plg|"
+rewrite_plg "s|&github;/[^&]*/&name;.plg|\&github;/$branch/\&name;.plg|"
+grep -q "&github;/$branch/&name;.plg" "$plg" || { echo "ERROR: pluginURL not written to the manifest"; exit 1; }
 grep -q "<!ENTITY version \"$version\">" "$plg" || { echo "ERROR: version not written to the manifest"; exit 1; }
 grep -q "<!ENTITY md5 \"$md5\">" "$plg" || { echo "ERROR: md5 not written to the manifest"; exit 1; }
 

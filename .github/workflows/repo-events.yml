@@ -15,6 +15,6 @@ on:
 jobs:
   notify:
     permissions: {}
-    uses: chodeus/chodeus-ops/.github/workflows/repo-events.yml@1ff57bdeb4e0ae53ea92fe9d9d3b0b0f1fd9a0be # main
+    uses: chodeus/chodeus-ops/.github/workflows/repo-events.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
     secrets:
       DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
