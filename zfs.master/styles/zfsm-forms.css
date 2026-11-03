@@ -10,7 +10,7 @@
 
 /* A label with a hint shows the help cursor; hovering it shows the hint, styled like Unraid's tooltips. */
 .zfsm-tip{position:relative;cursor:help}
-.zfsm-tip:hover::after{content:attr(data-tip);position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
+.zfsm-tip:hover::after,.zfsm-tip:focus::after{content:attr(data-tip);position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
 
 /* Label and control rows for the dialogs; Unraid's own input styles do the rest. */
 .zfsm-form dl{display:grid;grid-template-columns:minmax(120px,32%) minmax(0,1fr);align-items:center;gap:0 16px;margin:0;padding:6px 0}

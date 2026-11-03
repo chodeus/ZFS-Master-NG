@@ -516,7 +516,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 
 	// Snapshots
 
-	tr += '<td>'+snapshotCell(icon_color, snap_count, zdataset['mountpoint'])+'</td>';
+	tr += '<td>'+snapshotCell(icon_color, zdataset['_snapshots_unavailable'] ? '—' : snap_count, zdataset['mountpoint'])+'</td>';
 	tr += '</tr>';
 
 	return tr;

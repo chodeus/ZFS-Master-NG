@@ -114,6 +114,10 @@ function createZFSMInventoryController(options) {
                     data.errors[pool] = message;
                     data.pools[pool].Snapshots = 'Unavailable';
                     data.datasets[pool]._snapshot_error = message;
+                    (function unavailable(dataset) {
+                        dataset._snapshots_unavailable = true;
+                        Object.values(dataset.child || {}).forEach(unavailable);
+                    })(data.datasets[pool]);
                     try {
                         options.render(data, false);
                         nextPool();

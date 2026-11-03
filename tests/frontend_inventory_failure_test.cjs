@@ -117,7 +117,7 @@ check('failed pool datasets do not claim zero snapshots', () => {
   const s = launch();
   const ds = name => ({name, child: {}, type: 'filesystem', mountpoint: '/mnt/' + name, used: 1, available: 1, referenced: 1});
   const answer = lazy();
-  answer.data.datasets = {tank: ds('tank'), cache: ds('cache')};
+  answer.data.datasets = {tank: {...ds('tank'), child: {'tank/data': ds('tank/data')}}, cache: ds('cache')};
   s.requests[0].resolve(answer);
   assert.equal(s.requests.length, 2, 'real renderer rejected fixture: ' + s.status());
   s.requests[1].reject({status: 504}, 'error');
@@ -125,8 +125,12 @@ check('failed pool datasets do not claim zero snapshots', () => {
   s.requests[2].resolve(part);
   const tankRow = (s.body.innerHTML.match(/<tr id="tr-tank"[\s\S]*?<\/tr>/) || [''])[0];
   assert.match(s.body.innerHTML, /Unavailable/, 'pool row');
-  assert.ok(/Snapshot query failed/.test(s.body.innerHTML) || !/<span>0<\/span>/.test(tankRow),
-    'tank dataset row claims 0 snapshots with no snapshot-failure row: ' + tankRow.replace(/\s+/g, ' ').slice(-160));
+  for (const id of ['tr-tank', 'tr-tank%2Fdata']) {
+    const row = (s.body.innerHTML.match(new RegExp('<tr id="' + id + '"[\\s\\S]*?</tr>')) || [''])[0];
+    assert.match(row, /zfsm-snap-count">—</, id + ' must not claim a snapshot count it could not read: ' + row.replace(/\s+/g, ' ').slice(-200));
+  }
+  const cacheRow = (s.body.innerHTML.match(/<tr id="tr-cache"[\s\S]*?<\/tr>/) || [''])[0];
+  assert.match(cacheRow, /zfsm-snap-count">0</, 'a pool that answered keeps its real count');
 });
 
 console.log('inventory failure path tests passed');

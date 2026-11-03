@@ -141,7 +141,7 @@ var zfsm_tips = <?=json_encode(array(
 ))?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
-	if (zfsm_tips[name]) $(this).children('dt').addClass('zfsm-tip').attr('data-tip', zfsm_tips[name]);
+	if (zfsm_tips[name]) $(this).children('dt').addClass('zfsm-tip').attr({'data-tip': zfsm_tips[name], tabindex: 0});
 });
 $('textarea[name="exclusion"]').on('change', function() {
 	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', {cmd: 'validateexclusion', pattern: $(this).val()}, function(answer) {
