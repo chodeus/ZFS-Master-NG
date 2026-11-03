@@ -182,17 +182,6 @@ function hasDirectories(dataset) {
 	return true;
 }
 
-function fromTimeToSeconds(time) {
-	parts = time.split(':')
-	console.log(parts);
-	
-	total = parseInt(parts[2]);
-	total += parseInt(parts[1]*60);
-	total += parseInt(parts[0]*60*60);
-	
-	return total;
-}
-
 function parseDirectoryCopy(msg) {
 	regex = /(?<data>[\d,]+)[\s\t]+(?<progress>[\d]+%)[\s\t]+(?<speed>[\d.]+[G|M|K|B]+\/s)[\s\t]+(?<time>[\d]+:[\d]+:[\d]+)/;
 	
@@ -322,40 +311,6 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	});
 
 	return agg;
-}
-
-function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
-	var icon_color = 'grey';
-	var snap_count = 0;
-
-	const depth = zdataset['name'].split('/').length;
-
-	Object.values(zdataset.directories).forEach((directory) => {
-		var row = document.getElementById('tr-dir-'+elementToken(directory));
-		if (!row) return;
-
-		tds = row.getElementsByTagName('td');
-
-		td_dataset = tds[2];
-		td_snaps = tds[8];
-	
-		var tmp = '';
-	
-		for (let i = 1; i <= depth; i++) {
-			tmp += '&emsp;&emsp;';
-		}
-
-		tmp += '<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>';
-
-		tmp += escapeHtml(directory.substring(directory.lastIndexOf("/") + 1));
-		tmp += '</td>';
-	
-		td_dataset.innerHTML = tmp;
-	
-		// Snapshots
-	
-		td_snaps.innerHTML = snapshotCell(icon_color, snap_count, directory);
-	});
 }
 
 function getPropertiesByType(zdataset) {

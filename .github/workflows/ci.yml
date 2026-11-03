@@ -64,6 +64,7 @@ jobs:
           node tests/frontend_impact_test.cjs
           node tests/frontend_inventory_failure_test.cjs
           node tests/package_test.cjs
+          node tests/dead_code_test.cjs
 
       - name: Bundled library in a real DOM
         working-directory: tests

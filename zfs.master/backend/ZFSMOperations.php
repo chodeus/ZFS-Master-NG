@@ -498,10 +498,6 @@ function getDatasetSnapshotsResult($zpool, $zdataset) {
 	return array('ok' => true, 'snapshots' => $snapshots, 'error' => '');
 }
 
-function getDatasetSnapshots($zpool, $zdataset) {
-	return getDatasetSnapshotsResult($zpool, $zdataset)['snapshots'];
-}
-
 function zfsmAllowedDatasetProperties() {
 	return array('mountpoint', 'compression', 'quota', 'recordsize', 'atime', 'xattr', 'primarycache', 'readonly', 'casesensitivity', 'sync');
 }

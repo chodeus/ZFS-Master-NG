@@ -201,60 +201,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function requestRefresh() {
 	if (zfsm_inventory) zfsm_inventory.refresh();
   }
-  
-  function replaceElementClass(element, oldClass, newClass){
-	  $(element).removeClass(oldClass);
-	  $(element).addClass(newClass);
-  }
-  
-  function getUnraidParentElement() {
-	  if (zfsm_config['version'].localeCompare('6.11.9', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
-		return $('.title .left').filter(function(){return $(this).text() === 'ZFS Master NG';}).parent();
-	  }
-	  return $('div#title > span.left').filter(function(){return $(this).text() === 'ZFS Master NG';}).parent();
-  }
 
   function saveCache(data) {
 	data['timestamp'] = data['generated_text'] || new Date().toLocaleString();
 
 	saveToLocalStorage('zfsm-cache', data);
-  }
-  
-  function updateSnapshotCache(data, total_snaps) {
-	var cache = loadFromLocalStorage('zfsm-cache');
-
-	if (cache === null) {
-		return;
-	}
-
-	const stack = [cache];
-	var dataset =  null;
-
-	while (stack.length > 0) {
-		const currentObj = stack.pop();
-
-		if (typeof currentObj !== 'object') {
-			continue;
-		}
-
-		for (const key in currentObj) {
-			if (key === data.dataset['name']) {
-				dataset = currentObj[key];
-			}
-
-			if (typeof currentObj[key] === 'object') {
-				stack.push(currentObj[key]);
-			}
-		}
-	}
-
-	if (dataset === null)
-		return;
-
-	dataset['snapshots'] = data['snapshots'];
-	cache['pools'][data['pool']]['Snapshots'] = total_snaps + data['snapshots'].length;
-
-	saveCache(cache);
   }
 
   function loadCache() {
