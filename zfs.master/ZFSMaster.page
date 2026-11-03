@@ -30,7 +30,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   .zfs_table tr>td+td+td+td+td+td+td+td{text-align:left!important}
   .zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center!important}
   .zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
-  .zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0}
+  .zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
+  /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
+  .zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
   
   .zfs_bar_button {
 	  padding-right: 8px;

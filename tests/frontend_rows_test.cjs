@@ -77,5 +77,6 @@ assert.match(datasetCells[1], /Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"/);
 const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=alert(1)>');
 assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
+assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
 
 console.log('dataset row class tests passed');
