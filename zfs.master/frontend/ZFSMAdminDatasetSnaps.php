@@ -51,12 +51,12 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		margin-left: 10%;
 	}
 
-	.zfs_delete_btn {
-		text-align: center !important;
-  	}
+	#adminsnaps-form-div .zfs_delete_btn {
+		text-align: center;
+	}
 
 	#zfs_master.disk_status.zfs_snap_table thead tr td{
-		text-align: center !important ;
+		text-align: center;
 	}
 
 	#zfs_master.disk_status.zfs_snap_table thead tr td:nth-child(4){

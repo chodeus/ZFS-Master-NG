@@ -20,36 +20,37 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 ?>
 
 <style type="text/css">	
-  .zfs_table td span{margin-left:10px}
-  .zfs_table tr>td{width:auto!important}
-  .zfs_table tr>td+td+td{text-align:left!important}
-  .zfs_table tr>td+td+td+td+td+td+td+td{text-align:left!important}
-  .zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center!important}
-  .zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
-  .zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
+  /* Every rule is scoped to this plugin's own elements; the id outranks Unraid's table and button rules without !important. */
+  #zfs_master.zfs_table td span{margin-left:10px}
+  #zfs_master.zfs_table tr>td{width:auto}
+  #zfs_master.zfs_table tr>td+td+td{text-align:left}
+  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td{text-align:left}
+  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
+  #zfs_master.zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
   /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
-  .zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
+  #zfs_master.zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
   
   .zfs_bar_button {
 	  padding-right: 8px;
 	  float: right;
   }
 
-  .zfs_bar_text {
-	  font-size: 1.2rem!important;
+  #zfs-master-title span.zfs_bar_text, div.title .zfsm-title-status span.zfs_bar_text {
+	  font-size: 1.2rem;
   }
   
-  .zfs_compact {
-	  padding: 2px 4px 3px 6px!important;
-	  margin: 2px 2px!important;
+  #zfs_master .zfs_compact {
+	  padding: 2px 4px 3px 6px;
+	  margin: 2px 2px;
   }
 
   .zfsm-title-right{float:right;padding-right:10px}
   .zfsm-title-status{display:inline-flex;align-items:center;gap:14px}
   .zfsm-title-status .zfs_bar_button{float:none;padding-right:0}
 
-  .zfs_master_title {
-	margin-top: <?=$is_unraid7 ? '5px' : '-45px!important'?>;
+  #zfs-master-title.zfs_master_title {
+	margin-top: <?=$is_unraid7 ? '5px' : '-45px'?>;
   }
   
 </style>
