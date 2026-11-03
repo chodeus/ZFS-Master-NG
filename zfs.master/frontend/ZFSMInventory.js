@@ -82,9 +82,18 @@ function createZFSMInventoryController(options) {
             options.render(data, false);
 
             let snapshotsMissing = false;
+            let snapshotsIncomplete = false;
+
+            function unavailable(pool) {
+                data.pools[pool].Snapshots = 'Unavailable';
+                (function mark(dataset) {
+                    dataset._snapshots_unavailable = true;
+                    Object.values(dataset.child || {}).forEach(mark);
+                })(data.datasets[pool]);
+            }
 
             function complete() {
-                options.render(data, !snapshotsMissing);
+                options.render(data, !snapshotsMissing && !snapshotsIncomplete);
                 // A pool that answers with a query error is not slow, so only unanswered reads back off.
                 failures = snapshotsMissing ? failures + 1 : 0;
                 let message = 'Last refresh at ' + new Date().toLocaleString('en-US', {hour12: false});
@@ -104,6 +113,8 @@ function createZFSMInventoryController(options) {
                     data.errors = data.errors || {};
                     delete data.errors[pool];
                     Object.assign(data.errors, part.data.errors || {});
+                    // A pool that answered with a snapshot error is not slow, but its counts must not be cached.
+                    if (data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
                     options.render(data, false);
                     nextPool();
                 }, function(message) {
@@ -112,12 +123,8 @@ function createZFSMInventoryController(options) {
                     snapshotsMissing = true;
                     data.errors = data.errors || {};
                     data.errors[pool] = message;
-                    data.pools[pool].Snapshots = 'Unavailable';
                     data.datasets[pool]._snapshot_error = message;
-                    (function unavailable(dataset) {
-                        dataset._snapshots_unavailable = true;
-                        Object.values(dataset.child || {}).forEach(unavailable);
-                    })(data.datasets[pool]);
+                    unavailable(pool);
                     try {
                         options.render(data, false);
                         nextPool();

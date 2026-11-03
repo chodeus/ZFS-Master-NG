@@ -56,6 +56,13 @@ function zfsmDatasetExists($name, $types = 'filesystem,volume') {
 	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
 }
 
+// True only when ZFS says the dataset does not exist; a failed read is not an absence.
+function zfsmDatasetMissing($name) {
+	if (!zfsmValidDatasetName($name)) return false;
+	$result = runProcess('zfs', array('list', '-H', '-o', 'name', $name));
+	return ($result['code'] ?? 0) !== 0 && stripos($result['output'] ?? '', 'dataset does not exist') !== false;
+}
+
 function zfsmSnapshotExists($name) {
 	if (!zfsmValidSnapshotName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'snapshot', $name));
@@ -444,7 +451,7 @@ function createDataset($zdataset, $zoptions) {
 	$created = array();
 	for ($depth = 2; $depth <= count($parts); $depth++) {
 		$name = implode('/', array_slice($parts, 0, $depth));
-		if (!zfsmDatasetExists($name)) $created[] = $name;
+		if (zfsmDatasetMissing($name)) $created[] = $name;
 	}
 	$args = array('create', '-p');
 	foreach ($zoptions as $property => $value) {

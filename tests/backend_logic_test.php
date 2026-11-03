@@ -145,4 +145,13 @@ if ($test_log) {
 	putenv('ZFSM_TEST_DATASET_MOUNT');
 }
 
+// Only a confirmed absence counts as new: a failed read must not hand an existing dataset to nobody:users.
+putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent');
+putenv('ZFSM_TEST_LIST_FAIL=tank/broken');
+assertSameValue(true, zfsmDatasetMissing('tank/newparent'), 'a missing dataset is reported missing');
+assertSameValue(false, zfsmDatasetMissing('tank/broken'), 'a failed read is not reported missing');
+assertSameValue(false, zfsmDatasetMissing('tank/data'), 'an existing dataset is not reported missing');
+putenv('ZFSM_TEST_MISSING_DATASET');
+putenv('ZFSM_TEST_LIST_FAIL');
+
 echo "backend logic tests passed\n";

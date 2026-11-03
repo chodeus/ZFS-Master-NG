@@ -43,6 +43,11 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; 
 	exit 0
 fi
 
+if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_LIST_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_LIST_FAIL" ]; then
+	printf 'simulated list failure\n' >&2
+	exit 2
+fi
+
 if [ "$1" = "list" ] && [ "$last_arg" = "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
 	printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2
 	exit 1

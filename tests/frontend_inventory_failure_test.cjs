@@ -133,4 +133,21 @@ check('failed pool datasets do not claim zero snapshots', () => {
   assert.match(cacheRow, /zfsm-snap-count">0</, 'a pool that answered keeps its real count');
 });
 
+// A pool that answers with a snapshot error must not have its zero counts cached as complete.
+check('snapshot error in an answer is not cached as complete', () => {
+  const s = launch();
+  const ds = name => ({name, child: {}, type: 'filesystem', mountpoint: '/mnt/' + name, used: 1, available: 1, referenced: 1});
+  const answer = lazy();
+  answer.data.datasets = {tank: {...ds('tank'), child: {'tank/data': ds('tank/data')}}, cache: ds('cache')};
+  s.requests[0].resolve(answer);
+  const broken = poolResult('tank', 0); broken.data.datasets.tank = {...ds('tank'), snapshots: [], _snapshot_error: 'zfs list -t snapshot failed', child: {'tank/data': {...ds('tank/data'), snapshots: []}}};
+  s.requests[1].resolve(broken);
+  const part = poolResult('cache', 3); part.data.datasets.cache = {...ds('cache'), snapshots: []};
+  s.requests[2].resolve(part);
+  assert.equal(s.storage.has('zfsm-cache'), false, 'zero counts from a failed snapshot read were cached as complete');
+  const row = (s.body.innerHTML.match(/<tr id="tr-tank%2Fdata"[\s\S]*?<\/tr>/) || [''])[0];
+  assert.match(row, /zfsm-snap-count">—</, 'the failed pool shows a dash, not 0: ' + row.replace(/\s+/g, ' ').slice(-160));
+  assert.deepEqual(s.delays(), [30000], 'an answered error does not slow the next refresh: ' + s.delays());
+});
+
 console.log('inventory failure path tests passed');
