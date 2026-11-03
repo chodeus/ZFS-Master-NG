@@ -27,6 +27,14 @@ function env($settings) { foreach ($settings as $key => $value) putenv($key.'='.
 $saved = parse_ini_string(zfsmConfigText(array('general' => array('directory_listing' => "tank/a\ntank/b", 'snap_prefix' => 'say "hi"'))), true);
 same(array('tank/a', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), 'a second directory listing entry keeps its own line');
 same('say "hi"', $saved['general']['snap_prefix'], 'a quote survives a save');
+// Unraid 6 reads the file as written; Unraid 7 strips tags and decodes entities first.
+foreach (array("a\"\nevil = \"1", "a&quot;\nevil = &quot;1") as $hostile) {
+	$text = zfsmConfigText(array('general' => array('snap_prefix' => $hostile, 'after' => 'kept')));
+	foreach (array($text, strip_tags(html_entity_decode($text))) as $read) {
+		$saved = @parse_ini_string($read, true); // Unraid 7 cannot read a decoded &quot; even on one line
+		same(false, isset($saved['general']['evil']), 'a quote before a line break let a value start its own setting');
+	}
+}
 
 // Dates without Unraid's helpers fall back to one plain format, and every dataset and snapshot gets one.
 same(date('Y-m-d H:i', 1793700000), zfsmTime(1793700000), 'fallback date format');

@@ -285,7 +285,10 @@ function zfsmConfigText($array) {
 		foreach ($elem as $key2 => $elem2) {
 			$values = is_array($elem2) ? $elem2 : array($elem2);
 			foreach ($values as $value) {
-				$value = str_replace(array('\\', '"', "\r"), array('\\\\', '\\"', ''), (string)$value);
+				$value = str_replace("\r", '', (string)$value);
+				// A quote before a line break ends the INI string (Unraid 7 also decodes &quot;), so such a value keeps one line.
+				if (strpbrk($value, '"&') !== false) $value = str_replace("\n", '', $value);
+				$value = str_replace(array('\\', '"'), array('\\\\', '\\"'), $value);
 				$content .= $key2.(is_array($elem2) ? '[]' : '').' = "'.$value."\"\n";
 			}
 		}
