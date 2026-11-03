@@ -30,7 +30,7 @@ function launch({interval = 30} = {}) {
   }
   $.ajax = options => {
     const request = {options, done(callback) { this.resolve = callback; return this; },
-      fail(callback) { this.reject = callback; return this; }};
+      fail(callback) { this.reject = callback; return this; }, abort() { this.aborted = true; }};
     requests.push(request);
     return request;
   };
@@ -45,9 +45,9 @@ function launch({interval = 30} = {}) {
   vm.runInContext(frontend, context);
   vm.runInContext(inventory, context);
   const script = mainScript.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php => {
-    if (php.includes('json_encode($zfsm_cfg)')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
+    if (php.includes('json_encode($zfsm_cfg')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
       destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []});
-    if (php.includes('json_encode($display)')) return JSON.stringify({text: 0, warning: 80, critical: 90});
+    if (php.includes('json_encode($display')) return JSON.stringify({text: 0, warning: 80, critical: 90});
     if (php.includes('$urlzmadmin')) return '/plugins/zfs.master/backend/ZFSMAdmin.php';
     return '';
   });
@@ -80,8 +80,14 @@ check('stop: failed per-pool read after pagehide does not start the next pool', 
   s.requests[0].resolve(lazy());
   assert.equal(s.requests.length, 2);
   s.events.pagehide();
+  assert.equal(s.requests[1].aborted, true, 'leaving the page leaves the pool read running');
   s.requests[1].reject({status: 0}, 'abort');
   assert.equal(s.requests.length, 2, 'stopped controller issued a request for the next pool');
+});
+check('stop: the first inventory read is aborted on pagehide', () => {
+  const s = launch();
+  s.events.pagehide();
+  assert.equal(s.requests[0].aborted, true, 'leaving the page leaves the inventory read running');
 });
 check('stop: succeeded per-pool read after pagehide (control)', () => {
   const s = launch();
@@ -107,7 +113,8 @@ check('render exception during lazy merge does not wedge the controller', () => 
 check('a persistent query error keeps the chosen interval', () => {
   const s = launch({interval: 30});
   s.context.updateFullBodyTable = () => {};
-  const withError = () => ({op: 'getAll', data: {pools: {}, devices: {}, datasets: {}, errors: {tank: 'zfs list: permission'}}});
+  const withError = () => ({op: 'getAll', data: {pools: {tank: {Pool: 'tank', Snapshots: 0}}, devices: {tank: ''},
+    datasets: {tank: {name: 'tank', snapshots: [], _snapshot_error: 'zfs list: permission'}}, errors: {tank: 'zfs list: permission'}}});
   for (let i = 0; i < 6; i++) { s.requests[i].resolve(withError()); if (i < 5) s.expire(); }
   assert.deepEqual(s.delays(), [30000], 'delay after successful reads: ' + s.delays());
 });

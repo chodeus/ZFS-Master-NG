@@ -465,14 +465,16 @@ function createDataset($zdataset, $zoptions) {
 		if ($missing === null) return zfsmFailure($zdataset, 'Could not check whether '.$name.' exists, so nothing was created.');
 		if ($missing) $created[] = $name;
 	}
-	// zfs create -p succeeds on an existing target, so the target is created without it.
 	if (end($created) !== $zdataset) return zfsmFailure($zdataset, 'A dataset with this name already exists.');
-	$parents = array_slice($created, 0, -1);
-	$result = $parents ? runProcess('zfs', array('create', '-p', end($parents))) : array('code' => 0);
-	if (($result['code'] ?? 1) === 0) $result = runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
+	// No -p: it succeeds on a dataset someone else just made, and only ours may get the share owner.
+	$owned = array();
+	foreach ($created as $name) {
+		$result = $name === $zdataset ? runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null) : runProcess('zfs', array('create', $name));
+		if (($result['code'] ?? 1) !== 0) break;
+		$owned[] = $name;
+	}
 	$answer = commandAnswer($zdataset, $result);
-	// New parents get Unraid's share owner even when the target fails; the target only once it is ours.
-	foreach (($result['code'] ?? 1) === 0 ? $created : $parents as $name) {
+	foreach ($owned as $name) {
 		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
 		if (is_string($mountpoint) && $mountpoint !== '' && $mountpoint[0] === '/' && is_dir($mountpoint)) {
 			@chown($mountpoint, 'nobody');

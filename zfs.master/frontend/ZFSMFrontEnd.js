@@ -32,7 +32,8 @@ function snapshotCell(color, count, browsePath) {
 // Tabbed pages have no title line, so the bar stays where it is.
 function zfsmMoveStatusIntoTitle(bar) {
 	let title = bar ? bar.previousElementSibling : null;
-	while (title && !(title.tagName === 'DIV' && title.classList.contains('title'))) title = title.previousElementSibling;
+	// Unraid 6.9 and 6.11 mark it div#title; 6.12 and later use div.title.
+	while (title && !(title.tagName === 'DIV' && (title.id === 'title' || title.classList.contains('title')))) title = title.previousElementSibling;
 	if (!title) return false;
 	title.classList.add('disable_diskio');
 	let right = title.querySelector('span.right');

@@ -108,6 +108,19 @@ for (const withRight of [true, false]) {
 	assert.deepEqual(right.children[0].children.map(c => c.className), ['refresh time', 'settings', 'refresh'], 'all three move, in order'+(withRight ? '' : ', into a right span made for them'));
 	assert.ok(bar.removed, 'the empty bar goes');
 }
+// Unraid 6.9 and 6.11 mark the title line div#title; an earlier div.title belongs to someone else.
+{
+	const other = element('DIV', ['title']);
+	const legacy = element('DIV');
+	legacy.id = 'title';
+	legacy.previousElementSibling = other;
+	const bar = element('DIV', ['title', 'zfs_master_title']);
+	bar.previousElementSibling = legacy;
+	bar.appendChild(element('SPAN', ['refresh time']));
+	assert.equal(context.zfsmMoveStatusIntoTitle(bar), true);
+	assert.ok(legacy.classList.contains('disable_diskio'), 'the 6.9 title line takes the status');
+	assert.equal(other.children.length, 0, 'an earlier title is left alone');
+}
 const tabbed = element('DIV', ['title', 'zfs_master_title']);
 tabbed.appendChild(element('SPAN', ['refresh time']));
 assert.equal(context.zfsmMoveStatusIntoTitle(tabbed), false, 'a tabbed page has no title line, so the bar stays');

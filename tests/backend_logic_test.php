@@ -141,10 +141,11 @@ if ($test_log) {
 	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent,tank/newparent/child');
 	assertSameValue(true, !empty(createDataset('tank/newparent/child', array('readonly' => 'on', 'sync' => 'always'))['succeeded']), 'Read-only create failed');
 	$commands = file_get_contents($test_log);
-	$parent = strpos($commands, "create -p tank/newparent\n");
+	$parent = strpos($commands, "create tank/newparent\n");
 	$create = strpos($commands, "create -o sync=always tank/newparent/child\n");
 	$readonly = strpos($commands, 'set readonly=on tank/newparent/child');
-	assertSameValue(true, $parent !== false && $create !== false && $create > $parent, 'parents are made first, then the target without -p: '.$commands);
+	assertSameValue(true, $parent !== false && $create !== false && $create > $parent, 'each parent is made first, then the target, none with -p: '.$commands);
+	assertSameValue(false, strpos($commands, 'create -p') !== false, 'create -p succeeds on a dataset someone else made');
 	assertSameValue(true, $readonly !== false && $readonly > $create, 'readonly must be set after the create: '.$commands);
 	assertSameValue(false, strpos($commands, '-o readonly=on') !== false, 'readonly must not be set at create time');
 	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent"), 'a new parent gets the share owner');
@@ -157,6 +158,18 @@ if ($test_log) {
 	$answer = createDataset('tank/newparent/child', array('readonly' => 'on'));
 	assertSameValue(true, empty($answer['succeeded']) && strpos(implode(' ', $answer['failed']), 'already exists') !== false, 'an existing target is refused: '.json_encode($answer));
 	assertSameValue('', (string)@file_get_contents($test_log), 'nothing is created or set on an existing target');
+
+	// A parent someone else made in the meantime stops the create, and is not given the share owner.
+	foreach (array('tank/newparent', 'tank/newparent/child') as $dir) chown("$mounts/$dir", 'root');
+	@unlink($test_log);
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent,tank/newparent/child');
+	putenv('ZFSM_TEST_CREATE_FAIL=tank/newparent');
+	$answer = createDataset('tank/newparent/child', array());
+	assertSameValue(true, empty($answer['succeeded']) && strpos(implode(' ', $answer['failed']), 'already exists') !== false, 'a parent that could not be made fails the create: '.json_encode($answer));
+	assertSameValue(false, strpos((string)@file_get_contents($test_log), 'tank/newparent/child') !== false, 'the target is not created under a parent this request did not make');
+	assertSameValue('0', (string)fileowner("$mounts/tank/newparent"), 'a parent this request did not make keeps its owner');
+	putenv('ZFSM_TEST_CREATE_FAIL');
+	@unlink($test_log);
 
 	// A failed read of a parent stops the create; it must not run with ownership unknown.
 	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent/child');

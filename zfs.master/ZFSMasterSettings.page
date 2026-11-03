@@ -138,7 +138,7 @@ var zfsm_tips = <?=json_encode(array(
 	'snap_max_days_alert' => _('Days since the last snapshot before the camera icon turns orange.'),
 	'snap_pattern' => _('Date format for new snapshot names, using PHP date() letters.'),
 	'snap_prefix' => _('Text placed before the date in new snapshot names.'),
-))?>;
+), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
 	if (zfsm_tips[name]) $(this).children('dt').addClass('zfsm-tip').attr({'data-tip': zfsm_tips[name], tabindex: 0});

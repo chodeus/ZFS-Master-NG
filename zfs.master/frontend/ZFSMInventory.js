@@ -12,6 +12,7 @@ function createZFSMInventoryController(options) {
     let timer = null;
     let stopped = false;
     let failures = 0;
+    let active = null;
 
     // Back off while reads fail: a pool too slow to list must not be queried back to back.
     function schedule() {
@@ -56,9 +57,10 @@ function createZFSMInventoryController(options) {
     }
 
     function request(data, done, onFailure = failed) {
-        $.ajax({url: options.url, method: 'POST', dataType: 'json', timeout: 60000,
+        active = $.ajax({url: options.url, method: 'POST', dataType: 'json', timeout: 60000,
             data: Object.assign({csrf_token: options.csrf}, data)
-        }).done(function(answer) {
+        });
+        active.done(function(answer) {
             if (stopped) return;
             try { validate(answer); done(answer); }
             catch (error) { onFailure('Unable to load ZFS inventory: ' + error.message); }
@@ -141,7 +143,10 @@ function createZFSMInventoryController(options) {
         });
     }
 
-    return {refresh: refresh, stop: function() { stopped = true; pending = false; clearTimeout(timer); }};
+    return {refresh: refresh, stop: function() {
+        stopped = true; pending = false; clearTimeout(timer);
+        if (active && typeof active.abort === 'function') active.abort();
+    }};
 }
 
 // Called in the main page and both popup documents, so even manual-refresh mode

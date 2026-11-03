@@ -78,8 +78,17 @@ switch ($check) {
 
 	case 'main_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
+		// A saved setting that closes the script tag must stay inside the page's JSON.
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		file_put_contents($cfg, str_replace('snap_prefix = ""', 'snap_prefix = "</script><i id=zfsm-injected>"', $original));
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+		// Unraid 7 strips tags when it reads settings; 6.x hands them over as saved.
+		$tags_survive = strpos(parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? '', '<') !== false;
+		file_put_contents($cfg, $original);
 		if (strpos($html, 'zfs_master_body') === false) { fwrite(STDERR, "main page did not render\n"); exit(1); }
+		if ($tags_survive && strpos($html, 'zfsm-injected') === false) { fwrite(STDERR, "the hostile setting never reached the page\n"); exit(1); }
+		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
 		break;
 
 	case 'saved_settings':

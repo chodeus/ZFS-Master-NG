@@ -79,4 +79,9 @@ fi
 if [ -n "$ZFSM_TEST_LOG" ]; then
 	printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
 fi
+
+if [ "$1" = "create" ] && [ -n "${ZFSM_TEST_CREATE_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_CREATE_FAIL" ]; then
+	printf "cannot create '%s': dataset already exists\n" "$last_arg" >&2
+	exit 1
+fi
 exit 0
