@@ -45,25 +45,25 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 		<details class="zfsm-section" open>
 			<summary>Basic</summary>
 			<div>
-				<dl><dt>Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
-				<dl><dt>Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
-				<dl><dt>Mount point:</dt><dd><input type="text" id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
-				<dl><dt>Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
-				<dl><dt>Case sensitivity:</dt><dd><select id="casesensitivity" name="casesensitivity"><option value="sensitive" selected>Sensitive (default)</option><option value="insensitive">Insensitive</option><option value="mixed">Mixed</option></select></dd></dl>
-				<dl><dt>Compression:</dt><dd><select id="compression" name="compression"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select></dd></dl>
-				<dl><dt>Quota:</dt><dd><input type="text" id="quota" name="quota" maxlength="5" size="6" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
+				<dl title="Where the dataset goes in the pool, for example appdata/plex."><dt>Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
+				<dl title="No leaves the dataset unmounted."><dt>Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
+				<dl title="Leave empty to mount it under its parent, or enter a full path."><dt>Mount point:</dt><dd><input type="text" id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
+				<dl title="Record when files are read. Off saves disk writes."><dt>Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
+				<dl title="How file names are compared. Can only be set now."><dt>Case sensitivity:</dt><dd><select id="casesensitivity" name="casesensitivity"><option value="sensitive" selected>Sensitive (default)</option><option value="insensitive">Insensitive</option><option value="mixed">Mixed</option></select></dd></dl>
+				<dl title="Compress data as it is written. lz4 is fast; zstd saves more space."><dt>Compression:</dt><dd><select id="compression" name="compression"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select></dd></dl>
+				<dl title="Most space this dataset and its children can use. Empty means no limit."><dt>Quota:</dt><dd><input type="text" id="quota" name="quota" maxlength="5" size="6" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
 			</div>
 		</details>
 		<details class="zfsm-section">
 			<summary>Advanced</summary>
 			<div>
-				<dl><dt>Encryption:</dt><dd><select id="encryption" name="encryption"><option value="yes">Yes</option><option value="no" selected>No</option></select></dd></dl>
-				<dl><dt>Passphrase:</dt><dd><input id="passphrase" class="zfsm-wide" name="passphrase" autocomplete="off" type="password" disabled></dd></dl>
-				<dl><dt>Extended attributes:</dt><dd><select id="xattr" name="xattr"><option value="inherit" selected>Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select></dd></dl>
-				<dl><dt>Record size:</dt><dd><select id="recordsize" name="recordsize"><option value="inherit" selected>Inherit</option><option value="512">512</option><option value="4K">4KB</option><option value="8K">8KB</option><option value="16K">16KB</option><option value="64K">64KB</option><option value="128K">128KB</option><option value="1M">1MB</option></select></dd></dl>
-				<dl><dt>Primary cache:</dt><dd><select id="primarycache" name="primarycache"><option value="inherit" selected>Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select></dd></dl>
-				<dl><dt>Read only:</dt><dd><select id="readonly" name="readonly"><option value="off" selected>Off (default)</option><option value="on">On</option></select></dd></dl>
-				<dl><dt>Sync:</dt><dd><select id="sync" name="sync"><option value="standard" selected>Standard (default)</option><option value="always">Always</option><option value="disabled">Disabled</option></select></dd></dl>
+				<dl title="Lock the dataset with a passphrase. Can only be set now."><dt>Encryption:</dt><dd><select id="encryption" name="encryption"><option value="yes">Yes</option><option value="no" selected>No</option></select></dd></dl>
+				<dl title="At least 8 characters. You need it to unlock the dataset after a reboot."><dt>Passphrase:</dt><dd><input id="passphrase" class="zfsm-wide" name="passphrase" autocomplete="off" type="password" minlength="8" disabled></dd></dl>
+				<dl title="How file attributes are stored. sa is faster on Linux."><dt>Extended attributes:</dt><dd><select id="xattr" name="xattr"><option value="inherit" selected>Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select></dd></dl>
+				<dl title="Largest block size. Bigger suits media; smaller suits databases."><dt>Record size:</dt><dd><select id="recordsize" name="recordsize"><option value="inherit" selected>Inherit</option><option value="512">512</option><option value="4K">4KB</option><option value="8K">8KB</option><option value="16K">16KB</option><option value="64K">64KB</option><option value="128K">128KB</option><option value="1M">1MB</option></select></dd></dl>
+				<dl title="What ZFS keeps in RAM: everything, only metadata, or nothing."><dt>Primary cache:</dt><dd><select id="primarycache" name="primarycache"><option value="inherit" selected>Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select></dd></dl>
+				<dl title="Block all changes to the dataset's files."><dt>Read only:</dt><dd><select id="readonly" name="readonly"><option value="off" selected>Off (default)</option><option value="on">On</option></select></dd></dl>
+				<dl title="Disabled is faster but can lose the last writes in a power cut."><dt>Sync:</dt><dd><select id="sync" name="sync"><option value="standard" selected>Standard (default)</option><option value="always">Always</option><option value="disabled">Disabled</option></select></dd></dl>
 			</div>
 		</details>
 		<datalist id="zpool-datasets">
@@ -111,7 +111,7 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
   });
 
   $("select[name='encryption']").change(function() {
-	$("#passphrase").attr('disabled', $(this).val() == 'no');
+	$("#passphrase").prop('disabled', $(this).val() == 'no').prop('required', $(this).val() == 'yes');
   });
    
   function createDataset() {

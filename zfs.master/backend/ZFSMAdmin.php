@@ -65,7 +65,9 @@ try {
 			$pool = is_string($data['zpool'] ?? null) ? $data['zpool'] : '';
 			$name = is_string($data['name'] ?? null) ? trim($data['name'], '/') : '';
 			$dataset = $pool.($name !== '' ? '/'.$name : '');
-			zfsmReturnAnswer(createDataset($dataset, cleanZFSCreateDatasetParams($data)), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset');
+			// Without this, an empty passphrase quietly created the dataset unencrypted.
+			$unencrypted = ($data['encryption'] ?? 'no') === 'yes' && (string)($data['passphrase'] ?? '') === '';
+			zfsmReturnAnswer($unencrypted ? zfsmFailure($dataset, 'Enter a passphrase, or set Encryption to No.') : createDataset($dataset, cleanZFSCreateDatasetParams($data)), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset');
 			break;
 
 		case 'editdatasetproperty':

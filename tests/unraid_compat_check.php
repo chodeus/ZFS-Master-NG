@@ -137,7 +137,7 @@ switch ($check) {
 		$html = ob_get_clean();
 		if (strpos($html, 'zfsm_csrf_token') === false) { fwrite(STDERR, "create popup did not render\n"); exit(1); }
 		foreach (array('name', 'mount', 'mountpoint', 'quota', 'encryption', 'passphrase', 'sync') as $field) {
-			if (!preg_match('#<dl><dt>[^<]+</dt><dd>[^\n]*name="'.$field.'"#', $html)) { fwrite(STDERR, "create popup lost the $field row\n"); exit(1); }
+			if (!preg_match('#<dl title="[^"]+"><dt>[^<]+</dt><dd>[^\n]*name="'.$field.'"#', $html)) { fwrite(STDERR, "create popup lost the $field row or its tooltip\n"); exit(1); }
 		}
 		popup_styles($html, $docroot);
 		break;

@@ -128,6 +128,21 @@ _(Snapshots Prefix (Do not include the '@'))_:
 </form>
 
 <script>
+var zfsm_tips = <?=json_encode(array(
+	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
+	'lazy_load' => _('Show datasets first, then load snapshots one pool at a time.'),
+	'znapzend_data' => _('Show ZnapZend backup plans on each dataset.'),
+	'destructive_mode' => _('Allow destroy, rollback and other actions that delete data.'),
+	'exclusion' => _('Hide datasets whose names match this pattern.'),
+	'directory_listing' => _('Datasets whose folders are listed on the Main tab, one per line.'),
+	'snap_max_days_alert' => _('Days without a snapshot before the camera icon turns orange.'),
+	'snap_pattern' => _('Date format for new snapshot names, using PHP date() letters.'),
+	'snap_prefix' => _('Text placed before the date in new snapshot names.'),
+))?>;
+$('details.zfsm-section dl').each(function() {
+	var name = $(this).find('[name]').attr('name');
+	if (zfsm_tips[name]) this.title = zfsm_tips[name];
+});
 $('textarea[name="exclusion"]').on('change', function() {
 	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', {cmd: 'validateexclusion', pattern: $(this).val()}, function(answer) {
 		$('#zfsm-exclusion-warning').text(answer.valid ? '' : 'This pattern is invalid and would be ignored.');
