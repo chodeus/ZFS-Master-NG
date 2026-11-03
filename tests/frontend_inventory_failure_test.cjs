@@ -180,4 +180,17 @@ check('dataset error in a full answer is not cached as complete', () => {
   assert.match(s.body.innerHTML, /ZFS query failed/, 'the failure is shown');
 });
 
+// A pool whose first dataset read failed but whose own read then answered cleanly makes the result complete again.
+check('a pool that recovers in its own read is cached as complete', () => {
+  const s = launch();
+  s.context.updateFullBodyTable = () => {};
+  const answer = lazy();
+  answer.data.datasets.tank = {name: 'tank', child: {}, _error: 'zfs list failed'};
+  answer.data.errors = {tank: 'zfs list failed'};
+  s.requests[0].resolve(answer);
+  s.requests[1].resolve(poolResult('tank', 1));
+  s.requests[2].resolve(poolResult('cache', 2));
+  assert.equal(s.storage.has('zfsm-cache'), true, 'a recovered pool left the cache unsaved');
+});
+
 console.log('inventory failure path tests passed');

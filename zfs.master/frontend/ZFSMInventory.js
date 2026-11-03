@@ -82,7 +82,6 @@ function createZFSMInventoryController(options) {
             const data = answer.data;
             const pools = answer.op === 'getDatasets' ? Object.keys(data.pools) : [];
             let snapshotsMissing = false;
-            let snapshotsIncomplete = false;
             Object.keys(data.pools).forEach(answered);
             options.render(data, false);
 
@@ -94,13 +93,18 @@ function createZFSMInventoryController(options) {
                 })(data.datasets[pool]);
             }
 
-            // A pool that answered with a dataset or snapshot error is not slow, but its counts must not be cached.
+            function errored(pool) {
+                return Boolean(data.datasets[pool]._error || data.datasets[pool]._snapshot_error);
+            }
+
+            // A pool that answered with a dataset or snapshot error is not slow, but its counts are unavailable.
             function answered(pool) {
-                if (data.datasets[pool]._error || data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
+                if (errored(pool)) unavailable(pool);
             }
 
             function complete() {
-                options.render(data, !snapshotsMissing && !snapshotsIncomplete);
+                // Judge the merged answer: a pool whose first read failed may have recovered in its own read.
+                options.render(data, !snapshotsMissing && !Object.keys(data.pools).some(errored));
                 // A pool that answers with a query error is not slow, so only unanswered reads back off.
                 failures = snapshotsMissing ? failures + 1 : 0;
                 let message = 'Last refresh at ' + new Date().toLocaleString('en-US', {hour12: false});
