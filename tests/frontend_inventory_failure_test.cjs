@@ -98,15 +98,16 @@ check('stop: succeeded per-pool read after pagehide (control)', () => {
   assert.equal(s.requests.length, 2);
 });
 
-// A renderer exception while merging a pool must still end the refresh
-// (pre-diff: failed() → finish() → schedule). Expected: error status and one timer.
+// A renderer that keeps failing while merging a pool must end the refresh: no next pool, a retry, the error shown.
 check('render exception during lazy merge does not wedge the controller', () => {
   const s = launch();
   let calls = 0;
   s.context.updateFullBodyTable = () => { if (++calls > 1) throw new Error('render broke'); };
   s.requests[0].resolve(lazy());
   try { s.requests[1].resolve(poolResult('tank', 1)); } catch (_) { /* jQuery would rethrow too */ }
-  assert.equal(s.timers.size + (s.requests.length > 2 ? 1 : 0), 1, 'no next pool and no retry timer: refresh is stuck busy');
+  assert.equal(s.requests.length, 2, 'a renderer that keeps failing still started the next pool');
+  assert.equal(s.timers.size, 1, 'no retry timer: refresh is stuck busy');
+  assert.match(s.status(), /render broke/, 'the render error is not shown: ' + s.status());
 });
 
 // A pool that answers with a query error must not slow refreshes for every pool.
