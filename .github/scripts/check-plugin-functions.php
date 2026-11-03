@@ -56,12 +56,20 @@ foreach ($it as $file) {
     foreach ($meaningful as $n => $i) {
         $t = $tokens[$i];
         if (!is_array($t)) continue;
+        // Names here are only right in the global namespace; refuse rather than guess.
+        if ($t[0] === T_NAMESPACE) {
+            fwrite(STDERR, $file->getPathname() . " declares a namespace, which this check does not resolve\n");
+            exit(3);
+        }
         $isName = $t[0] === T_STRING
-            || (defined('T_NAME_FULLY_QUALIFIED') && $t[0] === T_NAME_FULLY_QUALIFIED);
+            || (defined('T_NAME_FULLY_QUALIFIED') && $t[0] === T_NAME_FULLY_QUALIFIED)
+            || (defined('T_NAME_QUALIFIED') && $t[0] === T_NAME_QUALIFIED);
         if (!$isName) continue;
-        // PHP function names are case-insensitive; compare and key on a normalised form
+        // PHP function names are case-insensitive; compare and key on a normalised form.
+        // A qualified Ns\\zfsmX keeps its namespace, so it never matches a global definition.
         $name = strtolower(ltrim($t[1], "\\"));
-        if (strpos($name, $prefix) !== 0) continue;
+        $last = ($cut = strrpos($name, "\\")) === false ? $name : substr($name, $cut + 1);
+        if (strpos($last, $prefix) !== 0) continue;
         $prev = $n > 0 ? $tokens[$meaningful[$n - 1]] : null;
         $next = isset($meaningful[$n + 1]) ? $tokens[$meaningful[$n + 1]] : null;
 

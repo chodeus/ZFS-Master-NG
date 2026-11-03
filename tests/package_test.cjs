@@ -32,6 +32,7 @@ try {
   assert.equal(urlFromBuild(['--branch', 'beta']), 'https://raw.githubusercontent.com/&github;/beta/&name;.plg');
   assert.equal(urlFromBuild(['--branch', 'feat/my-test_1.2']), 'https://raw.githubusercontent.com/&github;/feat/my-test_1.2/&name;.plg', 'a named branch keeps its own update check');
   assert.equal(urlFromBuild([]), 'https://raw.githubusercontent.com/&github;/main/&name;.plg', 'an undetected local branch falls back to main');
+  assert.equal(urlFromBuild(['--branch', 'feature/a+b']), 'https://raw.githubusercontent.com/&github;/feature/a+b/&name;.plg', 'git allows + in a branch name');
   assert.throws(() => urlFromBuild(['--branch', 'a&b|c']), /Command failed/, 'a branch name that cannot go in a URL is refused');
 
   const built = fs.readFileSync(path.join(work, 'zfs.master.plg'), 'utf8');

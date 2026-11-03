@@ -13,6 +13,9 @@ $cases = array(
     "names match in any case"            => array(0, '<?php function zfsmA() {} ZFSMA();'),
     "a call in a comment does not count" => array(0, "<?php // zfsmMissing();\n/* zfsmMissing(); */ echo 1;"),
     "a guarded definition counts"        => array(0, '<?php if (!function_exists("zfsmG")) { function zfsmG() {} } zfsmG();'),
+    "a fully qualified call resolves"    => array(0, '<?php function zfsmA() {} \\zfsmA();'),
+    "a namespaced call is not global"    => array(1, '<?php function zfsmA() {} Demo\\zfsmA();'),
+    "a namespace is refused, not guessed" => array(3, '<?php namespace Demo; function zfsmA() {} \\zfsmA();'),
 );
 $failed = 0;
 foreach ($cases as $name => $case) {

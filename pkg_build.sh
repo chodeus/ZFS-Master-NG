@@ -33,7 +33,7 @@ if [ -z "$branch" ]; then
     branch=$(git -C "$root" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
     case "$branch" in main|beta) ;; *) echo "Warning: branch '$branch' is not a channel, pointing pluginURL at main"; branch=main ;; esac
 fi
-[[ "$branch" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "ERROR: branch '$branch' cannot go in pluginURL"; exit 1; }
+[[ "$branch" =~ ^[A-Za-z0-9._/+-]+$ ]] || { echo "ERROR: branch '$branch' cannot go in pluginURL"; exit 1; }
 
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
