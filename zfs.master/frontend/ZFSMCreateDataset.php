@@ -58,14 +58,22 @@ input[type=email]{margin-top:8px;float:left}
 	  margin-bottom: 0;
   }
   
-  .zfsm-input:disabled {
-	  background-color: lightgrey;
+  /* Theme variables exist from Unraid 7.1; the fallbacks are the older popup look. */
+  .zfsm-row {
+	  margin: 14px 0;
+  }
+
+  .zfsm-form .zfsm-input:disabled {
+	  background-color: var(--mild-background-color, lightgrey);
+	  color: var(--disabled-text-color, inherit);
   }
   
-  .zfsm-input {
-	  background-color: #fff;
+  .zfsm-form .zfsm-input {
+	  background-color: var(--input-bg-color, #fff);
+	  color: var(--text-color, #000);
 	  width: auto;
-	  border: 1px solid rgba(0,0,0,.10);
+	  margin: 0 4px;
+	  border: 1px solid var(--input-border-color, rgba(0,0,0,.10));
 	  display: inline-block;
 	  padding: 10px 5px;
 	  border-radius: 5px;
@@ -82,9 +90,9 @@ input[type=email]{margin-top:8px;float:left}
 	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
   }
   
-  .zfsm-unraid-border {
+  .zfsm-form .zfsm-unraid-border {
 	  border: 1px solid rgba(0,0,0,.10);
-	  background-color: #fff!important;
+	  background-color: var(--input-bg-color, #fff)!important;
 	  background: linear-gradient(90deg,#e22828 0,#ff8c2f) 0 0 no-repeat,linear-gradient(90deg,#e22828 0,#ff8c2f) 0 100% no-repeat,linear-gradient(0deg,#e22828 0,#e22828) 0 100% no-repeat,linear-gradient(0deg,#ff8c2f 0,#ff8c2f) 100% 100% no-repeat;
 	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
   }
@@ -139,7 +147,7 @@ input[type=email]{margin-top:8px;float:left}
 				<div class="zfsm-title">Base Options</div>
 			<hr>
 			<div id="dataset-base-options">
-				<dl>
+				<div class="zfsm-row">
 					Dataset Name<br>
 					<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
 					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" maxlength="768" pattern="[A-Za-z0-9][A-Za-z0-9_.:%/-]*" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
@@ -148,8 +156,8 @@ input[type=email]{margin-top:8px;float:left}
 						generatePoolDatasetOptions($zpool_datasets);
 					?>
 					</datalist>
-				</dl>
-				<dl>
+				</div>
+				<div class="zfsm-row">
 					Mount
 					<select id="mount" name="mount" class="zfsm-input">
 						<option value="yes" selected>Yes</option>
@@ -162,8 +170,8 @@ input[type=email]{margin-top:8px;float:left}
 						<option value="off">Off</option>
 						<option value="on">On</option>
 					</select>
-				</dl>
-				<dl>
+				</div>
+				<div class="zfsm-row">
 					Case Sensitivity
 					<select id="casesensitivity" name="casesensitivity" class="zfsm-input">
 						<option value="sensitive" selected>Sensitive (Default)</option>
@@ -185,21 +193,21 @@ input[type=email]{margin-top:8px;float:left}
 						<option value="G">GiB</option>
 						<option value="T">TiB</option>
 					</select>
-				</dl>
+				</div>
 			</div>
 			<hr>
 				<div class="zfsm-title">Advanced Options</div>
 			<hr>
 			<div id="dataset-advanced-options">
-				<dl>
+				<div class="zfsm-row">
 					Encryption
 					<select id="encryption" name="encryption" class="zfsm-input">
 						<option value="yes">Yes</option>
 						<option value="no" selected>No</option>
 					</select>
 					<input id="passphrase" name="passphrase" autocomplete="off" type="password" class="zfsm-input zfsm-w50 zfsm-unraid-border" placeholder="Encryption PassPhrase" disabled>
-				</dl>
-				<dl>
+				</div>
+				<div class="zfsm-row">
 					Extended Attributes:
 					<select id="xattr" name="xattr" class="zfsm-input">
 						<option value="inherit" selected>Inherit</option>
@@ -218,8 +226,8 @@ input[type=email]{margin-top:8px;float:left}
 						<option value="128K">128KB</option>
 						<option value="1M">1MB</option>
 					</select>
-				</dl>
-				<dl>
+				</div>
+				<div class="zfsm-row">
 					Primary Cache:
 					<select id="primarycache" name="primarycache" class="zfsm-input">
 						<option value="inherit" selected>Inherit</option>
@@ -238,7 +246,7 @@ input[type=email]{margin-top:8px;float:left}
 						<option value="always">Always</option>
 						<option value="disabled">Disabled</option>
 					</select>
-				</dl>
+				</div>
 			</div>
 			<hr>
 			<div id="dataset-footer" class="zfsm-footer">
