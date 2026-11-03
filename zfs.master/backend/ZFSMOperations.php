@@ -475,16 +475,25 @@ function createDataset($zdataset, $zoptions) {
 		$owned[] = $name;
 	}
 	$answer = commandAnswer($zdataset, $result);
-	foreach ($owned as $name) {
-		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
-		if (is_string($mountpoint) && $mountpoint !== '' && $mountpoint[0] === '/' && is_dir($mountpoint)) {
-			@chown($mountpoint, 'nobody');
-			@chgrp($mountpoint, 'users');
-		}
+	$unowned = zfsmSetShareOwner($pool, $owned);
+	if (($result['code'] ?? 1) !== 0) return $answer;
+	$problems = $unowned ? array('the share owner could not be set on '.implode(', ', $unowned)) : array();
+	if ($readonly) {
+		$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
+		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.trim($set['output'] ?? '');
 	}
-	if (($result['code'] ?? 1) !== 0 || !$readonly) return $answer;
-	$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
-	return ($set['code'] ?? 1) === 0 ? $answer : zfsmFailure($zdataset, 'Created, but it could not be made read-only: '.trim($set['output'] ?? ''));
+	return $problems ? zfsmFailure($zdataset, 'Created, but '.implode('; ', $problems)) : $answer;
+}
+
+// Returns the datasets whose mountpoint could not be given to nobody:users.
+function zfsmSetShareOwner($pool, $names) {
+	$failed = array();
+	foreach ($names as $name) {
+		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
+		if ($mountpoint === 'none' || $mountpoint === 'legacy') continue;
+		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users')) $failed[] = $name;
+	}
+	return $failed;
 }
 
 function renameDataset($zdataset, $new_name, $force) {

@@ -121,7 +121,11 @@ if ($test_log) {
 	assertSameValue(true, !empty(cloneDatasetSnapshot('tank/data@daily', 'tank/clone')['succeeded']), 'Snapshot clone failed');
 	assertSameValue(true, !empty(deleteDatasetSnapshot('tank/data@daily', 0)['succeeded']), 'Snapshot delete failed');
 	putenv('ZFSM_TEST_MISSING_DATASET=tank/secure');
+	$secure = sys_get_temp_dir().'/zfsm-secure';
+	if (!is_dir($secure)) mkdir($secure);
+	putenv('ZFSM_TEST_DATASET_MOUNT='.$secure);
 	assertSameValue(true, !empty(createDataset('tank/secure', array('encryption' => 'on', 'keyformat' => 'passphrase', 'keylocation' => 'prompt', 'passphrase' => 'secret123'))['succeeded']), 'Encrypted dataset create failed');
+	putenv('ZFSM_TEST_DATASET_MOUNT');
 	putenv('ZFSM_TEST_MISSING_DATASET');
 	$commands = file_get_contents($test_log);
 	foreach (array('rename -f tank/data tank/data-renamed', 'set compression=zstd tank/data', 'destroy -v -r -f tank/data', 'snapshot -r tank/data@manual', 'rollback tank/data@daily', 'rollback -r tank/data@daily', 'clone tank/data@daily tank/clone', 'destroy tank/data@daily', 'create -o encryption=on -o keyformat=passphrase -o keylocation=prompt tank/secure') as $expected_command) {
@@ -151,6 +155,17 @@ if ($test_log) {
 	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent"), 'a new parent gets the share owner');
 	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent/child"), 'the new dataset gets the share owner');
 	assertSameValue('0', (string)fileowner("$mounts/tank"), 'an existing dataset keeps its owner');
+
+	// A new dataset left without the share owner is reported, and read-only is still tried.
+	@unlink($test_log);
+	rmdir("$mounts/tank/newparent/child");
+	putenv('ZFSM_TEST_GET_FAIL=tank/newparent');
+	putenv('ZFSM_TEST_SET_FAIL=1');
+	$answer = createDataset('tank/newparent/child', array('readonly' => 'on'));
+	putenv('ZFSM_TEST_GET_FAIL');
+	putenv('ZFSM_TEST_SET_FAIL');
+	mkdir("$mounts/tank/newparent/child");
+	assertSameValue(array('succeeded' => array(), 'failed' => array('tank/newparent/child' => "Created, but the share owner could not be set on tank/newparent, tank/newparent/child; it could not be made read-only: cannot set property for 'tank/newparent/child': permission denied")), $answer, 'an unset owner or read-only was not reported');
 
 	// zfs create -p succeeds on an existing target; it must not be changed or claimed.
 	@unlink($test_log);
