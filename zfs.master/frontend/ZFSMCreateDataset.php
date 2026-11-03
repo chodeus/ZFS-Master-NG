@@ -63,6 +63,10 @@ input[type=email]{margin-top:8px;float:left}
 	  margin: 14px 0;
   }
 
+  .zfsm-form select.zfsm-input {
+	  padding-right: 24px;
+  }
+
   .zfsm-form .zfsm-input:disabled {
 	  background-color: var(--mild-background-color, lightgrey);
 	  color: var(--disabled-text-color, inherit);
@@ -97,31 +101,31 @@ input[type=email]{margin-top:8px;float:left}
 	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
   }
   
-  .zfsm-wauto {
+  .zfsm-form .zfsm-wauto {
 	  width: auto;
   }
 
-  .zfsm-w5 {
+  .zfsm-form .zfsm-w5 {
 	  width: 5%;
   }
   
-  .zfsm-w10 {
+  .zfsm-form .zfsm-w10 {
 	  width: 10%;
   }
   
-  .zfsm-w15 {
+  .zfsm-form .zfsm-w15 {
 	  width: 15%;
   }
   
-  .zfsm-w50 {
+  .zfsm-form .zfsm-w50 {
 	  width: 50%;
   }
   
-  .zfsm-w70 {
+  .zfsm-form .zfsm-w70 {
 	  width: 70%;
   }
   
-  .zfsm-w75 {
+  .zfsm-form .zfsm-w75 {
 	  width: 75%;
   }
   
