@@ -120,36 +120,60 @@ if ($test_log) {
 	assertSameValue(true, !empty(rollbackDatasetSnapshot('tank/data@daily', 1)['succeeded']), 'Snapshot rollback with newer-snapshot removal failed');
 	assertSameValue(true, !empty(cloneDatasetSnapshot('tank/data@daily', 'tank/clone')['succeeded']), 'Snapshot clone failed');
 	assertSameValue(true, !empty(deleteDatasetSnapshot('tank/data@daily', 0)['succeeded']), 'Snapshot delete failed');
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/secure');
 	assertSameValue(true, !empty(createDataset('tank/secure', array('encryption' => 'on', 'keyformat' => 'passphrase', 'keylocation' => 'prompt', 'passphrase' => 'secret123'))['succeeded']), 'Encrypted dataset create failed');
+	putenv('ZFSM_TEST_MISSING_DATASET');
 	$commands = file_get_contents($test_log);
-	foreach (array('rename -f tank/data tank/data-renamed', 'set compression=zstd tank/data', 'destroy -v -r -f tank/data', 'snapshot -r tank/data@manual', 'rollback tank/data@daily', 'rollback -r tank/data@daily', 'clone tank/data@daily tank/clone', 'destroy tank/data@daily', 'create -p -o encryption=on -o keyformat=passphrase -o keylocation=prompt tank/secure') as $expected_command) {
+	foreach (array('rename -f tank/data tank/data-renamed', 'set compression=zstd tank/data', 'destroy -v -r -f tank/data', 'snapshot -r tank/data@manual', 'rollback tank/data@daily', 'rollback -r tank/data@daily', 'clone tank/data@daily tank/clone', 'destroy tank/data@daily', 'create -o encryption=on -o keyformat=passphrase -o keylocation=prompt tank/secure') as $expected_command) {
 		assertSameValue(true, strpos($commands, $expected_command) !== false, 'Expected command was not issued: '.$expected_command);
 	}
 	assertSameValue(false, strpos($commands, 'secret123') !== false, 'Encryption passphrase leaked into command arguments');
 
 	// Read-only goes on after the share owner, or the owner cannot be set.
 	@unlink($test_log);
-	$owned = sys_get_temp_dir().'/zfsm-create-owner';
-	if (!is_dir($owned)) mkdir($owned);
-	chown($owned, 'root');
-	putenv('ZFSM_TEST_DATASET_MOUNT='.$owned);
-	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent');
+	$mounts = sys_get_temp_dir().'/zfsm-create-owner';
+	$nobody = trim((string)shell_exec('id -u nobody'));
+	foreach (array('tank', 'tank/newparent', 'tank/newparent/child') as $dir) {
+		if (!is_dir("$mounts/$dir")) mkdir("$mounts/$dir", 0777, true);
+		chown("$mounts/$dir", 'root');
+	}
+	putenv('ZFSM_TEST_MOUNT_ROOT='.$mounts);
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent,tank/newparent/child');
 	assertSameValue(true, !empty(createDataset('tank/newparent/child', array('readonly' => 'on', 'sync' => 'always'))['succeeded']), 'Read-only create failed');
 	$commands = file_get_contents($test_log);
-	$create = strpos($commands, 'create -p -o sync=always tank/newparent/child');
+	$parent = strpos($commands, "create -p tank/newparent\n");
+	$create = strpos($commands, "create -o sync=always tank/newparent/child\n");
 	$readonly = strpos($commands, 'set readonly=on tank/newparent/child');
-	assertSameValue(true, $create !== false && $readonly !== false && $readonly > $create, 'readonly must be set after the create: '.$commands);
+	assertSameValue(true, $parent !== false && $create !== false && $create > $parent, 'parents are made first, then the target without -p: '.$commands);
+	assertSameValue(true, $readonly !== false && $readonly > $create, 'readonly must be set after the create: '.$commands);
 	assertSameValue(false, strpos($commands, '-o readonly=on') !== false, 'readonly must not be set at create time');
-	assertSameValue(trim((string)shell_exec('id -u nobody')), (string)fileowner($owned), 'a new dataset and its new parents get the share owner');
+	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent"), 'a new parent gets the share owner');
+	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent/child"), 'the new dataset gets the share owner');
+	assertSameValue('0', (string)fileowner("$mounts/tank"), 'an existing dataset keeps its owner');
+
+	// zfs create -p succeeds on an existing target; it must not be changed or claimed.
+	@unlink($test_log);
 	putenv('ZFSM_TEST_MISSING_DATASET');
-	putenv('ZFSM_TEST_DATASET_MOUNT');
+	$answer = createDataset('tank/newparent/child', array('readonly' => 'on'));
+	assertSameValue(true, empty($answer['succeeded']) && strpos(implode(' ', $answer['failed']), 'already exists') !== false, 'an existing target is refused: '.json_encode($answer));
+	assertSameValue('', (string)@file_get_contents($test_log), 'nothing is created or set on an existing target');
+
+	// A failed read of a parent stops the create; it must not run with ownership unknown.
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent/child');
+	putenv('ZFSM_TEST_LIST_FAIL=tank/newparent');
+	$answer = createDataset('tank/newparent/child', array());
+	assertSameValue(true, empty($answer['succeeded']) && strpos(implode(' ', $answer['failed']), 'Could not check') !== false, 'a failed read is refused: '.json_encode($answer));
+	assertSameValue('', (string)@file_get_contents($test_log), 'nothing is created when a read fails');
+	putenv('ZFSM_TEST_LIST_FAIL');
+	putenv('ZFSM_TEST_MISSING_DATASET');
+	putenv('ZFSM_TEST_MOUNT_ROOT');
 }
 
 // Only a confirmed absence counts as new: a failed read must not hand an existing dataset to nobody:users.
 putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent');
 putenv('ZFSM_TEST_LIST_FAIL=tank/broken');
 assertSameValue(true, zfsmDatasetMissing('tank/newparent'), 'a missing dataset is reported missing');
-assertSameValue(false, zfsmDatasetMissing('tank/broken'), 'a failed read is not reported missing');
+assertSameValue(null, zfsmDatasetMissing('tank/broken'), 'a failed read is reported as unknown');
 assertSameValue(false, zfsmDatasetMissing('tank/data'), 'an existing dataset is not reported missing');
 putenv('ZFSM_TEST_MISSING_DATASET');
 putenv('ZFSM_TEST_LIST_FAIL');

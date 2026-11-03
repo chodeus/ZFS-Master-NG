@@ -56,11 +56,12 @@ function zfsmDatasetExists($name, $types = 'filesystem,volume') {
 	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
 }
 
-// True only when ZFS says the dataset does not exist; a failed read is not an absence.
+// True when ZFS says it does not exist, false when it does, null when the read failed.
 function zfsmDatasetMissing($name) {
-	if (!zfsmValidDatasetName($name)) return false;
+	if (!zfsmValidDatasetName($name)) return null;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', $name));
-	return ($result['code'] ?? 0) !== 0 && stripos($result['output'] ?? '', 'dataset does not exist') !== false;
+	if (($result['code'] ?? 1) === 0) return false;
+	return stripos($result['output'] ?? '', 'dataset does not exist') !== false ? true : null;
 }
 
 function zfsmSnapshotExists($name) {
@@ -447,33 +448,38 @@ function createDataset($zdataset, $zoptions) {
 	// Read-only is set last, or the share owner below could not be applied.
 	$readonly = ($zoptions['readonly'] ?? '') === 'on';
 	if ($readonly) unset($zoptions['readonly']);
-	$parts = explode('/', $zdataset);
-	$created = array();
-	for ($depth = 2; $depth <= count($parts); $depth++) {
-		$name = implode('/', array_slice($parts, 0, $depth));
-		if (zfsmDatasetMissing($name)) $created[] = $name;
-	}
-	$args = array('create', '-p');
+	$args = array('create');
 	foreach ($zoptions as $property => $value) {
 		if (!in_array($property, $allowed, true) || !zfsmSafePropertyValue($property, (string)$value)) return zfsmFailure($zdataset, 'Invalid dataset property: '.$property);
 		$args[] = '-o';
 		$args[] = $property.'='.$value;
 	}
-	$encrypted = ($zoptions['encryption'] ?? 'off') === 'on';
-	if ($encrypted && strlen($passphrase) < 8) return zfsmFailure($zdataset, 'Encryption passphrase must be at least 8 characters');
 	$args[] = $zdataset;
-	$result = runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
+	$encrypted = ($zoptions['encryption'] ?? 'off') === 'on';
+	if ($encrypted && strlen($passphrase) < 8) return zfsmFailure($zdataset, 'Enter a passphrase of at least 8 characters, or set Encryption to No.');
+	$parts = explode('/', $zdataset);
+	$created = array();
+	for ($depth = 2; $depth <= count($parts); $depth++) {
+		$name = implode('/', array_slice($parts, 0, $depth));
+		$missing = zfsmDatasetMissing($name);
+		if ($missing === null) return zfsmFailure($zdataset, 'Could not check whether '.$name.' exists, so nothing was created.');
+		if ($missing) $created[] = $name;
+	}
+	// zfs create -p succeeds on an existing target, so the target is created without it.
+	if (end($created) !== $zdataset) return zfsmFailure($zdataset, 'A dataset with this name already exists.');
+	$parents = array_slice($created, 0, -1);
+	$result = $parents ? runProcess('zfs', array('create', '-p', end($parents))) : array('code' => 0);
+	if (($result['code'] ?? 1) === 0) $result = runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
 	$answer = commandAnswer($zdataset, $result);
-	if (($result['code'] ?? 1) !== 0) return $answer;
-	// zfs create -p also makes missing parents; they get Unraid's share owner too.
-	foreach ($created as $name) {
+	// New parents get Unraid's share owner even when the target fails; the target only once it is ours.
+	foreach (($result['code'] ?? 1) === 0 ? $created : $parents as $name) {
 		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
 		if (is_string($mountpoint) && $mountpoint !== '' && $mountpoint[0] === '/' && is_dir($mountpoint)) {
 			@chown($mountpoint, 'nobody');
 			@chgrp($mountpoint, 'users');
 		}
 	}
-	if (!$readonly) return $answer;
+	if (($result['code'] ?? 1) !== 0 || !$readonly) return $answer;
 	$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
 	return ($set['code'] ?? 1) === 0 ? $answer : zfsmFailure($zdataset, 'Created, but it could not be made read-only: '.trim($set['output'] ?? ''));
 }

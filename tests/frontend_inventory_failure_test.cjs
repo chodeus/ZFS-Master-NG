@@ -150,4 +150,17 @@ check('snapshot error in an answer is not cached as complete', () => {
   assert.deepEqual(s.delays(), [30000], 'an answered error does not slow the next refresh: ' + s.delays());
 });
 
+// With lazy loading off, the first answer already holds snapshots; an error there must not be cached either.
+check('snapshot error in a full answer is not cached as complete', () => {
+  const s = launch();
+  const ds = name => ({name, child: {}, type: 'filesystem', mountpoint: '/mnt/' + name, used: 1, available: 1, referenced: 1, snapshots: []});
+  const full = poolResult('tank', 0);
+  full.data.datasets.tank = {...ds('tank'), _snapshot_error: 'zfs list -t snapshot failed', child: {'tank/data': ds('tank/data')}};
+  s.requests[0].resolve(full);
+  assert.equal(s.requests.length, 1, 'a full answer needs no per-pool reads');
+  assert.equal(s.storage.has('zfsm-cache'), false, 'zero counts from a failed snapshot read were cached as complete');
+  const row = (s.body.innerHTML.match(/<tr id="tr-tank%2Fdata"[\s\S]*?<\/tr>/) || [''])[0];
+  assert.match(row, /zfsm-snap-count">—</, 'the failed pool shows a dash, not 0: ' + row.replace(/\s+/g, ' ').slice(-160));
+});
+
 console.log('inventory failure path tests passed');

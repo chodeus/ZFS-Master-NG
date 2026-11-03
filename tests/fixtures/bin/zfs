@@ -48,9 +48,11 @@ if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_LIST_FAIL:-}" ] && [ "$last_arg" = "$Z
 	exit 2
 fi
 
-if [ "$1" = "list" ] && [ "$last_arg" = "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
-	printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2
-	exit 1
+# ZFSM_TEST_MISSING_DATASET is comma-separated; names may hold spaces.
+if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
+	case ",$ZFSM_TEST_MISSING_DATASET," in
+		*",$last_arg,"*) printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1 ;;
+	esac
 fi
 
 if [ "$1" = "list" ]; then
@@ -61,6 +63,11 @@ fi
 if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
 	printf 'tank\torg.example:role\tstorage\tlocal\n'
 	printf 'tank/data\torg.example:role\tmedia\tlocal\n'
+	exit 0
+fi
+
+if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then
+	printf '%s/%s\n' "$ZFSM_TEST_MOUNT_ROOT" "$last_arg"
 	exit 0
 fi
 

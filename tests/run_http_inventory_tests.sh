@@ -22,7 +22,7 @@ for mode in full lazy pool invalid missing gone pool_failure snapshot_failure re
 done
 "$zfsm_php" -n "$zfsm_repo/tests/inventory_timeout_test.php"
 ZFSM_TEST_LOG=/tmp/zfsm-backend-commands.log "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/backend_logic_test.php"
-for gate in rollback_newer destroy_recursive destroy_dataset rollback_plain destroy_plain newer_with_mode invalid_exclusion lua_exclusion encrypt_no_passphrase encrypt_other_value; do
+for gate in rollback_newer destroy_recursive destroy_dataset rollback_plain destroy_plain newer_with_mode invalid_exclusion lua_exclusion encrypt_no_passphrase encrypt_other_value encrypt_inherit_passphrase; do
     "$zfsm_php" -n "$zfsm_repo/tests/admin_gate_test.php" "$gate"
 done
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"

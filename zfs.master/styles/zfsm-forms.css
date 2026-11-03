@@ -16,6 +16,6 @@
 .zfsm-form dl{display:grid;grid-template-columns:minmax(120px,32%) minmax(0,1fr);align-items:center;gap:0 16px;margin:0;padding:6px 0}
 .zfsm-form dt{float:none;width:auto;margin:0;text-align:right}
 .zfsm-form dd{float:none;width:auto;margin:0;display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0}
-.zfsm-form dd .zfsm-wide,.zfsm-form dd>select:only-child{flex:1;min-width:0;max-width:480px}
+.zfsm-form dd .zfsm-wide,.zfsm-form dd>select:only-child{flex:1;min-width:8em;max-width:480px}
 /* Labels take the full row on narrow screens, so the hint drops under them and wraps. */
 @media (max-width:768px){.zfsm-tip:hover::after,.zfsm-tip:focus::after{left:0;margin-left:0;white-space:normal;max-width:calc(100vw - 48px)}}

@@ -21,6 +21,7 @@ if (!isset($routes[$route])) exit(2);
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 $_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $routes[$route];
+if ($route === 'createdataset') putenv('ZFSM_TEST_MISSING_DATASET=tank/new');
 
 ob_start();
 require $docroot.'/plugins/zfs.master/backend/ZFSMAdmin.php';

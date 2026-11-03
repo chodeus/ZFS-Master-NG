@@ -79,10 +79,10 @@ function createZFSMInventoryController(options) {
             options.configChanged(config);
             const data = answer.data;
             const pools = answer.op === 'getDatasets' ? Object.keys(data.pools) : [];
-            options.render(data, false);
-
             let snapshotsMissing = false;
             let snapshotsIncomplete = false;
+            Object.keys(data.pools).forEach(answered);
+            options.render(data, false);
 
             function unavailable(pool) {
                 data.pools[pool].Snapshots = 'Unavailable';
@@ -90,6 +90,11 @@ function createZFSMInventoryController(options) {
                     dataset._snapshots_unavailable = true;
                     Object.values(dataset.child || {}).forEach(mark);
                 })(data.datasets[pool]);
+            }
+
+            // A pool that answered with a snapshot error is not slow, but its counts must not be cached.
+            function answered(pool) {
+                if (data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
             }
 
             function complete() {
@@ -113,8 +118,7 @@ function createZFSMInventoryController(options) {
                     data.errors = data.errors || {};
                     delete data.errors[pool];
                     Object.assign(data.errors, part.data.errors || {});
-                    // A pool that answered with a snapshot error is not slow, but its counts must not be cached.
-                    if (data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
+                    answered(pool);
                     options.render(data, false);
                     nextPool();
                 }, function(message) {

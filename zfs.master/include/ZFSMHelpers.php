@@ -148,13 +148,10 @@ function cleanZFSCreateDatasetParams($params) {
 		unset($retParams['encryption']);
 		unset($retParams['passphrase']);
 	else:
-		if (!isset($retParams['passphrase']) || $retParams['passphrase'] == ''):
-			unset($retParams['encryption']);
-		else:
-			$retParams['encryption'] = 'on';
-			$retParams['keylocation'] = 'prompt';
-			$retParams['keyformat'] = 'passphrase';
-		endif;
+		// createDataset refuses a short or missing passphrase; dropping encryption here would create it unencrypted.
+		$retParams['encryption'] = 'on';
+		$retParams['keylocation'] = 'prompt';
+		$retParams['keyformat'] = 'passphrase';
 	endif;
 		
 	unset($retParams['mount']);

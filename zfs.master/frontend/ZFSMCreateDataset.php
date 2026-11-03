@@ -33,7 +33,7 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
 <style>
   .zfsm-form{max-width:760px;margin:16px auto}
-  .zfsm-pool{color:var(--orange-500, #ff8c2f);font-weight:600}
+  .zfsm-pool{color:var(--orange-500, #ff8c2f);font-weight:600;min-width:0;overflow-wrap:anywhere}
   .zfsm-footer{display:flex;justify-content:center;padding:12px 0}
 </style>
 

@@ -17,15 +17,18 @@ $cases = array(
 	'invalid_exclusion' => array(array('cmd' => 'inventory'), '1', 'tank/(', 'warned'),
 	'lua_exclusion' => array(array('cmd' => 'inventory'), '1', 'tank/d%a+$', 'filtered'),
 	'encrypt_other_value' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'on', 'passphrase' => '')), '0', '', 'refused'),
+	'encrypt_inherit_passphrase' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'yes', 'passphrase' => 'inherit')), '0', '', 'refused'),
 	'encrypt_no_passphrase' => array(array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'secure', 'mount' => 'yes', 'encryption' => 'yes', 'passphrase' => '')), '0', '', 'refused'),
 );
 
-$name = $argv[1] ?? '';
-if (!isset($cases[$name])) exit(2);
-list($post, $destructive, $exclusion, $expected) = $cases[$name];
+// ZFSMAdmin.php sets its own $name, so the case name needs another variable.
+$case = $argv[1] ?? '';
+if (!isset($cases[$case])) exit(2);
+list($post, $destructive, $exclusion, $expected) = $cases[$case];
 putenv('ZFSM_TEST_DESTRUCTIVE='.$destructive);
 putenv('ZFSM_TEST_EXCLUSION='.$exclusion);
 putenv('ZFSM_TEST_LAZY=0');
+putenv('ZFSM_TEST_MISSING_DATASET=tank/secure');
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 $_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $post;
@@ -41,7 +44,7 @@ if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($an
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {
-	fwrite(STDERR, $name.' failed: '.json_encode($answer)."\n");
+	fwrite(STDERR, $case.' failed: '.json_encode($answer)."\n");
 	exit(1);
 }
-echo $name." gate passed\n";
+echo $case." gate passed\n";

@@ -65,10 +65,9 @@ try {
 			$pool = is_string($data['zpool'] ?? null) ? $data['zpool'] : '';
 			$name = is_string($data['name'] ?? null) ? trim($data['name'], '/') : '';
 			$dataset = $pool.($name !== '' ? '/'.$name : '');
-			// Anything but a clear yes or no, or yes without a passphrase, used to create the dataset unencrypted.
-			$encryption = $data['encryption'] ?? 'no';
-			$refusal = !in_array($encryption, array('yes', 'no'), true) ? 'Encryption must be Yes or No.' : ($encryption === 'yes' && (string)($data['passphrase'] ?? '') === '' ? 'Enter a passphrase, or set Encryption to No.' : '');
-			zfsmReturnAnswer($refusal !== '' ? zfsmFailure($dataset, $refusal) : createDataset($dataset, cleanZFSCreateDatasetParams($data)), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset');
+			// Anything but a clear yes or no used to create the dataset unencrypted.
+			$valid_choice = in_array($data['encryption'] ?? 'no', array('yes', 'no'), true);
+			zfsmReturnAnswer($valid_choice ? createDataset($dataset, cleanZFSCreateDatasetParams($data)) : zfsmFailure($dataset, 'Encryption must be Yes or No.'), 'ZFS Dataset Creation', 'Dataset created successfully', 'Unable to create dataset');
 			break;
 
 		case 'editdatasetproperty':
