@@ -78,6 +78,7 @@ const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=aler
 assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
 assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
+assert.match(page, /<div id="zfs_master_div" class="TableContainer">\s*<table id="zfs_master"/, 'on Unraid 7.2+ phones the table scrolls in its own box, like Unraid\'s tables');
 assert.match(page, /@media \(max-width:768px\)\{\s*div\.title\.zfsm-title,div#title\.zfsm-title\{flex-wrap:wrap/, 'on phones only the plugin title line wraps');
 
 // The status bar moves onto Unraid's title line, which then skips the reads/writes toggle.

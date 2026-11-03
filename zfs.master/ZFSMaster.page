@@ -78,7 +78,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
-<div id="zfs_master_div">
+<!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
+<div id="zfs_master_div" class="TableContainer">
 	<table id="zfs_master" class='unraid zfs_table disk_status legacy wide'>
 	<thead>
 		<tr>

@@ -94,9 +94,9 @@ function createZFSMInventoryController(options) {
                 })(data.datasets[pool]);
             }
 
-            // A pool that answered with a snapshot error is not slow, but its counts must not be cached.
+            // A pool that answered with a dataset or snapshot error is not slow, but its counts must not be cached.
             function answered(pool) {
-                if (data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
+                if (data.datasets[pool]._error || data.datasets[pool]._snapshot_error) { snapshotsIncomplete = true; unavailable(pool); }
             }
 
             function complete() {

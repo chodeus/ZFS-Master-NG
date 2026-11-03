@@ -170,4 +170,14 @@ check('snapshot error in a full answer is not cached as complete', () => {
   assert.match(row, /zfsm-snap-count">—</, 'the failed pool shows a dash, not 0: ' + row.replace(/\s+/g, ' ').slice(-160));
 });
 
+// A pool whose dataset read failed answers with an empty tree; that must not be cached as complete either.
+check('dataset error in a full answer is not cached as complete', () => {
+  const s = launch();
+  const full = poolResult('tank', 0);
+  full.data.datasets.tank = {name: 'tank', child: {}, snapshots: [], total_snapshots: 0, _error: 'zfs list failed'};
+  s.requests[0].resolve(full);
+  assert.equal(s.storage.has('zfsm-cache'), false, 'an empty tree from a failed dataset read was cached as complete');
+  assert.match(s.body.innerHTML, /ZFS query failed/, 'the failure is shown');
+});
+
 console.log('inventory failure path tests passed');
