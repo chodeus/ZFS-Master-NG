@@ -1,0 +1,8 @@
+{
+  "name": "zfs-master-tests",
+  "private": true,
+  "description": "Test-only dependencies; nothing here ships in the plugin.",
+  "devDependencies": {
+    "jsdom": "30.1.3"
+  }
+}

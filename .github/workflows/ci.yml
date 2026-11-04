@@ -5,6 +5,11 @@ on:
     branches: [main, beta]
   pull_request:
   workflow_dispatch:
+    inputs:
+      base:
+        description: 'Branch the code is headed for, when dispatched on a PR branch'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -37,7 +42,7 @@ jobs:
       # Add --verify-asset once the first release exists on this repo.
       - name: Verify changelog and manifest agree
         env:
-          BRANCH: ${{ github.base_ref || github.ref_name }}
+          BRANCH: ${{ inputs.base || github.base_ref || github.ref_name }}
         run: |
           channel=stable
           [ "$BRANCH" != beta ] || channel=beta
@@ -58,6 +63,17 @@ jobs:
           node tests/frontend_toggle_test.cjs
           node tests/frontend_inventory_failure_test.cjs
           node tests/package_test.cjs
+
+      - name: Bundled library in a real DOM
+        working-directory: tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node sweetalert_dom_test.cjs
+
+      - name: Bundled libraries match vendor.json
+        run: |
+          python3 tests/vendor_test.py
+          python3 .github/scripts/vendor.py check
 
   php:
     name: PHP ${{ matrix.php }}
@@ -107,15 +123,51 @@ jobs:
           ref: ${{ matrix.unraid }}
           path: .webgui
 
+      - name: Dialogs in a real browser with this version's themes
+        run: node tests/sweetalert_render_test.cjs .webgui
+
+      - name: Page dialogs on this version's jQuery
+        working-directory: tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node page_dialog_test.cjs ../.webgui
+
       - name: Installer, CSRF, backend and pages on real webGUI code
         env:
           PHP_VERSION: ${{ matrix.php }}
           UNRAID_VERSION: ${{ matrix.unraid }}
         run: docker run --rm -v "$PWD:/repo" -w /repo "php:${PHP_VERSION}-cli" bash tests/unraid_compat_test.sh .webgui "$UNRAID_VERSION"
 
+  # The one check branch rules require; the matrix names change with each Unraid release.
+  gate:
+    name: Lint + build
+    needs: [validate, php, unraid]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write   # a dispatched run's checks never reach the PR, but a commit status does
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          DISPATCHED_FOR_PR: ${{ github.event_name == 'workflow_dispatch' && inputs.base != '' }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          state=success
+          for result in $RESULTS; do [ "$result" = success ] || state=failure; done
+          if [ "$DISPATCHED_FOR_PR" = true ]; then
+            gh api "repos/$REPO/statuses/$SHA" -f state="$state" -f context='Lint + build' -f target_url="$RUN_URL" -f description="CI dispatched for this PR: $state" >/dev/null
+          fi
+          echo "Jobs: $RESULTS"
+          [ "$state" = success ]
+
   notify-failure:
     needs: [validate, php, unraid]
-    if: failure() && github.event_name != 'pull_request'
+    if: failure() && github.event_name != 'pull_request' && !inputs.base
     permissions: {}
     uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
     with:
