@@ -29,6 +29,18 @@ function fill($dir) {
 	chmod($dir.'/sub dir/file', 0640);
 }
 
+// Every tmpfs this run mounts is unmounted on exit too, so a failed check never leaves one behind.
+function mount_tmpfs($path, $options = '') {
+	static $mounted = null;
+	if ($mounted === null) {
+		$mounted = array();
+		register_shutdown_function(function() use (&$mounted) { foreach (array_reverse($mounted) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null'); });
+	}
+	exec('mount -t tmpfs '.$options.' tmpfs '.escapeshellarg($path), $out, $status);
+	if ($status === 0) $mounted[] = $path;
+	return $status;
+}
+
 function shim($body) {
 	$bin = '/tmp/zfsm-rsync-shim';
 	if (!is_dir($bin)) mkdir($bin);
@@ -54,7 +66,7 @@ function reset_tree($target, $mount, $root) {
 // A dataset mounted inside a deleted directory must survive a forced delete.
 mkdir($root.'/parent/inner', 0777, true);
 file_put_contents($root.'/parent/own', 'x');
-exec('mount -t tmpfs tmpfs '.escapeshellarg($root.'/parent/inner'), $out, $mounted);
+$mounted = mount_tmpfs($root.'/parent/inner');
 check($mounted === 0, 'test needs a tmpfs mount');
 file_put_contents($root.'/parent/inner/data', 'keep');
 $result = deleteDirectory($root.'/parent', 1);
@@ -65,9 +77,9 @@ exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
 // A full filesystem must not cost the settings already saved.
-$small = '/tmp/zfsm-small-fs';
-if (!is_dir($small)) mkdir($small);
-exec('mount -t tmpfs -o size=16k tmpfs '.escapeshellarg($small), $out, $mounted);
+$small = sys_get_temp_dir().'/zfsm-small-fs-'.getmypid();
+mkdir($small);
+$mounted = mount_tmpfs($small, '-o size=16k');
 check($mounted === 0, 'test needs a tmpfs mount');
 check(zfsmWriteFileAtomic($small.'/cfg', 'first'), 'a write that fits failed');
 check(zfsmWriteFileAtomic($small.'/cfg', 'second') && file_get_contents($small.'/cfg') === 'second', 'a write did not replace the old file');
@@ -75,10 +87,11 @@ check(!zfsmWriteFileAtomic($small.'/cfg', str_repeat('x', 1024 * 1024)), 'a shor
 check(file_get_contents($small.'/cfg') === 'second', 'a short write damaged the saved file');
 check(glob($small.'/cfg.tmp*') === array(), 'a short write left its temp file');
 exec('umount '.escapeshellarg($small));
+rmdir($small);
 
 // A child dataset's own mountpoint resolves to its parent: a forced delete would empty the child.
 mkdir($root.'/mounted', 0777, true);
-exec('mount -t tmpfs tmpfs '.escapeshellarg($root.'/mounted'), $out, $mounted);
+$mounted = mount_tmpfs($root.'/mounted');
 check($mounted === 0, 'test needs a tmpfs mount');
 file_put_contents($root.'/mounted/data', 'keep');
 $result = deleteDirectory($root.'/mounted', 1);
@@ -133,7 +146,7 @@ exec('rm -rf '.escapeshellarg($target));
 // A filesystem mounted inside the source: refuse before moving anything.
 reset_tree($target, $mount, $root);
 mkdir($target.'/inner');
-exec('mount -t tmpfs tmpfs '.escapeshellarg($target.'/inner'), $out, $mounted);
+$mounted = mount_tmpfs($target.'/inner');
 check($mounted === 0, 'test needs a tmpfs mount');
 file_put_contents($target.'/inner/data', 'keep');
 $result = convertDirectory($target, 'tank');

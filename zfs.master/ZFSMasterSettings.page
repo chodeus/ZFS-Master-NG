@@ -83,7 +83,7 @@ _(Datasets Exclusion Patterns (Just One!))_:
 
 :zc_settings_datasets_exclusion_plug:
 > Hides datasets whose names match this regular expression, with their child datasets, snapshots and any matching folders. Matching ignores case, except in a pattern with `%`.
-> For example `/docker` hides every dataset with /docker in its name. A `.` matches any character, so write `\.` for a dot. A pattern with `%` is read as a Lua pattern, the format older versions used.
+> For example `/docker` hides every dataset with /docker in its name. A `.` matches any character, so write `\.` for a dot. A pattern with `%` is read as a Lua pattern, the format older versions used; there a dot is `%.`.
 :end
 
 _(Directory Listing (Dataset names, one per line!))_:
