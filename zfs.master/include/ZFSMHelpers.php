@@ -113,6 +113,17 @@ function zfsmPopupStylesheets($docroot) {
 	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
 }
 
+// File and process names are anyone's to choose, and these strings reach notifications and the log.
+function zfsmSafeText($text) {
+	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', (string)$text), 0, 500);
+}
+
+function zfsmLog($message, $priority = LOG_ERR) {
+	openlog('zfs.master', LOG_PID, LOG_USER);
+	syslog($priority, zfsmSafeText($message));
+	closelog();
+}
+
 function commandAnswer($subject, $result) {
 	$answer = array('succeeded' => array(), 'failed' => array());
 	if (($result['code'] ?? 1) === 0) {

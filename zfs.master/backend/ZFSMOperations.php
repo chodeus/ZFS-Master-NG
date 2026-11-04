@@ -5,6 +5,7 @@ define('__ROOT__', dirname(dirname(__FILE__)));
 require_once __ROOT__."/include/ZFSMBase.php";
 require_once __ROOT__."/include/ZFSMError.php";
 require_once __ROOT__."/include/ZFSMHelpers.php";
+require_once __ROOT__."/include/ZFSMImpact.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
@@ -190,7 +191,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', implode(',', $columns), $pool));
 	if (($result['code'] ?? 1) !== 0) {
 		$error = trim($result['output'] ?? 'Unable to list datasets');
-		error_log('ZFS Master NG dataset inventory failed for '.$pool.': '.$error);
+		zfsmLog('ZFS Master NG dataset inventory failed for '.$pool.': '.$error);
 		return zfsmEmptyDatasetTree($pool, $error);
 	}
 
@@ -219,7 +220,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 		$snap_result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'snapshot', '-o', implode(',', $snapshot_columns), $pool));
 		if (($snap_result['code'] ?? 1) !== 0) {
 			$error = trim($snap_result['output'] ?? 'Unable to list snapshots');
-			error_log('ZFS Master NG snapshot inventory failed for '.$pool.': '.$error);
+			zfsmLog('ZFS Master NG snapshot inventory failed for '.$pool.': '.$error);
 			$datasets[$pool]['_snapshot_error'] = $error;
 		} else {
 			foreach (zfsmParseTable($snap_result['output'], $snapshot_columns) as $snapshot) {
@@ -305,7 +306,7 @@ function getZFSPools($strict = false) {
 		if (stripos($result['output'] ?? '', 'no pools available') === false) {
 			$error = 'ZFS Master NG pool inventory failed: '.($result['output'] ?? 'unknown error');
 			if ($strict) throw new RuntimeException($error);
-			error_log($error);
+			zfsmLog($error);
 		}
 		return $ret_pools;
 	}
@@ -581,7 +582,7 @@ function zfsmNestedMountProblem($path) {
 	$table = @file('/proc/self/mountinfo', FILE_IGNORE_NEW_LINES);
 	if ($table === false) return 'Unable to read the mount table';
 	foreach ($table as $line) {
-		$mount = preg_replace_callback('/\\\\([0-7]{3})/', function($match) { return chr(octdec($match[1])); }, explode(' ', $line)[4] ?? '');
+		$mount = zfsmUnescapeMount(explode(' ', $line)[4] ?? '');
 		if ($mount === rtrim($path, '/')) return 'This directory is itself a mount point, so its contents belong to another filesystem; destroy or unmount that instead.';
 		if (zfsmStartsWith($mount, rtrim($path, '/').'/')) return 'Another filesystem is mounted inside this directory at '.$mount.'; unmount or move it first';
 	}
@@ -720,8 +721,10 @@ function cloneDatasetSnapshot($snapshot, $clone) {
 	return commandAnswer($clone, runProcess('zfs', array('clone', $snapshot, $clone)));
 }
 
+// One snapshot, or several of one dataset as ds@a,b, which ZFS destroys all or nothing.
 function deleteDatasetSnapshot($snapshot, $recursive = 0) {
-	if (!zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
+	$list = strpos((string)$snapshot, ',') !== false;
+	if ($list ? strpos($snapshot, '@') === false || !zfsmValidDestroyTarget($snapshot) : !zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
 	$args = array('destroy');
 	if ((string)$recursive === '1') $args[] = '-r';
 	$args[] = $snapshot;
