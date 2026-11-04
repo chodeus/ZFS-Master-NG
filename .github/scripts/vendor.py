@@ -51,6 +51,8 @@ def prepare(name, src, data):
             raise SystemExit(f'{name}: expected one global export line in {src}, found {count}')
     if name == 'sweetalert2':
         data = ZERO_WEIGHT.sub(rb'\1', data)
+        if b':where(' in data:
+            raise SystemExit(f'{name}: {src} has a nested :where() this script cannot give weight to')
     return data
 
 

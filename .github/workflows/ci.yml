@@ -71,7 +71,9 @@ jobs:
           node sweetalert_dom_test.cjs
 
       - name: Bundled libraries match vendor.json
-        run: python3 .github/scripts/vendor.py check
+        run: |
+          python3 tests/vendor_test.py
+          python3 .github/scripts/vendor.py check
 
   php:
     name: PHP ${{ matrix.php }}
@@ -123,6 +125,12 @@ jobs:
 
       - name: Dialogs in a real browser with this version's themes
         run: node tests/sweetalert_render_test.cjs .webgui
+
+      - name: Page dialogs on this version's jQuery
+        working-directory: tests
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node page_dialog_test.cjs ../.webgui
 
       - name: Installer, CSRF, backend and pages on real webGUI code
         env:

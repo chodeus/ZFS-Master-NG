@@ -619,11 +619,19 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	}
 
 	var element = $(tmpHTML);
-
-	element.find('option').filter(function() { return $(this).val() === String(value); }).prop('selected', true);
+	var current = element.find('option').filter(function() { return $(this).val() === String(value); });
+	// A value the list lacks (zstd-3, 32K) is offered too, or the dialog opens on another value.
+	if (!current.length && value != null && value !== '') current = $('<option>').val(String(value)).text(String(value)).appendTo(element);
+	// An attribute, not prop(): outerHTML drops a selected property and the dialog opened on the first option.
+	current.attr('selected', 'selected');
 	var res = element.prop('outerHTML');
 
 	return res;
+  }
+
+  // Swal2 resets the body's display after fire(); this must run as didOpen.
+  function zfsmGridBody(popup) {
+	popup.querySelector('.swal2-html-container').style.display = 'grid';
   }
 
   function editDatasetProperty(zdataset, property) {
@@ -639,17 +647,17 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: '<strong>'+escapeHtml(zdataset)+' - '+escapeHtml(property)+'</strong>',
 			html: getPropertyEditHTML(zdataset, property, properties[property]),
+			didOpen: zfsmGridBody,
 			showConfirmButton: true,
 			showCancelButton: true,
 			preConfirm: function () {
-				return new Promise(function (resolve) {
-					resolve([
-						$('#zfsm-swal-input').val()
-					])
-				})
+				var control = $('#zfsm-swal-input');
+				var shown = control.is('select') ? control.find('option[selected]').val() : control.attr('value');
+				return [control.val(), shown];
 			}
 		}).then((result) => {
-			if (result.isConfirmed) {
+			// Sending the value it opened with would round a quota or make an inherited value local.
+			if (result.isConfirmed && result.value[0] !== result.value[1]) {
 				$.post('<?=$urlzmadmin?>',{cmd: 'editdatasetproperty', zdataset: zdataset, property: property, value: result.value[0]}, function(data) {
 					Swal2.fire({
 						title: 'Edit Result',
@@ -659,7 +667,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				});
 			}
 		});
-		$('.swal2-html-container').attr('style', 'display: grid;');
 	});
   }
 
@@ -720,6 +727,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				'<input type="checkbox" id="zfsm-swal-checkbox">'+
 				'<span class="swal2-label">Force unmount any file systems that need to be unmounted in the process</span>'+
 				'</label>',
+		  didOpen: zfsmGridBody,
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
@@ -747,7 +755,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			});
 		  }
 	  });
-	  $('.swal2-html-container').attr('style', 'display: grid;');
   }
 
   function addDirectoryListing(zdataset) {
@@ -797,6 +804,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  Swal2.fire({
 		  title: '<strong>New name for '+escapeHtml(directory)+'</strong>',
 		  html: '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
+		  didOpen: zfsmGridBody,
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
@@ -823,7 +831,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			});
 		  }
 	  });
-	  $('.swal2-html-container').attr('style', 'display: grid;');
   }
 
   function convertDirectory(directory, pool) {
