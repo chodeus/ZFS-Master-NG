@@ -25,10 +25,11 @@ function zfsmValidDestroyTarget($target) {
 function zfsmClonesOf($objects, $pool) {
 	$result = runProcess('zfs', array('list', '-H', '-r', '-t', 'filesystem,volume', '-o', 'name,origin', $pool));
 	if (($result['code'] ?? 1) !== 0) return null;
+	$known = array_flip($objects);
 	$clones = array();
 	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
-		if (count($parts) === 2 && in_array($parts[1], $objects, true) && !in_array($parts[0], $objects, true)) $clones[] = $parts[0].' (from '.$parts[1].')';
+		if (count($parts) === 2 && isset($known[$parts[1]]) && !isset($known[$parts[0]])) $clones[] = $parts[0].' (from '.$parts[1].')';
 	}
 	return $clones;
 }
@@ -38,10 +39,11 @@ function zfsmHeldOf($objects, $dataset) {
 	if (!array_filter($objects, function($name) { return strpos($name, '@') !== false; })) return array();
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'snapshot', '-o', 'name,userrefs', $dataset));
 	if (($result['code'] ?? 1) !== 0) return null;
+	$known = array_flip($objects);
 	$held = array();
 	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
-		if (count($parts) === 2 && (int)$parts[1] > 0 && in_array($parts[0], $objects, true)) $held[] = $parts[0];
+		if (count($parts) === 2 && (int)$parts[1] > 0 && isset($known[$parts[0]])) $held[] = $parts[0];
 	}
 	return $held;
 }
