@@ -131,8 +131,16 @@ assert.equal(tabbed.children.length, 1);
 assert.equal(context.zfsmMoveStatusIntoTitle(null), false);
 
 // Dates come from the server in Unraid's display format; the page must not reformat them.
-const dated = {...bare('tank/dated'), creation: 1793700000, creation_text: '03-11-2026, 18:40', snapshots: [{name: 'tank/dated@a', creation: 1793700000, creation_text: '03-11-2026, 18:40'}]};
+const dated = {...bare('tank/dated'), creation: 1793700000, creation_text: '03-11-2026, 18:40', snapshots: [{name: 'tank/dated@a', creation: 1793700000, creation_text: '03-11-2026, 18:41'}]};
 assert.equal(context.getPropertiesByType(dated)['Creation Date'], '03-11-2026, 18:40');
-assert.doesNotMatch(context.generateDatasetArrayRows('tank', dated, '', true, 0, 30, {}), /11\/3\/2026/, 'no forced American date');
+const datedRows = context.generateDatasetArrayRows('tank', dated, '', true, 0, 30, {});
+assert.match(datedRows, /Last Snap Date: 03-11-2026, 18:41/, 'the last snapshot shows its own server date text');
+assert.doesNotMatch(datedRows, /11\/3\/2026/, 'no forced American date');
 
-console.log('dataset row class tests passed');
+const lazyCells = Array.from({length: 9}, () => ({innerHTML: ''}));
+context.document.getElementById = id => id === context.datasetRowId('tank/dated') ? {getElementsByTagName: () => lazyCells} : null;
+context.updateSnapshotInfo({pool: 'tank', dataset: dated, snapshots: dated.snapshots}, 0, 30, {}).then(() => {
+	assert.match(lazyCells[2].innerHTML, /Last Snap Date: 03-11-2026, 18:41/, 'lazy-loaded snapshots show the server date text');
+	assert.doesNotMatch(lazyCells[2].innerHTML, /11\/3\/2026/, 'no forced American date after lazy load');
+	console.log('dataset row class tests passed');
+});
