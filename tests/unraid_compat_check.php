@@ -138,6 +138,40 @@ switch ($check) {
 		}
 		break;
 
+	case 'settings_roundtrip':
+		// What saveConfig writes reads back unchanged through this Unraid's parse_plugin_cfg; anything that wouldn't is refused.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		$bad = array();
+		foreach (array('plain', 'say "hi"', 'C:\\temp\\', 'x&y', 'cost $5', 'a;b', 'tank/My Share', '(?!x)') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$read = saveConfig($config) ? (parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? null) : 'not saved';
+			if ($read !== $value) $bad[] = 'snap_prefix '.json_encode($value).' read back as '.json_encode($read);
+		}
+		foreach (array('pre${HOME}post', 'x<b', 'a&quot;b', 'x&#92;') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$before = file_get_contents($cfg);
+			if (saveConfig($config) || file_get_contents($cfg) !== $before) $bad[] = 'saved '.json_encode($value);
+		}
+		$listing = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['directory_listing']; };
+		file_put_contents($cfg, "[general]\ndirectory_listing = \"cache/appdata\ncache/R&D\"\n");
+		$ret = addToDirectoryListing('tank/data');
+		if ($listing() !== array('cache/appdata', 'cache/R&D', 'tank/data')) $bad[] = 'listing after add: '.json_encode($listing()).' '.json_encode($ret);
+		$ret = removeFromDirectoryListing('cache/appdata');
+		if ($listing() !== array('cache/R&D', 'tank/data')) $bad[] = 'listing after remove: '.json_encode($listing()).' '.json_encode($ret);
+		// An entry with a quote, as the Settings page can save one: the add is refused and the file is left as it was.
+		file_put_contents($cfg, $quoted = "[general]\ndirectory_listing = \"cache/appdata\ncache/a\\\"b\"\n");
+		$ret = addToDirectoryListing('tank/data');
+		if (!is_string($ret['failed']['tank/data'] ?? null) || file_get_contents($cfg) !== $quoted) $bad[] = 'a quoted entry: '.json_encode($ret).' '.json_encode(file_get_contents($cfg));
+		file_put_contents($cfg, $original);
+		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
+		break;
+
 	case 'settings_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		require_once $docroot.'/webGui/include/Helpers.php';

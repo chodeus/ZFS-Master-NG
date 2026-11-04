@@ -23,17 +23,17 @@ function same($expected, $actual, $message) {
 }
 function env($settings) { foreach ($settings as $key => $value) putenv($key.'='.$value); }
 
-// Saved settings
-$saved = parse_ini_string(zfsmConfigText(array('general' => array('directory_listing' => "tank/a\ntank/b", 'snap_prefix' => 'say "hi"'))), true);
-same(array('tank/a', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), 'a second directory listing entry keeps its own line');
-same('say "hi"', $saved['general']['snap_prefix'], 'a quote survives a save');
-// Unraid 6 reads the file as written; Unraid 7 strips tags and decodes entities first.
-foreach (array("a\"\nevil = \"1", "a&quot;\nevil = &quot;1") as $hostile) {
-	$text = zfsmConfigText(array('general' => array('snap_prefix' => $hostile, 'after' => 'kept')));
-	foreach (array($text, strip_tags(html_entity_decode($text))) as $read) {
-		$saved = @parse_ini_string($read, true); // Unraid 7 cannot read a decoded &quot; even on one line
-		same(false, isset($saved['general']['evil']), 'a quote before a line break let a value start its own setting');
-	}
+// Saved settings: Unraid 6.9 parses the file as written; 6.12+ decodes entities and strips tags first.
+$readers = array('6.9' => function($text) { return parse_ini_string($text, true); }, '6.12+' => function($text) { return @parse_ini_string(strip_tags(html_entity_decode($text)), true); });
+$kept = array('directory_listing' => "tank/a\ncache/R&D\ntank/b", 'snap_prefix' => 'say "hi"', 'exclusion' => 'C:\\temp\\ cost $5 (?!x)');
+foreach ($readers as $version => $read) {
+	$saved = $read(zfsmConfigText(array('general' => $kept)));
+	same(array('tank/a', 'cache/R&D', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), "each directory listing entry keeps its own line, & included ($version)");
+	same($kept['snap_prefix'], $saved['general']['snap_prefix'], "a quote survives a save ($version)");
+	same($kept['exclusion'], $saved['general']['exclusion'], "backslashes and a bare \$ survive a save ($version)");
+}
+foreach (array("a\"\nevil = \"1", "tank/a\n#hidden", 'a&quot;b', 'R&amp;D', 'x&#92;', 'pre${HOME}post', 'x<b') as $unsafe) {
+	same(null, zfsmConfigText(array('general' => array('snap_prefix' => $unsafe, 'after' => 'kept'))), 'refused, it would not read back as written: '.json_encode($unsafe));
 }
 
 // Dates without Unraid's helpers fall back to one plain format, and every dataset and snapshot gets one.

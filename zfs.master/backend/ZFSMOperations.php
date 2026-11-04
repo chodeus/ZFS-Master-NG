@@ -276,7 +276,15 @@ function listDirectories($path, $childs, $zexc_pattern) {
 	return $dirs;
 }
 
-// Newlines stay: directory_listing holds one dataset per line inside its quotes.
+// A value the settings reader would not give back as written: Unraid 6.12+ decodes entities and strips tags first,
+// PHP expands ${NAME}, and a quote or leading # in a value with line breaks splits it.
+function zfsmConfigValueUnsafe($value) {
+	if (strpos($value, '${') !== false || strpos($value, '<') !== false) return true;
+	if (preg_match('/&(#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i', $value)) return true;
+	return strpos($value, "\n") !== false && (strpos($value, '"') !== false || preg_match('/^#/m', $value));
+}
+
+// Newlines stay: directory_listing holds one dataset per line inside its quotes. Null when a value can't be saved safely.
 function zfsmConfigText($array) {
 	$content = '';
 	foreach ($array as $key => $elem) {
@@ -286,8 +294,7 @@ function zfsmConfigText($array) {
 			$values = is_array($elem2) ? $elem2 : array($elem2);
 			foreach ($values as $value) {
 				$value = str_replace("\r", '', (string)$value);
-				// A quote before a line break ends the INI string (Unraid 7 also decodes &quot;), so such a value keeps one line.
-				if (strpbrk($value, '"&') !== false) $value = str_replace("\n", '', $value);
+				if (zfsmConfigValueUnsafe($value)) return null;
 				$value = str_replace(array('\\', '"'), array('\\\\', '\\"'), $value);
 				$content .= $key2.(is_array($elem2) ? '[]' : '').' = "'.$value."\"\n";
 			}
@@ -310,7 +317,16 @@ function zfsmWriteFileAtomic($path, $content) {
 }
 
 function saveConfig($array) {
-	return zfsmWriteFileAtomic('/boot/config/plugins/zfs.master/zfs.master.cfg', zfsmConfigText($array));
+	$text = zfsmConfigText($array);
+	return $text !== null && zfsmWriteFileAtomic('/boot/config/plugins/zfs.master/zfs.master.cfg', $text);
+}
+
+function zfsmSaveDirectoryListing($config, $zdataset) {
+	if (zfsmConfigText($config) === null) return zfsmFailure($zdataset, 'A ZFS Master setting holds text that cannot be saved safely: <, an HTML entity, ${...}, or a quote in the directory listing. Fix it on the Settings page.');
+	$saved = saveConfig($config);
+	$ret = buildArrayRet();
+	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
+	return $ret;
 }
 
 function addToDirectoryListing($zdataset) {
@@ -320,10 +336,7 @@ function addToDirectoryListing($zdataset) {
 	if (in_array($zdataset, $current, true)) return zfsmFailure($zdataset, ZFSM_ERR_ALREADY_SET_IN_CONFIG);
 	$current[] = $zdataset;
 	$config['general']['directory_listing'] = implode(PHP_EOL, array_values(array_unique($current)));
-	$saved = saveConfig($config);
-	$ret = buildArrayRet();
-	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
-	return $ret;
+	return zfsmSaveDirectoryListing($config, $zdataset);
 }
 
 function removeFromDirectoryListing($zdataset) {
@@ -333,10 +346,7 @@ function removeFromDirectoryListing($zdataset) {
 	if ($key === false) return zfsmFailure($zdataset, ZFSM_ERR_NOT_IN_CONFIG);
 	unset($current[$key]);
 	$config['general']['directory_listing'] = implode(PHP_EOL, $current);
-	$saved = saveConfig($config);
-	$ret = buildArrayRet();
-	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
-	return $ret;
+	return zfsmSaveDirectoryListing($config, $zdataset);
 }
 
 function getZFSPools($strict = false) {
