@@ -24,5 +24,6 @@ assert vendor.prepare('sweetalert2', 'dist/sweetalert2.min.css', b'div:where(.sw
 assert 'nested' in (refused('dist/sweetalert2.min.css', b'div:where(.swal2-popup:not(.swal2-toast)) button{color:red}') or ''), 'a nested :where() must be refused'
 for unsafe in (b'.swal2-popup :where(.swal2-confirm,.swal2-cancel){color:red}', b'div:where(.swal2-actions > .swal2-confirm){color:red}', b'div:where(.a .b){color:red}'):
     assert 'select something else' in (refused('dist/sweetalert2.min.css', unsafe) or ''), b'a list or combinator must be refused: ' + unsafe
-assert 'audio' in (refused('dist/sweetalert2.min.css', b'document.createElement("audio")') or ''), 'audio code must be refused'
+for audio in (b'document.createElement("audio")', b'document.createElement( `audio` )', b'new Audio(src).play()', b'new window.AudioContext()', b'x.innerHTML="<audio autoplay>"', b'"data:audio/mpeg;base64,AA"', b'navigator.languages[0]'):
+    assert 'refuses to bundle' in (refused('dist/sweetalert2.min.css', audio) or ''), b'audio or locale code must be refused: ' + audio
 print('vendor prepare tests passed')

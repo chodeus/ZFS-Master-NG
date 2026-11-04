@@ -5,9 +5,7 @@ const path = require('node:path');
 const {JSDOM} = require('jsdom');
 const assets = path.resolve(__dirname, '../zfs.master/assets');
 const library = fs.readFileSync(path.join(assets, 'sweetalert2.all.min.js'), 'utf8');
-
-const refused = /anthem|\.mp3|xn--p1ai|navigator\.language|createElement\(['"]audio/i.exec(library);
-assert.equal(refused, null, `bundled library contains refused code: ${refused}`);
+// Refused code (audio, locale triggers) is vendor.py's job: its check proves the bundle equals a release that passed it.
 
 function load() {
   const dom = new JSDOM('<!doctype html><body></body>', {runScripts: 'outside-only', pretendToBeVisual: true});

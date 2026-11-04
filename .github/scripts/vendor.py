@@ -20,7 +20,7 @@ ZERO_WEIGHT = re.compile(rb':where\(([^()]*)\)')
 # Only a plain compound unwraps to the same match: a list or combinator would select something else.
 UNSAFE_WHERE = re.compile(rb'[,\s>+~]')
 # Past releases played audio and blocked the page on some hosts. Refuse anything like it rather than ship it.
-REFUSED = re.compile(rb"anthem|\.mp3|xn--p1ai|navigator\.language|createElement\(['\"]audio", re.IGNORECASE)
+REFUSED = re.compile(rb"anthem|\.(?:mp3|ogg|wav)|data:audio|<audio|new\s+Audio\b|AudioContext|createElement\(\s*['\"`]audio|xn--p1ai|navigator\.language", re.IGNORECASE)
 
 
 def get(url):
