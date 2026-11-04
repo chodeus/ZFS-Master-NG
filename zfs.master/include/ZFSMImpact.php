@@ -143,12 +143,17 @@ function zfsmReviewRefusal($preview, $token, $changed) {
 	return is_string($token) && hash_equals($preview['token'], $token) ? '' : $changed;
 }
 
-// A dataset, or snapshots as ds@a,b; $recursive matches the review's -r.
-function zfsmDestroyReviewed($target, $recursive, $token) {
-	$refusal = zfsmReviewRefusal(zfsmDestroyPreview($target, $recursive), $token, 'What this would destroy has changed since you reviewed it. Nothing was destroyed; please review it again.');
-	if ($refusal !== '') return zfsmFailure($target, $refusal);
-	$dataset = explode('@', $target, 2)[0];
-	return zfsmExplainBusy($dataset === $target ? destroyDataset($target, $recursive) : deleteDatasetSnapshot($target, $recursive), $dataset);
+function zfsmDestroyReviewed($dataset, $force, $token) {
+	$refusal = zfsmReviewRefusal(zfsmDestroyPreview($dataset, $force), $token, 'What this would destroy has changed since you reviewed it. Nothing was destroyed; please review it again.');
+	if ($refusal !== '') return zfsmFailure($dataset, $refusal);
+	return zfsmExplainBusy(destroyDataset($dataset, $force), $dataset);
+}
+
+// Snapshots only (ds@a or ds@a,b): the route's gate assumes no dataset can be destroyed through it.
+function zfsmDeleteSnapshotsReviewed($snapshots, $recursive, $token) {
+	$refusal = zfsmReviewRefusal(zfsmDestroyPreview($snapshots, $recursive), $token, 'The snapshots this would delete have changed since you reviewed them. Nothing was deleted; please review them again.');
+	if ($refusal !== '') return zfsmFailure($snapshots, $refusal);
+	return zfsmExplainBusy(deleteDatasetSnapshot($snapshots, $recursive), explode('@', $snapshots, 2)[0]);
 }
 
 function zfsmRollbackReviewed($snapshot, $destroy_newer, $token) {

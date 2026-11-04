@@ -84,11 +84,16 @@ env(array('ZFSM_TEST_HOLDS' => '1'));
 same(array('tank/data@daily'), zfsmDestroyPreview('tank/data@a,daily', 0)['held'], 'a held snapshot in the list is named, which blocks it');
 env(array('ZFSM_TEST_HOLDS' => '0'));
 @unlink($log);
-same(true, empty(zfsmDestroyReviewed('tank/data@a,daily', 0, '')['succeeded']), 'a list without its token is refused');
+same(true, empty(zfsmDeleteSnapshotsReviewed('tank/data@a,daily', 0, '')['succeeded']), 'a list without its token is refused');
 same('', (string)@file_get_contents($log), 'and nothing is deleted');
-same(false, empty(zfsmDestroyReviewed('tank/data@a,daily', 0, $bulk['token'])['succeeded']), 'the reviewed list is deleted');
+same(false, empty(zfsmDeleteSnapshotsReviewed('tank/data@a,daily', 0, $bulk['token'])['succeeded']), 'the reviewed list is deleted');
 same("destroy tank/data@a,daily\n", (string)@file_get_contents($log), 'in one command, so ZFS deletes all of it or none');
 foreach (array('tank/data,x', 'tank/a@b,c@d') as $bad) same(true, empty(deleteDatasetSnapshot($bad)['succeeded']), 'not a snapshot list: '.$bad);
+// The snapshot route skips Destructive Mode, so a dataset's own valid token must not destroy it there.
+@unlink($log);
+$dataset_token = zfsmDestroyPreview('tank/data', 0)['token'];
+same(true, empty(zfsmDeleteSnapshotsReviewed('tank/data', 0, $dataset_token)['succeeded']), 'a dataset is refused by the snapshot path');
+same('', (string)@file_get_contents($log), 'and nothing is destroyed');
 
 // Rollback preview
 $rollback = zfsmRollbackPreview('tank/data@daily');
@@ -145,10 +150,15 @@ same(array('T: tank succeeded', 'T: tank/x failed: nope', 'T: tank/y failed: see
 same(array('abc' => 'plex', 'def' => 'my app'), zfsmContainerNames("abc plex\ndef my app\n"), 'container names');
 
 // Who is using it: a real process with its working directory inside the mount
+$children = array();
+// A failed check exits at once; its sleepers must not outlive the test.
+register_shutdown_function(function() use (&$children) { foreach ($children as $child) if (is_resource($child)) proc_terminate($child); });
 $mount = sys_get_temp_dir().'/zfsm-users-'.getmypid();
 mkdir($mount.'/in<b>ner', 0777, true);
 env(array('ZFSM_TEST_USERS_MOUNT' => $mount));
 $sleeper = proc_open(array('sleep', '20'), array(), $pipes, $mount.'/in<b>ner');
+same(true, is_resource($sleeper), 'the test process started');
+$children[] = $sleeper;
 usleep(200000);
 $status = proc_get_status($sleeper);
 $users = zfsmDatasetUsers('tank/data');
@@ -156,9 +166,13 @@ $found = array_filter($users, function($user) use ($status) { return strpos($use
 same(1, count($found), 'the process using the mount is named: '.json_encode($users));
 same(false, strpos(implode(' ', $users), '<'), 'a file name cannot put markup in the report: '.json_encode($users));
 
+// Writes under /mnt/user, so only on the empty tmpfs the runner mounts there.
+same(1, preg_match('~^\S+ \S+ \S+ \S+ /mnt/user \S+.* - tmpfs ~m', (string)@file_get_contents('/proc/self/mountinfo')), '/mnt/user must be a scratch tmpfs before this test writes to it');
 mkdir('/mnt/user/zfsm-share/inner', 0777, true);
 env(array('ZFSM_TEST_USERS_MOUNT' => '/mnt/zfsm-pool/zfsm-share'));
 $through = proc_open(array('sleep', '20'), array(), $pipes, '/mnt/user/zfsm-share/inner');
+same(true, is_resource($through), 'the share test process started');
+$children[] = $through;
 usleep(200000);
 $through_pid = proc_get_status($through)['pid'];
 $found = array_filter(zfsmDatasetUsers('tank/data'), function($user) use ($through_pid) { return strpos($user, '(pid '.$through_pid.')') !== false; });
