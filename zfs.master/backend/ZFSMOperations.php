@@ -277,9 +277,9 @@ function listDirectories($path, $childs, $zexc_pattern) {
 }
 
 // A value the settings reader would not give back as written: Unraid 6.12+ decodes entities and strips tags first,
-// PHP expands ${NAME}, and a quote or leading # in a value with line breaks splits it.
+// PHP expands ${NAME}, a carriage return may not survive, and a quote or leading # in a value with line breaks splits it.
 function zfsmConfigValueUnsafe($value) {
-	if (strpos($value, '${') !== false || strpos($value, '<') !== false) return true;
+	if (strpos($value, '${') !== false || strpbrk($value, "<\r") !== false) return true;
 	if (preg_match('/&(#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i', $value)) return true;
 	return strpos($value, "\n") !== false && (strpos($value, '"') !== false || preg_match('/^#/m', $value));
 }
@@ -293,7 +293,7 @@ function zfsmConfigText($array) {
 		foreach ($elem as $key2 => $elem2) {
 			$values = is_array($elem2) ? $elem2 : array($elem2);
 			foreach ($values as $value) {
-				$value = str_replace("\r", '', (string)$value);
+				$value = (string)$value;
 				if (zfsmConfigValueUnsafe($value)) return null;
 				$value = str_replace(array('\\', '"'), array('\\\\', '\\"'), $value);
 				$content .= $key2.(is_array($elem2) ? '[]' : '').' = "'.$value."\"\n";

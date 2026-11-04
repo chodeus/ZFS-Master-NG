@@ -32,7 +32,7 @@ foreach ($readers as $version => $read) {
 	same($kept['snap_prefix'], $saved['general']['snap_prefix'], "a quote survives a save ($version)");
 	same($kept['exclusion'], $saved['general']['exclusion'], "backslashes and a bare \$ survive a save ($version)");
 }
-foreach (array("a\"\nevil = \"1", "tank/a\n#hidden", 'a&quot;b', 'R&amp;D', 'x&#92;', 'pre${HOME}post', 'x<b') as $unsafe) {
+foreach (array("before\rafter", "a\"\nevil = \"1", "tank/a\n#hidden", 'a&quot;b', 'R&amp;D', 'x&#92;', 'pre${HOME}post', 'x<b') as $unsafe) {
 	same(null, zfsmConfigText(array('general' => array('snap_prefix' => $unsafe, 'after' => 'kept'))), 'refused, it would not read back as written: '.json_encode($unsafe));
 }
 

@@ -159,7 +159,7 @@ switch ($check) {
 			if (saveConfig($config) || file_get_contents($cfg) !== $before) $bad[] = 'saved '.json_encode($value);
 		}
 		$listing = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['directory_listing']; };
-		file_put_contents($cfg, "[general]\ndirectory_listing = \"cache/appdata\ncache/R&D\"\n");
+		file_put_contents($cfg, "[general]\r\ndirectory_listing = \"cache/appdata\r\ncache/R&D\"\r\n");   // a list older versions saved with CRLF
 		$ret = addToDirectoryListing('tank/data');
 		if ($listing() !== array('cache/appdata', 'cache/R&D', 'tank/data')) $bad[] = 'listing after add: '.json_encode($listing()).' '.json_encode($ret);
 		$ret = removeFromDirectoryListing('cache/appdata');
