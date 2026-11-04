@@ -138,6 +138,33 @@ jobs:
           UNRAID_VERSION: ${{ matrix.unraid }}
         run: docker run --rm -v "$PWD:/repo" -w /repo "php:${PHP_VERSION}-cli" bash tests/unraid_compat_test.sh .webgui "$UNRAID_VERSION"
 
+  # The one check branch rules require; the matrix names change with each Unraid release.
+  gate:
+    name: Lint + build
+    needs: [validate, php, unraid]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write   # a dispatched run's checks never reach the PR, but a commit status does
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          DISPATCHED_FOR_PR: ${{ github.event_name == 'workflow_dispatch' && inputs.base != '' }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          state=success
+          for result in $RESULTS; do [ "$result" = success ] || state=failure; done
+          if [ "$DISPATCHED_FOR_PR" = true ]; then
+            gh api "repos/$REPO/statuses/$SHA" -f state="$state" -f context='Lint + build' -f target_url="$RUN_URL" -f description="CI dispatched for this PR: $state" >/dev/null
+          fi
+          echo "Jobs: $RESULTS"
+          [ "$state" = success ]
+
   notify-failure:
     needs: [validate, php, unraid]
     if: failure() && github.event_name != 'pull_request' && !inputs.base

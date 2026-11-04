@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[2]
 SWAL_EXPORTS = re.compile(rb'this\.swal\s*=\s*this\.sweetAlert\s*=\s*this\.Swal\s*=\s*this\.SweetAlert\s*=')
 # :where() gives rules no weight, so Unraid's theme would restyle the dialogs: Destroy and Cancel end up identical.
 ZERO_WEIGHT = re.compile(rb':where\(([^()]*)\)')
+# Only a plain compound unwraps to the same match: a list or combinator would select something else.
+UNSAFE_WHERE = re.compile(rb'[,\s>+~]')
 # Past releases played audio and blocked the page on some hosts. Refuse anything like it rather than ship it.
 REFUSED = re.compile(rb"anthem|\.mp3|xn--p1ai|navigator\.language|createElement\(['\"]audio", re.IGNORECASE)
 
@@ -50,6 +52,9 @@ def prepare(name, src, data):
         if count != 1:
             raise SystemExit(f'{name}: expected one global export line in {src}, found {count}')
     if name == 'sweetalert2':
+        unsafe = next((m.group(0) for m in ZERO_WEIGHT.finditer(data) if UNSAFE_WHERE.search(m.group(1))), None)
+        if unsafe:
+            raise SystemExit(f'{name}: {src} has {unsafe.decode()}, which would select something else once unwrapped')
         data = ZERO_WEIGHT.sub(rb'\1', data)
         if b':where(' in data:
             raise SystemExit(f'{name}: {src} has a nested :where() this script cannot give weight to')

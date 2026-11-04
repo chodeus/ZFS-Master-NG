@@ -22,5 +22,7 @@ assert vendor.prepare('sweetalert2', 'dist/sweetalert2.all.min.js', exports) == 
 assert refused('dist/sweetalert2.all.min.js', b'void 0;') and 'export' in refused('dist/sweetalert2.all.min.js', b'void 0;'), 'a missing export must be refused'
 assert vendor.prepare('sweetalert2', 'dist/sweetalert2.min.css', b'div:where(.swal2-container) button{color:red}') == b'div.swal2-container button{color:red}', ':where() must be given weight'
 assert 'nested' in (refused('dist/sweetalert2.min.css', b'div:where(.swal2-popup:not(.swal2-toast)) button{color:red}') or ''), 'a nested :where() must be refused'
+for unsafe in (b'.swal2-popup :where(.swal2-confirm,.swal2-cancel){color:red}', b'div:where(.swal2-actions > .swal2-confirm){color:red}', b'div:where(.a .b){color:red}'):
+    assert 'select something else' in (refused('dist/sweetalert2.min.css', unsafe) or ''), b'a list or combinator must be refused: ' + unsafe
 assert 'audio' in (refused('dist/sweetalert2.min.css', b'document.createElement("audio")') or ''), 'audio code must be refused'
 print('vendor prepare tests passed')
