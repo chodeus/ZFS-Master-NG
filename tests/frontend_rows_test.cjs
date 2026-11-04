@@ -62,4 +62,72 @@ for (const id of buttons) assert.match(id, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a menu i
 const spaced = context.generateDatasetArrayRows('tank', bare('tank/My Share'), '', true, 0, 30, {}).match(/<button type="button" id="([^"]+)"/)[1];
 assert.match(spaced, /^[A-Za-z][A-Za-z0-9_-]*$/, 'a name with a space too');
 
+for (const [a, b] of [['tank/a b', 'tank/a_2520b'], ['tank/a%20b', 'tank/a_20b'], ['tank/a_b', 'tank/a b']]) {
+	assert.notEqual(context.elementToken(a), context.elementToken(b), a+' and '+b+' need different ids');
+}
+
+// Every snapshot cell has the same slots, so the camera icons line up down the column.
+const cells = source => [...source.matchAll(/<i class="fa fa-camera-retro icon"[^>]*><\/i>(.*?)<\/td>/g)].map(match => match[1]);
+const datasetCells = cells(context.generateDatasetArrayRows('tank', {...bare('tank'), mountpoint: 'none', child: {a: bare('tank/a')}}, '', true, 0, 30, {}));
+const poolCell = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1T', MountPoint: '/mnt/tank', Refer: '', Used: '1', Free: '1', Snapshots: 3}, '', true, {})+'</tr>');
+for (const cell of [...datasetCells, ...poolCell]) assert.match(cell, /^<span class="zfsm-snap-count">[^<]*<\/span><span class="zfsm-snap-browse">/, 'a snapshot cell keeps the count and browse slots: '+cell);
+assert.equal(datasetCells.length + poolCell.length, 3, 'pool, unmounted root and mounted child all checked');
+assert.doesNotMatch(datasetCells[0], /Main\/Browse/, 'no browse link without a mountpoint');
+assert.match(datasetCells[1], /Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"/);
+const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=alert(1)>');
+assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
+assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
+assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
+assert.match(page, /<div id="zfs_master_div" class="TableContainer">\s*<table id="zfs_master"/, 'on Unraid 7.2+ phones the table scrolls in its own box, like Unraid\'s tables');
+assert.match(page, /@media \(max-width:768px\)\{\s*div\.title\.zfsm-title,div#title\.zfsm-title\{flex-wrap:wrap/, 'on phones only the plugin title line wraps');
+
+// The status bar moves onto Unraid's title line, which then skips the reads/writes toggle.
+const element = (tagName, classes = []) => {
+	const node = {tagName, children: [], previousElementSibling: null, parent: null, className: classes.join(' '),
+		classList: {contains: name => node.className.split(' ').includes(name), add: name => { if (!node.classList.contains(name)) node.className += ' '+name; }},
+		get firstChild() { return node.children[0] || null; },
+		appendChild(child) { if (child.parent) child.parent.children.splice(child.parent.children.indexOf(child), 1); child.parent = node; node.children.push(child); return child; },
+		querySelector(selector) { const [tag, cls] = selector.split('.'); return node.children.find(c => c.tagName === tag.toUpperCase() && c.classList.contains(cls)) || null; },
+		remove() { node.removed = true; }};
+	return node;
+};
+context.document = {createElement: tag => element(tag.toUpperCase())};
+const layout = withRight => {
+	const title = element('DIV', ['title']);
+	if (withRight) title.appendChild(element('SPAN', ['right']));
+	const note = element('P');
+	note.previousElementSibling = title;
+	const bar = element('DIV', ['title', 'zfs_master_title']);
+	bar.previousElementSibling = note;
+	for (const part of ['refresh time', 'settings', 'refresh']) bar.appendChild(element('SPAN', [part]));
+	return {title, bar};
+};
+for (const withRight of [true, false]) {
+	const {title, bar} = layout(withRight);
+	assert.equal(context.zfsmMoveStatusIntoTitle(bar), true);
+	assert.ok(title.classList.contains('disable_diskio'), 'the title opts out of the reads/writes toggle');
+	assert.ok(title.classList.contains('zfsm-title'), 'the title is marked so only it wraps on phones');
+	const right = title.children.find(c => c.classList.contains('right'));
+	assert.deepEqual(right.children[0].children.map(c => c.className), ['refresh time', 'settings', 'refresh'], 'all three move, in order'+(withRight ? '' : ', into a right span made for them'));
+	assert.ok(bar.removed, 'the empty bar goes');
+}
+// Unraid 6.9 and 6.11 mark the title line div#title; an earlier div.title belongs to someone else.
+{
+	const other = element('DIV', ['title']);
+	const legacy = element('DIV');
+	legacy.id = 'title';
+	legacy.previousElementSibling = other;
+	const bar = element('DIV', ['title', 'zfs_master_title']);
+	bar.previousElementSibling = legacy;
+	bar.appendChild(element('SPAN', ['refresh time']));
+	assert.equal(context.zfsmMoveStatusIntoTitle(bar), true);
+	assert.ok(legacy.classList.contains('disable_diskio'), 'the 6.9 title line takes the status');
+	assert.equal(other.children.length, 0, 'an earlier title is left alone');
+}
+const tabbed = element('DIV', ['title', 'zfs_master_title']);
+tabbed.appendChild(element('SPAN', ['refresh time']));
+assert.equal(context.zfsmMoveStatusIntoTitle(tabbed), false, 'a tabbed page has no title line, so the bar stays');
+assert.equal(tabbed.children.length, 1);
+assert.equal(context.zfsmMoveStatusIntoTitle(null), false);
+
 console.log('dataset row class tests passed');

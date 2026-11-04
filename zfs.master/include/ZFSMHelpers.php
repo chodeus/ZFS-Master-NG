@@ -3,7 +3,7 @@
 function loadConfig($config) {	
 	$config = is_array($config) ? $config : [];
 	$zfsm_ret['refresh_interval'] = isset($config['general']['refresh_interval']) ? intval($config['general']['refresh_interval']) : 30;
-	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : "0";
+	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : 1;
 	$zfsm_ret['znapzend_data'] = isset($config['general']['znapzend_data']) ? intval($config['general']['znapzend_data']) : "0";
 
 	$zfsm_ret['destructive_mode'] = isset($config['general']['destructive_mode']) ? intval($config['general']['destructive_mode']) : 0;
@@ -104,6 +104,15 @@ function runProcess($command, $args = array(), $stdin = null) {
 	return array('code' => $code, 'output' => trim((string)$output));
 }
 
+// Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.
+function zfsmPopupStylesheets($docroot) {
+	if (is_file($docroot.'/webGui/styles/default-popup.css')) return array('/webGui/styles/default-popup.css');
+	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
+	$theme = preg_match('/^[a-z]+$/', (string)($display['theme'] ?? '')) === 1 ? $display['theme'] : 'black';
+	$sheets = array('/webGui/styles/default-color-palette.css', '/webGui/styles/default-base.css', '/webGui/styles/themes/'.$theme.'.css');
+	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
+}
+
 function commandAnswer($subject, $result) {
 	$answer = array('succeeded' => array(), 'failed' => array());
 	if (($result['code'] ?? 1) === 0) {
@@ -139,13 +148,10 @@ function cleanZFSCreateDatasetParams($params) {
 		unset($retParams['encryption']);
 		unset($retParams['passphrase']);
 	else:
-		if (!isset($retParams['passphrase']) || $retParams['passphrase'] == ''):
-			unset($retParams['encryption']);
-		else:
-			$retParams['encryption'] = 'on';
-			$retParams['keylocation'] = 'prompt';
-			$retParams['keyformat'] = 'passphrase';
-		endif;
+		// createDataset refuses a short or missing passphrase; dropping encryption here would create it unencrypted.
+		$retParams['encryption'] = 'on';
+		$retParams['keylocation'] = 'prompt';
+		$retParams['keyformat'] = 'passphrase';
 	endif;
 		
 	unset($retParams['mount']);

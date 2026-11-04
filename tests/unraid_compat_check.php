@@ -40,6 +40,15 @@ function run_page($path, $strip_header) {
 	return ob_get_clean();
 }
 
+// Every stylesheet a dialog links must exist in this Unraid, and one of them must carry the theme.
+function popup_styles($html, $docroot) {
+	preg_match_all('#href="(/webGui/styles/[^"?]+)#', $html, $matches);
+	foreach ($matches[1] as $sheet) {
+		if (!is_file($docroot.$sheet)) { fwrite(STDERR, "dialog links a stylesheet this Unraid lacks: $sheet\n"); exit(1); }
+	}
+	if (!preg_grep('#/(default-popup|themes/[a-z]+)\.css$#', $matches[1])) { fwrite(STDERR, "dialog has no theme stylesheet: ".implode(' ', $matches[1])."\n"); exit(1); }
+}
+
 switch ($check) {
 	case 'body_token':
 	case 'no_token':
@@ -69,8 +78,17 @@ switch ($check) {
 
 	case 'main_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
+		// A saved setting that closes the script tag must stay inside the page's JSON.
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		file_put_contents($cfg, str_replace('snap_prefix = ""', 'snap_prefix = "</script><i id=zfsm-injected>"', $original));
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+		// Unraid 7 strips tags when it reads settings; 6.x hands them over as saved.
+		$tags_survive = strpos(parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? '', '<') !== false;
+		file_put_contents($cfg, $original);
 		if (strpos($html, 'zfs_master_body') === false) { fwrite(STDERR, "main page did not render\n"); exit(1); }
+		if ($tags_survive && strpos($html, 'zfsm-injected') === false) { fwrite(STDERR, "the hostile setting never reached the page\n"); exit(1); }
+		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
 		break;
 
 	case 'saved_settings':
@@ -85,11 +103,39 @@ switch ($check) {
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
 		break;
 
+	case 'menu_order':
+		// Real find_pages: the ZFS guard works and the tab sits below the boot device.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/webGui/include/PageBuilder.php';
+		$site = array();
+		// Other pages' conditions read live array state this harness doesn't have.
+		build_pages($docroot.'/plugins/zfs.master/*.page');
+		build_pages($docroot.'/plugins/dynamix/BootDevice.page');
+		$names = array_column(array_values(find_pages('Main')), 'name');
+		$position = array_search('ZFSMaster', $names, true);
+		if (is_file('/usr/sbin/zpool')) {
+			$boot = array_search('BootDevice', $names, true);
+			if ($position === false) { fwrite(STDERR, "tab missing with ZFS present\n"); exit(1); }
+			if ($boot !== false && $position < $boot) { fwrite(STDERR, 'tab above the boot device: '.implode(',', $names)."\n"); exit(1); }
+		} elseif ($position !== false) {
+			fwrite(STDERR, "tab shown without ZFS\n");
+			exit(1);
+		}
+		$GLOBALS['zfsm_problems'] = array();
+		break;
+
 	case 'settings_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		require_once $docroot.'/webGui/include/Helpers.php';
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
 		if (strpos($html, 'name="exclusion"') === false) { fwrite(STDERR, "settings page did not render\n"); exit(1); }
+		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
+		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
+		$rendered = Markdown($html);
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern') as $section => $field) {
+			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
+		}
 		break;
 
 	case 'create_popup':
@@ -99,6 +145,10 @@ switch ($check) {
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMCreateDataset.php';
 		$html = ob_get_clean();
 		if (strpos($html, 'zfsm_csrf_token') === false) { fwrite(STDERR, "create popup did not render\n"); exit(1); }
+		foreach (array('name', 'mount', 'mountpoint', 'quota', 'encryption', 'passphrase', 'sync') as $field) {
+			if (!preg_match('#<dl><dt class="zfsm-tip" tabindex="0" data-tip="[^"]+">[^<]+</dt><dd>[^\n]*name="'.$field.'"#', $html)) { fwrite(STDERR, "create popup lost the $field row or its tooltip\n"); exit(1); }
+		}
+		popup_styles($html, $docroot);
 		break;
 
 	case 'snapshot_popup':
@@ -108,6 +158,7 @@ switch ($check) {
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
 		$html = ob_get_clean();
 		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		popup_styles($html, $docroot);
 		break;
 
 	default:

@@ -117,7 +117,10 @@ printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
-for check in body_token no_token wrong_token main_page settings_page create_popup snapshot_popup; do
+rm -f /usr/sbin/zpool
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" menu_order "$version" || fail 'menu without ZFS'
+mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
+for check in menu_order body_token no_token wrong_token main_page settings_page create_popup snapshot_popup; do
 	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
 done
 echo "Unraid $version: installer, CSRF, backend and pages passed"

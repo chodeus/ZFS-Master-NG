@@ -56,6 +56,15 @@ function zfsmDatasetExists($name, $types = 'filesystem,volume') {
 	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
 }
 
+// True when ZFS says it does not exist, false when it does, null when the read failed.
+function zfsmDatasetMissing($name) {
+	if (!zfsmValidDatasetName($name)) return null;
+	$result = runProcess('zfs', array('list', '-H', '-o', 'name', $name));
+	if (($result['code'] ?? 1) === 0) return false;
+	// Only the closing diagnostic counts: a name may itself contain the words.
+	return preg_match('/: dataset does not exist\s*\z/', $result['output'] ?? '') === 1 ? true : null;
+}
+
 function zfsmSnapshotExists($name) {
 	if (!zfsmValidSnapshotName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'snapshot', $name));
@@ -437,25 +446,54 @@ function createDataset($zdataset, $zoptions) {
 	$passphrase = (string)($zoptions['passphrase'] ?? '');
 	unset($zoptions['passphrase']);
 	$allowed = array('mountpoint', 'compression', 'quota', 'recordsize', 'atime', 'xattr', 'primarycache', 'readonly', 'casesensitivity', 'sync', 'encryption', 'keylocation', 'keyformat');
-	$args = array('create', '-p');
+	// Read-only is set last, or the share owner below could not be applied.
+	$readonly = ($zoptions['readonly'] ?? '') === 'on';
+	if ($readonly) unset($zoptions['readonly']);
+	$args = array('create');
 	foreach ($zoptions as $property => $value) {
 		if (!in_array($property, $allowed, true) || !zfsmSafePropertyValue($property, (string)$value)) return zfsmFailure($zdataset, 'Invalid dataset property: '.$property);
 		$args[] = '-o';
 		$args[] = $property.'='.$value;
 	}
-	$encrypted = ($zoptions['encryption'] ?? 'off') === 'on';
-	if ($encrypted && strlen($passphrase) < 8) return zfsmFailure($zdataset, 'Encryption passphrase must be at least 8 characters');
 	$args[] = $zdataset;
-	$result = runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
-	$answer = commandAnswer($zdataset, $result);
-	if (($result['code'] ?? 1) === 0) {
-		$mountpoint = getDatasetProperty($pool, $zdataset, 'mountpoint');
-		if (is_string($mountpoint) && $mountpoint !== '' && $mountpoint[0] === '/' && is_dir($mountpoint)) {
-			@chown($mountpoint, 'nobody');
-			@chgrp($mountpoint, 'users');
-		}
+	$encrypted = ($zoptions['encryption'] ?? 'off') === 'on';
+	if ($encrypted && strlen($passphrase) < 8) return zfsmFailure($zdataset, 'Enter a passphrase of at least 8 characters, or set Encryption to No.');
+	$parts = explode('/', $zdataset);
+	$created = array();
+	for ($depth = 2; $depth <= count($parts); $depth++) {
+		$name = implode('/', array_slice($parts, 0, $depth));
+		$missing = zfsmDatasetMissing($name);
+		if ($missing === null) return zfsmFailure($zdataset, 'Could not check whether '.$name.' exists, so nothing was created.');
+		if ($missing) $created[] = $name;
 	}
-	return $answer;
+	if (end($created) !== $zdataset) return zfsmFailure($zdataset, 'A dataset with this name already exists.');
+	// No -p: it succeeds on a dataset someone else just made, and only ours may get the share owner.
+	$owned = array();
+	foreach ($created as $name) {
+		$result = $name === $zdataset ? runProcess('zfs', $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null) : runProcess('zfs', array('create', $name));
+		if (($result['code'] ?? 1) !== 0) break;
+		$owned[] = $name;
+	}
+	$answer = commandAnswer($zdataset, $result);
+	$unowned = zfsmSetShareOwner($pool, $owned);
+	if (($result['code'] ?? 1) !== 0) return $answer;
+	$problems = $unowned ? array('the share owner could not be set on '.implode(', ', $unowned)) : array();
+	if ($readonly) {
+		$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
+		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.trim($set['output'] ?? '');
+	}
+	return $problems ? zfsmFailure($zdataset, 'Created, but '.implode('; ', $problems)) : $answer;
+}
+
+// Returns the datasets whose mountpoint could not be given to nobody:users.
+function zfsmSetShareOwner($pool, $names) {
+	$failed = array();
+	foreach ($names as $name) {
+		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
+		if ($mountpoint === 'none' || $mountpoint === 'legacy') continue;
+		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users')) $failed[] = $name;
+	}
+	return $failed;
 }
 
 function renameDataset($zdataset, $new_name, $force) {

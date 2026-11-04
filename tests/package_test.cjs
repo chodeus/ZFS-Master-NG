@@ -59,7 +59,20 @@ try {
   const files = execFileSync('tar', ['-tJf', archive], {encoding: 'utf8'}).trim().split(/\r?\n/).filter(entry => !entry.endsWith('/'));
   assert.equal(files.length, checked, 'Unexpected package files');
   assert.ok(files.every(entry => entry.replace(/^\.\//, '').startsWith('usr/local/emhttp/plugins/zfs.master/')), 'Package must install only under the plugin directory');
-  console.log(`Package: checksum and all ${checked} source files verified`);
+  // No !important in the plugin's own CSS: scoped selectors win on every Unraid version and leave other plugins alone.
+const important = [];
+(function scan(directory) {
+  for (const entry of fs.readdirSync(path.join(root, directory), {withFileTypes: true})) {
+    const relative = path.join(directory, entry.name);
+    if (entry.isDirectory()) { if (entry.name !== 'assets') scan(relative); continue; }
+    if (!/\.(page|php|css|js)$/.test(entry.name)) continue;
+    const source = fs.readFileSync(path.join(root, relative), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    if (/:[^;{}]*!\s*important/.test(source)) important.push(relative);
+  }
+})('zfs.master');
+assert.deepEqual(important, [], 'CSS uses !important in: ' + important.join(', '));
+
+console.log(`Package: checksum and all ${checked} source files verified`);
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }

@@ -19,6 +19,38 @@ function datasetRowId(name) {
 	return 'tr-'+encodeURIComponent(String(name ?? ''));
 }
 
+// Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
+function snapshotCell(color, count, browsePath) {
+	const style = color ? ' style="color:'+escapeHtml(color)+'"' : '';
+	const browse = typeof browsePath === 'string' && browsePath.startsWith('/')
+		? '<a href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
+		: '';
+	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span><span class="zfsm-snap-browse">'+browse+'</span>';
+}
+
+// Puts the refresh time and buttons on Unraid's own title line and opts it out of the reads/writes toggle.
+// Tabbed pages have no title line, so the bar stays where it is.
+function zfsmMoveStatusIntoTitle(bar) {
+	let title = bar ? bar.previousElementSibling : null;
+	// Unraid 6.9 and 6.11 mark it div#title; 6.12 and later use div.title.
+	while (title && !(title.tagName === 'DIV' && (title.id === 'title' || title.classList.contains('title')))) title = title.previousElementSibling;
+	if (!title) return false;
+	title.classList.add('disable_diskio');
+	title.classList.add('zfsm-title');
+	let right = title.querySelector('span.right');
+	if (!right) {
+		right = document.createElement('span');
+		right.className = 'right zfsm-title-right';
+		title.appendChild(right);
+	}
+	const status = document.createElement('span');
+	status.className = 'zfsm-title-status';
+	while (bar.firstChild) status.appendChild(bar.firstChild);
+	right.appendChild(status);
+	bar.remove();
+	return true;
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
@@ -284,12 +316,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		tr += '<td></td>';
 
 		// Snapshots
-		tr += '<td><i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-		// Mountpoint
-
-		tr += '<a href="/Main/Browse?dir='+encodeURIComponent(directory)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(directory)+'"></i></a>';
-		tr += '</td>';
+		tr += '<td>'+snapshotCell(icon_color, snap_count, directory)+'</td>';
 		tr += '</tr>';
 		agg += tr;
 	});
@@ -327,11 +354,7 @@ function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
 	
 		// Snapshots
 	
-		tmp = '<td>';
-		tmp += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-		tmp += '<a href="/Main/Browse?dir='+encodeURIComponent(directory)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(directory)+'"></i></a>';
-	
-		td_snaps.innerHTML = tmp;
+		td_snaps.innerHTML = snapshotCell(icon_color, snap_count, directory);
 	});
 }
 
@@ -495,16 +518,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 
 	// Snapshots
 
-	tr += '<td>';
-	tr += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-	// Mountpoint
-
-	if (zdataset['mountpoint'] != "none") {
-		tr += ' <a href="/Main/Browse?dir='+encodeURIComponent(zdataset['mountpoint'])+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(zdataset['mountpoint'])+'"></i></a>';
-	}
-
-	tr += '</td>';
+	tr += '<td>'+snapshotCell(icon_color, zdataset['_snapshots_unavailable'] ? '—' : snap_count, zdataset['mountpoint'])+'</td>';
 	tr += '</tr>';
 
 	return tr;
@@ -571,7 +585,7 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	tr += '</td>';
 
 	// Snapshots
-	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots"><i class="fa fa-camera-retro icon"></i><span>'+(zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'])+'</span></td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
 
 	return tr; 
 }
@@ -690,12 +704,5 @@ async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, d
 
 	// Snapshots
 
-	tmp = '<td>';
-	tmp += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-	if (data.dataset['mountpoint'] != "none") {
-		tmp += ' <a href="/Main/Browse?dir='+data.dataset['mountpoint']+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+data.dataset['mountpoint']+'"></i></a>';
-	}
-
-	td_snaps.innerHTML = tmp;
+	td_snaps.innerHTML = snapshotCell(icon_color, snap_count, data.dataset['mountpoint']);
 }

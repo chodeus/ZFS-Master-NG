@@ -51,17 +51,12 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		margin-left: 10%;
 	}
 
-	.zfs_table tr>td{
-		width:auto!important;
-		white-space: normal!important;
+	#adminsnaps-form-div .zfs_delete_btn {
+		text-align: center;
 	}
 
-	.zfs_delete_btn {
-		text-align: center !important;
-  	}
-
 	#zfs_master.disk_status.zfs_snap_table thead tr td{
-		text-align: center !important ;
+		text-align: center;
 	}
 
 	#zfs_master.disk_status.zfs_snap_table thead tr td:nth-child(4){
@@ -129,9 +124,10 @@ window.onload = function() {
 
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-popup.css'); ?>">
+<?php foreach (zfsmPopupStylesheets($docroot) as $sheet): ?>
+<link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
+<?php endforeach; ?>
 
-<script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
@@ -213,9 +209,6 @@ window.onload = function() {
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
-  $.ajaxSetup({
-	headers: { 'X-CSRF-Token': zfsm_csrf_token }
-  });
   installZFSMActionRefresh(function() {
 	if (window.parent && typeof window.parent.requestRefresh === 'function') window.parent.requestRefresh();
   });

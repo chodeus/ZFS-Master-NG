@@ -11,15 +11,19 @@ function createZFSMInventoryController(options) {
     let pending = false;
     let timer = null;
     let stopped = false;
+    let failures = 0;
+    let active = null;
 
+    // Back off while reads fail: a pool too slow to list must not be queried back to back.
     function schedule() {
         clearTimeout(timer);
         const interval = Number(config.refresh_interval);
         if (!stopped && interval > 0) {
+            const seconds = Math.min(Math.max(interval, 1) * 2 ** failures, Math.max(interval, 900));
             timer = setTimeout(function() {
                 if (document.hidden) schedule();
                 else refresh();
-            }, Math.max(interval, 1) * 1000);
+            }, seconds * 1000);
         }
     }
 
@@ -34,6 +38,7 @@ function createZFSMInventoryController(options) {
 
     function failed(message) {
         if (stopped) return;
+        failures++;
         options.status(message + ' Existing rows may be stale.', true);
         finish();
     }
@@ -51,15 +56,16 @@ function createZFSMInventoryController(options) {
         }
     }
 
-    function request(data, done) {
-        $.ajax({url: options.url, method: 'POST', dataType: 'json', timeout: 60000,
+    function request(data, done, onFailure = failed) {
+        active = $.ajax({url: options.url, method: 'POST', dataType: 'json', timeout: 60000,
             data: Object.assign({csrf_token: options.csrf}, data)
-        }).done(function(answer) {
+        });
+        active.done(function(answer) {
             if (stopped) return;
             try { validate(answer); done(answer); }
-            catch (error) { failed('Unable to load ZFS inventory: ' + error.message); }
+            catch (error) { onFailure('Unable to load ZFS inventory: ' + error.message); }
         }).fail(function(xhr, status) {
-            failed('ZFS inventory request failed (HTTP ' + xhr.status + ', ' + status + ').');
+            onFailure('ZFS inventory request failed (HTTP ' + xhr.status + ', ' + status + ').');
         });
     }
 
@@ -75,10 +81,32 @@ function createZFSMInventoryController(options) {
             options.configChanged(config);
             const data = answer.data;
             const pools = answer.op === 'getDatasets' ? Object.keys(data.pools) : [];
+            let snapshotsMissing = false;
+            Object.keys(data.pools).forEach(answered);
             options.render(data, false);
 
+            function unavailable(pool) {
+                data.pools[pool].Snapshots = 'Unavailable';
+                (function mark(dataset) {
+                    dataset._snapshots_unavailable = true;
+                    Object.values(dataset.child || {}).forEach(mark);
+                })(data.datasets[pool]);
+            }
+
+            function errored(pool) {
+                return Boolean(data.datasets[pool]._error || data.datasets[pool]._snapshot_error);
+            }
+
+            // A pool that answered with a dataset or snapshot error is not slow, but its counts are unavailable.
+            function answered(pool) {
+                if (errored(pool)) unavailable(pool);
+            }
+
             function complete() {
-                options.render(data, true);
+                // Judge the merged answer: a pool whose first read failed may have recovered in its own read.
+                options.render(data, !snapshotsMissing && !Object.keys(data.pools).some(errored));
+                // A pool that answers with a query error is not slow, so only unanswered reads back off.
+                failures = snapshotsMissing ? failures + 1 : 0;
                 let message = 'Last refresh at ' + new Date().toLocaleString('en-US', {hour12: false});
                 if (answer.publishing_paused) message += ' — Unraid push updates paused; inventory loaded directly.';
                 const notes = zfsmInventoryNotes(data);
@@ -96,15 +124,33 @@ function createZFSMInventoryController(options) {
                     data.errors = data.errors || {};
                     delete data.errors[pool];
                     Object.assign(data.errors, part.data.errors || {});
+                    answered(pool);
                     options.render(data, false);
                     nextPool();
+                }, function(message) {
+                    if (stopped) return;
+                    // One slow pool must not leave the others without snapshots.
+                    snapshotsMissing = true;
+                    data.errors = data.errors || {};
+                    data.errors[pool] = message;
+                    data.datasets[pool]._snapshot_error = message;
+                    unavailable(pool);
+                    try {
+                        options.render(data, false);
+                        nextPool();
+                    } catch (error) {
+                        failed('Unable to show ZFS inventory: ' + error.message);
+                    }
                 });
             }
             nextPool();
         });
     }
 
-    return {refresh: refresh, stop: function() { stopped = true; pending = false; clearTimeout(timer); }};
+    return {refresh: refresh, stop: function() {
+        stopped = true; pending = false; clearTimeout(timer);
+        if (active && typeof active.abort === 'function') active.abort();
+    }};
 }
 
 // Called in the main page and both popup documents, so even manual-refresh mode
