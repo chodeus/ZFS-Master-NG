@@ -22,7 +22,7 @@ if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 		*@*,*) old_ifs=$IFS; IFS=,; for snap in ${last_arg#*@}; do printf 'destroy\t%s@%s\n' "${last_arg%%@*}" "$snap"; done; IFS=$old_ifs ;;
 		*) printf 'destroy\t%s\n' "$last_arg" ;;
 	esac
-	contains_arg '-r' "$@" && printf 'destroy\t%s/child\ndestroy\t%s@daily\n' "$last_arg" "$last_arg"
+	[ "${ZFSM_TEST_LEAF:-0}" != 1 ] && contains_arg '-r' "$@" && printf 'destroy\t%s/child\ndestroy\t%s@daily\n' "$last_arg" "$last_arg"
 	[ -n "${ZFSM_TEST_DESTROY_EXTRA:-}" ] && printf 'destroy\t%s\n' "$ZFSM_TEST_DESTROY_EXTRA"
 	case "$last_arg" in *@*) printf 'reclaim\t2048\n' ;; esac
 	exit 0

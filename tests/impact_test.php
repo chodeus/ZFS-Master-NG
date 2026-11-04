@@ -103,7 +103,13 @@ same(true, empty(zfsmDeleteSnapshotsReviewed('tank/data', 0, $dataset_token)['su
 same('', (string)@file_get_contents($log), 'and nothing is destroyed');
 
 // Two newest snapshots both review as "nothing newer", so only the target tells their confirmations apart.
-same(false, zfsmImpactToken('tank/a@x', array(), array()) === zfsmImpactToken('tank/b@x', array(), array()), 'a token confirms only the target that was reviewed');
+same(false, zfsmImpactToken('tank/a@x', 'plain', array(), array()) === zfsmImpactToken('tank/b@x', 'plain', array(), array()), 'a token confirms only the target that was reviewed');
+// A leaf dataset lists the same with or without force, but force also unmounts: its token must not confirm a forced destroy.
+env(array('ZFSM_TEST_LEAF' => '1'));
+$plain = zfsmDestroyPreview('tank/data', 0);
+same(zfsmDestroyPreview('tank/data', 1)['objects'], $plain['objects'], 'a leaf lists the same either way');
+same(true, empty(zfsmDestroyReviewed('tank/data', 1, $plain['token'])['succeeded']), 'a review without force cannot confirm a forced destroy');
+env(array('ZFSM_TEST_LEAF' => '0'));
 
 // Rollback preview
 $rollback = zfsmRollbackPreview('tank/data@daily');
