@@ -7,6 +7,13 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+// This test destroys and rolls back, so never let it reach the host's real zfs.
+$bin_dir = getenv('ZFSM_TEST_BIN_DIR');
+if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
+	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zfs\n");
+	exit(1);
+}
+
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 
 function same($expected, $actual, $message) {
