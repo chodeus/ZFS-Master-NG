@@ -143,10 +143,12 @@ function zfsmReviewRefusal($preview, $token, $changed) {
 	return is_string($token) && hash_equals($preview['token'], $token) ? '' : $changed;
 }
 
-function zfsmDestroyReviewed($dataset, $force, $token) {
-	$refusal = zfsmReviewRefusal(zfsmDestroyPreview($dataset, $force), $token, 'What this would destroy has changed since you reviewed it. Nothing was destroyed; please review it again.');
-	if ($refusal !== '') return zfsmFailure($dataset, $refusal);
-	return zfsmExplainBusy(destroyDataset($dataset, $force), $dataset);
+// A dataset, or snapshots as ds@a,b; $recursive matches the review's -r.
+function zfsmDestroyReviewed($target, $recursive, $token) {
+	$refusal = zfsmReviewRefusal(zfsmDestroyPreview($target, $recursive), $token, 'What this would destroy has changed since you reviewed it. Nothing was destroyed; please review it again.');
+	if ($refusal !== '') return zfsmFailure($target, $refusal);
+	$dataset = explode('@', $target, 2)[0];
+	return zfsmExplainBusy($dataset === $target ? destroyDataset($target, $recursive) : deleteDatasetSnapshot($target, $recursive), $dataset);
 }
 
 function zfsmRollbackReviewed($snapshot, $destroy_newer, $token) {

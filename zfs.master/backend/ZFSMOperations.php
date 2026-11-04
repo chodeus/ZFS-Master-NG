@@ -721,8 +721,10 @@ function cloneDatasetSnapshot($snapshot, $clone) {
 	return commandAnswer($clone, runProcess('zfs', array('clone', $snapshot, $clone)));
 }
 
+// One snapshot, or several of one dataset as ds@a,b, which ZFS destroys all or nothing.
 function deleteDatasetSnapshot($snapshot, $recursive = 0) {
-	if (!zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
+	$list = strpos((string)$snapshot, ',') !== false;
+	if ($list ? strpos($snapshot, '@') === false || !zfsmValidDestroyTarget($snapshot) : !zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
 	$args = array('destroy');
 	if ((string)$recursive === '1') $args[] = '-r';
 	$args[] = $snapshot;

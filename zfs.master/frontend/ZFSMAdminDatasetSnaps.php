@@ -242,11 +242,11 @@ window.onload = function() {
 			showCancelButton: true
 		}).then((result) => {
 			if (!result.isConfirmed) return;
-			for (const selected of checkedVals) {
-				$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': selected.snapshot, 'csrf_token': zfsm_csrf_token}, function(answer) {
-					updateStatusOnDeletion(parseJSONResponse(answer), selected.snapshot, selected.rowId);
-				});
-			}
+			// One request for the reviewed list: the backend checks the token and ZFS deletes all or none.
+			$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': target, 'recursive': 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}, function(answer) {
+				const data = parseJSONResponse(answer);
+				for (const selected of checkedVals) updateStatusOnDeletion(data, selected.snapshot, selected.rowId);
+			});
 		});
 	});
   });

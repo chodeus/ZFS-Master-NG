@@ -77,6 +77,19 @@ same(0, $destroys(), 'still nothing destroyed');
 same(false, empty(zfsmDestroyReviewed('tank/data', 1, $token)['succeeded']), 'the matching review destroys');
 same(1, $destroys(), 'exactly once');
 
+// A bulk snapshot delete is one reviewed list, deleted in one command.
+$bulk = zfsmDestroyPreview('tank/data@a,daily', 0);
+same(array('tank/data@a', 'tank/data@daily'), $bulk['objects'], 'a snapshot list is reviewed one snapshot at a time');
+env(array('ZFSM_TEST_HOLDS' => '1'));
+same(array('tank/data@daily'), zfsmDestroyPreview('tank/data@a,daily', 0)['held'], 'a held snapshot in the list is named, which blocks it');
+env(array('ZFSM_TEST_HOLDS' => '0'));
+@unlink($log);
+same(true, empty(zfsmDestroyReviewed('tank/data@a,daily', 0, '')['succeeded']), 'a list without its token is refused');
+same('', (string)@file_get_contents($log), 'and nothing is deleted');
+same(false, empty(zfsmDestroyReviewed('tank/data@a,daily', 0, $bulk['token'])['succeeded']), 'the reviewed list is deleted');
+same("destroy tank/data@a,daily\n", (string)@file_get_contents($log), 'in one command, so ZFS deletes all of it or none');
+foreach (array('tank/data,x', 'tank/a@b,c@d') as $bad) same(true, empty(deleteDatasetSnapshot($bad)['succeeded']), 'not a snapshot list: '.$bad);
+
 // Rollback preview
 $rollback = zfsmRollbackPreview('tank/data@daily');
 same(array('tank/data@new', 'tank/data#mark'), $rollback['newer'], 'newer snapshots and bookmarks, compared as numbers: 1000 and 101 are after 100, 99 is not');

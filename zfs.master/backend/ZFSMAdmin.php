@@ -176,7 +176,7 @@ try {
 		case 'destroysnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			$blocked = zfsmPostString('recursive') === '1' ? zfsmRequireDestructiveMode($zfsm_cfg, $snapshot) : null;
-			zfsmReturnAnswer($blocked ?? zfsmExplainBusy(deleteDatasetSnapshot($snapshot, zfsmPostString('recursive')), explode('@', $snapshot, 2)[0]), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
+			zfsmReturnAnswer($blocked ?? zfsmDestroyReviewed($snapshot, zfsmPostString('recursive'), zfsmPostString('token')), 'ZFS Snapshot Destroy', 'Snapshot destroyed successfully', 'Unable to destroy snapshot');
 			break;
 
 		case 'snapshotdataset':

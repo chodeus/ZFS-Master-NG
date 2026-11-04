@@ -17,7 +17,11 @@ if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 		printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2
 		exit 1
 	fi
-	printf 'destroy\t%s\n' "$last_arg"
+	# Like ZFS, a snapshot list (tank/data@a,b) prints one line per snapshot.
+	case "$last_arg" in
+		*@*,*) old_ifs=$IFS; IFS=,; for snap in ${last_arg#*@}; do printf 'destroy\t%s@%s\n' "${last_arg%%@*}" "$snap"; done; IFS=$old_ifs ;;
+		*) printf 'destroy\t%s\n' "$last_arg" ;;
+	esac
 	contains_arg '-r' "$@" && printf 'destroy\t%s/child\ndestroy\t%s@daily\n' "$last_arg" "$last_arg"
 	[ -n "${ZFSM_TEST_DESTROY_EXTRA:-}" ] && printf 'destroy\t%s\n' "$ZFSM_TEST_DESTROY_EXTRA"
 	case "$last_arg" in *@*) printf 'reclaim\t2048\n' ;; esac

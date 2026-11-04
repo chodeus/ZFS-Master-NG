@@ -50,6 +50,8 @@ assert.match(html(review({network: true}), 'h'), /Nothing was changed/, 'and the
 const page = fs.readFileSync(path.resolve(__dirname, '../zfs.master/ZFSMaster.page'), 'utf8');
 const popup = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMAdminDatasetSnaps.php'), 'utf8');
 for (const file of [page, popup]) assert.match(file, /frontend\/ZFSMImpact\.js/, 'both pages load the review');
-assert.doesNotMatch(popup.slice(popup.indexOf('#delete-snaps").click'), popup.indexOf('#checkAll')), /^\t\t\$\.post[^\n]*destroysnapshot/m, 'bulk delete asks first');
+const bulk = popup.slice(popup.indexOf('#delete-snaps").click'), popup.indexOf('#checkAll'));
+assert.doesNotMatch(bulk, /^\t\t\$\.post[^\n]*destroysnapshot/m, 'bulk delete asks first');
+assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': preview\.token/, 'bulk delete sends the reviewed list with its token, not one request per snapshot');
 
 console.log('destroy and rollback dialog tests passed');
