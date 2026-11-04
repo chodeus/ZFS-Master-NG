@@ -140,6 +140,9 @@ same(true, strpos(reset($refused['failed']), 'holds block') !== false, 'a blocke
 env(array('ZFSM_TEST_HOLDS' => '0'));
 env(array('ZFSM_TEST_ORIGIN_FAIL' => '1'));
 same(false, zfsmRollbackPreview('tank/data@daily')['can_proceed'], 'an unreadable clone list blocks a rollback');
+env(array('ZFSM_TEST_TXG_EXTRA' => 'latest'));
+same(true, zfsmRollbackPreview('tank/data@latest')['can_proceed'], 'a rollback with nothing newer needs no clone list');
+env(array('ZFSM_TEST_TXG_EXTRA' => ''));
 $refused = zfsmDestroyReviewed('tank/data', 0, 'x');
 same('Unable to check for clones and holds', reset($refused['failed']), 'a failed read is not reported as a changed review');
 env(array('ZFSM_TEST_ORIGIN_FAIL' => '0'));

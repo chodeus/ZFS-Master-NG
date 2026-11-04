@@ -23,6 +23,7 @@ function zfsmValidDestroyTarget($target) {
 
 // Datasets outside $objects cloned from something in it; null when that can't be read.
 function zfsmClonesOf($objects, $pool) {
+	if (!$objects) return array();
 	$result = runProcess('zfs', array('list', '-H', '-r', '-t', 'filesystem,volume', '-o', 'name,origin', $pool));
 	if (($result['code'] ?? 1) !== 0) return null;
 	$known = array_flip($objects);
