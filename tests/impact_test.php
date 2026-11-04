@@ -95,6 +95,9 @@ $dataset_token = zfsmDestroyPreview('tank/data', 0)['token'];
 same(true, empty(zfsmDeleteSnapshotsReviewed('tank/data', 0, $dataset_token)['succeeded']), 'a dataset is refused by the snapshot path');
 same('', (string)@file_get_contents($log), 'and nothing is destroyed');
 
+// Two newest snapshots both review as "nothing newer", so only the target tells their confirmations apart.
+same(false, zfsmImpactToken('tank/a@x', array(), array()) === zfsmImpactToken('tank/b@x', array(), array()), 'a token confirms only the target that was reviewed');
+
 // Rollback preview
 $rollback = zfsmRollbackPreview('tank/data@daily');
 same(array('tank/data@new', 'tank/data#mark'), $rollback['newer'], 'newer snapshots and bookmarks, compared as numbers: 1000 and 101 are after 100, 99 is not');

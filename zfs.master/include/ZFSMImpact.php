@@ -5,11 +5,11 @@ function zfsmImpactRows($output) {
 	return preg_split('/\r\n|\r|\n/', trim((string)$output), -1, PREG_SPLIT_NO_EMPTY) ?: array();
 }
 
-// Binds a confirmation to what the dialog showed: if the list changes, the action is refused.
-function zfsmImpactToken($objects, $others) {
+// Binds a confirmation to the target and what the dialog showed: a change to either refuses the action.
+function zfsmImpactToken($target, $objects, $others) {
 	sort($objects, SORT_STRING);
 	sort($others, SORT_STRING);
-	return hash('sha256', json_encode(array($objects, $others)));
+	return hash('sha256', json_encode(array($target, $objects, $others)));
 }
 
 function zfsmValidDestroyTarget($target) {
@@ -92,7 +92,7 @@ function zfsmDestroyPreview($target, $recursive) {
 	$preview['clones'] = $clones;
 	$preview['held'] = $held;
 	$preview['can_proceed'] = !$clones && !$held;
-	$preview['token'] = zfsmImpactToken($preview['objects'], array_merge($clones, $held));
+	$preview['token'] = zfsmImpactToken($target, $preview['objects'], array_merge($clones, $held));
 	return $preview;
 }
 
@@ -132,7 +132,7 @@ function zfsmRollbackPreview($snapshot) {
 	$preview['clones'] = $clones;
 	$preview['held'] = $held;
 	$preview['can_proceed'] = !$clones && !$held;
-	$preview['token'] = zfsmImpactToken($preview['newer'], array_merge($clones, $held));
+	$preview['token'] = zfsmImpactToken($snapshot, $preview['newer'], array_merge($clones, $held));
 	return $preview;
 }
 
