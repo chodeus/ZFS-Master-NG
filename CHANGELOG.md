@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased
+
+- Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- A failed download or upgrade now leaves the installed version and its files on the flash drive untouched
+- The old background daemon is stopped only after an upgrade succeeds, and it no longer comes back on page load
+- fix: give each dataset and directory its own menu id
+- fix: let folders with spaces convert to datasets, and encode dataset row ids
+- fix: keep inventory warnings on the status line when showing cached data
+- fix: collapse a dataset's directories with it, and keep the pool root row visible
+- fix: refuse to force-delete or convert a directory that is a mount point
+- fix: refuse conversions a dataset cannot hold and read Lua patterns as Lua
+- fix: keep data safe in directory, snapshot and exclusion handling
+- fix: keep a named branch's update check in test builds
+- fix: report a new dataset left without the share owner instead of skipping it silently
+- fix: judge cache completeness from the merged answer, so a pool that recovers in its own read is cached
+- fix: scroll the table in its own box on Unraid 7.2+ phones, and keep failed dataset reads out of the cache
+- fix: on phones, drop the status under the title so the plugin name keeps one line
+- fix: count a dataset as missing only on ZFS's closing message, not a name that contains it
+- fix: create each missing parent on its own, stop reads on pagehide, find the title line on Unraid 6.9, and escape page JSON
+- fix: refuse an existing dataset name or an unreadable parent, keep encryption on, and keep full-answer snapshot errors out of the cache
+- fix: never claim an existing parent on a failed read, and keep failed snapshot counts out of the cache
+- fix: make create options do what they say, and run the backend command tests
+- fix: refuse any encryption value but yes or no, mark unread snapshot counts, and open hints from the keyboard
+- fix: show each hint when hovering its label, with the help cursor
+- feat: one-line tooltips on every setting and create option, and refuse encryption without a passphrase
+- fix: give the create dialog's single dropdowns the same width as its text fields
+- fix: keep the create dialog's rows on one line and style its text fields like Unraid's
+- feat: lay the create dialog out like the settings page, and drop unused styles and scripts
+- feat: group the settings into collapsible sections
+- fix: give the create dialog's fields their widths and the selects room for the arrow
+- fix: lay the create dialog out in rows and colour it from the theme
+- fix: style the dialogs with Unraid's theme on 7.1 and later
+- fix: put the refresh time and buttons on the ZFS Master NG title line
+- fix: keep the snapshot count and browse icon level with the camera
+- fix: line the snapshot camera icons up down the column
+- fix: behave on the shared Main tab across Unraid versions
+- fix(deps): refuse any audio or locale hook in a SweetAlert2 update, and keep that list in one place
+- fix: keep dialog layout and current values under SweetAlert2 11.26, and test the page's dialog handlers
+- fix(deps): keep the dialogs' look under Unraid's themes when updating SweetAlert2
+- fix(deps): update SweetAlert2 to 11.26.25 and keep it in sync safely
+- fix: skip the clone list when a rollback removes nothing, and test that bulk delete destroys only after the confirm
+- fix: tie a destroy review token to its mode, so a review without force can't confirm a forced destroy
+- perf: check clones and holds with a lookup, not a scan per row
+- fix: tie a review token to the dataset or snapshot that was reviewed
+- fix: let the snapshot delete route delete only snapshots, and keep the tests off the real /mnt/user
+- fix: hold a bulk snapshot delete to the list that was reviewed, and delete it in one command
+- feat: review what a destroy or rollback removes, and name what keeps a dataset busy
+- fix: change the directory listing one request at a time, so an overlapping add or remove is not lost
+- fix: refuse a carriage return in a saved setting instead of dropping it, and correct the refresh and exclusion help
+- fix: refuse to save a setting Unraid would not read back as written, instead of joining the directory listing
+- fix: keep a saved setting that holds a quote on one line, so a line break cannot start a new setting
+- feat: show dates in the Unraid display format, and rewrite the settings help
+- fix: keep every directory listing entry, and never lose settings to a short write
+- fix: say when the busy check could not list a dataset's mountpoints, and keep checking a namespace whose first process exits mid-read
+- fix: say where a converted directory's data is when a failed create leaves it unable to move back
+- refactor: bring every function under CodeFactor's complexity line, fix the copy-progress in-operator guard, and drop eval from the page test
+
 ## 2026.09.25
 
 - Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon
