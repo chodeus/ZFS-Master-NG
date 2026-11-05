@@ -227,7 +227,19 @@ switch ($check) {
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
 		$html = ob_get_clean();
 		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		if (strpos($html, '1 snapshot · ') === false) { fwrite(STDERR, "snapshot popup header did not count one snapshot\n"); exit(1); }
 		popup_styles($html, $docroot);
+		break;
+
+	case 'snapshot_popup_failed':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		putenv('ZFSM_TEST_DATASET_SNAPSHOTS_FAIL=1');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'simulated dataset snapshot failure') === false) { fwrite(STDERR, "snapshot popup did not show the listing error\n"); exit(1); }
+		if (strpos($html, 'Snapshots could not be listed') === false || strpos($html, '0 snapshots') !== false) { fwrite(STDERR, "snapshot popup header claims a count after a failed listing\n"); exit(1); }
 		break;
 
 	default:

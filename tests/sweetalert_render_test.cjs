@@ -15,8 +15,10 @@ const chrome = process.env.CHROME || ['google-chrome', '/Applications/Google Chr
 });
 assert.ok(chrome, 'Chrome not found');
 
-function sheets(theme) {
-  const names = ['default-fonts.css', 'default-cases.css', 'default-color-palette.css', 'default-base.css', 'default-dynamix.css',
+// The Main page's sheets, or a Shadowbox dialog's: mirrors zfsmPopupStylesheets() in ZFSMHelpers.php.
+function sheets(theme, context) {
+  const popup = fs.existsSync(path.join(styles, 'default-popup.css')) ? ['default-popup.css'] : ['default-color-palette.css', 'default-base.css', `themes/${theme}.css`];
+  const names = context === 'popup' ? ['default-fonts.css', 'font-awesome.css', ...popup] : ['default-fonts.css', 'default-cases.css', 'default-color-palette.css', 'default-base.css', 'default-dynamix.css',
     `default-${theme}.css`, `dynamix-${theme}.css`, `themes/${theme}.css`];
   return names.map(name => path.join(styles, name)).filter(fs.existsSync);
 }
@@ -24,10 +26,10 @@ function sheets(theme) {
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-render-'));
 let checked = 0;
 try {
-  for (const theme of ['black', 'white', 'azure', 'gray']) {
-    const found = sheets(theme);
-    assert.ok(found.some(file => file.includes(theme)), `no ${theme} theme in this webGUI`);
-    const page = path.join(work, `${theme}.html`);
+  for (const [context, theme] of ['black', 'white', 'azure', 'gray'].map(theme => ['main', theme]).concat([['popup', 'black']])) {
+    const found = sheets(theme, context);
+    assert.ok(context === 'popup' || found.some(file => file.includes(theme)), `no ${theme} theme in this webGUI`);
+    const page = path.join(work, `${context}-${theme}.html`);
     fs.writeFileSync(page, `<!doctype html><html><head><meta charset="utf-8">
 ${found.map(file => `<link rel="stylesheet" href="file://${file}">`).join('\n')}
 <script src="file://${assets}/sweetalert2.all.min.js"></script>
@@ -50,20 +52,20 @@ window.addEventListener('load', () => {
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
       '--virtual-time-budget=3000', '--dump-dom', `file://${page}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
-    assert.ok(match, `${theme}: the dialog did not render`);
+    assert.ok(match, `${context} ${theme}: the dialog did not render`);
     const {page: shown, popup, title, checkbox, confirm, cancel, plain} = JSON.parse(match[1].replace(/&quot;/g, '"'));
-    assert.ok(shown, `${theme}: the page has no background colour`);
-    assert.equal(popup.background, shown.background, `${theme}: the dialog must take the page's background: ${match[1]}`);
-    assert.equal(title.color, shown.color, `${theme}: the dialog text must take the page's colour: ${match[1]}`);
-    assert.equal(checkbox.background, shown.background, `${theme}: the checkbox label must take the page's background: ${match[1]}`);
+    assert.ok(shown, `${context} ${theme}: the page has no background colour`);
+    assert.equal(popup.background, shown.background, `${context} ${theme}: the dialog must take the page's background: ${match[1]}`);
+    assert.equal(title.color, shown.color, `${context} ${theme}: the dialog text must take the page's colour: ${match[1]}`);
+    assert.equal(checkbox.background, shown.background, `${context} ${theme}: the checkbox label must take the page's background: ${match[1]}`);
     for (const [name, button] of [['Destroy', confirm], ['Cancel', cancel]]) {
       const look = ({background, image, border, transform}) => ({background, image, border, transform});
-      assert.deepEqual(look(button), look(plain), `${theme}: ${name} must look like the page's own button: ${match[1]}`);
+      assert.deepEqual(look(button), look(plain), `${context} ${theme}: ${name} must look like the page's own button: ${match[1]}`);
     }
-    assert.notEqual(confirm.background, 'rgb(112, 102, 224)', `${theme}: Destroy still has the library's purple`);
+    assert.notEqual(confirm.background, 'rgb(112, 102, 224)', `${context} ${theme}: Destroy still has the library's purple`);
     checked++;
   }
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`dialogs follow ${checked} Unraid themes`);
+console.log(`dialogs follow ${checked} Unraid themes and dialog pages`);

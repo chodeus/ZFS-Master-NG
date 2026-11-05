@@ -43,4 +43,24 @@ assert.deepEqual(three.state(), {delete: 'Delete selected (3)', deleteOff: false
 three.window.document.getElementById('checkAll').click();
 assert.deepEqual(three.state(), {delete: 'Delete selected', deleteOff: true, all: false, allOff: false, status: 'Tick snapshots to delete them together.'}, 'and clears them again');
 
-console.log('snapshot admin selection tests passed');
+// Every action's result goes through showResult: a good answer, an unreadable one, and a failed request each show a dialog.
+const helpers = ['function parseJSONResponse(', 'function escapeHtml(', 'function showResult(', 'function formatAnswer('].map(from => {
+  const at = page.indexOf(from);
+  assert.ok(at > 0, from+' found in the page');
+  return page.slice(at, page.indexOf('\n  }\n', at)+4);
+}).join('\n');
+const results = load(0);
+const shown = [];
+results.window.Swal2 = {fire: options => { shown.push([options.icon, options.html ?? options.text]); return new Promise(() => {}); }};
+results.window.eval(helpers);
+const answer = (outcome, data) => { const request = results.window.$.Deferred(); results.window.showResult('Delete Result', request.promise()); outcome === 'done' ? request.resolve(data) : request.reject(); };
+answer('done', JSON.stringify({succeeded: {'tank/data@a': 'Success'}, failed: {}}));
+answer('done', '<html>Login</html>');
+answer('fail');
+assert.deepEqual(shown, [
+  ['info', '&emsp;&emsp;tank/data@a: Success<br>'],
+  ['error', 'The answer could not be read. The page will reload to show what changed.'],
+  ['error', 'The request failed. The page will reload to show what changed.'],
+], 'every outcome shows a dialog');
+
+console.log('snapshot admin selection and result tests passed');

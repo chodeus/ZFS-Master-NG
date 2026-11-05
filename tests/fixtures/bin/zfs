@@ -95,6 +95,10 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-r' "$@"; 
 fi
 
 if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; then
+	if [ "${ZFSM_TEST_DATASET_SNAPSHOTS_FAIL:-0}" = 1 ]; then
+		printf 'simulated dataset snapshot failure\n' >&2
+		exit 1
+	fi
 	if [ "$last_arg" = "tank" ]; then
 		printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
 	else

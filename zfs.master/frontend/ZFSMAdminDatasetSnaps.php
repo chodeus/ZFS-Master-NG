@@ -69,7 +69,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 <body>
 	<?php
 	$total_used = array_sum(array_map(function($snap) { return (int)($snap['used'] ?? 0); }, $snapshots));
-	$count_text = count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').' · '.fromBytesToString($total_used).' used';
+	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').' · '.fromBytesToString($total_used).' used';
 	?>
 	<div class="zfsm-snaps">
 	<details class="zfsm-section" open>
@@ -166,9 +166,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		}).then((result) => {
 			if (!result.isConfirmed) return;
 			// One request for the reviewed list: the backend checks the token and ZFS deletes all or none.
-			$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': target, 'recursive': 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}, function(answer) {
-				Swal2.fire({title: 'Delete Result', icon: 'info', html: formatAnswer(parseJSONResponse(answer))}).then(() => window.location.reload());
-			});
+			showResult('Delete Result', $.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': target, 'recursive': 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}));
 		});
 	});
   });
@@ -206,13 +204,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		};
 		Swal2.fire(options).then((result) => {
 			if (!result.isConfirmed) return;
-			$.post('<?=$urlzmadmin?>',{cmd: 'rollbacksnapshot', 'snapshot': snapshot, 'destroy_newer': newer.length ? 1 : 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}, function(answer){
-				Swal2.fire({
-					title: 'Rollback Result',
-					icon: 'info',
-					html: formatAnswer(parseJSONResponse(answer))
-				}).then((result) => window.location.reload());
-			});
+			showResult('Rollback Result', $.post('<?=$urlzmadmin?>',{cmd: 'rollbacksnapshot', 'snapshot': snapshot, 'destroy_newer': newer.length ? 1 : 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}));
 		});
 	});
   }
@@ -228,30 +220,16 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		inputValidator: value => value ? undefined : 'Enter a snapshot name'
 	}).then((result) => {
 		if (!result.isConfirmed) return;
-		$.post('<?=$urlzmadmin?>', {cmd: 'renamesnapshot', snapshot: snapshot, newname: result.value, csrf_token: zfsm_csrf_token}, function(data) {
-			Swal2.fire({title: 'Rename Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))}).then(() => window.location.reload());
-		});
+		showResult('Rename Result', $.post('<?=$urlzmadmin?>', {cmd: 'renamesnapshot', snapshot: snapshot, newname: result.value, csrf_token: zfsm_csrf_token}));
 	});
   }
 
   function holdSnapshot(snapshot) {
-	$.post('<?=$urlzmadmin?>',{cmd: 'holdsnapshot', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}, function(data){
-		Swal2.fire({
-			title: 'Hold Result',
-			icon: 'info',
-			html: formatAnswer(parseJSONResponse(data))
-		}).then((result) => window.location.reload());
-	});
+	showResult('Hold Result', $.post('<?=$urlzmadmin?>',{cmd: 'holdsnapshot', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}));
   }
 
   function releaseSnapshot(snapshot) {
-	$.post('<?=$urlzmadmin?>',{cmd: 'releasesnapshot', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}, function(data){
-		Swal2.fire({
-			title: 'Release Result',
-			icon: 'info',
-			html: formatAnswer(parseJSONResponse(data))
-		}).then((result) => window.location.reload());
-	});
+	showResult('Release Result', $.post('<?=$urlzmadmin?>',{cmd: 'releasesnapshot', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}));
   }
 
   function cloneSnapshot(snapshot) {
@@ -267,15 +245,21 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		  showCancelButton: true
 	  }).then((result) => {
 		  if (result.isConfirmed) {
-			  $.post('<?=$urlzmadmin?>',{cmd: 'clonesnapshot', 'snapshot': snapshot, 'clone': result.value, 'csrf_token': zfsm_csrf_token}, function(data) {
-				Swal2.fire({
-					title: 'Clone Result',
-					icon: 'info',
-					html: formatAnswer(parseJSONResponse(data))
-				}).then((result) => window.location.reload());
-			  });
+			  showResult('Clone Result', $.post('<?=$urlzmadmin?>',{cmd: 'clonesnapshot', 'snapshot': snapshot, 'clone': result.value, 'csrf_token': zfsm_csrf_token}));
 		  }
 	  });
+  }
+
+  // Every action ends here, then reloads: a failed request or an unreadable answer still says so, since the change may have happened.
+  function showResult(title, request) {
+	const reload = () => window.location.reload();
+	const unknown = reason => Swal2.fire({title: title, icon: 'error', text: reason+' The page will reload to show what changed.'}).then(reload);
+	request.done(function(data) {
+		let answer = null;
+		try { answer = parseJSONResponse(data); } catch (error) { answer = null; }
+		if (!answer || typeof answer !== 'object') return unknown('The answer could not be read.');
+		Swal2.fire({title: title, icon: 'info', html: formatAnswer(answer)}).then(reload);
+	}).fail(function() { unknown('The request failed.'); });
   }
 
   function updateStatus(text) {
