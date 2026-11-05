@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- fix: keep UTF-8 characters whole when joining error lines
+- fix: report silent zfs failures, faulted pool sizes and partial creates
+- fix: show every command error as one line
+- fix: correct problems found testing the first beta
+- fix: every snapshot action reports a failed request, and a failed listing shows no count
+- fix: theme dialog checkbox labels, and show the ratio as 1.16x
+- feat: dialogs follow the Unraid theme, and Snapshots Admin matches the settings pages
+
 ## 2026.11.05.1 (beta)
 
 - Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
