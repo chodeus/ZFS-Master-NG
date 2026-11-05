@@ -324,6 +324,12 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	return agg;
 }
 
+// ZFS's own form: 116 from the backend reads 1.16x.
+function compressRatioText(value) {
+	const ratio = Number(value) / 100;
+	return Number.isFinite(ratio) && ratio > 0 ? ratio.toFixed(2)+'x' : '';
+}
+
 function getPropertiesByType(zdataset) {
 	const created = zdataset['creation_text'] ?? new Date(zdataset['creation'] * 1000).toLocaleString();
 	var properties = {};
@@ -333,7 +339,7 @@ function getPropertiesByType(zdataset) {
 			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Compression' : zdataset['compression'],
-			'Compress Ratio' : zdataset['compressratio']/100,
+			'Compress Ratio' : compressRatioText(zdataset['compressratio']),
 			'Record Size' : fromBytesToString(zdataset['recordsize']),
 			'Access Time' : zdataset['atime'],
 			'XAttr' : zdataset['xattr'],
@@ -354,7 +360,7 @@ function getPropertiesByType(zdataset) {
 			'Type' : zdataset['type'],
 			'Block Size' : fromBytesToString(zdataset['volblocksize']),
 			'Compression' : zdataset['compression'],
-			'Compress Ratio' : zdataset['compressratio']/100,
+			'Compress Ratio' : compressRatioText(zdataset['compressratio']),
 			'Primary Cache' : zdataset['primarycache'],
 			'Encryption' : zdataset['encryption'],			
 			'Key Status' : zdataset['keystatus'],

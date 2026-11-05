@@ -1,0 +1,4 @@
+/* With buttonsStyling off (ZFSMDialogs.js) the buttons take Unraid's own style; these rules only frame the dialog and space them. */
+.zfsm-dialog{border:1px solid rgba(128,128,128,.35)}
+.zfsm-dialog .swal2-actions{gap:12px}
+.zfsm-dialog .swal2-actions button{margin:0}
