@@ -1,4 +1,4 @@
-// Real browser, real Unraid themes: Destroy must look like the library's button, and not like Cancel.
+// Real browser, real Unraid themes: a dialog takes the page's colours, and its buttons look like the page's own.
 // Usage: sweetalert_render_test.cjs <webgui-tree>. Set CHROME to override the browser path.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
 const assets = path.resolve(__dirname, '../zfs.master/assets');
+const plugin = path.resolve(__dirname, '../zfs.master');
 const tree = path.resolve(process.argv[2]);
 const styles = [path.join(tree, 'emhttp/plugins/dynamix/styles'), path.join(tree, 'plugins/dynamix/styles')].find(fs.existsSync);
 assert.ok(styles, 'webGUI styles not found');
@@ -31,28 +32,37 @@ try {
 ${found.map(file => `<link rel="stylesheet" href="file://${file}">`).join('\n')}
 <script src="file://${assets}/sweetalert2.all.min.js"></script>
 <link rel="stylesheet" href="file://${assets}/sweetalert2.min.css">
-<style>*,*::before,*::after{animation:none!important;transition:none!important}</style></head><body><script>
+<script src="file://${plugin}/frontend/ZFSMDialogs.js"></script>
+<link rel="stylesheet" href="file://${plugin}/styles/zfsm-dialogs.css">
+<style>*,*::before,*::after{animation:none!important;transition:none!important}</style></head><body><button type="button" id="plain">Plain</button><script>
 window.addEventListener('load', () => {
   Swal2.fire({title: 'Destroy', icon: 'warning', input: 'checkbox', inputPlaceholder: 'Also', showCancelButton: true, confirmButtonText: 'Destroy'});
-  const read = selector => { const s = getComputedStyle(document.querySelector(selector)); return {background: s.backgroundColor, color: s.color, border: s.borderTopStyle}; };
-  const out = document.createElement('pre'); out.id = 'zfsm-result';
-  out.textContent = JSON.stringify({confirm: read('.swal2-confirm'), cancel: read('.swal2-cancel')});
-  document.documentElement.appendChild(out);
+  setTimeout(() => {
+    const read = element => { const s = getComputedStyle(element); return {background: s.backgroundColor, image: s.backgroundImage, color: s.color, border: s.borderTopStyle, transform: s.textTransform}; };
+    const page = [document.body, document.documentElement].map(read).find(s => !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.background));
+    const out = document.createElement('pre'); out.id = 'zfsm-result';
+    out.textContent = JSON.stringify({page, popup: read(document.querySelector('.swal2-popup')), title: read(document.querySelector('.swal2-title')),
+      confirm: read(document.querySelector('.swal2-confirm')), cancel: read(document.querySelector('.swal2-cancel')), plain: read(document.getElementById('plain'))});
+    document.documentElement.appendChild(out);
+  }, 50);
 });
 </script></body></html>`);
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
       '--virtual-time-budget=3000', '--dump-dom', `file://${page}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${theme}: the dialog did not render`);
-    const {confirm, cancel} = JSON.parse(match[1].replace(/&quot;/g, '"'));
-    const transparent = /rgba\(0, 0, 0, 0\)|transparent/;
-    assert.doesNotMatch(confirm.background, transparent, `${theme}: Destroy has no background, so Unraid's theme won: ${JSON.stringify(confirm)}`);
-    assert.doesNotMatch(cancel.background, transparent, `${theme}: Cancel has no background, so Unraid's theme won: ${JSON.stringify(cancel)}`);
-    assert.notEqual(confirm.background, cancel.background, `${theme}: Destroy and Cancel look the same: ${match[1]}`);
-    assert.equal(confirm.background, 'rgb(112, 102, 224)', `${theme}: Destroy must keep the library's colour: ${JSON.stringify(confirm)}`);
+    const {page: shown, popup, title, confirm, cancel, plain} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.ok(shown, `${theme}: the page has no background colour`);
+    assert.equal(popup.background, shown.background, `${theme}: the dialog must take the page's background: ${match[1]}`);
+    assert.equal(title.color, shown.color, `${theme}: the dialog text must take the page's colour: ${match[1]}`);
+    for (const [name, button] of [['Destroy', confirm], ['Cancel', cancel]]) {
+      const look = ({background, image, border, transform}) => ({background, image, border, transform});
+      assert.deepEqual(look(button), look(plain), `${theme}: ${name} must look like the page's own button: ${match[1]}`);
+    }
+    assert.notEqual(confirm.background, 'rgb(112, 102, 224)', `${theme}: Destroy still has the library's purple`);
     checked++;
   }
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`dialog buttons render correctly on ${checked} Unraid themes`);
+console.log(`dialogs follow ${checked} Unraid themes`);

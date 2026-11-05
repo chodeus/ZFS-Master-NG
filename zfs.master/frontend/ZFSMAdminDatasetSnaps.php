@@ -28,177 +28,105 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 <meta name="referrer" content="same-origin">
 
 
-<style type="text/css">	
-	.zfsm_dialog {
-		width: 90%;
-		height: 90%;
-		margin: auto;
-		text-align: center;
-	}
-
-	.zfs_snap_table {
-		display: table;
-		width: 96%;
-		border: 1px solid #ccc;
-		max-height: 600px;
-		overflow: auto;
-		margin: 2%;
-	}
-
-	.zfs_status_box {
-		width: 80%;
-		border: 1px solid #ccc;
-		margin-left: 10%;
-	}
-
-	#adminsnaps-form-div .zfs_delete_btn {
-		text-align: center;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table thead tr td{
-		text-align: center;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table thead tr td:nth-child(4){
-		white-space: normal;
-		padding: 0 12px;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td{
-		padding-left: 0;
-		text-align: center;
-		white-space: nowrap;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td:first-child{
-		padding-left: 12px;
-		white-space: normal;
-		word-break: break-all; 
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td:last-child{
-		display: table-cell;
-		vertical-align: middle;
-		padding: 0 10px;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td:last-child span:first-child{
-		margin-left: 0;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td:last-child span{
-		margin: 0 5px;
-		float: none;
-		padding: 0;
-	}
-
-	#zfs_master.disk_status.zfs_snap_table tbody tr td:last-child span:last-child{
-		margin-right: 0;
-	}
-
-	#zfs_master.disk_status thead tr>td+td+td+td, #zfs_master.disk_status thead tr>td+td+td, #zfs_master.disk_status thead tr>td{
-		padding: 0;
-		text-align: center;
-	}
-
-	#adminsnaps-form-div #zfs_master.disk_status tr>td{
-		width: auto;
-	}
+<style type="text/css">
+  .zfsm-snaps{max-width:1120px;margin:18px auto;padding:0 18px}
+  .zfsm-count{margin-left:auto;font-weight:normal;opacity:.7}
+  .zfsm-section>.zfsm-snap-table{padding:0}
+  .zfsm-snap-table{width:100%;border-collapse:collapse;margin:0}
+  .zfsm-snap-table th{text-align:left;font-weight:600;font-size:.85em;text-transform:uppercase;letter-spacing:.06em;opacity:.75;padding:9px 12px;border-bottom:1px solid rgba(128,128,128,.3);white-space:nowrap}
+  .zfsm-snap-table td{padding:9px 12px;border-bottom:1px solid rgba(128,128,128,.15);white-space:nowrap}
+  .zfsm-snap-table tbody tr:last-child td{border-bottom:none}
+  .zfsm-snap-table tbody tr:hover{background:rgba(128,128,128,.08)}
+  .zfsm-snap-table th:first-child,.zfsm-snap-table td:first-child{width:28px}
+  .zfsm-snap-table .num{text-align:right}
+  .zfsm-snap-name{font-family:monospace}
+  .zfsm-snap-name .zfsm-ds{opacity:.55}
+  .zfsm-badge{display:inline-block;margin-left:8px;padding:0 6px;border-radius:3px;font-size:.8em;border:1px solid rgba(255,140,47,.6);color:#ff8c2f}
+  .zfsm-actions{display:flex;gap:14px}
+  .zfsm-actions a{cursor:pointer;opacity:.8}
+  .zfsm-actions a:hover{opacity:1}
+  .zfsm-actions .zfsm-rollback{color:#ff8c2f}
+  .zfsm-message td{text-align:center;padding:18px 12px;opacity:.75}
+  .zfsm-message.zfsm-error td{color:#e22828;opacity:1}
+  .zfsm-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px}
+  .zfsm-status{opacity:.75}
 </style>
-
-<script type="text/javascript">
-window.onload = function() {
-    if (parent) {
-        var oHead = document.getElementsByTagName("head")[0];
-        var arrStyleSheets = parent.document.getElementsByTagName("style");
-        for (var i = 0; i < arrStyleSheets.length; i++)
-            oHead.appendChild(arrStyleSheets[i].cloneNode(true));
-
-		var arrStyleSheets = parent.document.getElementsByTagName("link");
-
-        for (var i = 0; i < arrStyleSheets.length; i++)
-            oHead.appendChild(arrStyleSheets[i].cloneNode(true));
-    }
-}
-</script>
 
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/font-awesome.css'); ?>">
 <?php foreach (zfsmPopupStylesheets($docroot) as $sheet): ?>
 <link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
 <?php endforeach; ?>
-
-
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDialogs.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-dialogs.css'); ?>">
 
 </head>
 
 <body>
-	<div id="adminsnaps-form-div" class="zfsm_dialog">
-	<table id="zfs_master" class="unraid zfs_snap_table disk_status legacy wide">
+	<?php
+	$total_used = array_sum(array_map(function($snap) { return (int)($snap['used'] ?? 0); }, $snapshots));
+	$count_text = count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').' · '.fromBytesToString($total_used).' used';
+	?>
+	<div class="zfsm-snaps">
+	<details class="zfsm-section" open>
+	<summary><?=htmlspecialchars($zdataset, ENT_QUOTES, 'UTF-8')?><span class="zfsm-count"><?=htmlspecialchars($count_text, ENT_QUOTES, 'UTF-8')?></span></summary>
+	<table class="zfsm-snap-table">
 	<thead>
 		<tr>
-		<td><input type="checkbox" id="checkAll"></td>
-		<td>Name</td>
-		<td>Used</td>
-		<td>Refer</td>
-		<td>Written</td>
-		<td>Defer Destroy</td>
-		<td>Holds</td>
-		<td>Creation Date</td>
-		<td>Actions</td>
+		<th><input type="checkbox" id="checkAll" title="Select all"></th>
+		<th>Snapshot</th>
+		<th class="num">Used</th>
+		<th class="num">Refer</th>
+		<th class="num">Written</th>
+		<th class="num">Holds</th>
+		<th>Created</th>
+		<th>Actions</th>
 		</tr>
 	</thead>
 	<tbody id="zpools">
 		<?php
 		if ($snapshot_error !== ''):
-			echo '<tr><td colspan="9" style="color:#e22828">'.htmlspecialchars($snapshot_error, ENT_QUOTES, 'UTF-8').'</td></tr>';
+			echo '<tr class="zfsm-message zfsm-error"><td colspan="8">'.htmlspecialchars($snapshot_error, ENT_QUOTES, 'UTF-8').'</td></tr>';
+		elseif (!$snapshots):
+			echo '<tr class="zfsm-message"><td colspan="8">This dataset has no snapshots.</td></tr>';
 		endif;
 		foreach ($snapshots as $snap):
 			$snapshot_name = (string)($snap['name'] ?? '');
+			list($snapshot_dataset, $snapshot_short) = array_pad(explode('@', $snapshot_name, 2), 2, '');
 			$snapshot_html = htmlspecialchars($snapshot_name, ENT_QUOTES, 'UTF-8');
 			$snapshot_js = htmlspecialchars(json_encode($snapshot_name), ENT_QUOTES, 'UTF-8');
-			$row_id = 'snap-'.sha1($snapshot_name);
-			echo '<tr id="'.$row_id.'">';
-			echo '<td class="snapl-delete"><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'" data-row-id="'.$row_id.'"></td>';
-			echo '<td class="snapl-attribute-name">';
-				echo '<i class="fa fa-hdd-o icon" style="color:#486dba"></i>';
-				echo $snapshot_html;
+			$holds = (int)($snap['userrefs'] ?? 0);
+			echo '<tr id="snap-'.sha1($snapshot_name).'">';
+			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
+			echo '<td class="zfsm-snap-name"><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
+				if ($holds > 0) echo '<span class="zfsm-badge">held</span>';
+				if (($snap['defer_destroy'] ?? '') === 'on') echo '<span class="zfsm-badge">deferred</span>';
 			echo '</td>';
-			echo '<td class="snapl-attribute-used">';
-				echo fromBytesToString($snap['used']);
-			echo '</td>';
-			echo '<td class="snapl-attribute-referenced">';
-				echo fromBytesToString($snap['referenced']);
-			echo '</td>';
-			echo '<td class="snapl-attribute-written">';
-				echo fromBytesToString($snap['written']);
-			echo '</td>';
-			echo '<td class="snapl-attribute-defer_destroy">';
-				echo htmlspecialchars((string)($snap['defer_destroy'] ?? ''), ENT_QUOTES, 'UTF-8');
-			echo '</td>';
-			echo '<td class="snapl-attribute-userrefs">';
-				echo (int)($snap['userrefs'] ?? 0);
-			echo '</td>';
-			echo '<td class="snapl-attribute-creation">';
-				echo '<span>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</span>';
-			echo '</td>';
-			echo '<td id="snapl-attribute-actions">';
-				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Rollback Snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward" style="color:orange"></i></a></span>';
-				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Rename Snapshot" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a></span>';
-				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Hold Snapshot" onclick="holdSnapshot('.$snapshot_js.')"><i class="fa fa-pause"></i></a></span>';
-				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Release Snapshot" onclick="releaseSnapshot('.$snapshot_js.')"><i class="fa fa-play"></i></a></span>';
-				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Clone Snapshot" onclick="cloneSnapshot('.$snapshot_js.')"><i class="fa fa-clone"></i></a></span>';
-			echo '</td>';
+			echo '<td class="num">'.fromBytesToString($snap['used']).'</td>';
+			echo '<td class="num">'.fromBytesToString($snap['referenced']).'</td>';
+			echo '<td class="num">'.fromBytesToString($snap['written']).'</td>';
+			echo '<td class="num">'.$holds.'</td>';
+			echo '<td>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
+			echo '<td><span class="zfsm-actions">';
+				echo '<a class="zfsm-rollback" title="Roll back to this snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward"></i></a>';
+				echo '<a title="Rename" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a>';
+				echo '<a title="Hold, so it cannot be deleted" onclick="holdSnapshot('.$snapshot_js.')"><i class="fa fa-pause"></i></a>';
+				echo '<a title="Release a hold" onclick="releaseSnapshot('.$snapshot_js.')"><i class="fa fa-play"></i></a>';
+				echo '<a title="Clone to a new dataset" onclick="cloneSnapshot('.$snapshot_js.')"><i class="fa fa-clone"></i></a>';
+			echo '</span></td>';
 			echo '</tr>';
 		endforeach;?>
 	</tbody>
 	</table>
-	<div id="zfs_status" class="zfs_status_box">
-		Ready!
+	</details>
+	<div class="zfsm-footer">
+		<span id="zfs_status" class="zfsm-status"></span>
+		<button id="delete-snaps" type="button" disabled>Delete selected</button>
 	</div>
-	<button id="delete-snaps" class="zfs_delete_btn" type="button">Delete Snapshots</button>
 	</div>
 </body>
 </html>
@@ -222,13 +150,11 @@ window.onload = function() {
   }
 
   $("#delete-snaps").click(function(){
-	var checkedVals = $('.snapl-check:checkbox:checked').map(function() {
-		return {snapshot: this.value, rowId: $(this).data('row-id')};
-	}).get();
-	if (!checkedVals.length) return;
+	const checked = $('.snapl-check:checked').map(function() { return this.value; }).get();
+	if (!checked.length) return;
 
-	const dataset = checkedVals[0].snapshot.split('@')[0];
-	const target = dataset+'@'+checkedVals.map(selected => selected.snapshot.split('@')[1]).join(',');
+	const dataset = checked[0].split('@')[0];
+	const target = dataset+'@'+checked.map(snapshot => snapshot.split('@')[1]).join(',');
 	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewdestroy', target: target, force: 0, 'csrf_token': zfsm_csrf_token}, function(preview) {
 		Swal2.fire({
 			title: '<strong>Review: Delete Snapshots</strong>',
@@ -241,33 +167,27 @@ window.onload = function() {
 			if (!result.isConfirmed) return;
 			// One request for the reviewed list: the backend checks the token and ZFS deletes all or none.
 			$.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': target, 'recursive': 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}, function(answer) {
-				const data = parseJSONResponse(answer);
-				for (const selected of checkedVals) updateStatusOnDeletion(data, selected.snapshot, selected.rowId);
+				Swal2.fire({title: 'Delete Result', icon: 'info', html: formatAnswer(parseJSONResponse(answer))}).then(() => window.location.reload());
 			});
 		});
 	});
   });
 
-  $("#checkAll").click(function(){
-    $('input:checkbox').not(this).prop('checked', this.checked);
-	$('#delete-snaps').prop('disabled', checkBoxes.filter(':checked').length < 1);
-  });
-
-  var checkBoxes = $('.snapl-check');
-  checkBoxes.change(function () {
-	$('#delete-snaps').prop('disabled', checkBoxes.filter(':checked').length < 1);
-  });
-
-  $('.snapl-check').change();
-
-  function updateStatusOnDeletion(data, snapshot, rowId) {
-	if (data['failed'] && Object.keys(data['failed']).length > 0) {
-		updateStatus('Destroy of Snapshot '+snapshot+' Failed - '+formatAnswer(data['failed']));
-	} else {
-		updateStatus('Destroy of Snapshot '+snapshot+' Successful');
-		document.getElementById(rowId)?.remove();
-	}
+  // Counts what is ticked now, so Delete and Select all stay right with no rows or after a change.
+  function syncSelection() {
+	const boxes = $('.snapl-check');
+	const ticked = boxes.filter(':checked').length;
+	$('#delete-snaps').prop('disabled', ticked === 0).text(ticked ? 'Delete selected ('+ticked+')' : 'Delete selected');
+	$('#checkAll').prop({checked: boxes.length > 0 && ticked === boxes.length, disabled: boxes.length === 0});
+	updateStatus(ticked ? ticked+' selected' : (boxes.length ? 'Tick snapshots to delete them together.' : ''));
   }
+
+  $("#checkAll").click(function(){
+	$('.snapl-check').prop('checked', this.checked);
+	syncSelection();
+  });
+  $(document).on('change', '.snapl-check', syncSelection);
+  syncSelection();
 
   function rollbackSnapshot(snapshot) {
 	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewrollback', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}, function(preview) {
