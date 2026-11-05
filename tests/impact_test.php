@@ -66,6 +66,7 @@ env(array('ZFSM_TEST_DESTROY_REFUSED' => '1'));
 $refused = zfsmDestroyPreview('tank/data', 0);
 same(false, $refused['can_proceed'], 'a refused dry run blocks');
 same(true, strpos($refused['error'], 'has children') !== false, 'the reason ZFS gave is shown');
+same("cannot destroy 'tank/data': filesystem has children; use '-r' to destroy the following datasets: tank/data/child", $refused['error'], 'and reads as one line');
 env(array('ZFSM_TEST_DESTROY_REFUSED' => '0'));
 
 env(array('ZFSM_TEST_CLONE' => 'tank/data@daily'));
@@ -91,7 +92,8 @@ env(array('ZFSM_TEST_ORIGIN_FAIL' => '0'));
 $log = sys_get_temp_dir().'/zfsm-impact-log';
 @unlink($log);
 env(array('ZFSM_TEST_LOG' => $log));
-$destroys = function() use ($log) { return is_file($log) ? substr_count((string)file_get_contents($log), 'destroy -v') : 0; };
+// The fake logs only commands that run; a dry run exits before it logs.
+$destroys = function() use ($log) { return is_file($log) ? preg_match_all('/^destroy /m', (string)file_get_contents($log)) : 0; };
 $token = zfsmDestroyPreview('tank/data', 1)['token'];
 env(array('ZFSM_TEST_DESTROY_EXTRA' => 'tank/data/newchild'));
 same(true, empty(zfsmDestroyReviewed('tank/data', 1, $token)['succeeded']), 'a stale review is refused');
@@ -182,7 +184,7 @@ same(false, zfsmMountinfoHasShare($shfs, array('/dat')), 'a similar share name')
 same(false, zfsmMountinfoHasShare("97 80 0:44 / /mnt/user rw - fuse.shfs shfs rw\n", array('/data')), 'binding all of /mnt/user is not a user of every share');
 same(false, zfsmMountinfoHasShare("36 35 0:30 /data /x rw - zfs tank/data rw\n", array('/data')), 'only shfs counts here');
 same(array('/data', '/data/tv'), zfsmShareViews(array('/mnt/cache/data', '/mnt/cache/data/tv', '/mnt/cache', '/elsewhere/data')), 'share views: a pool root is no share');
-same('a?b??c?d', zfsmSafeText("a<b>\nc'd"), 'unsafe characters');
+same('a?b?; c?d', zfsmSafeText("a<b>\nc'd"), 'unsafe characters, and a new line becomes a separator');
 same(500, strlen(zfsmSafeText(str_repeat('x', 900))), 'length cap');
 same(array('T: tank succeeded', 'T: tank/x failed: nope', 'T: tank/y failed: see the dialog'), zfsmActionLogLines('T', array('succeeded' => array('tank' => 0), 'failed' => array('tank/x' => 'nope', 'tank/y' => array('a')))), 'one log line per subject');
 same(array('abc' => 'plex', 'def' => 'my app'), zfsmContainerNames("abc plex\ndef my app\n"), 'container names');
@@ -223,6 +225,7 @@ env(array('ZFSM_TEST_USERS_MOUNT' => $mount));
 env(array('ZFSM_TEST_DESTROY_BUSY' => '1'));
 $busy = zfsmExplainBusy(destroyDataset('tank/data', 0), 'tank/data');
 same(true, strpos(reset($busy['failed']), 'Using it now') !== false && strpos(reset($busy['failed']), 'sleep') !== false, 'a busy failure says who: '.json_encode($busy));
+same(1, preg_match("/^cannot unmount '[^']+': pool or dataset is busy; cannot destroy 'tank\\/data': dataset is busy\\. Using it now: /", reset($busy['failed'])), 'a busy failure is one sentence, without the dry-run list: '.json_encode($busy));
 proc_terminate($sleeper);
 proc_close($sleeper);
 usleep(100000);

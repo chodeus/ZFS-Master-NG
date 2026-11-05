@@ -34,8 +34,14 @@ function zfsnotify( $subject, $description, $message, $type="normal") {
 	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
 }
 
+// Plain text: notification agents such as Discord and email show HTML tags as typed.
+function zfsmNotifyAnswer($title, $answer, $success_text, $failed_text) {
+	if ($answer['succeeded']) zfsnotify($title, $success_text.': '.implode(', ', array_keys($answer['succeeded'])), '', 'normal');
+	if ($answer['failed']) zfsnotify($title, $failed_text.': '.implodeWithKeys('; ', $answer['failed']), '', 'warning');
+}
+
 function fromBytesToString($bytes) {
-	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB'); 
+	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'); 
 
 	$bytes = is_numeric($bytes) ? max((float)$bytes, 0) : 0;
    	$pow = floor(($bytes ? log($bytes) : 0) / log(1024)); 
@@ -108,7 +114,19 @@ function zfsmPopupStylesheets($docroot) {
 
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
 function zfsmSafeText($text) {
-	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', (string)$text), 0, 500);
+	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
+}
+
+// Command output as one line: dialogs run lines together and syslog prints a newline as ?.
+// CR and LF by name: without /u, \R also matches the 0x85 byte inside UTF-8 such as Å.
+function zfsmOneLine($text) {
+	return preg_replace(array('/:\s*(?:\r\n|\r|\n)\s*/', '/\s*(?:\r\n|\r|\n)\s*/'), array(': ', '; '), trim((string)$text));
+}
+
+// runProcess output is always a string, so a command killed or failing silently needs this fallback.
+function zfsmCommandError($result, $fallback) {
+	$text = zfsmOneLine($result['output'] ?? '');
+	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
 }
 
 function zfsmLog($message, $priority = LOG_ERR) {
@@ -122,7 +140,7 @@ function commandAnswer($subject, $result) {
 	if (($result['code'] ?? 1) === 0) {
 		$answer['succeeded'][$subject] = 0;
 	} else {
-		$message = trim((string)($result['output'] ?? ''));
+		$message = zfsmOneLine($result['output'] ?? '');
 		$answer['failed'][$subject] = $message !== '' ? $message : (int)($result['code'] ?? 1);
 	}
 	return $answer;

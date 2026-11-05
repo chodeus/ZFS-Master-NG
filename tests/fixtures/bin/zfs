@@ -14,7 +14,8 @@ for arg in "$@"; do last_arg="$arg"; done
 
 if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 	if [ "${ZFSM_TEST_DESTROY_REFUSED:-0}" = 1 ]; then
-		printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2
+		# Like ZFS, the refusal runs over several lines.
+		printf "cannot destroy '%s': filesystem has children\nuse '-r' to destroy the following datasets:\n%s/child\n" "$last_arg" "$last_arg" >&2
 		exit 1
 	fi
 	# Like ZFS, a snapshot list (tank/data@a,b) prints one line per snapshot.
@@ -29,7 +30,9 @@ if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 fi
 
 if [ "$1" = "destroy" ] && [ "${ZFSM_TEST_DESTROY_BUSY:-0}" = 1 ]; then
-	printf "cannot destroy '%s': dataset is busy\n" "$last_arg" >&2
+	# Like ZFS, -v names each dataset before the unmount fails.
+	contains_arg '-v' "$@" && printf 'will destroy %s\n' "$last_arg"
+	printf "cannot unmount '/mnt/%s/child': pool or dataset is busy\ncannot destroy '%s': dataset is busy\n" "$last_arg" "$last_arg" >&2
 	[ -n "${ZFSM_TEST_LOG:-}" ] && printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
 	exit 1
 fi

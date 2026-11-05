@@ -31,6 +31,8 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 <link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
 <?php endforeach; ?>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
 <style>
   .zfsm-form{max-width:760px;margin:16px auto}
   .zfsm-pool{color:var(--orange-500, #ff8c2f);font-weight:600;min-width:0;overflow-wrap:anywhere}
@@ -118,16 +120,17 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 	let formData = getFormData("#dataset-form");
 		
 	$.post('<?=$urlzmadmin?>',{cmd: 'createdataset', 'data': formData, 'csrf_token': zfsm_csrf_token}, function(data){
-		top.Swal2.fire({
-			title: 'Create Result',
-			icon: 'info',
-			html: formatAnswer(parseJSONResponse(data))
-		});
-		if (!parseJSONResponse(data).failed || Object.keys(parseJSONResponse(data).failed).length === 0) {
-			// Refresh before closing the iframe; its global AJAX event may not run after removal.
-			if (typeof top.requestRefresh === 'function') top.requestRefresh();
-			top.Shadowbox.close();
+		const answer = parseJSONResponse(data);
+		const result = {title: 'Create Result', icon: 'info', html: formatAnswer(answer)};
+		// Refresh on every answer: "Created, but ..." is a failure whose dataset exists. The iframe's AJAX event may not run after removal.
+		if (typeof top.requestRefresh === 'function') top.requestRefresh();
+		// The Main page's dialogs open under this Shadowbox, so a failure shows here and the form stays open.
+		if (answer.failed && Object.keys(answer.failed).length > 0) {
+			Swal2.fire(Object.assign(result, {icon: 'error'}));
+			return;
 		}
+		top.Swal2.fire(result);
+		top.Shadowbox.close();
 	});
   }
 

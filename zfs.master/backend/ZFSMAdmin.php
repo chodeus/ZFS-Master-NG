@@ -31,10 +31,7 @@ function zfsmResolveAnswerCodes($answer) {
 function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_notify = false) {
 	$answer = zfsmResolveAnswerCodes($ret);
 	foreach (zfsmActionLogLines($title, $answer) as $line) zfsmLog($line, LOG_NOTICE);
-	if ($unraid_notify) {
-		if ($answer['succeeded']) zfsnotify($title, $success_text.' for:<br>'.implodeWithKeys('<br>', $answer['succeeded']), '', 'normal');
-		if ($answer['failed']) zfsnotify($title, $failed_text.' for:<br>'.implodeWithKeys('<br>', $answer['failed']), '', 'warning');
-	}
+	if ($unraid_notify) zfsmNotifyAnswer($title, $answer, $success_text, $failed_text);
 	echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 }
 

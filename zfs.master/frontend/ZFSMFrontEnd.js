@@ -69,7 +69,7 @@ function nl2br(str, is_xhtml) {
 }
 
 function fromBytesToString(bytes) {
-	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
   
 	bytes = Number(bytes);
 	bytes = Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
@@ -85,6 +85,10 @@ function fromStringToBytes(spacestr) {
 	let returnNumber = parseFloat(spacestr);
 
 	switch (spacestr.slice(-1)) {
+	  case 'E':
+		returnNumber *= 1024;
+	  case 'P':
+		returnNumber *= 1024;
 	  case 'T':
 		returnNumber *= 1024;
 	  case 'G':
@@ -98,6 +102,13 @@ function fromStringToBytes(spacestr) {
 	}
 
 	return returnNumber;
+}
+
+// zpool list prints short sizes (1.12T); dataset rows print 1.1 TiB. A faulted pool prints -.
+function poolSizeText(value) {
+	const text = String(value ?? '');
+	const bytes = fromStringToBytes(text);
+	return Number.isFinite(bytes) ? fromBytesToString(bytes) : escapeHtml(text);
 }
 
 function calculateFreePercent(used, free) {
@@ -391,7 +402,7 @@ function datasetBadges(zdataset) {
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'"></i>';
+		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {
@@ -428,7 +439,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
+	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>';
 	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 	tr += datasetBadges(zdataset);
 
@@ -500,7 +511,7 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	tr += '<button type="button" onclick="createDataset(\''+zpool['Pool']+'\')";">Create Dataset</button></td>';
 
 	// Size
-	tr += '<td id="'+zpool['Pool']+'-attribute-size">'+zpool['Size']+'</td>'; 
+	tr += '<td id="'+zpool['Pool']+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
 
 	// Mountpoint
 	tr += '<td id="'+zpool['Pool']+'-attribute-mountpoint">'+zpool['MountPoint']+'</td>'; 
@@ -511,10 +522,10 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	// Used
 	var percent = 100-Math.round(calculateFreePercent(zpool['Used'], zpool['Free']));
 
-	tr += '<td id="'+zpool['Pool']+'-attribute-used">'+usageCell(zpool['Used']+'iB', percent, false, display)+'</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-used">'+usageCell(poolSizeText(zpool['Used']), percent, false, display)+'</td>';
 
 	// Free
-	tr += '<td id="'+zpool['Pool']+'-attribute-free">'+usageCell(zpool['Free']+'iB', 100-percent, true, display)+'</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-free">'+usageCell(poolSizeText(zpool['Free']), 100-percent, true, display)+'</td>';
 
 	// Snapshots
 	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
