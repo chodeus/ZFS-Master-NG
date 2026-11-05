@@ -42,6 +42,7 @@ for (const [text, usedBar, freeBar] of [[0, false, false], [1, true, true], [10,
 // Pool sizes come from zpool's short form and read like dataset sizes.
 const poolCells = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '2.78T', Used: '1.12T', Free: '1.5P', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>');
 assert.deepEqual([poolCells[3], poolCells[6], poolCells[7]], ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'pool Size, Used and Free');
+assert.equal(cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1E', Used: '1', Free: '1', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>')[3], '1 EiB', 'an exabyte pool');
 const faulted = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'UNAVAIL', Size: '-', Used: '-', Free: '-', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>');
 assert.deepEqual([faulted[3], faulted[6], faulted[7]], ['-', '-', '-'], 'a faulted pool keeps the - zpool prints');
 const [usedBar, freeBar] = cells(row(ds(), {text: 1})).slice(6, 8);

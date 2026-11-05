@@ -118,8 +118,9 @@ function zfsmSafeText($text) {
 }
 
 // Command output as one line: dialogs run lines together and syslog prints a newline as ?.
+// CR and LF by name: without /u, \R also matches the 0x85 byte inside UTF-8 such as Å.
 function zfsmOneLine($text) {
-	return preg_replace(array('/:\s*\R\s*/', '/\s*\R\s*/'), array(': ', '; '), trim((string)$text));
+	return preg_replace(array('/:\s*(?:\r\n|\r|\n)\s*/', '/\s*(?:\r\n|\r|\n)\s*/'), array(': ', '; '), trim((string)$text));
 }
 
 // runProcess output is always a string, so a command killed or failing silently needs this fallback.
