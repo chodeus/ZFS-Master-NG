@@ -232,4 +232,22 @@ env(array('ZFSM_TEST_DESTROY_BUSY' => '0', 'ZFSM_TEST_USERS_MOUNT' => ''));
 $other = zfsmExplainBusy(array('succeeded' => array(), 'failed' => array('x' => 'permission denied')), 'tank/data');
 same('permission denied', $other['failed']['x'], 'other failures are left alone');
 
+// A process that exits between its two /proc reads must not hide the rest of its namespace.
+$proc = sys_get_temp_dir().'/zfsm-proc-'.getmypid();
+foreach (array('999990', '999991') as $fake_pid) {
+	mkdir($proc.'/'.$fake_pid.'/ns', 0777, true);
+	symlink('mnt:[4026999999]', $proc.'/'.$fake_pid.'/ns/mnt');
+	file_put_contents($proc.'/'.$fake_pid.'/comm', "app\n");
+}
+file_put_contents($proc.'/999991/mountinfo', "36 25 0:32 / /mnt/tank/data rw,relatime - zfs tank/data rw\n");
+same(array('process app (pid 999991) has it mounted'), zfsmDatasetUsers('tank/data', $proc), 'the next process in a namespace answers for one that exited');
+// A failed mountpoint list is not an empty one.
+env(array('ZFSM_TEST_USERS_LIST_FAIL' => '1'));
+same(array('(zfs could not list its mountpoints, so open files were not checked)', 'process app (pid 999991) has it mounted'), zfsmDatasetUsers('tank/data', $proc), 'a failed mountpoint list says so');
+env(array('ZFSM_TEST_DESTROY_BUSY' => '1'));
+$unlisted = zfsmExplainBusy(destroyDataset('tank/data', 0), 'tank/data');
+same(false, strpos(reset($unlisted['failed']), 'No process'), 'a failed list must not report that nobody uses it: '.json_encode($unlisted));
+env(array('ZFSM_TEST_USERS_LIST_FAIL' => '0', 'ZFSM_TEST_DESTROY_BUSY' => '0'));
+exec('rm -rf '.escapeshellarg($proc));
+
 echo "destroy and rollback review tests passed\n";

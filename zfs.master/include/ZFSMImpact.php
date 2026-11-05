@@ -56,26 +56,51 @@ function zfsmDatasetUsed($dataset) {
 	return ($result['code'] ?? 1) === 0 && ctype_digit($used) ? (float)$used : null;
 }
 
-function zfsmDestroyPreview($target, $recursive) {
-	$preview = array('objects' => array(), 'reclaim' => null, 'clones' => array(), 'held' => array(), 'error' => '', 'can_proceed' => false, 'token' => '');
-	if (!zfsmValidDestroyTarget($target)) {
-		$preview['error'] = 'Invalid dataset or snapshot name';
-		return $preview;
-	}
-	if (strpos($target, '@') === false && strpos($target, '/') === false) {
-		$preview['error'] = 'A pool\'s root dataset cannot be destroyed here';
-		return $preview;
-	}
-	$args = array('destroy', '-n', '-v', '-p');
-	if ((string)$recursive === '1') $args[] = '-r';
-	$args[] = $target;
-	$result = runProcess('zfs', $args);
-	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
+// Why a destroy target can't be previewed; '' when it can.
+function zfsmDestroyTargetRefusal($target) {
+	if (!zfsmValidDestroyTarget($target)) return 'Invalid dataset or snapshot name';
+	if (strpos($target, '@') === false && strpos($target, '/') === false) return 'A pool\'s root dataset cannot be destroyed here';
+	return '';
+}
+
+// [what it would destroy, what it would reclaim or null] from `zfs destroy -n -v -p` output.
+function zfsmDestroyDryRun($output) {
+	$objects = array();
+	$reclaim = null;
+	foreach (zfsmImpactRows($output) as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) !== 2) continue;
-		if ($parts[0] === 'destroy') $preview['objects'][] = $parts[1];
-		if ($parts[0] === 'reclaim') $preview['reclaim'] = (float)$parts[1];
+		if ($parts[0] === 'destroy') $objects[] = $parts[1];
+		if ($parts[0] === 'reclaim') $reclaim = (float)$parts[1];
 	}
+	return array($objects, $reclaim);
+}
+
+// The preview with its clones, holds and token; its error set instead when clones and holds can't be read.
+function zfsmPreviewFinish($preview, $target, $mode, $objects, $dataset) {
+	$clones = zfsmClonesOf($objects, explode('/', $dataset, 2)[0]);
+	$held = zfsmHeldOf($objects, $dataset);
+	if ($clones === null || $held === null) {
+		$preview['error'] = 'Unable to check for clones and holds';
+		return $preview;
+	}
+	$preview['clones'] = $clones;
+	$preview['held'] = $held;
+	$preview['can_proceed'] = !$clones && !$held;
+	$preview['token'] = zfsmImpactToken($target, $mode, $objects, array_merge($clones, $held));
+	return $preview;
+}
+
+function zfsmDestroyPreview($target, $recursive) {
+	$preview = array('objects' => array(), 'reclaim' => null, 'clones' => array(), 'held' => array(), 'error' => '', 'can_proceed' => false, 'token' => '');
+	$preview['error'] = zfsmDestroyTargetRefusal($target);
+	if ($preview['error'] !== '') return $preview;
+	$force = (string)$recursive === '1';
+	$args = array('destroy', '-n', '-v', '-p');
+	if ($force) $args[] = '-r';
+	$args[] = $target;
+	$result = runProcess('zfs', $args);
+	list($preview['objects'], $preview['reclaim']) = zfsmDestroyDryRun($result['output'] ?? '');
 	if (($result['code'] ?? 1) !== 0) {
 		$preview['error'] = trim($result['output'] ?? '') ?: 'ZFS refused the dry run';
 		return $preview;
@@ -85,19 +110,8 @@ function zfsmDestroyPreview($target, $recursive) {
 		return $preview;
 	}
 	if ($preview['reclaim'] === null) $preview['reclaim'] = zfsmDatasetUsed($target);
-	$dataset = explode('@', $target, 2)[0];
-	$clones = zfsmClonesOf($preview['objects'], explode('/', $dataset, 2)[0]);
-	$held = zfsmHeldOf($preview['objects'], $dataset);
-	if ($clones === null || $held === null) {
-		$preview['error'] = 'Unable to check for clones and holds';
-		return $preview;
-	}
-	$preview['clones'] = $clones;
-	$preview['held'] = $held;
-	$preview['can_proceed'] = !$clones && !$held;
 	// A leaf lists the same with or without force, but force also unmounts: the mode is part of what was reviewed.
-	$preview['token'] = zfsmImpactToken($target, (string)$recursive === '1' ? 'force' : 'plain', $preview['objects'], array_merge($clones, $held));
-	return $preview;
+	return zfsmPreviewFinish($preview, $target, $force ? 'force' : 'plain', $preview['objects'], explode('@', $target, 2)[0]);
 }
 
 // createtxg is 64-bit, so compare it as a decimal string.
@@ -127,17 +141,7 @@ function zfsmRollbackPreview($snapshot) {
 		return $preview;
 	}
 	foreach ($rows as $name => $txg) if (zfsmTxgIsNewer($txg, $rows[$snapshot])) $preview['newer'][] = $name;
-	$clones = zfsmClonesOf($preview['newer'], explode('/', $dataset, 2)[0]);
-	$held = zfsmHeldOf($preview['newer'], $dataset);
-	if ($clones === null || $held === null) {
-		$preview['error'] = 'Unable to check for clones and holds';
-		return $preview;
-	}
-	$preview['clones'] = $clones;
-	$preview['held'] = $held;
-	$preview['can_proceed'] = !$clones && !$held;
-	$preview['token'] = zfsmImpactToken($snapshot, 'rollback', $preview['newer'], array_merge($clones, $held));
-	return $preview;
+	return zfsmPreviewFinish($preview, $snapshot, 'rollback', $preview['newer'], $dataset);
 }
 
 // Why a confirmation can't go ahead; '' when it matches a review that still stands.
@@ -190,10 +194,7 @@ function zfsmMountinfoHasDataset($mountinfo, $dataset) {
 
 // One direction only: a container binding all of /mnt/user is not a user of every share.
 function zfsmMountinfoHasShare($mountinfo, $shares) {
-	foreach (zfsmMountinfoRows($mountinfo) as $row) {
-		if ($row[0] !== 'fuse.shfs') continue;
-		foreach ($shares as $share) if ($row[2] === $share || zfsmStartsWith($row[2], $share.'/')) return true;
-	}
+	foreach (zfsmMountinfoRows($mountinfo) as $row) if ($row[0] === 'fuse.shfs' && zfsmUnderAny($row[2], $shares)) return true;
 	return false;
 }
 
@@ -227,9 +228,11 @@ function zfsmReadContainerNames() {
 	}
 }
 
+// '' when the namespace does not use the dataset; null when its mountinfo can't be read, as when the process just exited.
 function zfsmNamespaceUser($base, $pid, $command, $dataset, $shares) {
 	static $containers = null;
-	$mountinfo = (string)@file_get_contents($base.'/mountinfo');
+	$mountinfo = @file_get_contents($base.'/mountinfo');
+	if ($mountinfo === false) return null;
 	$how = zfsmMountinfoHasDataset($mountinfo, $dataset) ? 'has it mounted' : (zfsmMountinfoHasShare($mountinfo, $shares) ? 'may be using it through /mnt/user' : '');
 	if ($how === '') return '';
 	if (preg_match('~(?:/docker/|docker-)([a-f0-9]{64})~', (string)@file_get_contents($base.'/cgroup'), $match) !== 1) return 'process '.$command.' (pid '.$pid.') '.$how;
@@ -237,9 +240,10 @@ function zfsmNamespaceUser($base, $pid, $command, $dataset, $shares) {
 	return 'container '.($containers[$match[1]] ?? substr($match[1], 0, 12)).' '.$how;
 }
 
-// Who is using a dataset: containers holding it, and host processes with files open under it. Best effort.
-function zfsmDatasetUsers($dataset) {
+// The mountpoints under a dataset plus their /mnt/user views, and the share views alone: [paths, shares]; null when zfs can't list them.
+function zfsmDatasetPaths($dataset) {
 	$mounts = runProcess('zfs', array('list', '-H', '-r', '-t', 'filesystem', '-o', 'name,mountpoint', $dataset));
+	if (($mounts['code'] ?? 1) !== 0) return null;
 	$paths = array();
 	foreach (zfsmImpactRows($mounts['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
@@ -247,40 +251,47 @@ function zfsmDatasetUsers($dataset) {
 	}
 	$shares = zfsmShareViews($paths);
 	foreach ($shares as $share) $paths[] = '/mnt/user'.$share;
-	$inside = function($target) use ($paths) {
-		foreach ($paths as $path) if ($target === $path || zfsmStartsWith($target, $path.'/')) return true;
-		return false;
-	};
+	return array($paths, $shares);
+}
+
+// A host process whose working directory or an open file is under $paths; '' when it has none.
+function zfsmProcessUser($base, $pid, $command, $paths) {
+	$links = array(@readlink($base.'/cwd'));
+	foreach (array_slice(glob($base.'/fd/*', GLOB_NOSORT) ?: array(), 0, 4096) as $fd) $links[] = @readlink($fd);
+	foreach ($links as $link) {
+		if (is_string($link) && zfsmUnderAny($link, $paths)) return 'process '.$command.' (pid '.$pid.') is using '.zfsmSafeText($link);
+	}
+	return '';
+}
+
+// Who is using a dataset: containers holding it, and host processes with files open under it. Best effort.
+function zfsmDatasetUsers($dataset, $proc = '/proc') {
+	$listed = zfsmDatasetPaths($dataset);
+	list($paths, $shares) = $listed ?? array(array(), array());
 	$self = @readlink('/proc/self/ns/mnt');
 	$deadline = microtime(true) + 3;
 	$seen_namespaces = array();
-	$users = array();
-	foreach (glob('/proc/[0-9]*', GLOB_ONLYDIR) ?: array() as $base) {
+	$users = $listed === null ? array('(zfs could not list its mountpoints, so open files were not checked)') : array();
+	foreach (glob($proc.'/[0-9]*', GLOB_ONLYDIR) ?: array() as $base) {
 		if (microtime(true) > $deadline) {
 			$users[] = '(stopped looking after 3 seconds, there may be more)';
 			break;
 		}
 		$pid = (int)basename($base);
 		$namespace = @readlink($base.'/ns/mnt');
-		if ($pid === getmypid() || $namespace === false) continue;
+		if ($pid === getmypid() || $namespace === false || isset($seen_namespaces[$namespace])) continue;
 		$command = zfsmSafeText(trim((string)@file_get_contents($base.'/comm')));
-		if ($namespace !== $self) {
-			if (isset($seen_namespaces[$namespace])) continue;
-			$seen_namespaces[$namespace] = true;
-			$user = zfsmNamespaceUser($base, $pid, $command, $dataset, $shares);
-			if ($user !== '') $users[] = $user;
+		if ($namespace === $self) {
+			$users[] = zfsmProcessUser($base, $pid, $command, $paths);
 			continue;
 		}
-		$links = array(@readlink($base.'/cwd'));
-		foreach (array_slice(glob($base.'/fd/*', GLOB_NOSORT) ?: array(), 0, 4096) as $fd) $links[] = @readlink($fd);
-		foreach ($links as $link) {
-			if (is_string($link) && $inside($link)) {
-				$users[] = 'process '.$command.' (pid '.$pid.') is using '.zfsmSafeText($link);
-				break;
-			}
-		}
+		$user = zfsmNamespaceUser($base, $pid, $command, $dataset, $shares);
+		// Marked seen only once read, so a process that just exited leaves its namespace to the next one in it.
+		if ($user === null) continue;
+		$seen_namespaces[$namespace] = true;
+		$users[] = $user;
 	}
-	return array_values(array_unique($users));
+	return array_values(array_unique(array_filter($users, function($user) { return $user !== ''; })));
 }
 
 function zfsmActionLogLines($title, $answer) {

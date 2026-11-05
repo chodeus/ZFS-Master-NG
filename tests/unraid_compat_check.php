@@ -7,9 +7,10 @@ $plugin_dir = $docroot.'/plugins/zfs.master/';
 $token = 'compat-test-token';
 
 $GLOBALS['zfsm_problems'] = array();
+$GLOBALS['zfsm_page_files'] = array(); // the temp copies run_page renders: their warnings are the plugin's
 set_error_handler(function($severity, $message, $file, $line) use ($plugin_dir) {
 	if (!(error_reporting() & $severity)) return true;
-	if (strpos($file, $plugin_dir) === 0 || strpos($file, 'eval') !== false) $GLOBALS['zfsm_problems'][] = "$message in $file:$line";
+	if (strpos($file, $plugin_dir) === 0 || in_array($file, $GLOBALS['zfsm_page_files'], true)) $GLOBALS['zfsm_problems'][] = "$message in $file:$line";
 	return true;
 });
 register_shutdown_function(function() {
@@ -35,8 +36,15 @@ function run_page($path, $strip_header) {
 	$source = file_get_contents($path);
 	if ($strip_header) $source = substr($source, strpos($source, "\n---\n") + 5);
 	if (!function_exists('_')) { function _($text) { return $text; } }
+	$file = tempnam(sys_get_temp_dir(), 'zfsm-page');
+	$GLOBALS['zfsm_page_files'][] = $file;
+	file_put_contents($file, $source);
 	ob_start();
-	eval('?>'.$source);
+	try {
+		include $file;
+	} finally {
+		unlink($file);
+	}
 	return ob_get_clean();
 }
 

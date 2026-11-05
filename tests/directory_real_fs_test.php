@@ -181,4 +181,40 @@ check(empty($result['succeeded']), 'missing rsync reported success');
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'missing rsync lost the source');
 
+// A new dataset without a usable mountpoint is removed again and the directory put back.
+reset_tree($target, $mount, $root);
+putenv('ZFSM_TEST_DATASET_MOUNT=none');
+$result = convertDirectory($target, 'tank');
+check(strpos(reset($result['failed']) ?: '', 'original directory was restored') !== false, 'an unusable mountpoint must undo the conversion: '.json_encode($result));
+check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'an undone conversion must put the directory back');
+// When that dataset can't be removed, the data stays where the message says.
+putenv('ZFSM_TEST_DESTROY_BUSY=1');
+$result = convertDirectory($target, 'tank');
+putenv('ZFSM_TEST_DESTROY_BUSY');
+putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
+$kept = glob($root.'/*_zfsm_tmp_*');
+check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed undo must keep the data aside: '.json_encode($result));
+$said = reset($result['failed']) ?: '';
+check(strpos($said, 'manual recovery is required') !== false && strpos($said, $kept[0]) !== false, 'an undo that could not remove the dataset must say where the data is: '.json_encode($result));
+
+// A failed create puts the directory back.
+reset_tree($target, $mount, $root);
+putenv('ZFSM_TEST_CREATE_FAIL=tank/My Share');
+$result = convertDirectory($target, 'tank');
+putenv('ZFSM_TEST_CREATE_FAIL');
+check(strpos(reset($result['failed']) ?: '', 'dataset already exists') !== false, 'a failed create must give its own reason: '.json_encode($result));
+check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'a failed create must put the directory back');
+// Made but unfinished (no share owner) and mounted where the directory was: the data stays where the message says.
+reset_tree($target, $mount, $root);
+putenv('ZFSM_TEST_GET_FAIL=tank/My Share');
+putenv('ZFSM_TEST_CREATE_MOUNTS_AT='.$target);
+$result = convertDirectory($target, 'tank');
+putenv('ZFSM_TEST_CREATE_MOUNTS_AT');
+putenv('ZFSM_TEST_GET_FAIL');
+$kept = glob($root.'/*_zfsm_tmp_*');
+check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed move back must keep the data aside: '.json_encode($result));
+$said = reset($result['failed']) ?: '';
+check(strpos($said, 'Created, but the share owner could not be set') === 0, 'this case must fail inside createDataset: '.json_encode($result));
+check(strpos($said, 'manual recovery is required') !== false && strpos($said, $kept[0]) !== false, 'a failed move back must say where the data is: '.json_encode($result));
+
 echo "real filesystem directory tests passed\n";
