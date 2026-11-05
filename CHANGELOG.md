@@ -2,13 +2,17 @@
 
 ## Unreleased
 
-- fix: keep UTF-8 characters whole when joining error lines
-- fix: report silent zfs failures, faulted pool sizes and partial creates
-- fix: show every command error as one line
-- fix: correct problems found testing the first beta
-- fix: every snapshot action reports a failed request, and a failed listing shows no count
-- fix: theme dialog checkbox labels, and show the ratio as 1.16x
-- feat: dialogs follow the Unraid theme, and Snapshots Admin matches the settings pages
+- Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes
+- Snapshots Admin is laid out like the settings pages, with held and deferred badges, the snapshot count and space used, and a message when a dataset has none
+- Delete selected shows how many snapshots are ticked and stays off when none are; every snapshot action reports its result, even when the request fails
+- The minus and plus icons fold a dataset; the drive icon shows its details
+- Compress Ratio showed 0.01 for every dataset; it now reads as ZFS prints it, such as 1.16x
+- A failed Create Dataset shows its error inside the dialog, and a dataset created with a problem still appears on the Main tab
+- Pool size, used and free read like dataset sizes (1.1 TiB), and a faulted pool shows a dash instead of 0 B
+- Notifications are plain text, so Discord and email no longer show HTML tags
+- Errors read as one line in dialogs, notifications and the system log, and keep accented characters whole
+- A zfs command that fails without output, such as one stopped by the time limit, shows a warning instead of an empty pool
+- The convert prompt explains what happens to the folder
 
 ## 2026.11.05.1 (beta)
 
