@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.06.1 (beta)
 
 - Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes
 - Snapshots Admin is laid out like the settings pages, with held and deferred badges, the snapshot count and space used, and a message when a dataset has none
