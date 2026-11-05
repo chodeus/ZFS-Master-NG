@@ -192,9 +192,10 @@ putenv('ZFSM_TEST_DESTROY_BUSY=1');
 $result = convertDirectory($target, 'tank');
 putenv('ZFSM_TEST_DESTROY_BUSY');
 putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
-check(strpos(reset($result['failed']) ?: '', 'manual recovery is required') !== false, 'an undo that could not remove the dataset must say so: '.json_encode($result));
 $kept = glob($root.'/*_zfsm_tmp_*');
-check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed undo must keep the data where it says');
+check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed undo must keep the data aside: '.json_encode($result));
+$said = reset($result['failed']) ?: '';
+check(strpos($said, 'manual recovery is required') !== false && strpos($said, $kept[0]) !== false, 'an undo that could not remove the dataset must say where the data is: '.json_encode($result));
 
 // A failed create puts the directory back.
 reset_tree($target, $mount, $root);
