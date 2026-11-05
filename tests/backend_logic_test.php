@@ -228,6 +228,7 @@ putenv('ZFSM_TEST_LIST_FAIL');
 
 $multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
 assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
+assertSameValue("cannot remove '/mnt/Åsa à': busy; try again", zfsmOneLine("cannot remove '/mnt/Åsa à': busy\r\ntry again"), 'Joining lines keeps UTF-8 characters whole');
 // A zfs killed by the inventory deadline, or failing silently, must still be reported. The fake answers name checks and fails -p reads.
 $silent_bin = sys_get_temp_dir().'/zfsm-silent-'.getmypid();
 mkdir($silent_bin);
