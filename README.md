@@ -19,7 +19,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 ## Install
 
-Available once the first beta is released. Go to **Plugins → Install Plugin** and paste:
+The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 
 ```text
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
