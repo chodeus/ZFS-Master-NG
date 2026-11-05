@@ -39,7 +39,6 @@ jobs:
           path: .ops
           sparse-checkout: scripts
 
-      # Add --verify-asset once the first release exists on this repo.
       - name: Verify changelog and manifest agree
         env:
           BRANCH: ${{ inputs.base || github.base_ref || github.ref_name }}
@@ -48,7 +47,7 @@ jobs:
           [ "$BRANCH" != beta ] || channel=beta
           python3 .ops/scripts/plg_release.py check \
             --changelog CHANGELOG.md --plg zfs.master.plg \
-            --channel "$channel" --branch "$BRANCH"
+            --channel "$channel" --branch "$BRANCH" --verify-asset
 
       - name: Plugin function checker tests
         run: php .github/scripts/check-plugin-functions.test.php
