@@ -41,7 +41,7 @@ window.addEventListener('load', () => {
     const read = element => { const s = getComputedStyle(element); return {background: s.backgroundColor, image: s.backgroundImage, color: s.color, border: s.borderTopStyle, transform: s.textTransform}; };
     const page = [document.body, document.documentElement].map(read).find(s => !/^(transparent|rgba\(0, 0, 0, 0\))$/.test(s.background));
     const out = document.createElement('pre'); out.id = 'zfsm-result';
-    out.textContent = JSON.stringify({page, popup: read(document.querySelector('.swal2-popup')), title: read(document.querySelector('.swal2-title')),
+    out.textContent = JSON.stringify({page, popup: read(document.querySelector('.swal2-popup')), title: read(document.querySelector('.swal2-title')), checkbox: read(document.querySelector('.swal2-checkbox')),
       confirm: read(document.querySelector('.swal2-confirm')), cancel: read(document.querySelector('.swal2-cancel')), plain: read(document.getElementById('plain'))});
     document.documentElement.appendChild(out);
   }, 50);
@@ -51,10 +51,11 @@ window.addEventListener('load', () => {
       '--virtual-time-budget=3000', '--dump-dom', `file://${page}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${theme}: the dialog did not render`);
-    const {page: shown, popup, title, confirm, cancel, plain} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {page: shown, popup, title, checkbox, confirm, cancel, plain} = JSON.parse(match[1].replace(/&quot;/g, '"'));
     assert.ok(shown, `${theme}: the page has no background colour`);
     assert.equal(popup.background, shown.background, `${theme}: the dialog must take the page's background: ${match[1]}`);
     assert.equal(title.color, shown.color, `${theme}: the dialog text must take the page's colour: ${match[1]}`);
+    assert.equal(checkbox.background, shown.background, `${theme}: the checkbox label must take the page's background: ${match[1]}`);
     for (const [name, button] of [['Destroy', confirm], ['Cancel', cancel]]) {
       const look = ({background, image, border, transform}) => ({background, image, border, transform});
       assert.deepEqual(look(button), look(plain), `${theme}: ${name} must look like the page's own button: ${match[1]}`);

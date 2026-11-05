@@ -1,7 +1,4 @@
-/* With buttonsStyling off (ZFSMDialogs.js) the buttons take Unraid's own style; these rules only space them and let text follow the page. */
+/* With buttonsStyling off (ZFSMDialogs.js) the buttons take Unraid's own style; these rules only frame the dialog and space them. */
 .zfsm-dialog{border:1px solid rgba(128,128,128,.35)}
 .zfsm-dialog .swal2-actions{gap:12px}
 .zfsm-dialog .swal2-actions button{margin:0}
-.zfsm-dialog .swal2-title,.zfsm-dialog .swal2-html-container,.zfsm-dialog .swal2-footer{color:inherit}
-.zfsm-dialog .swal2-input,.zfsm-dialog .swal2-select,.zfsm-dialog .swal2-checkbox{background:transparent;color:inherit}
-.zfsm-dialog .swal2-input,.zfsm-dialog .swal2-select{border:1px solid rgba(128,128,128,.5)}

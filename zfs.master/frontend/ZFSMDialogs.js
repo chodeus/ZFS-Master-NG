@@ -12,11 +12,12 @@
 		return null;
 	}
 
+	// SweetAlert's own variables, so every part of the dialog (checkbox labels, footers) follows too.
 	function themeDialog(popup) {
 		const colours = pageColours();
 		if (!colours) return;
-		popup.style.background = colours.background;
-		popup.style.color = colours.color;
+		popup.style.setProperty('--swal2-background', colours.background);
+		popup.style.setProperty('--swal2-color', colours.color);
 	}
 
 	window.Swal2 = window.Swal2.mixin({buttonsStyling: false, customClass: {popup: 'zfsm-dialog'}, willOpen: themeDialog});
