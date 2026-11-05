@@ -122,14 +122,14 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 	$.post('<?=$urlzmadmin?>',{cmd: 'createdataset', 'data': formData, 'csrf_token': zfsm_csrf_token}, function(data){
 		const answer = parseJSONResponse(data);
 		const result = {title: 'Create Result', icon: 'info', html: formatAnswer(answer)};
+		// Refresh on every answer: "Created, but ..." is a failure whose dataset exists. The iframe's AJAX event may not run after removal.
+		if (typeof top.requestRefresh === 'function') top.requestRefresh();
 		// The Main page's dialogs open under this Shadowbox, so a failure shows here and the form stays open.
 		if (answer.failed && Object.keys(answer.failed).length > 0) {
 			Swal2.fire(Object.assign(result, {icon: 'error'}));
 			return;
 		}
 		top.Swal2.fire(result);
-		// Refresh before closing the iframe; its global AJAX event may not run after removal.
-		if (typeof top.requestRefresh === 'function') top.requestRefresh();
 		top.Shadowbox.close();
 	});
   }

@@ -104,9 +104,11 @@ function fromStringToBytes(spacestr) {
 	return returnNumber;
 }
 
-// zpool list prints short sizes (1.12T); dataset rows print 1.1 TiB.
+// zpool list prints short sizes (1.12T); dataset rows print 1.1 TiB. A faulted pool prints -.
 function poolSizeText(value) {
-	return fromBytesToString(fromStringToBytes(String(value ?? '')));
+	const text = String(value ?? '');
+	const bytes = fromStringToBytes(text);
+	return Number.isFinite(bytes) ? fromBytesToString(bytes) : escapeHtml(text);
 }
 
 function calculateFreePercent(used, free) {

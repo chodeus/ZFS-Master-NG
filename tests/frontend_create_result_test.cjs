@@ -29,7 +29,8 @@ function run(answer) {
   return calls;
 }
 
-assert.deepEqual(run({succeeded: {}, failed: {'tank/a': 'A dataset with this name already exists.'}}), [['dialog', 'error']], 'a failure shows in the dialog, which stays open');
-assert.deepEqual(run({succeeded: {'tank/a': 'Success'}, failed: {}}), [['main page', 'info'], ['refresh'], ['close']], 'a success shows on the Main page and closes the dialog');
+assert.deepEqual(run({succeeded: {}, failed: {'tank/a': 'A dataset with this name already exists.'}}), [['refresh'], ['dialog', 'error']], 'a failure shows in the dialog, which stays open');
+assert.deepEqual(run({succeeded: {}, failed: {'tank/a': 'Created, but it could not be made read-only: denied'}}), [['refresh'], ['dialog', 'error']], 'a dataset created with a problem still appears on the Main page');
+assert.deepEqual(run({succeeded: {'tank/a': 'Success'}, failed: {}}), [['refresh'], ['main page', 'info'], ['close']], 'a success shows on the Main page and closes the dialog');
 
 console.log('create dataset result tests passed');

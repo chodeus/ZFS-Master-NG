@@ -122,6 +122,12 @@ function zfsmOneLine($text) {
 	return preg_replace(array('/:\s*\R\s*/', '/\s*\R\s*/'), array(': ', '; '), trim((string)$text));
 }
 
+// runProcess output is always a string, so a command killed or failing silently needs this fallback.
+function zfsmCommandError($result, $fallback) {
+	$text = zfsmOneLine($result['output'] ?? '');
+	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
+}
+
 function zfsmLog($message, $priority = LOG_ERR) {
 	openlog('zfs.master', LOG_PID, LOG_USER);
 	syslog($priority, zfsmSafeText($message));

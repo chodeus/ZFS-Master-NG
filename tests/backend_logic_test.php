@@ -228,6 +228,23 @@ putenv('ZFSM_TEST_LIST_FAIL');
 
 $multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
 assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
+// A zfs killed by the inventory deadline, or failing silently, must still be reported. The fake answers name checks and fails -p reads.
+$silent_bin = sys_get_temp_dir().'/zfsm-silent-'.getmypid();
+mkdir($silent_bin);
+file_put_contents($silent_bin.'/zfs', "#!/bin/sh\nfor arg in \"\$@\"; do [ \"\$arg\" = -p ] && exit 1; last=\"\$arg\"; done\nprintf '%s\\n' \"\$last\"\n");
+chmod($silent_bin.'/zfs', 0755);
+$saved_bin = getenv('ZFSM_TEST_BIN_DIR');
+putenv('ZFSM_TEST_BIN_DIR='.$silent_bin);
+$tree = zfsmLoadPoolTree('tank', false, '', 0);
+assertSameValue('Unable to list datasets (exit 1)', $tree['_error'] ?? null, 'A silent dataset list failure is reported');
+$snap_tree = array('tank' => array());
+zfsmAttachSnapshots('tank', $snap_tree);
+assertSameValue('Unable to list snapshots (exit 1)', $snap_tree['tank']['_snapshot_error'] ?? null, 'A silent snapshot list failure is reported');
+assertSameValue('Unable to read dataset properties (exit 1)', getAllDatasetProperties('tank/data', 0)['_error'] ?? null, 'A silent property read failure is reported');
+assertSameValue('Unable to list snapshots (exit 1)', getDatasetSnapshotsResult('tank', 'tank/data')['error'] ?? null, 'A silent dataset snapshot failure is reported');
+putenv('ZFSM_TEST_BIN_DIR'.($saved_bin === false ? '' : '='.$saved_bin));
+exec('rm -rf '.escapeshellarg($silent_bin));
+
 // Through the real zfsnotify and runProcess, with Unraid's notify script replaced by one that records its arguments.
 $notify_root = sys_get_temp_dir().'/zfsm-notify-'.getmypid();
 $notify_log = $notify_root.'/args';

@@ -242,7 +242,7 @@ function zfsmAttachSnapshots($pool, &$datasets) {
 	$columns = zfsmSnapshotColumns();
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'snapshot', '-o', implode(',', $columns), $pool));
 	if (($result['code'] ?? 1) !== 0) {
-		$error = zfsmOneLine($result['output'] ?? 'Unable to list snapshots');
+		$error = zfsmCommandError($result, 'Unable to list snapshots');
 		zfsmLog('ZFS Master NG snapshot inventory failed for '.$pool.': '.$error);
 		$datasets[$pool]['_snapshot_error'] = $error;
 		return 0;
@@ -272,7 +272,7 @@ function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extend
 	$columns = zfsmDatasetColumns();
 	$result = runProcess('zfs', array('list', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', implode(',', $columns), $pool));
 	if (($result['code'] ?? 1) !== 0) {
-		$error = zfsmOneLine($result['output'] ?? 'Unable to list datasets');
+		$error = zfsmCommandError($result, 'Unable to list datasets');
 		zfsmLog('ZFS Master NG dataset inventory failed for '.$pool.': '.$error);
 		return zfsmEmptyDatasetTree($pool, $error);
 	}
@@ -405,7 +405,7 @@ function getZFSPools($strict = false) {
 	$result = runProcess('zpool', array('list', '-H', '-o', 'name,size,alloc,free,health'));
 	if (($result['code'] ?? 1) !== 0) {
 		if (stripos($result['output'] ?? '', 'no pools available') === false) {
-			$error = 'ZFS Master NG pool inventory failed: '.zfsmOneLine($result['output'] ?? 'unknown error');
+			$error = 'ZFS Master NG pool inventory failed: '.zfsmCommandError($result, 'unknown error');
 			if ($strict) throw new RuntimeException($error);
 			zfsmLog($error);
 		}
@@ -507,7 +507,7 @@ function getAllDatasetProperties($zdataset, $ext) {
 	if (!zfsmDatasetExists($zdataset)) return array('_error' => 'Dataset does not exist');
 	$columns = zfsmDatasetColumns();
 	$result = runProcess('zfs', array('list', '-H', '-p', '-o', implode(',', $columns), $zdataset));
-	if (($result['code'] ?? 1) !== 0) return array('_error' => zfsmOneLine($result['output'] ?? 'Unable to read dataset properties'));
+	if (($result['code'] ?? 1) !== 0) return array('_error' => zfsmCommandError($result, 'Unable to read dataset properties'));
 	$rows = zfsmParseTable($result['output'], $columns);
 	$properties = $rows[0] ?? array();
 	if (!$properties) return array('_error' => 'ZFS returned no dataset properties');
@@ -523,7 +523,7 @@ function getDatasetSnapshotsResult($zpool, $zdataset) {
 	if (!zfsmValidPoolName($zpool) || !zfsmValidDatasetName($zdataset) || explode('/', $zdataset, 2)[0] !== $zpool) return array('ok' => false, 'snapshots' => array(), 'error' => 'Invalid pool or dataset name');
 	$columns = zfsmSnapshotColumns();
 	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', implode(',', $columns), $zdataset));
-	if (($result['code'] ?? 1) !== 0) return array('ok' => false, 'snapshots' => array(), 'error' => zfsmOneLine($result['output'] ?? 'Unable to list snapshots'));
+	if (($result['code'] ?? 1) !== 0) return array('ok' => false, 'snapshots' => array(), 'error' => zfsmCommandError($result, 'Unable to list snapshots'));
 	$snapshots = zfsmParseTable($result['output'], $columns);
 	usort($snapshots, function($a, $b) { return ($a['creation'] ?? 0) <=> ($b['creation'] ?? 0); });
 	return array('ok' => true, 'snapshots' => $snapshots, 'error' => '');
@@ -582,7 +582,7 @@ function zfsmCreateProblems($zdataset, $unowned, $readonly) {
 	$problems = $unowned ? array('the share owner could not be set on '.implode(', ', $unowned)) : array();
 	if ($readonly) {
 		$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
-		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.zfsmOneLine($set['output'] ?? '');
+		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.zfsmCommandError($set, 'zfs set failed');
 	}
 	return $problems;
 }
