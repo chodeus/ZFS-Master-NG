@@ -58,6 +58,18 @@ const cases = [
   {name: 'shell_comment_is_not_a_use', expectPass: false,
    files: {'include/s.php': '<?php function zfsmCronOnly() { return 1; } ?>',
            'scripts/t.sh': '#!/bin/sh\n# zfsmCronOnly runs from cron\necho done\n'}},
+  // Quotes are tracked one at a time, a comment may follow ; } ) directly, and HTML comment marks inside strings are code.
+  {name: 'apostrophe_in_a_string_before_a_comment', expectPass: false,
+   files: {'frontend/v.js': 'function stale2() {}\nconst title = "don\'t"; // stale2\n'}},
+  {name: 'comment_right_after_code', expectPass: false,
+   files: {'frontend/w.js': 'function stale3() {}// stale3\n'}},
+  {name: 'html_comment_marks_in_js_strings', expectPass: true,
+   files: {'frontend/x.js': 'function active() {}\nconst a = "<!--"; active(); const b = "-->";\n'}},
+  {name: 'html_comment_right_after_a_tag', expectPass: false,
+   files: {'Old.page': '<div><!-- zfsmOldUi --></div>\n<script>function zfsmOldUi() {}</script>\n'}},
+  // Slashes in a regex literal are code.
+  {name: 'regex_literals_with_slashes', expectPass: true,
+   files: {'frontend/y.js': 'function zfsmSplit() {}\nfunction zfsmTrim() {}\n"a/b".split(/\\//).map(zfsmSplit);\n"a//".replace(/\\/*$/, ""); zfsmTrim();\n'}},
   // Generators and PHP functions returning by reference are named functions too.
   {name: 'unused_generator', expectPass: false,
    files: {'frontend/r.js': 'function* unusedGen() { yield 1; }\n'}},

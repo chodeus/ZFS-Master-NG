@@ -14,24 +14,34 @@ function files(dir) {
   });
 }
 
-// a comment starts after whitespace and outside quotes: "a // b" and http://x stay code. Returns [code, still in a block].
-const balanced = before => ['"', "'", '`'].every(quote => before.split(quote).length % 2 === 1);
-function stripLine(line, marker) {
-  for (const match of (' ' + line).matchAll(marker)) {
-    const before = line.slice(0, match.index);
-    if (!balanced(before)) continue;
-    if (match[1] !== '/*') return [before, false];
-    const end = line.indexOf('*/', match.index + 2);
-    return end < 0 ? [before, true] : stripLine(before + ' ' + line.slice(end + 2), marker);
+// a comment starts outside quotes, and (but for PHP's /*) after a space or ; } ) only: "a // b", http://x and /\// stay code
+const closers = {'/*': '*/', '<!--': '-->'};
+function outsideQuotes(text) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    if (quote && text[i] === '\\') i++;
+    else if (quote ? text[i] === quote : '"\'`'.includes(text[i])) quote = quote ? null : text[i];
   }
-  return [line, false];
+  return quote === null;
+}
+// [the code, the closer of a block comment still open at the end of the line]
+function stripLine(line, marker) {
+  for (const match of line.matchAll(marker)) {
+    const before = line.slice(0, match.index);
+    if (!outsideQuotes(before)) continue;
+    const closer = closers[match[0]];
+    if (!closer) return [before, null];
+    const end = line.indexOf(closer, match.index + match[0].length);
+    return end < 0 ? [before, closer] : stripLine(before + ' ' + line.slice(end + closer.length), marker);
+  }
+  return [line, null];
 }
 function uncomment(text, marker) {
-  let open = false;
-  return text.replace(/<!--[\s\S]*?-->/g, '').split('\n').map(line => {
-    if (open && !line.includes('*/')) return '';
+  let open = null;
+  return text.split('\n').map(line => {
+    if (open && !line.includes(open)) return '';
     let code;
-    [code, open] = stripLine(open ? line.slice(line.indexOf('*/') + 2) : line, marker);
+    [code, open] = stripLine(open ? line.slice(line.indexOf(open) + open.length) : line, marker);
     return code;
   }).join('\n');
 }
@@ -48,12 +58,12 @@ if (fs.existsSync(manifest)) scripts.push(fs.readFileSync(manifest, 'utf8'));
 
 // PHP function names ignore case; PHP constants and every JavaScript name do not
 const languages = {
-  php: {text: uncomment(php.join('\n'), /\s(\/\/|#|\/\*)/g), anyCase: match => match[1] !== undefined,
+  php: {text: uncomment(php.join('\n'), /(?<=^|[\s;})])(?:\/\/|#)|\/\*/g), anyCase: match => match[1] !== undefined,
     defined: /\bfunction(?:\s*&\s*|\s+)([A-Za-z_]\w*)\s*\(|\bdefine\s*\(\s*['"]([A-Za-z_]\w*)['"]|\bconst\s+([A-Za-z_]\w*)\s*=/g},
-  js: {text: uncomment(js.join('\n'), /\s(\/\/|\/\*)/g), anyCase: () => false,
+  js: {text: uncomment(js.join('\n'), /(?<=^|[\s;})])(?:\/\/|\/\*)|<!--/g), anyCase: () => false,
     defined: /\bfunction(?:\s*\*\s*|\s+)([A-Za-z_$][\w$]*)\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g}
 };
-const scriptText = uncomment(scripts.join('\n'), /\s(#)/g);
+const scriptText = uncomment(scripts.join('\n'), /(?<=^|\s)#|<!--/g);
 const usedIn = {php: [languages.php.text, scriptText], js: [languages.js.text, languages.php.text, scriptText]};
 let total = 0;
 const unused = [];
