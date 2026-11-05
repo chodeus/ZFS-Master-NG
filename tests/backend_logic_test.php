@@ -228,7 +228,6 @@ putenv('ZFSM_TEST_LIST_FAIL');
 
 $multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
 assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
-
 // Through the real zfsnotify and runProcess, with Unraid's notify script replaced by one that records its arguments.
 $notify_root = sys_get_temp_dir().'/zfsm-notify-'.getmypid();
 $notify_log = $notify_root.'/args';

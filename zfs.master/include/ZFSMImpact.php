@@ -102,7 +102,7 @@ function zfsmDestroyPreview($target, $recursive) {
 	$result = runProcess('zfs', $args);
 	list($preview['objects'], $preview['reclaim']) = zfsmDestroyDryRun($result['output'] ?? '');
 	if (($result['code'] ?? 1) !== 0) {
-		$preview['error'] = trim($result['output'] ?? '') ?: 'ZFS refused the dry run';
+		$preview['error'] = zfsmOneLine($result['output'] ?? '') ?: 'ZFS refused the dry run';
 		return $preview;
 	}
 	if (!$preview['objects']) {
@@ -128,7 +128,7 @@ function zfsmRollbackPreview($snapshot) {
 	$dataset = explode('@', $snapshot, 2)[0];
 	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', 'snapshot,bookmark', '-o', 'name,createtxg', $dataset));
 	if (($result['code'] ?? 1) !== 0) {
-		$preview['error'] = trim($result['output'] ?? '') ?: 'Unable to list snapshots';
+		$preview['error'] = zfsmOneLine($result['output'] ?? '') ?: 'Unable to list snapshots';
 		return $preview;
 	}
 	$rows = array();

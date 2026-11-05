@@ -66,6 +66,7 @@ env(array('ZFSM_TEST_DESTROY_REFUSED' => '1'));
 $refused = zfsmDestroyPreview('tank/data', 0);
 same(false, $refused['can_proceed'], 'a refused dry run blocks');
 same(true, strpos($refused['error'], 'has children') !== false, 'the reason ZFS gave is shown');
+same("cannot destroy 'tank/data': filesystem has children; use '-r' to destroy the following datasets: tank/data/child", $refused['error'], 'and reads as one line');
 env(array('ZFSM_TEST_DESTROY_REFUSED' => '0'));
 
 env(array('ZFSM_TEST_CLONE' => 'tank/data@daily'));
@@ -183,7 +184,7 @@ same(false, zfsmMountinfoHasShare($shfs, array('/dat')), 'a similar share name')
 same(false, zfsmMountinfoHasShare("97 80 0:44 / /mnt/user rw - fuse.shfs shfs rw\n", array('/data')), 'binding all of /mnt/user is not a user of every share');
 same(false, zfsmMountinfoHasShare("36 35 0:30 /data /x rw - zfs tank/data rw\n", array('/data')), 'only shfs counts here');
 same(array('/data', '/data/tv'), zfsmShareViews(array('/mnt/cache/data', '/mnt/cache/data/tv', '/mnt/cache', '/elsewhere/data')), 'share views: a pool root is no share');
-same('a?b??c?d', zfsmSafeText("a<b>\nc'd"), 'unsafe characters');
+same('a?b?; c?d', zfsmSafeText("a<b>\nc'd"), 'unsafe characters, and a new line becomes a separator');
 same(500, strlen(zfsmSafeText(str_repeat('x', 900))), 'length cap');
 same(array('T: tank succeeded', 'T: tank/x failed: nope', 'T: tank/y failed: see the dialog'), zfsmActionLogLines('T', array('succeeded' => array('tank' => 0), 'failed' => array('tank/x' => 'nope', 'tank/y' => array('a')))), 'one log line per subject');
 same(array('abc' => 'plex', 'def' => 'my app'), zfsmContainerNames("abc plex\ndef my app\n"), 'container names');
