@@ -17,16 +17,17 @@ function verdict(files) {
   }
   const run = spawnSync(process.execPath, [checker, root], {encoding: 'utf8'});
   fs.rmSync(root, {recursive: true, force: true});
-  return {passes: run.status === 0, output: (run.stdout + run.stderr).split('\n').find(l => /defined but never used|passed/.test(l)) || ''};
+  const output = run.stdout + run.stderr;
+  return {passes: run.status === 0, dead: (/defined but never used: (.*)/.exec(output) || [])[1], output: output.split('\n').find(l => /defined but never used|passed/.test(l)) || output.trim().split('\n')[0]};
 }
 
 const cases = [
   // A PHP function nobody calls is dead even if a JS function with the same name is called.
-  {name: 'php_copy_dead_but_js_namesake_called', expectPass: false,
+  {name: 'php_copy_dead_but_js_namesake_called', expectPass: false, dead: 'php sharedName',
    files: {'backend/a.php': '<?php function sharedName($x) { return $x; } ?>',
            'frontend/b.js': 'function sharedName() {}\nsharedName();\n'}},
   // A mention in a comment is not a use.
-  {name: 'only_mentioned_in_comment', expectPass: false,
+  {name: 'only_mentioned_in_comment', expectPass: false, dead: 'js legacyHelper',
    files: {'frontend/c.js': 'function legacyHelper() {}\n// legacyHelper was replaced by pad1\n'}},
   // PHP function names are case-insensitive: this function IS used.
   {name: 'php_call_differs_in_case', expectPass: true,
@@ -36,60 +37,61 @@ const cases = [
    files: {'include/f.php': '<?php function zfsmCronEntry() { return 1; } ?>',
            'scripts/cron.sh': '#!/bin/sh\nphp -r "require \'/usr/local/emhttp/plugins/zfs.master/include/f.php\'; zfsmCronEntry();"\n'}},
   // An unused arrow function or lowercase constant is dead code too.
-  {name: 'unused_arrow_function', expectPass: false,
+  {name: 'unused_arrow_function', expectPass: false, dead: 'js unusedArrow',
    files: {'frontend/g.js': 'const unusedArrow = (x) => x * 2;\n'}},
   // A comment after code is not a use, and a definition written in one is not a definition; a // in a string is code.
-  {name: 'name_only_in_inline_comment', expectPass: false,
+  {name: 'name_only_in_inline_comment', expectPass: false, dead: 'js stale',
    files: {'frontend/i.js': 'function stale() {} // stale\n'}},
   {name: 'definition_in_inline_comment', expectPass: true,
    files: {'frontend/j.js': 'pad0(); // function retired() {}\n'}},
   {name: 'slashes_inside_a_string', expectPass: true,
    files: {'frontend/k.js': 'function zfsmLink() {}\nconst u = "a // b"; zfsmLink();\n'}},
-  {name: 'php_hash_comment_after_code', expectPass: false,
+  {name: 'php_hash_comment_after_code', expectPass: false, dead: 'php zfsmOld',
    files: {'include/l.php': '<?php function zfsmOld() { return 1; } # zfsmOld kept for later ?>'}},
   // A block comment opened after code runs on to its */, and the code after that */ counts again.
-  {name: 'block_comment_after_code_runs_on', expectPass: false,
+  {name: 'block_comment_after_code_runs_on', expectPass: false, dead: 'js zfsmGone',
    files: {'frontend/o.js': 'function zfsmGone() {}\npad0(); /* zfsmGone was\n   replaced by pad1 */\n'}},
   {name: 'definition_in_block_comment_after_code', expectPass: true,
    files: {'frontend/p.js': 'pad0(); /* old:\nfunction retired() {}\n*/\n'}},
   {name: 'code_after_a_block_closes', expectPass: true,
    files: {'frontend/q.js': 'function zfsmAfter() {}\npad0(); /* note\n still note */ zfsmAfter();\n'}},
   // A comment in a shipped shell script is not a use.
-  {name: 'shell_comment_is_not_a_use', expectPass: false,
+  {name: 'shell_comment_is_not_a_use', expectPass: false, dead: 'php zfsmCronOnly',
    files: {'include/s.php': '<?php function zfsmCronOnly() { return 1; } ?>',
            'scripts/t.sh': '#!/bin/sh\n# zfsmCronOnly runs from cron\necho done\n'}},
   // Quotes are tracked one at a time, a comment may follow ; } ) directly, and HTML comment marks inside strings are code.
-  {name: 'apostrophe_in_a_string_before_a_comment', expectPass: false,
+  {name: 'apostrophe_in_a_string_before_a_comment', expectPass: false, dead: 'js stale2',
    files: {'frontend/v.js': 'function stale2() {}\nconst title = "don\'t"; // stale2\n'}},
-  {name: 'comment_right_after_code', expectPass: false,
+  {name: 'comment_right_after_code', expectPass: false, dead: 'js stale3',
    files: {'frontend/w.js': 'function stale3() {}// stale3\n'}},
   {name: 'html_comment_marks_in_js_strings', expectPass: true,
    files: {'frontend/x.js': 'function active() {}\nconst a = "<!--"; active(); const b = "-->";\n'}},
-  {name: 'html_comment_right_after_a_tag', expectPass: false,
+  {name: 'html_comment_right_after_a_tag', expectPass: false, dead: 'js zfsmOldUi',
    files: {'Old.page': '<div><!-- zfsmOldUi --></div>\n<script>function zfsmOldUi() {}</script>\n'}},
   // Slashes in a regex literal are code.
   {name: 'regex_literals_with_slashes', expectPass: true,
    files: {'frontend/y.js': 'function zfsmSplit() {}\nfunction zfsmTrim() {}\n"a/b".split(/\\//).map(zfsmSplit);\n"a//".replace(/\\/*$/, ""); zfsmTrim();\n'}},
   // Generators and PHP functions returning by reference are named functions too.
-  {name: 'unused_generator', expectPass: false,
+  {name: 'unused_generator', expectPass: false, dead: 'js unusedGen',
    files: {'frontend/r.js': 'function* unusedGen() { yield 1; }\n'}},
-  {name: 'php_function_by_reference', expectPass: false,
+  {name: 'php_function_by_reference', expectPass: false, dead: 'php zfsmRefUnused',
    files: {'include/u.php': '<?php function &zfsmRefUnused() { static $a = array(); return $a; } ?>'}},
   // define with a space before its bracket, and a top-level const, define constants too.
-  {name: 'define_with_a_space', expectPass: false,
+  {name: 'define_with_a_space', expectPass: false, dead: 'php ZFSM_UNUSED_SPACED',
    files: {'include/m.php': "<?php define ('ZFSM_UNUSED_SPACED', 1); ?>"}},
-  {name: 'php_top_level_const', expectPass: false,
+  {name: 'php_top_level_const', expectPass: false, dead: 'php ZFSM_UNUSED_CONST',
    files: {'include/n.php': '<?php const ZFSM_UNUSED_CONST = 1; ?>'}},
-  {name: 'unused_lowercase_constant', expectPass: false,
+  {name: 'unused_lowercase_constant', expectPass: false, dead: 'php zfsm_unused_lower',
    files: {'include/h.php': '<?php define("zfsm_unused_lower", 1); ?>'}},
 ];
 
 let failures = 0;
 for (const c of cases) {
   const got = verdict(c.files);
-  const ok = got.passes === c.expectPass;
+  // A failure counts only when the checker names the case's dead code, not when it crashes.
+  const ok = c.expectPass ? got.passes : !got.passes && got.dead === c.dead;
   if (!ok) failures++;
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${c.name}: expected checker to ${c.expectPass ? 'pass' : 'fail'}, it ${got.passes ? 'passed' : 'failed'} (${got.output.trim()})`);
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${c.name}: expected checker to ${c.expectPass ? 'pass' : 'report ' + c.dead}, it ${got.passes ? 'passed' : got.dead ? 'reported ' + got.dead : 'failed without naming dead code'} (${got.output.trim()})`);
 }
 if (failures) { console.log(`dead code checker: ${failures} of ${cases.length} cases wrong`); process.exit(1); }
 console.log('dead code checker tests passed (' + cases.length + ' cases)');

@@ -48,8 +48,8 @@ assertSameValue(true, zfsmMatchesExclusion('tank/dockerfiles/abc', '/dockerfiles
 assertSameValue(false, zfsmMatchesExclusion('tank/media', '/dockerfiles/.*'), 'Dataset exclusion matched the wrong dataset');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker%-old/.*'), 'Saved Lua escape stopped matching');
 assertSameValue(false, zfsmMatchesExclusion('cache/dockerXold/abc', '/docker%-old/.*'), 'Lua escape must be literal');
-$listed = array(array('name' => 'tank'), array('name' => 'tank/skip'), array('name' => 'tank/skip/child'), array('name' => 'tank/keep'));
-assertSameValue(array('tank', 'tank/keep'), array_keys(zfsmIncludedDatasets($listed, 'tank/skip$')), 'A dataset under an excluded one was kept');
+$listed = array(array('name' => 'tank'), array('name' => 'tank/skip'), array('name' => 'tank/skip/child'), array('name' => 'tank/skipper'), array('name' => 'tank/keep'));
+assertSameValue(array('tank', 'tank/skipper', 'tank/keep'), array_keys(zfsmIncludedDatasets($listed, 'tank/skip$')), 'A dataset under an excluded one was kept, or a sibling sharing its prefix was dropped');
 
 // Settings: the first, misspelt name still counts; blank values fall back; numbers are read as numbers.
 $config = loadConfig(array('general' => array('exclussion' => '^old$', 'snap_pattern' => '', 'refresh_interval' => '45')));
