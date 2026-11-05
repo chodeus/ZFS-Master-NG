@@ -38,6 +38,20 @@ const cases = [
   // An unused arrow function or lowercase constant is dead code too.
   {name: 'unused_arrow_function', expectPass: false,
    files: {'frontend/g.js': 'const unusedArrow = (x) => x * 2;\n'}},
+  // A comment after code is not a use, and a definition written in one is not a definition; a // in a string is code.
+  {name: 'name_only_in_inline_comment', expectPass: false,
+   files: {'frontend/i.js': 'function stale() {} // stale\n'}},
+  {name: 'definition_in_inline_comment', expectPass: true,
+   files: {'frontend/j.js': 'pad0(); // function retired() {}\n'}},
+  {name: 'slashes_inside_a_string', expectPass: true,
+   files: {'frontend/k.js': 'function zfsmLink() {}\nconst u = "a // b"; zfsmLink();\n'}},
+  {name: 'php_hash_comment_after_code', expectPass: false,
+   files: {'include/l.php': '<?php function zfsmOld() { return 1; } # zfsmOld kept for later ?>'}},
+  // define with a space before its bracket, and a top-level const, define constants too.
+  {name: 'define_with_a_space', expectPass: false,
+   files: {'include/m.php': "<?php define ('ZFSM_UNUSED_SPACED', 1); ?>"}},
+  {name: 'php_top_level_const', expectPass: false,
+   files: {'include/n.php': '<?php const ZFSM_UNUSED_CONST = 1; ?>'}},
   {name: 'unused_lowercase_constant', expectPass: false,
    files: {'include/h.php': '<?php define("zfsm_unused_lower", 1); ?>'}},
 ];
