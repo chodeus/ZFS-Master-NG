@@ -1,5 +1,5 @@
-// Every named function, function-valued const/let/var and define() constant must be used: a PHP name in PHP, a JavaScript name
-// anywhere (PHP writes handlers into the page). Comments that start a line are skipped; a self-calling function still passes.
+// Every named function, function-valued const/let/var and define()/const constant must be used, matched by name: a PHP name in
+// PHP, a JavaScript name anywhere (PHP writes handlers into the page). Comments are skipped; a self-calling function still passes.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -14,20 +14,27 @@ function files(dir) {
   });
 }
 
-// a comment starts after whitespace and outside quotes: "a // b" and http://x stay code
+// a comment starts after whitespace and outside quotes: "a // b" and http://x stay code. Returns [code, still in a block].
 const balanced = before => ['"', "'", '`'].every(quote => before.split(quote).length % 2 === 1);
 function stripLine(line, marker) {
   for (const match of (' ' + line).matchAll(marker)) {
     const before = line.slice(0, match.index);
     if (!balanced(before)) continue;
-    if (match[1] !== '/*') return before;
+    if (match[1] !== '/*') return [before, false];
     const end = line.indexOf('*/', match.index + 2);
-    if (end >= 0) return stripLine(before + ' ' + line.slice(end + 2), marker);
+    return end < 0 ? [before, true] : stripLine(before + ' ' + line.slice(end + 2), marker);
   }
-  return line;
+  return [line, false];
 }
-const uncomment = (text, marker) => text.replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, '').replace(/<!--[\s\S]*?-->/g, '')
-  .split('\n').map(line => stripLine(line, marker)).join('\n');
+function uncomment(text, marker) {
+  let open = false;
+  return text.replace(/<!--[\s\S]*?-->/g, '').split('\n').map(line => {
+    if (open && !line.includes('*/')) return '';
+    let code;
+    [code, open] = stripLine(open ? line.slice(line.indexOf('*/') + 2) : line, marker);
+    return code;
+  }).join('\n');
+}
 const php = [], js = [], scripts = [];
 for (const file of files(root)) {
   const text = fs.readFileSync(file, 'utf8');
@@ -42,11 +49,11 @@ if (fs.existsSync(manifest)) scripts.push(fs.readFileSync(manifest, 'utf8'));
 // PHP function names ignore case; PHP constants and every JavaScript name do not
 const languages = {
   php: {text: uncomment(php.join('\n'), /\s(\/\/|#|\/\*)/g), anyCase: match => match[1] !== undefined,
-    defined: /\bfunction\s+([A-Za-z_]\w*)\s*\(|\bdefine\s*\(\s*['"]([A-Za-z_]\w*)['"]|\bconst\s+([A-Za-z_]\w*)\s*=/g},
+    defined: /\bfunction(?:\s*&\s*|\s+)([A-Za-z_]\w*)\s*\(|\bdefine\s*\(\s*['"]([A-Za-z_]\w*)['"]|\bconst\s+([A-Za-z_]\w*)\s*=/g},
   js: {text: uncomment(js.join('\n'), /\s(\/\/|\/\*)/g), anyCase: () => false,
-    defined: /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g}
+    defined: /\bfunction(?:\s*\*\s*|\s+)([A-Za-z_$][\w$]*)\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g}
 };
-const scriptText = scripts.join('\n');
+const scriptText = uncomment(scripts.join('\n'), /\s(#)/g);
 const usedIn = {php: [languages.php.text, scriptText], js: [languages.js.text, languages.php.text, scriptText]};
 let total = 0;
 const unused = [];

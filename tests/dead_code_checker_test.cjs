@@ -47,6 +47,22 @@ const cases = [
    files: {'frontend/k.js': 'function zfsmLink() {}\nconst u = "a // b"; zfsmLink();\n'}},
   {name: 'php_hash_comment_after_code', expectPass: false,
    files: {'include/l.php': '<?php function zfsmOld() { return 1; } # zfsmOld kept for later ?>'}},
+  // A block comment opened after code runs on to its */, and the code after that */ counts again.
+  {name: 'block_comment_after_code_runs_on', expectPass: false,
+   files: {'frontend/o.js': 'function zfsmGone() {}\npad0(); /* zfsmGone was\n   replaced by pad1 */\n'}},
+  {name: 'definition_in_block_comment_after_code', expectPass: true,
+   files: {'frontend/p.js': 'pad0(); /* old:\nfunction retired() {}\n*/\n'}},
+  {name: 'code_after_a_block_closes', expectPass: true,
+   files: {'frontend/q.js': 'function zfsmAfter() {}\npad0(); /* note\n still note */ zfsmAfter();\n'}},
+  // A comment in a shipped shell script is not a use.
+  {name: 'shell_comment_is_not_a_use', expectPass: false,
+   files: {'include/s.php': '<?php function zfsmCronOnly() { return 1; } ?>',
+           'scripts/t.sh': '#!/bin/sh\n# zfsmCronOnly runs from cron\necho done\n'}},
+  // Generators and PHP functions returning by reference are named functions too.
+  {name: 'unused_generator', expectPass: false,
+   files: {'frontend/r.js': 'function* unusedGen() { yield 1; }\n'}},
+  {name: 'php_function_by_reference', expectPass: false,
+   files: {'include/u.php': '<?php function &zfsmRefUnused() { static $a = array(); return $a; } ?>'}},
   // define with a space before its bracket, and a top-level const, define constants too.
   {name: 'define_with_a_space', expectPass: false,
    files: {'include/m.php': "<?php define ('ZFSM_UNUSED_SPACED', 1); ?>"}},
