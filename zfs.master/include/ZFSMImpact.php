@@ -228,9 +228,11 @@ function zfsmReadContainerNames() {
 	}
 }
 
+// '' when the namespace does not use the dataset; null when its mountinfo can't be read, as when the process just exited.
 function zfsmNamespaceUser($base, $pid, $command, $dataset, $shares) {
 	static $containers = null;
-	$mountinfo = (string)@file_get_contents($base.'/mountinfo');
+	$mountinfo = @file_get_contents($base.'/mountinfo');
+	if ($mountinfo === false) return null;
 	$how = zfsmMountinfoHasDataset($mountinfo, $dataset) ? 'has it mounted' : (zfsmMountinfoHasShare($mountinfo, $shares) ? 'may be using it through /mnt/user' : '');
 	if ($how === '') return '';
 	if (preg_match('~(?:/docker/|docker-)([a-f0-9]{64})~', (string)@file_get_contents($base.'/cgroup'), $match) !== 1) return 'process '.$command.' (pid '.$pid.') '.$how;
@@ -238,9 +240,10 @@ function zfsmNamespaceUser($base, $pid, $command, $dataset, $shares) {
 	return 'container '.($containers[$match[1]] ?? substr($match[1], 0, 12)).' '.$how;
 }
 
-// The mountpoints under a dataset plus their /mnt/user views, and the share views alone: [paths, shares]
+// The mountpoints under a dataset plus their /mnt/user views, and the share views alone: [paths, shares]; null when zfs can't list them.
 function zfsmDatasetPaths($dataset) {
 	$mounts = runProcess('zfs', array('list', '-H', '-r', '-t', 'filesystem', '-o', 'name,mountpoint', $dataset));
+	if (($mounts['code'] ?? 1) !== 0) return null;
 	$paths = array();
 	foreach (zfsmImpactRows($mounts['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
@@ -262,13 +265,14 @@ function zfsmProcessUser($base, $pid, $command, $paths) {
 }
 
 // Who is using a dataset: containers holding it, and host processes with files open under it. Best effort.
-function zfsmDatasetUsers($dataset) {
-	list($paths, $shares) = zfsmDatasetPaths($dataset);
+function zfsmDatasetUsers($dataset, $proc = '/proc') {
+	$listed = zfsmDatasetPaths($dataset);
+	list($paths, $shares) = $listed ?? array(array(), array());
 	$self = @readlink('/proc/self/ns/mnt');
 	$deadline = microtime(true) + 3;
 	$seen_namespaces = array();
-	$users = array();
-	foreach (glob('/proc/[0-9]*', GLOB_ONLYDIR) ?: array() as $base) {
+	$users = $listed === null ? array('(zfs could not list its mountpoints, so open files were not checked)') : array();
+	foreach (glob($proc.'/[0-9]*', GLOB_ONLYDIR) ?: array() as $base) {
 		if (microtime(true) > $deadline) {
 			$users[] = '(stopped looking after 3 seconds, there may be more)';
 			break;
@@ -281,8 +285,11 @@ function zfsmDatasetUsers($dataset) {
 			$users[] = zfsmProcessUser($base, $pid, $command, $paths);
 			continue;
 		}
+		$user = zfsmNamespaceUser($base, $pid, $command, $dataset, $shares);
+		// Marked seen only once read, so a process that just exited leaves its namespace to the next one in it.
+		if ($user === null) continue;
 		$seen_namespaces[$namespace] = true;
-		$users[] = zfsmNamespaceUser($base, $pid, $command, $dataset, $shares);
+		$users[] = $user;
 	}
 	return array_values(array_unique(array_filter($users, function($user) { return $user !== ''; })));
 }

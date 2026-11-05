@@ -59,6 +59,11 @@ if [ "$1" = "list" ] && contains_arg 'name,createtxg' "$@"; then
 	exit 0
 fi
 
+if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg '-r' "$@" && [ "${ZFSM_TEST_USERS_LIST_FAIL:-0}" = 1 ]; then
+	printf "cannot open '%s': simulated failure\n" "$last_arg" >&2
+	exit 1
+fi
+
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && [ -n "${ZFSM_TEST_USERS_MOUNT:-}" ]; then
 	printf '%s\t%s\n' "$last_arg" "$ZFSM_TEST_USERS_MOUNT"
 	exit 0
