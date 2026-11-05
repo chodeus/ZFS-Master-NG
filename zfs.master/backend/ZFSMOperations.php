@@ -329,24 +329,44 @@ function zfsmSaveDirectoryListing($config, $zdataset) {
 	return $ret;
 }
 
+// Read, change and save the settings one request at a time, or an overlapping change is lost. The lock file is
+// separate because a save replaces the settings file.
+function zfsmWithConfigLock($zdataset, $change) {
+	$lock = @fopen('/var/run/zfs.master.lock', 'c');
+	if ($lock === false || !flock($lock, LOCK_EX)) {
+		if ($lock !== false) fclose($lock);
+		return zfsmFailure($zdataset, 'Unable to lock the ZFS Master settings');
+	}
+	try {
+		return $change();
+	} finally {
+		flock($lock, LOCK_UN);
+		fclose($lock);
+	}
+}
+
 function addToDirectoryListing($zdataset) {
 	if (!zfsmDatasetExists($zdataset, 'filesystem')) return zfsmFailure($zdataset, 'Dataset does not exist or is not a filesystem');
-	$config = parse_plugin_cfg('zfs.master', true);
-	$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	if (in_array($zdataset, $current, true)) return zfsmFailure($zdataset, ZFSM_ERR_ALREADY_SET_IN_CONFIG);
-	$current[] = $zdataset;
-	$config['general']['directory_listing'] = implode(PHP_EOL, array_values(array_unique($current)));
-	return zfsmSaveDirectoryListing($config, $zdataset);
+	return zfsmWithConfigLock($zdataset, function() use ($zdataset) {
+		$config = parse_plugin_cfg('zfs.master', true);
+		$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
+		if (in_array($zdataset, $current, true)) return zfsmFailure($zdataset, ZFSM_ERR_ALREADY_SET_IN_CONFIG);
+		$current[] = $zdataset;
+		$config['general']['directory_listing'] = implode(PHP_EOL, array_values(array_unique($current)));
+		return zfsmSaveDirectoryListing($config, $zdataset);
+	});
 }
 
 function removeFromDirectoryListing($zdataset) {
-	$config = parse_plugin_cfg('zfs.master', true);
-	$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	$key = array_search($zdataset, $current, true);
-	if ($key === false) return zfsmFailure($zdataset, ZFSM_ERR_NOT_IN_CONFIG);
-	unset($current[$key]);
-	$config['general']['directory_listing'] = implode(PHP_EOL, $current);
-	return zfsmSaveDirectoryListing($config, $zdataset);
+	return zfsmWithConfigLock($zdataset, function() use ($zdataset) {
+		$config = parse_plugin_cfg('zfs.master', true);
+		$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
+		$key = array_search($zdataset, $current, true);
+		if ($key === false) return zfsmFailure($zdataset, ZFSM_ERR_NOT_IN_CONFIG);
+		unset($current[$key]);
+		$config['general']['directory_listing'] = implode(PHP_EOL, $current);
+		return zfsmSaveDirectoryListing($config, $zdataset);
+	});
 }
 
 function getZFSPools($strict = false) {

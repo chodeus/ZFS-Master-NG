@@ -168,6 +168,20 @@ switch ($check) {
 		file_put_contents($cfg, $quoted = "[general]\ndirectory_listing = \"cache/appdata\ncache/a\\\"b\"\n");
 		$ret = addToDirectoryListing('tank/data');
 		if (!is_string($ret['failed']['tank/data'] ?? null) || file_get_contents($cfg) !== $quoted) $bad[] = 'a quoted entry: '.json_encode($ret).' '.json_encode(file_get_contents($cfg));
+		// A change waits while another holds the settings lock, then lands: two overlapping changes both stay.
+		file_put_contents($cfg, "[general]\ndirectory_listing = \"cache/appdata\"\n");
+		foreach (array('add' => array('addToDirectoryListing', 'tank/data', array('cache/appdata', 'tank/data')), 'remove' => array('removeFromDirectoryListing', 'cache/appdata', array('tank/data'))) as $name => list($call, $dataset, $after)) {
+			$held = fopen('/var/run/zfs.master.lock', 'c');
+			flock($held, LOCK_EX);
+			$before = $listing();
+			$child = proc_open(array(PHP_BINARY, '-n', '-r', '$docroot = '.var_export($docroot, true).'; $_SERVER["REQUEST_METHOD"] = "GET"; require_once $docroot."/webGui/include/Helpers.php"; require_once $docroot."/plugins/zfs.master/backend/ZFSMOperations.php"; '.$call.'('.var_export($dataset, true).');'), array(), $pipes);
+			usleep(400000);
+			if ($listing() !== $before) $bad[] = "$name ran while the settings lock was held: ".json_encode($listing());
+			flock($held, LOCK_UN);
+			fclose($held);
+			proc_close($child);
+			if ($listing() !== $after) $bad[] = "$name after the lock: ".json_encode($listing());
+		}
 		file_put_contents($cfg, $original);
 		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
 		break;
