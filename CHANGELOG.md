@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.05.1 (beta)
 
 - Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
 - Supports Unraid 6.9.2 and newer

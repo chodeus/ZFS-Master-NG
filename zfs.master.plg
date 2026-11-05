@@ -6,13 +6,40 @@
 <!ENTITY launch "Main">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.09.25">
-<!ENTITY md5 "205ed4702dea3cdb335af4cbc880fd93">
+<!ENTITY version "2026.11.05.1">
+<!ENTITY md5 "6cf520a40fa2ecc26a41c5bb71b8a343">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.05.1
+- Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- A failed download or upgrade now leaves the installed version and its files on the flash drive untouched
+- The old background daemon is stopped only after an upgrade succeeds, and it no longer comes back on page load
+- Destroy, rollback and bulk snapshot delete show everything they will remove before they run, and stop if anything changed since you looked
+- Clones, holds and pool roots are refused with the reason, instead of failing partway
+- A "dataset is busy" error names the container or process using the dataset
+- Admin actions and their errors go to the Unraid system log
+- Settings are grouped into collapsible sections, every setting and create option has a one-line tooltip, and the help text is rewritten
+- Dates use the Unraid display format
+- The Create Dataset dialog is laid out like the settings page and follows the Unraid theme
+- Create Dataset: read only, sync and case sensitivity inherit from the parent unless you set them, new parents get the share owner, an existing name is refused, and encryption needs a passphrase
+- Dialogs follow the Unraid theme on 7.1 and later, and SweetAlert2 is updated to 11.26.25
+- Works alongside other plugins on the Main tab: it no longer changes their requests, sits below the boot device, and keeps its refresh time and buttons on its title line
+- A pool whose snapshots can't be read no longer blanks the others, and its rows say so. A pool that doesn't answer is retried less often, up to every 15 minutes
+- Lazy loading is on unless you turned it off
+- Collapsing a dataset also collapses its directories, the pool's root row stays visible, and the snapshot icons line up down the column
+- On phones, the table scrolls in its own box and the plugin name stays on one line
+- Shares and datasets with spaces in their names can be managed and converted
+- Converting a directory keeps hardlinks and ACLs, checks the copy before it removes the original, and says where the data is if it can't finish
+- Forced delete and convert refuse a directory with a mount inside it
+- Saved Lua exclusion patterns keep working, and an invalid pattern is reported
+- Destructive Mode is enforced on the server for rollbacks past newer snapshots and for recursive snapshot destroy
+- Saving settings on a full flash drive no longer loses them, and adding or removing a directory listing entry keeps the others
+- A setting Unraid would read back differently is refused with the reason, instead of being saved changed
 
 ###2026.09.25
 - Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon
