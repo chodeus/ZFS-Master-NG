@@ -35,8 +35,11 @@ function run_page($path, $strip_header) {
 	$source = file_get_contents($path);
 	if ($strip_header) $source = substr($source, strpos($source, "\n---\n") + 5);
 	if (!function_exists('_')) { function _($text) { return $text; } }
+	$file = tempnam(sys_get_temp_dir(), 'zfsm-page');
+	file_put_contents($file, $source);
 	ob_start();
-	eval('?>'.$source);
+	include $file;
+	unlink($file);
 	return ob_get_clean();
 }
 

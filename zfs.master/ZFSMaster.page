@@ -168,7 +168,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
-				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>, zfsm_config['directory_listing']);
+				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
 				processHiddenDatasets();
 				if (complete) saveCache(data);
 			}
@@ -215,7 +215,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return false;
 	}
 
-	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>, zfsm_config['directory_listing']);
+	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
 
 	const notes = zfsmInventoryNotes(data);
 	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');

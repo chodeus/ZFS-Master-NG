@@ -1,39 +1,32 @@
 <?php
 
-function loadConfig($config) {	
-	$config = is_array($config) ? $config : [];
-	$zfsm_ret['refresh_interval'] = isset($config['general']['refresh_interval']) ? intval($config['general']['refresh_interval']) : 30;
-	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : 1;
-	$zfsm_ret['znapzend_data'] = isset($config['general']['znapzend_data']) ? intval($config['general']['znapzend_data']) : "0";
+// A general setting as an integer, or $default when it isn't there.
+function zfsmSettingInt($general, $key, $default) {
+	return isset($general[$key]) ? intval($general[$key]) : $default;
+}
 
-	$zfsm_ret['destructive_mode'] = isset($config['general']['destructive_mode']) ? intval($config['general']['destructive_mode']) : 0;
+// A general setting as saved, or $default when it isn't there or equals (==) one of the $blank values.
+function zfsmSettingText($general, $key, $default, $blank = array('')) {
+	if (!isset($general[$key])) return $default;
+	foreach ($blank as $value) if ($general[$key] == $value) return $default;
+	return $general[$key];
+}
 
-	if (isset($config['general']['exclussion']) && $config['general']['exclussion'] != '' && !isset($config['general']['exclusion'])):
-		$config['general']['exclusion'] = $config['general']['exclussion'];
-	endif;
-
-	if (!isset($config['general']['exclusion']) || $config['general']['exclusion'] == '' || $config['general']['exclusion'] == ' '):
-		$zfsm_ret['dataset_exclusion'] = '';
-	else:
-		$zfsm_ret['dataset_exclusion'] = $config['general']['exclusion'];
-	endif;
-		
-	$zfsm_ret['snap_max_days_alert'] = isset($config['general']['snap_max_days_alert']) ? intval($config['general']['snap_max_days_alert']) : 30;
-	$zfsm_ret['snap_prefix'] = isset($config['general']['snap_prefix']) ? $config['general']['snap_prefix'] : '';
-
-	if (!isset($config['general']['snap_pattern']) || $config['general']['snap_pattern'] == ''):
-		$zfsm_ret['snap_pattern'] = 'Y-m-d-His';
-	else:
-		$zfsm_ret['snap_pattern'] = $config['general']['snap_pattern'];
-	endif;
-
-	if (!isset($config['general']['directory_listing']) || $config['general']['directory_listing'] == ''):
-		$zfsm_ret['directory_listing'] = array();
-	else:
-		$zfsm_ret['directory_listing'] = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing']);
-	endif;
-	
-	return $zfsm_ret;
+function loadConfig($config) {
+	$general = is_array($config) && is_array($config['general'] ?? null) ? $config['general'] : array();
+	// The setting was first saved under a misspelt name; that one still counts.
+	if (isset($general['exclussion']) && $general['exclussion'] != '' && !isset($general['exclusion'])) $general['exclusion'] = $general['exclussion'];
+	return array(
+		'refresh_interval' => zfsmSettingInt($general, 'refresh_interval', 30),
+		'lazy_load' => zfsmSettingInt($general, 'lazy_load', 1),
+		'znapzend_data' => zfsmSettingInt($general, 'znapzend_data', "0"),
+		'destructive_mode' => zfsmSettingInt($general, 'destructive_mode', 0),
+		'dataset_exclusion' => zfsmSettingText($general, 'exclusion', '', array('', ' ')),
+		'snap_max_days_alert' => zfsmSettingInt($general, 'snap_max_days_alert', 30),
+		'snap_prefix' => $general['snap_prefix'] ?? '',
+		'snap_pattern' => zfsmSettingText($general, 'snap_pattern', 'Y-m-d-His'),
+		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
+	);
 }
 
 function zfsnotify( $subject, $description, $message, $type="normal") {	

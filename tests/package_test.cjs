@@ -45,7 +45,7 @@ try {
   execFileSync('tar', ['-xJf', archive, '-C', unpacked]);
   const packaged = path.join(unpacked, 'usr/local/emhttp/plugins/zfs.master');
   let checked = 0;
-  function visit(directory) {
+  const visit = (directory) => {
     for (const entry of fs.readdirSync(path.join(root, directory), {withFileTypes: true})) {
       const relative = path.join(directory, entry.name);
       if (entry.isDirectory()) { visit(relative); continue; }
@@ -54,7 +54,7 @@ try {
       if (/\.(?:php|page|js|sh)$/.test(relative)) assert.equal(source.includes(Buffer.from('\r\n')), false, `Non-Unix line endings: ${relative}`);
       checked++;
     }
-  }
+  };
   visit('zfs.master');
   const files = execFileSync('tar', ['-tJf', archive], {encoding: 'utf8'}).trim().split(/\r?\n/).filter(entry => !entry.endsWith('/'));
   assert.equal(files.length, checked, 'Unexpected package files');

@@ -48,6 +48,16 @@ assertSameValue(true, zfsmMatchesExclusion('tank/dockerfiles/abc', '/dockerfiles
 assertSameValue(false, zfsmMatchesExclusion('tank/media', '/dockerfiles/.*'), 'Dataset exclusion matched the wrong dataset');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker%-old/.*'), 'Saved Lua escape stopped matching');
 assertSameValue(false, zfsmMatchesExclusion('cache/dockerXold/abc', '/docker%-old/.*'), 'Lua escape must be literal');
+$listed = array(array('name' => 'tank'), array('name' => 'tank/skip'), array('name' => 'tank/skip/child'), array('name' => 'tank/keep'));
+assertSameValue(array('tank', 'tank/keep'), array_keys(zfsmIncludedDatasets($listed, 'tank/skip$')), 'A dataset under an excluded one was kept');
+
+// Settings: the first, misspelt name still counts; blank values fall back; numbers are read as numbers.
+$config = loadConfig(array('general' => array('exclussion' => '^old$', 'snap_pattern' => '', 'refresh_interval' => '45')));
+assertSameValue('^old$', $config['dataset_exclusion'], 'The misspelt exclusion setting was ignored');
+assertSameValue('Y-m-d-His', $config['snap_pattern'], 'A blank snapshot pattern did not fall back');
+assertSameValue(45, $config['refresh_interval'], 'A saved refresh interval was ignored');
+assertSameValue('', loadConfig(array('general' => array('exclusion' => ' ')))['dataset_exclusion'], 'A blank exclusion was kept');
+assertSameValue('^new$', loadConfig(array('general' => array('exclussion' => '^old$', 'exclusion' => '^new$')))['dataset_exclusion'], 'The misspelt name overrode the current one');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker-old/.*'), 'Unescaped hyphen must stay literal');
 assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer%d$'), 'Lua digit class failed');
 assertSameValue(true, zfsmMatchesExclusion('tank/a_b', 'tank/[%w_]+$'), 'Lua class inside a set failed');
@@ -112,6 +122,9 @@ assertSameValue('tank/data@daily', $snapshot_result['snapshots'][0]['name'], 'Di
 $test_log = getenv('ZFSM_TEST_LOG');
 if ($test_log) {
 	@unlink($test_log);
+	$refused = createDataset('tank/newset', array('canmount' => 'off'));
+	assertSameValue(true, empty($refused['succeeded']) && strpos((string)reset($refused['failed']), 'Invalid dataset property: canmount') !== false, 'An option outside the allowed list was not refused');
+	assertSameValue(false, strpos((string)@file_get_contents($test_log), 'canmount'), 'A refused option reached zfs');
 	assertSameValue(true, !empty(renameDataset('tank/data', 'tank/data-renamed', 1)['succeeded']), 'Dataset rename failed');
 	assertSameValue(true, !empty(setDatasetProperty('tank/data', 'compression', 'zstd')['succeeded']), 'Dataset property update failed');
 	assertSameValue(true, !empty(destroyDataset('tank/data', 1)['succeeded']), 'Recursive dataset destroy failed');

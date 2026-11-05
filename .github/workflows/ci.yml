@@ -60,6 +60,7 @@ jobs:
         run: |
           node tests/frontend_startup_test.cjs
           node tests/frontend_rows_test.cjs
+          node tests/frontend_row_content_test.cjs
           node tests/frontend_toggle_test.cjs
           node tests/frontend_impact_test.cjs
           node tests/frontend_inventory_failure_test.cjs

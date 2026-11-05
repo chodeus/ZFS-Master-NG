@@ -148,7 +148,6 @@ check('failed pool datasets do not claim zero snapshots', () => {
   s.requests[1].reject({status: 504}, 'error');
   const part = poolResult('cache', 3); part.data.datasets.cache = {...ds('cache'), snapshots: []};
   s.requests[2].resolve(part);
-  const tankRow = (s.body.innerHTML.match(/<tr id="tr-tank"[\s\S]*?<\/tr>/) || [''])[0];
   assert.match(s.body.innerHTML, /Unavailable/, 'pool row');
   for (const id of ['tr-tank', 'tr-tank%2Fdata']) {
     const row = (s.body.innerHTML.match(new RegExp('<tr id="' + id + '"[\\s\\S]*?</tr>')) || [''])[0];
