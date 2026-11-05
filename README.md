@@ -23,7 +23,7 @@ Unraid 6.9.2 or later. ZFS is built into Unraid from 6.12; older versions need a
 
 ## Install
 
-Available once the first beta is released. Go to **Plugins → Install Plugin** and paste:
+The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 
 ```text
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
