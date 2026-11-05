@@ -801,7 +801,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
-		  html: 'This operation will convert the Directory to a Dataset, <b>The directory will be renamed to &lt;dir&gt;_tmp_&lt;date&gt;</b>; and  the information copy over to the dataset, make sure you have enough space<b>No information is lost in the process</b>',
+		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> The pool needs free space for a second copy while this runs.',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true

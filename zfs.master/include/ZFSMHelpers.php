@@ -34,6 +34,12 @@ function zfsnotify( $subject, $description, $message, $type="normal") {
 	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
 }
 
+// Plain text: notification agents such as Discord and email show HTML tags as typed.
+function zfsmNotifyAnswer($title, $answer, $success_text, $failed_text) {
+	if ($answer['succeeded']) zfsnotify($title, $success_text.': '.implode(', ', array_keys($answer['succeeded'])), '', 'normal');
+	if ($answer['failed']) zfsnotify($title, $failed_text.': '.implodeWithKeys('; ', $answer['failed']), '', 'warning');
+}
+
 function fromBytesToString($bytes) {
 	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB'); 
 
@@ -122,7 +128,8 @@ function commandAnswer($subject, $result) {
 	if (($result['code'] ?? 1) === 0) {
 		$answer['succeeded'][$subject] = 0;
 	} else {
-		$message = trim((string)($result['output'] ?? ''));
+		// One line: dialogs run lines together and syslog prints a newline as ?.
+		$message = preg_replace('/\s*\R\s*/', '; ', trim((string)($result['output'] ?? '')));
 		$answer['failed'][$subject] = $message !== '' ? $message : (int)($result['code'] ?? 1);
 	}
 	return $answer;

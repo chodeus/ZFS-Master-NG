@@ -92,10 +92,8 @@ function zfsmNormalizeProperty($property, $value) {
 		return null;
 	}
 	if ($property === 'quota' && $value === 'none') return 0;
-	if ($property === 'compressratio') {
-		if (preg_match('/^([0-9.]+)x$/', $value, $match)) return (int)round(((float)$match[1]) * 100);
-		return is_numeric($value) ? (int)$value : 0;
-	}
+	// `zfs list -p` prints 1.16, without the x of the human output.
+	if ($property === 'compressratio') return preg_match('/^([0-9]+(?:\.[0-9]+)?)x?$/D', $value, $match) ? (int)round(((float)$match[1]) * 100) : 0;
 	$numeric = array('used', 'available', 'referenced', 'usedbysnapshots', 'quota', 'recordsize', 'creation', 'volblocksize', 'written', 'userrefs');
 	return in_array($property, $numeric, true) && is_numeric($value) ? (int)$value : $value;
 }
@@ -660,7 +658,7 @@ function promoteDataset($zdataset, $zforce = 0) {
 
 function destroyDataset($zdataset, $force) {
 	if (!zfsmDatasetExists($zdataset)) return zfsmFailure($zdataset, 'Dataset does not exist');
-	$args = array('destroy', '-v');
+	$args = array('destroy');
 	if ((string)$force === '1') array_push($args, '-r', '-f');
 	$args[] = $zdataset;
 	return commandAnswer($zdataset, runProcess('zfs', $args));

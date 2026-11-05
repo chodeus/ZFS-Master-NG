@@ -91,7 +91,8 @@ env(array('ZFSM_TEST_ORIGIN_FAIL' => '0'));
 $log = sys_get_temp_dir().'/zfsm-impact-log';
 @unlink($log);
 env(array('ZFSM_TEST_LOG' => $log));
-$destroys = function() use ($log) { return is_file($log) ? substr_count((string)file_get_contents($log), 'destroy -v') : 0; };
+// The fake logs only commands that run; a dry run exits before it logs.
+$destroys = function() use ($log) { return is_file($log) ? preg_match_all('/^destroy /m', (string)file_get_contents($log)) : 0; };
 $token = zfsmDestroyPreview('tank/data', 1)['token'];
 env(array('ZFSM_TEST_DESTROY_EXTRA' => 'tank/data/newchild'));
 same(true, empty(zfsmDestroyReviewed('tank/data', 1, $token)['succeeded']), 'a stale review is refused');
@@ -223,6 +224,7 @@ env(array('ZFSM_TEST_USERS_MOUNT' => $mount));
 env(array('ZFSM_TEST_DESTROY_BUSY' => '1'));
 $busy = zfsmExplainBusy(destroyDataset('tank/data', 0), 'tank/data');
 same(true, strpos(reset($busy['failed']), 'Using it now') !== false && strpos(reset($busy['failed']), 'sleep') !== false, 'a busy failure says who: '.json_encode($busy));
+same(1, preg_match("/^cannot unmount '[^']+': pool or dataset is busy; cannot destroy 'tank\\/data': dataset is busy\\. Using it now: /", reset($busy['failed'])), 'a busy failure is one sentence, without the dry-run list: '.json_encode($busy));
 proc_terminate($sleeper);
 proc_close($sleeper);
 usleep(100000);

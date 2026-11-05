@@ -305,7 +305,7 @@ function zfsmExplainBusy($answer, $dataset) {
 	foreach ($answer['failed'] ?? array() as $subject => $message) {
 		if (!is_string($message) || stripos($message, 'busy') === false) continue;
 		$users = zfsmDatasetUsers($dataset);
-		$answer['failed'][$subject] = $message.($users ? ' Using it now: '.implode('; ', array_slice($users, 0, 10)) : ' No process using it could be found; a reboot may clear a stale mount.');
+		$answer['failed'][$subject] = rtrim($message, '. ').'. '.($users ? 'Using it now: '.implode('; ', array_slice($users, 0, 10)) : 'No process using it could be found; a reboot may clear a stale mount.');
 	}
 	return $answer;
 }

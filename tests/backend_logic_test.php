@@ -27,10 +27,12 @@ assertSameValue(true, zfsmValidSnapshotName('tank/appdata@daily-1'), 'Valid snap
 assertSameValue(false, zfsmValidSnapshotName('tank/appdata@bad/name'), 'Invalid snapshot name accepted');
 
 $columns = zfsmDatasetColumns();
-$values = array('tank/data', 'filesystem', '1024', '2048', '512', 'off', '-', '/mnt/tank/data', 'lz4', '1.25x', '256', 'none', '131072', 'on', 'sa', 'all', 'off', 'sensitive', 'standard', '1700000000', '-', '-');
+$values = array('tank/data', 'filesystem', '1024', '2048', '512', 'off', '-', '/mnt/tank/data', 'lz4', '1.25', '256', 'none', '131072', 'on', 'sa', 'all', 'off', 'sensitive', 'standard', '1700000000', '-', '-');
 $rows = zfsmParseTable(implode("\t", $values), $columns);
 assertSameValue(1, count($rows), 'Dataset TSV row was not parsed');
 assertSameValue(125, $rows[0]['compressratio'], 'Compression ratio normalization failed');
+assertSameValue(100, zfsmNormalizeProperty('compressratio', '1.00'), 'A parsable 1.00 ratio must not truncate');
+assertSameValue(125, zfsmNormalizeProperty('compressratio', '1.25x'), 'The human 1.25x ratio form');
 assertSameValue(0, $rows[0]['quota'], 'Quota normalization failed');
 assertSameValue('none', $rows[0]['keystatus'], 'Unavailable keystatus normalization failed');
 assertSameValue(false, isset($rows[0]['origin']), 'Inapplicable origin should be omitted');
@@ -141,7 +143,7 @@ if ($test_log) {
 	putenv('ZFSM_TEST_DATASET_MOUNT');
 	putenv('ZFSM_TEST_MISSING_DATASET');
 	$commands = file_get_contents($test_log);
-	foreach (array('rename -f tank/data tank/data-renamed', 'set compression=zstd tank/data', 'destroy -v -r -f tank/data', 'snapshot -r tank/data@manual', 'rollback tank/data@daily', 'rollback -r tank/data@daily', 'clone tank/data@daily tank/clone', 'destroy tank/data@daily', 'create -o encryption=on -o keyformat=passphrase -o keylocation=prompt tank/secure') as $expected_command) {
+	foreach (array('rename -f tank/data tank/data-renamed', 'set compression=zstd tank/data', 'destroy -r -f tank/data', 'snapshot -r tank/data@manual', 'rollback tank/data@daily', 'rollback -r tank/data@daily', 'clone tank/data@daily tank/clone', 'destroy tank/data@daily', 'create -o encryption=on -o keyformat=passphrase -o keylocation=prompt tank/secure') as $expected_command) {
 		assertSameValue(true, strpos($commands, $expected_command) !== false, 'Expected command was not issued: '.$expected_command);
 	}
 	assertSameValue(false, strpos($commands, 'secret123') !== false, 'Encryption passphrase leaked into command arguments');
@@ -223,5 +225,24 @@ putenv('ZFSM_TEST_LIST_FAIL');
 assertSameValue(true, zfsmDatasetMissing('tank/dataset does not exist'), 'a dataset named like the error can still be missing');
 putenv('ZFSM_TEST_MISSING_DATASET');
 putenv('ZFSM_TEST_LIST_FAIL');
+
+$multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
+assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
+
+// Through the real zfsnotify and runProcess, with Unraid's notify script replaced by one that records its arguments.
+$notify_root = sys_get_temp_dir().'/zfsm-notify-'.getmypid();
+$notify_log = $notify_root.'/args';
+mkdir($notify_root.'/plugins/dynamix/scripts', 0777, true);
+file_put_contents($notify_root.'/plugins/dynamix/scripts/notify', "#!/bin/sh\nfor arg in \"\$@\"; do printf '%s\\n' \"\$arg\"; done >> '".$notify_log."'\n");
+chmod($notify_root.'/plugins/dynamix/scripts/notify', 0755);
+$saved_docroot = $GLOBALS['docroot'] ?? null;
+$GLOBALS['docroot'] = $notify_root;
+zfsmNotifyAnswer('ZFS Directory Convert', array('succeeded' => array('/mnt/tank/a' => 'Success', '/mnt/tank/b' => 'Success'), 'failed' => array('/mnt/tank/c' => 'no space')), 'Directory converted successfully', 'Unable to convert directory');
+$GLOBALS['docroot'] = $saved_docroot;
+$sent = (string)@file_get_contents($notify_log);
+assertSameValue(true, strpos($sent, "\nDirectory converted successfully: /mnt/tank/a, /mnt/tank/b\n") !== false, 'Success notification lists the paths: '.$sent);
+assertSameValue(true, strpos($sent, "\nUnable to convert directory: /mnt/tank/c: no space\n") !== false, 'Failure notification gives the reason: '.$sent);
+assertSameValue(false, strpos($sent, '<') !== false, 'Notifications carry no HTML: '.$sent);
+exec('rm -rf '.escapeshellarg($notify_root));
 
 echo "backend logic tests passed\n";

@@ -23,6 +23,9 @@ assert.doesNotMatch(nameCell(ds()), /fa-(un)?lock/, 'no encryption, no lock');
 assert.match(nameCell(ds({child: {'tank/data/a': ds({name: 'tank/data/a'})}})), /fa-minus-square/, 'a dataset with children can be folded');
 assert.match(nameCell(ds({directories: ['/mnt/tank/data/x']})), /fa-minus-square/, 'a dataset with listed directories can be folded');
 assert.doesNotMatch(nameCell(ds()), /fa-minus-square/, 'nothing to fold, no toggle');
+const folding = nameCell(ds({child: {'tank/data/a': ds({name: 'tank/data/a'})}}));
+assert.match(folding, /<i class="fa fa-minus-square fa-append" name="tank\/data" style="cursor:pointer" onclick="toggleDataset\(/, 'the minus icon folds the dataset');
+assert.doesNotMatch(folding, /fa-hdd-o[^>]*onclick/, 'the drive icon only shows the details');
 assert.match(nameCell(ds({origin: 'tank/base@s'})), /fa-clone/, 'a clone is marked');
 assert.doesNotMatch(nameCell(ds()), /fa-clone/, 'a plain dataset is not marked as a clone');
 assert.match(nameCell(ds({'org.znapzend:enabled': 'on'})), /fa-clock-o[\s\S]*enabled: on/, 'a znapzend plan is shown with its settings');
@@ -36,6 +39,9 @@ for (const [text, usedBar, freeBar] of [[0, false, false], [1, true, true], [10,
   assert.equal(/-attribute-used"><div class="usage-disk/.test(pool), usedBar, `display ${text}: the pool's Used matches`);
   assert.equal(/-attribute-free"><div class="usage-disk/.test(pool), freeBar, `display ${text}: the pool's Free matches`);
 }
+// Pool sizes come from zpool's short form and read like dataset sizes.
+const poolCells = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '2.78T', Used: '1.12T', Free: '1.5P', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>');
+assert.deepEqual([poolCells[3], poolCells[6], poolCells[7]], ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'pool Size, Used and Free');
 const [usedBar, freeBar] = cells(row(ds(), {text: 1})).slice(6, 8);
 assert.match(usedBar, /width:25%/, 'Used is a quarter of the space');
 assert.match(freeBar, /width:75%/, 'Free is the rest');
