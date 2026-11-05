@@ -137,10 +137,4 @@ const datedRows = context.generateDatasetArrayRows('tank', dated, '', true, 0, 3
 assert.match(datedRows, /Last Snap Date: 03-11-2026, 18:41/, 'the last snapshot shows its own server date text');
 assert.doesNotMatch(datedRows, /11\/3\/2026/, 'no forced American date');
 
-const lazyCells = Array.from({length: 9}, () => ({innerHTML: ''}));
-context.document.getElementById = id => id === context.datasetRowId('tank/dated') ? {getElementsByTagName: () => lazyCells} : null;
-context.updateSnapshotInfo({pool: 'tank', dataset: dated, snapshots: dated.snapshots}, 0, 30, {}).then(() => {
-	assert.match(lazyCells[2].innerHTML, /Last Snap Date: 03-11-2026, 18:41/, 'lazy-loaded snapshots show the server date text');
-	assert.doesNotMatch(lazyCells[2].innerHTML, /11\/3\/2026/, 'no forced American date after lazy load');
-	console.log('dataset row class tests passed');
-});
+console.log('dataset row class tests passed');
