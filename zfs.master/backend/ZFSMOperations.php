@@ -816,8 +816,8 @@ function convertDirectory($directory, $pool) {
 	if (!$moved['succeeded']) return $moved;
 	$created = createDataset($dataset_name, array());
 	if (!$created['succeeded']) {
-		moveDirectory($temp, $path);
-		return $created;
+		if (moveDirectory($temp, $path)['succeeded']) return $created;
+		return zfsmFailure($directory, implode('; ', $created['failed']).'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
 	}
 	$mountpoint = getDatasetProperty($pool, $dataset_name, 'mountpoint');
 	if (!is_string($mountpoint) || !is_dir($mountpoint)) return zfsmFailure($directory, zfsmConvertUndo($dataset_name, $temp, $path));
