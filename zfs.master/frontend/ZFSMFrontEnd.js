@@ -359,12 +359,12 @@ function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
 }
 
 function getPropertiesByType(zdataset) {
-	const creationDate = new Date(zdataset['creation'] * 1000);
+	const created = zdataset['creation_text'] ?? new Date(zdataset['creation'] * 1000).toLocaleString();
 	var properties = {};
 
 	if (zdataset['type'] !== undefined && zdataset['type'] == "filesystem".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Compression' : zdataset['compression'],
 			'Compress Ratio' : zdataset['compressratio']/100,
@@ -384,7 +384,7 @@ function getPropertiesByType(zdataset) {
 
 	} else if (zdataset['type'] !== undefined && zdataset['type'] == "volume".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Block Size' : fromBytesToString(zdataset['volblocksize']),
 			'Compression' : zdataset['compression'],
@@ -434,7 +434,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 			icon_color = '#486dba';
 		}
 
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
+		properties['Last Snap Date'] = snap['creation_text'] ?? snapdate.toLocaleString();
 		properties['Last Snap'] = snap['name'];
 
 		snap_count = zdataset['snapshots'].length;
@@ -620,89 +620,4 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 	});
 
 	zfs_table_body.innerHTML = html_pools;
-}
-
-async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, directory_listing) {
-	var row = document.getElementById(datasetRowId(data.dataset['name']));
-	if (!row) return;
-
-	tds = row.getElementsByTagName('td');
-
-	td_dataset = tds[2];
-	td_button = tds[3];
-	td_snaps = tds[8];
-
-	var properties = getPropertiesByType(data.dataset);
-
-	var icon_color = 'grey';
-	var snap_count = 0;
-
-	if (data['snapshots'] !== undefined && data['snapshots'] != null && data['snapshots'].length > 0) {
-		const snap = getLastSnap(data['snapshots']);
-		var snapdate = new Date(snap['creation'] * 1000);
-
-		if (daysToNow(snap['creation']) > snap_max_days_alert) {
-			icon_color = 'orange';
-		} else {
-			icon_color = '#486dba';
-		}
-
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
-		properties['Last Snap'] = snap['name'];
-
-		snap_count = data['snapshots'].length;
-	}
-
-	const depth = data.dataset['name'].split('/').length - 1;
-
-	var tmp = '';
-
-	for (let i = 1; i <= depth; i++) {
-    	tmp += '&emsp;&emsp;';
-	}
-
-	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset('+safeJsArg(data.dataset['name'])+');"></i>';
-	tmp += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
-
-	var znap_properties = getZnapProperties(data.dataset);
-
-	if (Object.keys(znap_properties).length > 0) {
-		tmp += '<a class="info hand"><i class="fa fa-clock-o fa-append"></i>';
-		tmp += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
-	}
-
-	if (Object.keys(data.dataset['child']).length > 0 || hasDirectories(data.dataset)) {
-		tmp += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(data.dataset['name'])+'"></i>';
-	}
-
-	if (data.dataset['origin'] !== undefined) {
-		tmp += '<i class="fa fa-clone fa-append"></i>';
-	}
-
-	if (data.dataset['keystatus'] != 'none') {
-		if (data.dataset['keystatus'] == 'available') {
-			tmp += '<i class="fa fa-unlock fa-append"></i>';
-		} else {
-			tmp += '<i class="fa fa-lock fa-append"></i>';
-		}
-	}
-
-	tmp += data.dataset['name'].substring(data.dataset['name'].lastIndexOf("/") + 1);
-	tmp += '</td>';
-
-	td_dataset.innerHTML = tmp;
-
-	// Actions
-
-	tmp = '<td>';
-	var id = elementToken(data.dataset['name']);
-
-	tmp += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(data.pool)+', '+safeJsArg(data.dataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(data.dataset['keystatus'])+', '+safeJsArg(data.dataset['origin'] ?? '')+', '+safeJsArg(data.dataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
-	tmp += '</td>';
-
-	td_button.innerHTML = tmp;
-
-	// Snapshots
-
-	td_snaps.innerHTML = snapshotCell(icon_color, snap_count, data.dataset['mountpoint']);
 }

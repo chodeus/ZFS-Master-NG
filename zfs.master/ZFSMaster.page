@@ -215,9 +215,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   function saveCache(data) {
-	const curDate = new Date();
-	
-	data['timestamp'] = curDate.toLocaleString('en-US', { hour12: false })
+	data['timestamp'] = data['generated_text'] || new Date().toLocaleString();
 
 	saveToLocalStorage('zfsm-cache', data);
   }

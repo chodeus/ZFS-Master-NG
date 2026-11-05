@@ -182,10 +182,7 @@ window.onload = function() {
 				echo (int)($snap['userrefs'] ?? 0);
 			echo '</td>';
 			echo '<td class="snapl-attribute-creation">';
-				$snapdate = new DateTime();
-				$snapdate->setTimestamp($snap['creation']);
-				$detail = $snapdate->format('Y-m-d H:i:s');
-				echo '<span>'.$detail.'</span>';
+				echo '<span>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</span>';
 			echo '</td>';
 			echo '<td id="snapl-attribute-actions">';
 				echo '<span class="zfs_bar_button"><a style="cursor:pointer" class="tooltip" title="Rollback Snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward" style="color:orange"></i></a></span>';

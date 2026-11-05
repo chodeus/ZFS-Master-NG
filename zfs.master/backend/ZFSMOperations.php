@@ -185,6 +185,25 @@ function zfsmEmptyDatasetTree($pool, $error = '') {
 	return $tree;
 }
 
+// Dates in the user's Unraid display format, through Unraid's own my_time().
+function zfsmTime($epoch) {
+	global $display;
+	if (!is_array($display ?? null) && function_exists('parse_plugin_cfg')) $display = parse_plugin_cfg('dynamix', true)['display'] ?? array();
+	$text = function_exists('my_time') && !empty($display['date']) ? my_time((int)$epoch) : '';
+	return is_string($text) && $text !== '' ? $text : date('Y-m-d H:i', (int)$epoch);
+}
+
+function zfsmAddTimeText(&$dataset) {
+	if (isset($dataset['creation'])) $dataset['creation_text'] = zfsmTime($dataset['creation']);
+	foreach ($dataset['snapshots'] ?? array() as $index => $snapshot) {
+		if (isset($snapshot['creation'])) $dataset['snapshots'][$index]['creation_text'] = zfsmTime($snapshot['creation']);
+	}
+	foreach ($dataset['child'] ?? array() as $name => $child) {
+		zfsmAddTimeText($child);
+		$dataset['child'][$name] = $child;
+	}
+}
+
 function zfsmLoadPoolTree($pool, $include_snapshots, $exclusion_pattern, $extended) {
 	if (!zfsmValidPoolName($pool)) return zfsmEmptyDatasetTree($pool, 'Invalid pool name');
 	$columns = zfsmDatasetColumns();
@@ -257,7 +276,16 @@ function listDirectories($path, $childs, $zexc_pattern) {
 	return $dirs;
 }
 
-function saveConfig($array) {
+// A value the settings reader would not give back as written: Unraid 6.12+ decodes entities and strips tags first,
+// PHP expands ${NAME}, a carriage return may not survive, and a quote or leading # in a value with line breaks splits it.
+function zfsmConfigValueUnsafe($value) {
+	if (strpos($value, '${') !== false || strpbrk($value, "<\r") !== false) return true;
+	if (preg_match('/&(#[0-9]+|#x[0-9a-f]+|[a-z][a-z0-9]*);/i', $value)) return true;
+	return strpos($value, "\n") !== false && (strpos($value, '"') !== false || preg_match('/^#/m', $value));
+}
+
+// Newlines stay: directory_listing holds one dataset per line inside its quotes. Null when a value can't be saved safely.
+function zfsmConfigText($array) {
 	$content = '';
 	foreach ($array as $key => $elem) {
 		if (!is_array($elem)) continue;
@@ -265,38 +293,80 @@ function saveConfig($array) {
 		foreach ($elem as $key2 => $elem2) {
 			$values = is_array($elem2) ? $elem2 : array($elem2);
 			foreach ($values as $value) {
-				$value = str_replace(array('\\', '"', "\r", "\n"), array('\\\\', '\\"', '', ''), (string)$value);
+				$value = (string)$value;
+				if (zfsmConfigValueUnsafe($value)) return null;
+				$value = str_replace(array('\\', '"'), array('\\\\', '\\"'), $value);
 				$content .= $key2.(is_array($elem2) ? '[]' : '').' = "'.$value."\"\n";
 			}
 		}
 	}
-	return file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', $content, LOCK_EX) !== false;
+	return $content;
+}
+
+// A short write on a full flash drive must leave the old file in place.
+function zfsmWriteFileAtomic($path, $content) {
+	$temp = $path.'.tmp'.getmypid();
+	$handle = @fopen($temp, 'wb');
+	if ($handle === false) return false;
+	$written = @fwrite($handle, $content);
+	$flushed = @fflush($handle);
+	$closed = @fclose($handle);
+	if ($written === strlen($content) && $flushed && $closed && @rename($temp, $path)) return true;
+	@unlink($temp);
+	return false;
+}
+
+function saveConfig($array) {
+	$text = zfsmConfigText($array);
+	return $text !== null && zfsmWriteFileAtomic('/boot/config/plugins/zfs.master/zfs.master.cfg', $text);
+}
+
+function zfsmSaveDirectoryListing($config, $zdataset) {
+	if (zfsmConfigText($config) === null) return zfsmFailure($zdataset, 'A ZFS Master setting holds text that cannot be saved safely: <, an HTML entity, ${...}, or a quote in the directory listing. Fix it on the Settings page.');
+	$saved = saveConfig($config);
+	$ret = buildArrayRet();
+	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
+	return $ret;
+}
+
+// Read, change and save the settings one request at a time, or an overlapping change is lost. The lock file is
+// separate because a save replaces the settings file.
+function zfsmWithConfigLock($zdataset, $change) {
+	$lock = @fopen('/var/run/zfs.master.lock', 'c');
+	if ($lock === false || !flock($lock, LOCK_EX)) {
+		if ($lock !== false) fclose($lock);
+		return zfsmFailure($zdataset, 'Unable to lock the ZFS Master settings');
+	}
+	try {
+		return $change();
+	} finally {
+		flock($lock, LOCK_UN);
+		fclose($lock);
+	}
 }
 
 function addToDirectoryListing($zdataset) {
 	if (!zfsmDatasetExists($zdataset, 'filesystem')) return zfsmFailure($zdataset, 'Dataset does not exist or is not a filesystem');
-	$config = parse_plugin_cfg('zfs.master', true);
-	$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	if (in_array($zdataset, $current, true)) return zfsmFailure($zdataset, ZFSM_ERR_ALREADY_SET_IN_CONFIG);
-	$current[] = $zdataset;
-	$config['general']['directory_listing'] = implode(PHP_EOL, array_values(array_unique($current)));
-	$saved = saveConfig($config);
-	$ret = buildArrayRet();
-	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
-	return $ret;
+	return zfsmWithConfigLock($zdataset, function() use ($zdataset) {
+		$config = parse_plugin_cfg('zfs.master', true);
+		$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
+		if (in_array($zdataset, $current, true)) return zfsmFailure($zdataset, ZFSM_ERR_ALREADY_SET_IN_CONFIG);
+		$current[] = $zdataset;
+		$config['general']['directory_listing'] = implode(PHP_EOL, array_values(array_unique($current)));
+		return zfsmSaveDirectoryListing($config, $zdataset);
+	});
 }
 
 function removeFromDirectoryListing($zdataset) {
-	$config = parse_plugin_cfg('zfs.master', true);
-	$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	$key = array_search($zdataset, $current, true);
-	if ($key === false) return zfsmFailure($zdataset, ZFSM_ERR_NOT_IN_CONFIG);
-	unset($current[$key]);
-	$config['general']['directory_listing'] = implode(PHP_EOL, $current);
-	$saved = saveConfig($config);
-	$ret = buildArrayRet();
-	$ret[$saved ? 'succeeded' : 'failed'][$zdataset] = $saved ? 0 : ZFSM_ERR_UNABLE_TO_SAVE;
-	return $ret;
+	return zfsmWithConfigLock($zdataset, function() use ($zdataset) {
+		$config = parse_plugin_cfg('zfs.master', true);
+		$current = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing'] ?? '', -1, PREG_SPLIT_NO_EMPTY) ?: array();
+		$key = array_search($zdataset, $current, true);
+		if ($key === false) return zfsmFailure($zdataset, ZFSM_ERR_NOT_IN_CONFIG);
+		unset($current[$key]);
+		$config['general']['directory_listing'] = implode(PHP_EOL, $current);
+		return zfsmSaveDirectoryListing($config, $zdataset);
+	});
 }
 
 function getZFSPools($strict = false) {
@@ -338,12 +408,13 @@ function zfsmCollectInventory($config, $include_snapshots, $pool) {
 		if (!isset($pools[$pool])) throw new RuntimeException('Pool is no longer imported: '.$pool);
 		$pools = array($pool => $pools[$pool]);
 	}
-	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array());
+	$data = array('pools' => $pools, 'devices' => array(), 'datasets' => array(), 'errors' => array(), 'generated_text' => zfsmTime(time()));
 	if (!zfsmExclusionIsValid($config['dataset_exclusion'])) $data['warning'] = 'The dataset exclusion pattern is invalid and was ignored. Check ZFS Master NG settings.';
 	foreach ($pools as $name => $info) {
 		$data['devices'][$name] = getZFSPoolDevices($name);
 		$loader = $include_snapshots ? 'getZFSPoolDatasetsAndSnapshots' : 'getZFSPoolDatasets';
 		$tree = $loader($name, $config['dataset_exclusion'], $config['znapzend_data'], $config['directory_listing']);
+		zfsmAddTimeText($tree);
 		$data['datasets'][$name] = $tree;
 		$data['pools'][$name]['MountPoint'] = $tree['mountpoint'] ?? '';
 		$data['pools'][$name]['Snapshots'] = $include_snapshots ? ($tree['total_snapshots'] ?? 0) : null;

@@ -23,6 +23,25 @@ function same($expected, $actual, $message) {
 }
 function env($settings) { foreach ($settings as $key => $value) putenv($key.'='.$value); }
 
+// Saved settings: Unraid 6.9 parses the file as written; 6.12+ decodes entities and strips tags first.
+$readers = array('6.9' => function($text) { return parse_ini_string($text, true); }, '6.12+' => function($text) { return @parse_ini_string(strip_tags(html_entity_decode($text)), true); });
+$kept = array('directory_listing' => "tank/a\ncache/R&D\ntank/b", 'snap_prefix' => 'say "hi"', 'exclusion' => 'C:\\temp\\ cost $5 (?!x)');
+foreach ($readers as $version => $read) {
+	$saved = $read(zfsmConfigText(array('general' => $kept)));
+	same(array('tank/a', 'cache/R&D', 'tank/b'), preg_split('/\r\n|\r|\n/', $saved['general']['directory_listing']), "each directory listing entry keeps its own line, & included ($version)");
+	same($kept['snap_prefix'], $saved['general']['snap_prefix'], "a quote survives a save ($version)");
+	same($kept['exclusion'], $saved['general']['exclusion'], "backslashes and a bare \$ survive a save ($version)");
+}
+foreach (array("before\rafter", "a\"\nevil = \"1", "tank/a\n#hidden", 'a&quot;b', 'R&amp;D', 'x&#92;', 'pre${HOME}post', 'x<b') as $unsafe) {
+	same(null, zfsmConfigText(array('general' => array('snap_prefix' => $unsafe, 'after' => 'kept'))), 'refused, it would not read back as written: '.json_encode($unsafe));
+}
+
+// Dates without Unraid's helpers fall back to one plain format, and every dataset and snapshot gets one.
+same(date('Y-m-d H:i', 1793700000), zfsmTime(1793700000), 'fallback date format');
+$tree = array('creation' => 1, 'snapshots' => array(array('creation' => 2)), 'child' => array('tank/a' => array('creation' => 3, 'snapshots' => array(array('creation' => 4)), 'child' => array())));
+zfsmAddTimeText($tree);
+same(array(zfsmTime(1), zfsmTime(2), zfsmTime(3), zfsmTime(4)), array($tree['creation_text'], $tree['snapshots'][0]['creation_text'], $tree['child']['tank/a']['creation_text'], $tree['child']['tank/a']['snapshots'][0]['creation_text']), 'every level gets its date text');
+
 // Destroy preview
 $preview = zfsmDestroyPreview('tank/data', 0);
 same(array('tank/data'), $preview['objects'], 'plain destroy lists the dataset');

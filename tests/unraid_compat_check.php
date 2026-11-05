@@ -125,6 +125,67 @@ switch ($check) {
 		$GLOBALS['zfsm_problems'] = array();
 		break;
 
+	case 'time_format':
+		// Dates must come out exactly as this Unraid's own my_time() writes them, in the user's display format.
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$at = 1793700000;
+		if (zfsmTime($at) !== my_time($at)) { fwrite(STDERR, "zfsmTime differs from my_time: ".zfsmTime($at).' vs '.my_time($at)."\n"); exit(1); }
+		if (function_exists('my_date')) {
+			$display['date'] = 'd-m-Y';
+			$display['time'] = 'H:i';
+			if (zfsmTime($at) !== date('d-m-Y, H:i', $at)) { fwrite(STDERR, "display format ignored: ".zfsmTime($at)."\n"); exit(1); }
+		}
+		break;
+
+	case 'settings_roundtrip':
+		// What saveConfig writes reads back unchanged through this Unraid's parse_plugin_cfg; anything that wouldn't is refused.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		$bad = array();
+		foreach (array('plain', 'say "hi"', 'C:\\temp\\', 'x&y', 'cost $5', 'a;b', 'tank/My Share', '(?!x)') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$read = saveConfig($config) ? (parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? null) : 'not saved';
+			if ($read !== $value) $bad[] = 'snap_prefix '.json_encode($value).' read back as '.json_encode($read);
+		}
+		foreach (array('pre${HOME}post', 'x<b', 'a&quot;b', 'x&#92;') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$before = file_get_contents($cfg);
+			if (saveConfig($config) || file_get_contents($cfg) !== $before) $bad[] = 'saved '.json_encode($value);
+		}
+		$listing = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['directory_listing']; };
+		file_put_contents($cfg, "[general]\r\ndirectory_listing = \"cache/appdata\r\ncache/R&D\"\r\n");   // a list older versions saved with CRLF
+		$ret = addToDirectoryListing('tank/data');
+		if ($listing() !== array('cache/appdata', 'cache/R&D', 'tank/data')) $bad[] = 'listing after add: '.json_encode($listing()).' '.json_encode($ret);
+		$ret = removeFromDirectoryListing('cache/appdata');
+		if ($listing() !== array('cache/R&D', 'tank/data')) $bad[] = 'listing after remove: '.json_encode($listing()).' '.json_encode($ret);
+		// An entry with a quote, as the Settings page can save one: the add is refused and the file is left as it was.
+		file_put_contents($cfg, $quoted = "[general]\ndirectory_listing = \"cache/appdata\ncache/a\\\"b\"\n");
+		$ret = addToDirectoryListing('tank/data');
+		if (!is_string($ret['failed']['tank/data'] ?? null) || file_get_contents($cfg) !== $quoted) $bad[] = 'a quoted entry: '.json_encode($ret).' '.json_encode(file_get_contents($cfg));
+		// A change waits while another holds the settings lock, then lands: two overlapping changes both stay.
+		file_put_contents($cfg, "[general]\ndirectory_listing = \"cache/appdata\"\n");
+		foreach (array('add' => array('addToDirectoryListing', 'tank/data', array('cache/appdata', 'tank/data')), 'remove' => array('removeFromDirectoryListing', 'cache/appdata', array('tank/data'))) as $name => list($call, $dataset, $after)) {
+			$held = fopen('/var/run/zfs.master.lock', 'c');
+			flock($held, LOCK_EX);
+			$before = $listing();
+			$child = proc_open(array(PHP_BINARY, '-n', '-r', '$docroot = '.var_export($docroot, true).'; $_SERVER["REQUEST_METHOD"] = "GET"; require_once $docroot."/webGui/include/Helpers.php"; require_once $docroot."/plugins/zfs.master/backend/ZFSMOperations.php"; '.$call.'('.var_export($dataset, true).');'), array(), $pipes);
+			usleep(400000);
+			if ($listing() !== $before) $bad[] = "$name ran while the settings lock was held: ".json_encode($listing());
+			flock($held, LOCK_UN);
+			fclose($held);
+			proc_close($child);
+			if ($listing() !== $after) $bad[] = "$name after the lock: ".json_encode($listing());
+		}
+		file_put_contents($cfg, $original);
+		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
+		break;
+
 	case 'settings_page':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		require_once $docroot.'/webGui/include/Helpers.php';

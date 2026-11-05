@@ -120,6 +120,23 @@ check('a persistent query error keeps the chosen interval', () => {
   assert.deepEqual(s.delays(), [30000], 'delay after successful reads: ' + s.delays());
 });
 
+// Snapshots read pool by pool keep the server's date text through the merge and the page's render.
+check('lazy-loaded snapshots show the server date text', () => {
+  const s = launch();
+  const ds = name => ({name, child: {}, type: 'filesystem', mountpoint: '/mnt/' + name, used: 1, available: 1, referenced: 1});
+  const answer = lazy();
+  answer.data.datasets = {tank: ds('tank'), cache: ds('cache')};
+  s.requests[0].resolve(answer);
+  assert.equal(s.requests.length, 2, 'real renderer rejected fixture: ' + s.status());
+  const part = poolResult('tank', 1);
+  part.data.datasets.tank = {...ds('tank'), creation: 1793700000, creation_text: '03-11-2026, 18:40',
+    snapshots: [{name: 'tank@a', creation: 1793700000, creation_text: '03-11-2026, 18:41'}]};
+  s.requests[1].resolve(part);
+  const row = (s.body.innerHTML.match(/<tr id="tr-tank"[\s\S]*?<\/tr>/) || [''])[0];
+  assert.match(row, /Creation Date: 03-11-2026, 18:40/, 'dataset date: ' + row.slice(0, 300));
+  assert.match(row, /Last Snap Date: 03-11-2026, 18:41/, 'last snapshot date: ' + row.slice(0, 600));
+});
+
 // A pool whose snapshots failed must say so, not imply its datasets have none.
 check('failed pool datasets do not claim zero snapshots', () => {
   const s = launch();
