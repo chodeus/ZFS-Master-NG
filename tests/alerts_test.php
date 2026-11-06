@@ -7,11 +7,7 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
-$bin_dir = getenv('ZFSM_TEST_BIN_DIR');
-if (!is_string($bin_dir) || !is_executable($bin_dir.'/zpool') || !is_executable($bin_dir.'/zfs')) {
-	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zpool and zfs\n");
-	exit(1);
-}
+require __DIR__.'/fixtures/fake_bin_guard.php';
 
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 

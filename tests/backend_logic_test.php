@@ -6,6 +6,8 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+require __DIR__.'/fixtures/fake_bin_guard.php';
+
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 
 function assertSameValue($expected, $actual, $message) {

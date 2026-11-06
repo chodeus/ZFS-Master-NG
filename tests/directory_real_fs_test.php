@@ -6,12 +6,7 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
-// convertDirectory runs zfs create and destroy, so never let this reach the host's real zfs.
-$bin_dir = getenv('ZFSM_TEST_BIN_DIR');
-if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
-	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zfs\n");
-	exit(1);
-}
+require __DIR__.'/fixtures/fake_bin_guard.php';
 
 // Everything this run makes lives in its own folder. On any exit, a failed check too, its tmpfs mounts come off and the folder goes.
 $work = sys_get_temp_dir().'/zfsm-real-fs-'.getmypid().'-'.bin2hex(random_bytes(4));

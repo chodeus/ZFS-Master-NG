@@ -6,6 +6,8 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+require __DIR__.'/fixtures/fake_bin_guard.php';
+
 // name => [POST, Destructive Mode, exclusion pattern, expected]
 $cases = array(
 	'rollback_newer' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '1'), '0', '', 'blocked'),

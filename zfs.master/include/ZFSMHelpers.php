@@ -71,6 +71,8 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 	if ($test_bin_dir !== false && $test_bin_dir !== '') {
 		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
 		if (is_file($candidate)) $command = $candidate;
+		// A test never reaches the host's zfs or zpool, even when its fake is missing.
+		elseif (in_array(basename($command), array('zfs', 'zpool'), true)) return array('code' => 127, 'output' => basename($command).' is not in ZFSM_TEST_BIN_DIR');
 	}
 	$descriptor_spec = array(
 		0 => array('pipe', 'r'),
