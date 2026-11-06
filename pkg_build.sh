@@ -47,6 +47,8 @@ filecount=$(find "$work" -type f | wc -l | tr -d ' ')
 [ "$filecount" -ge 10 ] || { echo "ERROR: only $filecount files copied to the package (expected at least 10)"; exit 1; }
 find "$work" -type d -exec chmod 0755 {} +
 find "$work" -type f -exec chmod 0644 {} +
+# Cron and the Settings page (#command) run these directly.
+chmod 0755 "$dest"/scripts/*
 xattr -cr "$work" 2>/dev/null || true
 # Refreshes autov() URLs so browsers fetch the new assets
 find "$work" -type f -exec touch {} +

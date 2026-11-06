@@ -105,7 +105,7 @@ switch ($check) {
 		require_once $docroot.'/webGui/include/Helpers.php';
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
-		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1,
+		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1, 'alert_interval' => 60, 'alert_stale' => 1,
 			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
 		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
@@ -202,10 +202,16 @@ switch ($check) {
 		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
 		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
 		$rendered = Markdown($html);
-		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern') as $section => $field) {
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts') as $section => $field) {
 			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
 		if (!preg_match('#<dt>(?:<[^>]+>|[^<])*Snapshot Time(?:(?!</dl>).)*<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale') as $label => $name) {
+			if (!preg_match('#<dt>(?:<[^>]+>|[^<])*'.$label.'(?:(?!</dl>).)*<select name="'.$name.'">#s', $rendered)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+		}
+		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
+		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
+		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }
 		break;
 
 	case 'create_popup':

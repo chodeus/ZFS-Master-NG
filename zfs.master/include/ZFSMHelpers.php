@@ -26,6 +26,8 @@ function loadConfig($config) {
 		'snap_prefix' => $general['snap_prefix'] ?? '',
 		'snap_pattern' => zfsmSettingText($general, 'snap_pattern', 'Y-m-d-His'),
 		'snap_utc' => zfsmSettingInt($general, 'snap_utc', 0),
+		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
+		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }

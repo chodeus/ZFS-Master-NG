@@ -15,7 +15,8 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Encryption** — create encrypted datasets, and lock or unlock them
 - **Directories** — list the folders inside a dataset, move or delete them, or convert one to its own dataset
 - **ZnapZend** — optionally show the backup plans set on each dataset
-- **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open, pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
+- **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open (or on your alert schedule, if you turn alerts on), pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
+- **Alerts** — optional Unraid notifications when a pool is degraded, has errors or isn't imported, or snapshots get old; off until you turn them on in settings
 - **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
 
 ## Requirements

@@ -34,6 +34,10 @@ rm -rf /usr/local/emhttp/plugins/zfs.master
 rm -f "/var/log/packages/$1"
 STUB
 chmod +x /sbin/upgradepkg /sbin/removepkg
+# Unraid's crontab refresh: leaves a marker so the tests can tell it ran.
+mkdir -p /usr/local/sbin
+printf '#!/bin/sh\ntouch /tmp/zfsm-update-cron-ran\n' > /usr/local/sbin/update_cron
+chmod +x /usr/local/sbin/update_cron
 
 work=$(mktemp -d)
 cp -R zfs.master zfs.master.plg pkg_build.sh "$work/"
@@ -54,7 +58,7 @@ reset; legacy; cp "$work/dist/$package" "$flash/"
 $plugin install "$work/zfs.master.plg" > "$work/install.log" 2>&1 || { cat "$work/install.log"; fail 'install refused'; }
 [ -f "$live/backend/ZFSMAdmin.php" ] || fail 'package files not installed'
 [ -L /var/log/plugins/zfs.master.plg ] || fail 'plugin not registered'
-[ ! -e "$live/nchan" ] && [ ! -e "$live/scripts" ] || fail 'old daemon or Lua files left behind'
+[ ! -e "$live/nchan" ] && [ ! -e "$live/scripts/zfs_pool_get_datasets.lua" ] || fail 'old daemon or Lua files left behind'
 [ ! -e "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'old archive left on the flash'
 [ -f "$flash/$package" ] || fail 'current archive removed from the flash'
 grep -q 'docker%-old' "$flash/zfs.master.cfg" || fail 'settings lost on upgrade'
@@ -113,7 +117,7 @@ set_version "$version"
 # Real CSRF prepend, helpers, backend and pages, with fake zfs and zpool binaries.
 reset; cp "$work/dist/$package" "$flash/"
 $plugin install "$work/zfs.master.plg" > "$work/install2.log" 2>&1 || fail 'second install'
-printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nsnap_prefix="auto-"\r\n' > "$flash/zfs.master.cfg"
+printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
@@ -123,4 +127,13 @@ mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
 for check in menu_order body_token no_token wrong_token main_page settings_page create_popup snapshot_popup snapshot_popup_automatic snapshot_popup_failed snapshot_popup_unmounted snapshot_popup_elsewhere time_format settings_roundtrip; do
 	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
 done
+# Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.
+printf '[general]\nalert_interval="60"\n' > "$flash/zfs.master.cfg"
+rm -f /tmp/zfsm-update-cron-ran
+"$live/scripts/alerts.php" schedule || fail 'alert script did not run from the package'
+[ -e /tmp/zfsm-update-cron-ran ] || fail 'alert schedule written but the crontab not refreshed'
+grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null' "$flash/alerts.cron" || fail 'alert schedule not written'
+printf '[general]\nalert_interval="0"\n' > "$flash/zfs.master.cfg"
+"$live/scripts/alerts.php" schedule && [ ! -e "$flash/alerts.cron" ] || fail 'alert schedule left behind when turned off'
+cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 echo "Unraid $version: installer, CSRF, backend and pages passed"
