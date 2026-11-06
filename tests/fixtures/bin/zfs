@@ -195,6 +195,8 @@ if [ "$1" = "diff" ]; then
 	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER:-}" ]; then
 		i=0
 		while [ "$i" -lt "$ZFSM_TEST_DIFF_FAIL_AFTER" ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done
+		# Still running when the reader is past the limit: failing at once made that a race with the exit (ZFSM_TEST_DIFF_FAILED_EARLY is the other side).
+		sleep 0.5
 		printf 'Unable to determine path or stats for object 99 in tank/data@daily: Invalid argument\n' >&2
 		exit 1
 	fi
