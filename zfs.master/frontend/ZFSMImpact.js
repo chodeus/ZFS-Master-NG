@@ -34,6 +34,19 @@ function zfsmFetchReview(url, data, show, after = ' Nothing was changed.') {
 	}).fail(() => failed('The request failed.'));
 }
 
+// The review shown before a rewrite, from zfsmRewritePreview in include/ZFSMRewrite.php.
+function zfsmRewriteHtml(preview) {
+	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	const warn = text => '<p style="color:#e22828;margin:.5em 0">'+text+'</p>';
+	if (preview.error) return warn(String(preview.error).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char])));
+	let html = say('This writes every file in the dataset again, in place, so a changed compression, checksum, dedup or copies setting applies to the data already there. A changed record size is not applied.');
+	html += warn('Snapshots and clones keep the old blocks, so the pool can use up to the size of these files again until those snapshots are deleted. This dataset\'s snapshots hold '+zfsmImpactSize(preview.snapshot_space)+' now.');
+	html += preview.physical
+		? say('Blocks keep their birth times, so the next incremental send stays small.')
+		: warn('This pool can\'t keep blocks\' birth times (its physical_rewrite feature is off), so the next incremental send of this dataset carries all of its data again.');
+	return html+say('It runs in the background. The row shows how many files are done, and a notification says when it finishes.');
+}
+
 function zfsmImpactSummary(preview, verb) {
 	if (!preview.objects || !preview.objects.length) return '';
 	const frees = preview.reclaim === null || preview.reclaim === undefined ? '' : ' and frees about '+zfsmImpactSize(preview.reclaim);

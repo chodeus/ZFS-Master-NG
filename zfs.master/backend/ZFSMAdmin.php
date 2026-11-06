@@ -139,6 +139,15 @@ try {
 			zfsmReturnAnswer(moveDirectory(zfsmPostString('directory'), zfsmPostString('newname')), 'ZFS Directory Move', 'Directory moved successfully', 'Unable to move directory');
 			break;
 
+		case 'previewrewrite':
+			$zdataset = zfsmPostString('zdataset');
+			echo json_encode(zfsmWithReadLimit(function() use ($zdataset) { return zfsmRewritePreview($zdataset); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
+		case 'rewritedataset':
+			zfsmReturnAnswer(zfsmStartRewrite(zfsmPostString('zdataset')), 'ZFS Dataset Rewrite', 'Rewrite started', 'Unable to start the rewrite');
+			break;
+
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);

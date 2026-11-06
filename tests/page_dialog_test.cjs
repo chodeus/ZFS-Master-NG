@@ -24,15 +24,18 @@ window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventLi
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
 window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
 
 const posts = [], replies = [];
 let properties = {};
+let rewritePreview = {};
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
   const reply = window.$.Deferred();
   replies.push(reply);
   return reply.promise();
@@ -149,6 +152,53 @@ async function confirm() {
   assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
   replies.at(-1).reject();
   assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
+
+  // A rewrite reports on the same row: started, how many files are done, stopped.
+  send('rewrite_start');
+  assert.equal(progress(), 'Rewriting files…', 'the row says the files are being rewritten');
+  feed.message(JSON.stringify({op: 'rewrite_progress', data: {dataset: 'tank/new', files: 42}}));
+  assert.equal(progress(), 'Rewriting files… 42 done', 'the row counts the files done');
+  redraw();
+  assert.equal(progress(), 'Rewriting files… 42 done', 'a redraw keeps the count');
+  send('rewrite_stop');
+  assert.equal(progress(), '', 'the row clears when the rewrite stops');
+
+  // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
+  window._ = text => text;
+  let menu = [];
+  window.context = {attach: (id, options) => { menu = options; }};
+  const rewriteItem = (type, available) => {
+    window.zfsm_config.rewrite = available;
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', type);
+    return menu.find(option => option.text === 'Rewrite Files');
+  };
+  assert.equal(rewriteItem('volume', true), undefined, 'a volume has no files to rewrite');
+  assert.equal(rewriteItem('filesystem', false), undefined, 'no zfs rewrite before OpenZFS 2.4');
+  rewritePreview = {can_proceed: true, physical: true, snapshot_space: 1073741824};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
+  const review = window.document.querySelector('.swal2-html-container').textContent;
+  assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
+  assert.match(review, /snapshots hold 1\.00 GiB now/, 'the review shows the snapshot space');
+  assert.match(review, /next incremental send stays small/, 'with physical_rewrite, incremental sends stay small');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new'}, 'confirming starts the rewrite');
+  rewritePreview = {can_proceed: true, physical: false, snapshot_space: 0};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /carries all of its data again/, 'without physical_rewrite, the review warns about the next incremental send');
+  window.Swal2.close();
+  rewritePreview = {can_proceed: false, error: 'A rewrite of this dataset is already running'};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /already running/, 'a refused review says why');
+  posts.length = 0;
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts, [], 'a refused review starts nothing');
+  window.Swal2.close();
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

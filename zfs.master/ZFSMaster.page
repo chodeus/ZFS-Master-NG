@@ -14,6 +14,9 @@ require_once $docroot."/webGui/include/Helpers.php";
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $unraid_ver_file = '/etc/unraid-version';
 $zfsm_cfg['version'] = file_exists($unraid_ver_file) ? (parse_ini_file($unraid_ver_file)['version'] ?? '7.0.0') : '7.0.0';
+require_once $docroot."/plugins/".$plugin."/include/ZFSMRewrite.php";
+// The dataset menu offers Rewrite Files only where zfs rewrite exists (OpenZFS 2.4+).
+$zfsm_cfg['rewrite'] = zfsmRewriteAvailable();
 $var_ini = @parse_ini_file('/var/local/emhttp/var.ini');
 $csrf_token = $var_ini['csrf_token'] ?? '';
 $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
@@ -155,6 +158,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		zfsmShowCopyProgress(msg.data.dataset, parseDirectoryCopy(msg.data.line));
 	} else if (msg.op == 'stop_directory_copy') {
 		zfsmShowCopyProgress(msg.data.dataset, null);
+	} else if (msg.op == 'rewrite_start') {
+		zfsmShowCopyProgress(msg.data.dataset, 'Rewriting files…');
+	} else if (msg.op == 'rewrite_progress') {
+		zfsmShowCopyProgress(msg.data.dataset, 'Rewriting files… '+Number(msg.data.files)+' done');
+	} else if (msg.op == 'rewrite_stop') {
+		zfsmShowCopyProgress(msg.data.dataset, null);
 	}
 
 	processHiddenDatasets();
@@ -163,7 +172,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	}
   }
 
-  // Each running copy's progress, put back after every render; null once the copy stops.
+  // Each running copy's or rewrite's progress, put back after every render; null once it stops.
   var zfsm_copy_progress = {};
   function zfsmShowCopyProgress(dataset, html) {
 	if (html === null) delete zfsm_copy_progress[dataset];
@@ -463,6 +472,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			takeDatasetSnapshot(zdataset);
         },
     });
+
+	// Only where zfs rewrite exists (OpenZFS 2.4+); a volume has no files.
+	if (datasetType === 'filesystem' && zfsm_config['rewrite']) {
+		opts.push({
+			text: _('Rewrite Files'),
+			icon: 'fa-refresh',
+			action: function(e) {
+				e.preventDefault();
+				rewriteDataset(zdataset);
+			},
+		});
+	}
     
 	if (encryption == 'available') {
 		opts.push({
@@ -538,6 +559,26 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			$(this).hide()
 		}
     })
+  }
+
+  // Starts in the background once confirmed; the row shows its progress (rewrite_* in zfsmHandleMessage).
+  function rewriteDataset(zdataset) {
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewrewrite', zdataset: zdataset}, function(preview) {
+		Swal2.fire({
+			title: '<strong>Rewrite Files<br>'+escapeHtml(zdataset)+'</strong>',
+			icon: preview.can_proceed ? 'warning' : 'error',
+			html: zfsmRewriteHtml(preview),
+			showConfirmButton: preview.can_proceed === true,
+			confirmButtonText: 'Rewrite',
+			showCancelButton: true
+		}).then((result) => {
+			// A refused review hides Rewrite, and nothing may start one from it anyway.
+			if (!result.isConfirmed || preview.can_proceed !== true) return;
+			$.post('<?=$urlzmadmin?>', {cmd: 'rewritedataset', zdataset: zdataset}, function(data) {
+				Swal2.fire({title: 'Rewrite Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
+			});
+		});
+	});
   }
 
   function takeDatasetSnapshot(zdataset) {
