@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+- Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- A failed download or upgrade now leaves the installed version and its files on the flash drive untouched
+- The old background daemon is stopped only after an upgrade succeeds, and it no longer comes back on page load
+- Destroy, rollback and bulk snapshot delete show everything they will remove before they run, and stop if anything changed since you looked
+- Clones, holds and pool roots are refused with the reason, instead of failing partway
+- A "dataset is busy" error names the container or process using the dataset
+- Admin actions and their errors go to the Unraid system log
+- Settings are grouped into collapsible sections, every setting and create option has a one-line tooltip, and the help text is rewritten
+- Dates use the Unraid display format
+- The Create Dataset dialog is laid out like the settings page and follows the Unraid theme
+- Create Dataset: read only, sync and case sensitivity inherit from the parent unless you set them, new parents get the share owner, an existing name is refused, and encryption needs a passphrase
+- Dialogs follow the Unraid theme on 7.1 and later, and SweetAlert2 is updated to 11.26.25
+- Works alongside other plugins on the Main tab: it no longer changes their requests, sits below the boot device, and keeps its refresh time and buttons on its title line
+- A pool whose snapshots can't be read no longer blanks the others, and its rows say so. A pool that doesn't answer is retried less often, up to every 15 minutes
+- Lazy loading is on unless you turned it off
+- Collapsing a dataset also collapses its directories, the pool's root row stays visible, and the snapshot icons line up down the column
+- On phones, the table scrolls in its own box and the plugin name stays on one line
+- Shares and datasets with spaces in their names can be managed and converted
+- Converting a directory keeps hardlinks and ACLs, checks the copy before it removes the original, and says where the data is if it can't finish
+- Forced delete and convert refuse a directory with a mount inside it
+- Saved Lua exclusion patterns keep working, and an invalid pattern is reported
+- Destructive Mode is enforced on the server for rollbacks past newer snapshots and for recursive snapshot destroy
+- Saving settings on a full flash drive no longer loses them, and adding or removing a directory listing entry keeps the others
+- A setting Unraid would read back differently is refused with the reason, instead of being saved changed
+- Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes
+- Snapshots Admin is laid out like the settings pages, with held and deferred badges, the snapshot count and space used, and a message when a dataset has none
+- Delete selected shows how many snapshots are ticked and stays off when none are; every snapshot action reports its result, even when the request fails
+- The minus and plus icons fold a dataset; the drive icon shows its details
+- Compress Ratio showed 0.01 for every dataset; it now reads as ZFS prints it, such as 1.16x
+- A failed Create Dataset shows its error inside the dialog, and a dataset created with a problem still appears on the Main tab
+- Pool size, used and free read like dataset sizes (1.1 TiB), and a faulted pool shows a dash instead of 0 B
+- Notifications are plain text, so Discord and email no longer show HTML tags
+- Errors read as one line in dialogs, notifications and the system log, and keep accented characters whole
+- A zfs command that fails without output, such as one stopped by the time limit, shows a warning instead of an empty pool
+- The convert prompt explains what happens to the folder
+
 ## 2026.11.06.1 (beta)
 
 - Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes
