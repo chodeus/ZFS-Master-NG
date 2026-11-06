@@ -43,7 +43,7 @@ const review = (setup) => {
 		if (!setup.network) done(setup.answer);
 		return request;
 	}};
-	context.zfsmFetchReview('/admin', {}, preview => { shown = preview; });
+	context.zfsmFetchReview('/admin', {}, preview => { shown = preview; }, ...('after' in setup ? [setup.after] : []));
 	return shown;
 };
 assert.equal(review({answer: {objects: ['a'], can_proceed: true}}).can_proceed, true, 'an object answer');
@@ -51,8 +51,10 @@ assert.equal(review({answer: '{"objects":["a"],"can_proceed":true}'}).can_procee
 assert.match(review({answer: '{"succeeded":[],"failed":{"request":"timed out"}}'}).error, /timed out/, 'a backend failure shows its reason');
 assert.match(review({answer: 'not json'}).error, /could not be read/);
 assert.match(review({answer: 'null'}).error, /could not be read/);
-assert.match(review({network: true}).error, /could not be loaded/);
+assert.match(review({network: true}).error, /The request failed/);
 assert.match(html(review({network: true}), 'h'), /Nothing was changed/, 'and the dialog shows it');
+assert.equal(review({network: true, after: ''}).error, 'The request failed.', 'a read-only caller drops "Nothing was changed"');
+assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}', after: ''}).error, 'zfs timed out');
 
 const page = fs.readFileSync(path.resolve(__dirname, '../zfs.master/ZFSMaster.page'), 'utf8');
 const popup = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMAdminDatasetSnaps.php'), 'utf8');
@@ -62,5 +64,7 @@ const confirmed = bulk.indexOf('if (!result.isConfirmed) return;');
 assert.ok(bulk.indexOf('zfsmFetchReview(') >= 0 && confirmed > bulk.indexOf('zfsmFetchReview('), 'bulk delete fetches the review, then waits for the confirm');
 assert.ok([...bulk.matchAll(/destroysnapshot/g)].every(found => found.index > confirmed), 'bulk delete destroys nothing before the confirm');
 assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': preview\.token/, 'bulk delete sends the reviewed list with its token, not one request per snapshot');
+const diff = popup.slice(popup.indexOf('function diffSnapshot('), popup.indexOf('function renameSnapshot('));
+assert.match(diff, /zfsmFetchReview\('[^']*', \{cmd: 'diffsnapshot'[\s\S]*\n\t\}, ''\);\n/, 'the changes dialog is read-only, so its failures do not say "Nothing was changed"');
 
 console.log('destroy and rollback dialog tests passed');

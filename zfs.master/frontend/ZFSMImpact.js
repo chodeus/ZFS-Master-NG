@@ -19,18 +19,19 @@ function zfsmImpactHtml(preview, heading) {
 }
 
 // Every way a review can fail ends in show({error}), so a dialog always says why it can't go ahead.
-function zfsmFetchReview(url, data, show) {
-	const failed = reason => show({error: reason+' Nothing was changed.'});
+// A read-only caller passes '' for after: "Nothing was changed" would read as its answer.
+function zfsmFetchReview(url, data, show, after = ' Nothing was changed.') {
+	const failed = reason => show({error: reason+after});
 	$.post(url, data, function(answer) {
 		let preview;
 		try {
 			preview = typeof answer === 'string' ? JSON.parse(answer) : answer;
 		} catch (error) {
-			return failed('The review could not be read.');
+			return failed('The answer could not be read.');
 		}
-		if (!preview || preview.failed) return failed(Object.values((preview || {}).failed || {}).join(' ') || 'The review could not be read.');
+		if (!preview || preview.failed) return failed(Object.values((preview || {}).failed || {}).join(' ') || 'The answer could not be read.');
 		show(preview);
-	}).fail(() => failed('The review could not be loaded.'));
+	}).fail(() => failed('The request failed.'));
 }
 
 function zfsmImpactSummary(preview, verb) {

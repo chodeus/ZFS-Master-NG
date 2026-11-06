@@ -6,7 +6,7 @@ function zfsmDiffHtml(diff) {
 	if (diff.error) return '<p style="color:#e22828;margin:.5em 0">'+esc(diff.error)+'</p>';
 	const list = diff.changes || [];
 	if (!list.length) return '<p style="margin:.5em 0">Nothing has changed since this snapshot.</p>';
-	const count = diff.truncated ? 'Showing the first '+list.length+' changes.' : list.length+(list.length === 1 ? ' change' : ' changes')+' since this snapshot.';
+	const count = diff.truncated ? 'Showing '+list.length+' of the changes; there are more.' : list.length+(list.length === 1 ? ' change' : ' changes')+' since this snapshot.';
 	const rows = list.map(item => '<tr><td>'+esc(changes[item.change] || item.change)+'</td><td>'+esc(types[item.type] || 'Other')+'</td>'
 		+'<td style="overflow-wrap:anywhere">'+esc(item.path)+(item.to ? ' → '+esc(item.to) : '')+'</td></tr>').join('');
 	return '<p style="margin:.5em 0">'+count+'</p><div style="text-align:left;max-height:24em;overflow:auto">'

@@ -28,9 +28,18 @@ foreach (array('none', 'legacy', '/srv/data', '/mntx/a', '/bootstrap', '', null)
 
 same('/mnt/a b\\c', zfsmDiffName('/mnt/a\\0040b\\0134c'), 'escaped space and backslash');
 same('/mnt/café', zfsmDiffName('/mnt/caf\\0303\\0251'), 'escaped UTF-8 bytes');
-same(null, zfsmParseDiff("M\tF\t/mnt/a\nwarning: something else"), 'a line not in diff form fails the read');
-same(null, zfsmParseDiff("R\tF\t/mnt/a"), 'a rename without its new name fails the read');
-same(array(), zfsmParseDiff(''), 'no output, no changes');
+same('/mnt/\\0040', zfsmDiffName('/mnt/\\01340040'), 'an escaped backslash before digits decodes once');
+same(null, zfsmDiffChange('warning: something else'), 'a line not in diff form is not a change');
+same(null, zfsmDiffChange("R\tF\t/mnt/a"), 'a rename without its new name is not a change');
+same(null, zfsmDiffChange("M\tFile\t/mnt/a"), 'the type is one character');
+same(null, zfsmDiffChange("X\tF\t/mnt/a"), 'only + - M R are changes');
+
+same(array('diff' => true, 'browse' => '/mnt/tank/data/.zfs/snapshot'), zfsmSnapshotAccess('tank', 'tank/data'), 'a mounted dataset under /mnt offers both');
+foreach (array('ZFSM_TEST_MOUNTED=no' => array('diff' => false, 'browse' => ''), 'ZFSM_TEST_SNAPDIR=disabled' => array('diff' => true, 'browse' => ''), 'ZFSM_TEST_DATASET_MOUNT=/srv/data' => array('diff' => true, 'browse' => ''), 'ZFSM_TEST_GET_FAIL=tank/data' => array('diff' => false, 'browse' => ''), 'ZFSM_TEST_SNAPDIR=-' => array('diff' => true, 'browse' => '')) as $setting => $expected) {
+	putenv($setting);
+	same($expected, zfsmSnapshotAccess('tank', 'tank/data'), 'what a row offers with '.$setting);
+	putenv(explode('=', $setting)[0]);
+}
 
 $diff = zfsmSnapshotDiff('tank/data@daily');
 same(false, $diff['truncated'] ?? null, 'a short diff is complete');
@@ -47,8 +56,29 @@ putenv('ZFSM_TEST_DIFF_FAIL=1');
 same(array('error' => 'Cannot diff an unmounted snapshot'), zfsmSnapshotDiff('tank/data@daily'), 'zfs says why it could not compare');
 putenv('ZFSM_TEST_DIFF_FAIL');
 putenv('ZFSM_TEST_DIFF_GARBLED=1');
-same(array('error' => 'Unable to read what zfs diff printed'), zfsmSnapshotDiff('tank/data@daily'), 'output zfs diff never prints is an error, not "nothing changed"');
+same(array('error' => 'zfs diff: something else'), zfsmSnapshotDiff('tank/data@daily'), 'output zfs diff never prints is an error, not "nothing changed"');
 putenv('ZFSM_TEST_DIFF_GARBLED');
+
+// stderr shares the pipe: zfs failing right after the limit must not read as more changes.
+$failure = 'Unable to determine path or stats for object 99 in tank/data@daily: Invalid argument';
+foreach (array(ZFSM_DIFF_LIMIT - 1, ZFSM_DIFF_LIMIT, 5) as $lines) {
+	putenv('ZFSM_TEST_DIFF_FAIL_AFTER='.$lines);
+	same(array('error' => $failure), zfsmSnapshotDiff('tank/data@daily'), "zfs failing after $lines lines says so");
+}
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER='.(ZFSM_DIFF_LIMIT + 1));
+same(true, zfsmSnapshotDiff('tank/data@daily')['truncated'] ?? null, 'a change after the limit means there are more');
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
+
+putenv('ZFSM_TEST_DIFF_SLOW=1');
+$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 0.3;
+try {
+	zfsmSnapshotDiff('tank/data@daily');
+	same('timed out', 'finished', 'a slow zfs diff stops at the read time limit');
+} catch (RuntimeException $error) {
+	same('zfs timed out', $error->getMessage(), 'a slow diff names zfs, not the inventory');
+}
+unset($GLOBALS['zfsm_inventory_deadline']);
+putenv('ZFSM_TEST_DIFF_SLOW');
 
 // The fake writes 100000 lines and then this marker, unless it is stopped.
 $marker = sys_get_temp_dir().'/zfsm-diff-finished';

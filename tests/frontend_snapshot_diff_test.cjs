@@ -16,7 +16,7 @@ assert.match(named, /2 changes since this snapshot\./);
 assert.match(html({changes: [{change: '-', type: '@', path: '/a'}], truncated: false}), /1 change since this snapshot\.[\s\S]*<td>Removed<\/td><td>Link<\/td>/, 'one change, in the singular');
 assert.match(html({changes: [{change: 'M', type: '?', path: '/a'}], truncated: false}), /<td>Modified<\/td><td>Other<\/td>/, 'an unknown file type still shows');
 assert.match(html({changes: [], truncated: false}), /Nothing has changed since this snapshot\./);
-assert.match(html({changes: Array.from({length: 3}, (_, n) => ({change: 'M', type: 'F', path: '/f'+n})), truncated: true}), /Showing the first 3 changes\./, 'a cut-short list says so');
+assert.match(html({changes: Array.from({length: 3}, (_, n) => ({change: 'M', type: 'F', path: '/f'+n})), truncated: true}), /Showing 3 of the changes; there are more\./, 'a cut-short list says so, without claiming they are the first');
 assert.match(html({error: '<script>Cannot diff an unmounted snapshot'}), /^<p[^>]*>&lt;script&gt;Cannot diff/, 'errors are escaped');
 assert.doesNotMatch(html({error: 'nope', changes: [{change: '+', type: 'F', path: '/a'}]}), /<table/, 'an error shows no list');
 

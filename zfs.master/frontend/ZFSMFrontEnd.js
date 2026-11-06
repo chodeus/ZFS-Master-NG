@@ -22,7 +22,8 @@ function datasetRowId(name) {
 // Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
 function snapshotCell(color, count, browsePath) {
 	const style = color ? ' style="color:'+escapeHtml(color)+'"' : '';
-	const browse = typeof browsePath === 'string' && browsePath.startsWith('/')
+	// Unraid 7.2+ browses only /mnt and /boot; mirrors zfsmSnapshotBrowseRoot in ZFSMSnapshotFiles.php.
+	const browse = typeof browsePath === 'string' && /^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)
 		? '<a href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
 		: '';
 	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span><span class="zfsm-snap-browse">'+browse+'</span>';

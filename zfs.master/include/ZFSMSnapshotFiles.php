@@ -3,9 +3,16 @@
 
 define('ZFSM_DIFF_LIMIT', 1000);
 
-// Where Unraid's file browser lists a dataset's snapshots; '' unless mounted under /mnt or /boot, the only places it opens.
+// Where Unraid's file browser lists a dataset's snapshots; '' unless mounted under /mnt or /boot, all that 7.2+ opens.
 function zfsmSnapshotBrowseRoot($mountpoint) {
 	return is_string($mountpoint) && preg_match('#^/(?:mnt|boot)(?:/|$)#', $mountpoint) ? rtrim($mountpoint, '/').'/.zfs/snapshot' : '';
+}
+
+// What a dataset's snapshot rows offer: zfs diff needs it mounted, the file browser a .zfs folder too. A failed read offers neither.
+function zfsmSnapshotAccess($zpool, $zdataset) {
+	$mounted = getDatasetProperty($zpool, $zdataset, 'mounted') === 'yes';
+	$has_snapdir = $mounted && in_array(getDatasetProperty($zpool, $zdataset, 'snapdir'), array('hidden', 'visible'), true);
+	return array('diff' => $mounted, 'browse' => $has_snapdir ? zfsmSnapshotBrowseRoot(getDatasetProperty($zpool, $zdataset, 'mountpoint')) : '');
 }
 
 // zfs diff writes spaces, backslashes and every non-ASCII byte of a name as \0ooo.
@@ -13,27 +20,31 @@ function zfsmDiffName($text) {
 	return preg_replace_callback('/\\\\(0[0-7]{3})/', function($match) { return chr(octdec($match[1])); }, $text);
 }
 
-// One change per `zfs diff -H -F` line, sorted by path; null when a line is not in that form.
-function zfsmParseDiff($output) {
-	$changes = array();
-	foreach (zfsmImpactRows($output) as $line) {
-		$fields = explode("\t", $line);
-		if (count($fields) < 3 || !in_array($fields[0], array('+', '-', 'M', 'R'), true) || strlen($fields[1]) !== 1) return null;
-		if ($fields[0] === 'R' && count($fields) !== 4) return null;
-		$change = array('change' => $fields[0], 'type' => $fields[1], 'path' => zfsmDiffName($fields[2]));
-		if ($fields[0] === 'R') $change['to'] = zfsmDiffName($fields[3]);
-		$changes[] = $change;
-	}
-	usort($changes, function($a, $b) { return strcmp($a['path'], $b['path']); });
-	return $changes;
+// One `zfs diff -H -F` line as a change; null for anything else, such as an error zfs wrote to the same pipe.
+function zfsmDiffChange($line) {
+	$fields = explode("\t", (string)$line);
+	if (count($fields) < 3 || !in_array($fields[0], array('+', '-', 'M', 'R'), true) || strlen($fields[1]) !== 1) return null;
+	if ($fields[0] !== 'R') return array('change' => $fields[0], 'type' => $fields[1], 'path' => zfsmDiffName($fields[2]));
+	return count($fields) === 4 ? array('change' => 'R', 'type' => $fields[1], 'path' => zfsmDiffName($fields[2]), 'to' => zfsmDiffName($fields[3])) : null;
 }
 
-// What changed from the snapshot to its live dataset, at most ZFSM_DIFF_LIMIT entries; 'error' instead when zfs can't say.
+// What changed from the snapshot to its live dataset, at most ZFSM_DIFF_LIMIT entries by path; 'error' instead when zfs can't say.
 function zfsmSnapshotDiff($snapshot) {
 	if (!zfsmValidSnapshotName($snapshot)) return array('error' => 'Invalid snapshot name');
 	$result = runProcess('zfs', array('diff', '-H', '-F', $snapshot), null, ZFSM_DIFF_LIMIT);
-	if (($result['code'] ?? 1) !== 0) return array('error' => zfsmCommandError($result, 'Unable to compare the snapshot'));
-	$changes = zfsmParseDiff($result['output']);
-	if ($changes === null) return array('error' => 'Unable to read what zfs diff printed');
-	return array('changes' => $changes, 'truncated' => !empty($result['truncated']));
+	if (($result['code'] ?? 1) !== 0) {
+		$errors = array_filter(zfsmImpactRows($result['output']), function($line) { return zfsmDiffChange($line) === null; });
+		return array('error' => zfsmCommandError(array('code' => $result['code'], 'output' => implode("\n", $errors)), 'Unable to compare the snapshot'));
+	}
+	$truncated = !empty($result['truncated']);
+	// The line after the limit tells a longer diff from zfs failing right there.
+	if ($truncated && zfsmDiffChange($result['next_line']) === null) return array('error' => zfsmOneLine($result['next_line']));
+	$changes = array();
+	foreach (zfsmImpactRows($result['output']) as $line) {
+		$change = zfsmDiffChange($line);
+		if ($change === null) return array('error' => zfsmOneLine($line));
+		$changes[] = $change;
+	}
+	usort($changes, function($a, $b) { return strcmp($a['path'], $b['path']); });
+	return array('changes' => $changes, 'truncated' => $truncated);
 }
