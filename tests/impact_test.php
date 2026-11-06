@@ -134,13 +134,18 @@ file_put_contents($mounts, "/dev/sda1 /boot vfat rw,noatime 0 0\n");
 same('', zfsmBootPool($mounts), 'a USB stick at /boot is no boot pool');
 file_put_contents($mounts, "overlay /boot overlay rw 0 0\n");
 same('', zfsmBootPool($mounts), 'only a ZFS dataset at /boot names a pool');
-same('', zfsmBootPool($mounts.'-missing'), 'an unreadable mount list gives none');
+same(null, zfsmBootPool($mounts.'-missing'), 'an unreadable mount list is not a list without a boot pool');
 file_put_contents($mounts, "rootfs / rootfs rw 0 0\ncache/boot /mnt/boot zfs rw 0 0\nflash/boot\\040files /boot zfs rw,xattr 0 0\ncache/appdata /mnt/cache/appdata zfs rw 0 0\n");
 same('flash', zfsmBootPool($mounts), 'the dataset mounted at /boot names its pool');
 $GLOBALS['zfsm_mounts'] = $mounts;
 same('flash', zfsmDestroyPreview('flash/boot files@daily', 0)['boot_pool'], 'a review on the boot pool names it');
 same('flash', zfsmRollbackPreview('flash/boot files@daily')['boot_pool'], 'so does a rollback there');
 same('', zfsmDestroyPreview('cache/boot', 0)['boot_pool'], 'another pool is not the boot pool');
+file_put_contents($mounts, '');
+same(null, zfsmBootPool($mounts), 'an empty mount list is a failed read: / is always mounted');
+foreach (array('a destroy' => zfsmDestroyPreview('tank/data', 0), 'a rollback' => zfsmRollbackPreview('tank/data@daily')) as $kind => $blind) {
+	same(array('Unable to read the mount list', false, ''), array($blind['error'], $blind['can_proceed'], $blind['token']), $kind.' review stops without the mount list');
+}
 unset($GLOBALS['zfsm_mounts']);
 @unlink($mounts);
 
