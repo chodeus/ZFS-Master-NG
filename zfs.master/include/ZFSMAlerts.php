@@ -110,7 +110,8 @@ function zfsmAlertProblems($cfg, $now, $previous, $disks, $missing_due) {
 	} else {
 		$pools = zfsmParsePoolStatus($status['output']);
 		foreach ($pools as $name => $pool) if ($problem = zfsmPoolProblem($name, $pool)) $problems['pool:'.$name] = $problem;
-		if (!$missing_due) {
+		// An unreadable disks.ini is a failed read, not "no pools expected".
+		if (!$missing_due || !is_array($disks)) {
 			$problems += zfsmCarriedProblems($previous, array('missing:'));
 		} else {
 			foreach (array_diff(zfsmExpectedPools($disks), array_keys($pools)) as $name) {

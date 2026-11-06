@@ -8,8 +8,8 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 $bin_dir = getenv('ZFSM_TEST_BIN_DIR');
-if (!is_string($bin_dir) || !is_executable($bin_dir.'/zpool')) {
-	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zpool\n");
+if (!is_string($bin_dir) || !is_executable($bin_dir.'/zpool') || !is_executable($bin_dir.'/zfs')) {
+	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zpool and zfs\n");
 	exit(1);
 }
 
@@ -57,8 +57,9 @@ for ($i = 0; $i < 12; $i++) $many .= "tank/d$i@old\t".($now - 40 * $day)."\n";
 same(1, preg_match('/: tank\/d0, [^ ]+(, [^ ]+){8} and 2 more$/', zfsmStaleProblem($many, $now, 30, '')['detail']), 'a long list shows 10 and counts the rest');
 
 // The real check, run as cron runs it; the boot time comes from a fake /proc/uptime.
-$tmp = sys_get_temp_dir().'/zfsm-alerts';
-@mkdir($tmp);
+// Its own folder per run, so state from an earlier run can't leak in.
+$tmp = sys_get_temp_dir().'/zfsm-alerts-'.getmypid();
+mkdir($tmp);
 $GLOBALS['zfsm_emhttp'] = $tmp;
 $GLOBALS['zfsm_alert_state'] = $tmp.'/state.json';
 $GLOBALS['zfsm_uptime'] = $tmp.'/uptime';
@@ -168,6 +169,10 @@ $run($cfg, $t + ZFSM_ALERT_GRACE - 61);
 same(array(), $sent(), 'no missing-pool alert while pools may still be importing after boot');
 $run($cfg, $t + ZFSM_ALERT_GRACE - 60);
 same(array('alert: ZFS pool secure is not imported'), $sent(), 'still missing 10 minutes after boot');
+rename($tmp.'/disks.ini', $tmp.'/disks.ini.away');
+$run($cfg, $t + ZFSM_ALERT_GRACE);
+same(array(), $sent(), 'an unreadable disks.ini does not call the missing pool resolved');
+rename($tmp.'/disks.ini.away', $tmp.'/disks.ini');
 
 // Stopping and starting the array: the missing pool stays reported through the new grace, with no false resolve.
 $array('STOPPED');
