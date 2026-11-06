@@ -521,14 +521,27 @@ function getAllDatasetProperties($zdataset, $ext) {
 	return $properties;
 }
 
-function getDatasetSnapshotsResult($zpool, $zdataset) {
+// The dataset's snapshots, oldest first; with $children, those of every dataset under it too.
+function getDatasetSnapshotsResult($zpool, $zdataset, $children = false) {
 	if (!zfsmValidPoolName($zpool) || !zfsmValidDatasetName($zdataset) || explode('/', $zdataset, 2)[0] !== $zpool) return array('ok' => false, 'snapshots' => array(), 'error' => 'Invalid pool or dataset name');
 	$columns = zfsmSnapshotColumns();
-	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', implode(',', $columns), $zdataset));
+	$depth = $children ? array('-r') : array('-d', '1');
+	$result = runProcess('zfs', array_merge(array('list', '-H', '-p'), $depth, array('-t', 'snapshot', '-o', implode(',', $columns), $zdataset)));
 	if (($result['code'] ?? 1) !== 0) return array('ok' => false, 'snapshots' => array(), 'error' => zfsmCommandError($result, 'Unable to list snapshots'));
 	$snapshots = zfsmParseTable($result['output'], $columns);
 	usort($snapshots, function($a, $b) { return ($a['creation'] ?? 0) <=> ($b['creation'] ?? 0); });
 	return array('ok' => true, 'snapshots' => $snapshots, 'error' => '');
+}
+
+// Whether a filesystem or volume sits under the dataset. A failed read says no, which only hides the option to list them.
+function zfsmHasChildDatasets($zdataset) {
+	if (!zfsmValidDatasetName($zdataset)) return false;
+	$result = runProcess('zfs', array('list', '-H', '-r', '-d', '1', '-t', 'filesystem,volume', '-o', 'name', $zdataset));
+	if (($result['code'] ?? 1) !== 0) return false;
+	foreach (preg_split('/\R/', (string)($result['output'] ?? '')) as $line) {
+		if (zfsmStartsWith(explode("\t", $line, 2)[0], $zdataset.'/')) return true;
+	}
+	return false;
 }
 
 function zfsmAllowedDatasetProperties() {

@@ -115,6 +115,14 @@ rmdir($nested_child);
 rmdir($nested_parent);
 assertSameValue(null, zfsmResolveDirectory($directory_test_root, true), 'A dataset mountpoint must never be accepted as a deletable directory');
 
+// A dataset's own snapshots, or its child datasets' too. The child check is only a read: a failed one offers no children.
+assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank')['snapshots'], 'name'), 'Without children only the dataset\'s own snapshots are listed');
+assertSameValue(array('tank@root', 'tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank', true)['snapshots'], 'name'), 'With children their snapshots are listed too, oldest first');
+assertSameValue(array(true, false, false), array(zfsmHasChildDatasets('tank'), zfsmHasChildDatasets('tank/data'), zfsmHasChildDatasets('../tank')), 'Only a dataset with a filesystem or volume under it has children');
+putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
+assertSameValue(false, zfsmHasChildDatasets('tank'), 'A failed child list offers no children');
+putenv('ZFSM_TEST_CHILD_LIST_FAIL');
+
 $tree = zfsmLoadPoolTree('tank', true, '', 1);
 assertSameValue('tank', $tree['name'], 'Pool root dataset was not returned');
 assertSameValue('tank/data', $tree['child']['tank/data']['name'], 'Child filesystem missing from inventory');

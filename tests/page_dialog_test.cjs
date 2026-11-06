@@ -14,7 +14,7 @@ function handlers(from, to) {
   const start = page.indexOf(from);
   const end = page.indexOf(to, start);
   assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
-  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps');
   assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
   return code;
 }
@@ -87,6 +87,25 @@ async function confirm() {
 
   (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
   assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
+
+  // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
+  window.eval(handlers('function addDatasetContext(', 'function removeContext('));
+  window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
+  window.zfsm_config = {directory_listing: []};
+  window._ = text => text;
+  let menu = [];
+  window.context = {attach: (id, options) => { menu = options; }};
+  const opened = [];
+  window.openBox = url => opened.push(url);
+  const snapshotsAdmin = (own, children) => {
+    window.addDatasetContext('tank', 'tank', own, 'menu', 0, 'none', '', 'filesystem', children);
+    return menu.find(option => option.text === 'Snapshots Admin');
+  };
+  assert.equal(snapshotsAdmin(0, 0), undefined, 'no snapshots anywhere: no Snapshots Admin');
+  assert.ok(snapshotsAdmin(0, 3), 'snapshots only under it: Snapshots Admin must be offered');
+  snapshotsAdmin(0, 3).action({preventDefault() {}});
+  snapshotsAdmin(2, 3).action({preventDefault() {}});
+  assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

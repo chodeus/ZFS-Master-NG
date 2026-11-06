@@ -243,7 +243,31 @@ switch ($check) {
 		if (strpos($html, 'id="zfsm-hide-auto"') !== false) { fwrite(STDERR, "snapshot popup offers to hide automatic snapshots it does not have\n"); exit(1); }
 		if (strpos($html, '<a title="Browse files in this snapshot" href="/Main/Browse?dir=%2Fmnt%2Ftank%2Fdata%2F.zfs%2Fsnapshot%2Fdaily" target="_blank" rel="noopener">') === false) { fwrite(STDERR, "snapshot row does not open the snapshot in the file browser\n"); exit(1); }
 		if (strpos($html, 'onclick="diffSnapshot(') === false || strpos($html, 'ZFSMSnapshotDiff.js') === false) { fwrite(STDERR, "snapshot row does not offer its changes\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-children"') !== false) { fwrite(STDERR, "snapshot popup offers child datasets the dataset does not have\n"); exit(1); }
 		popup_styles($html, $docroot);
+		break;
+
+	// A parent dataset offers its children's snapshots; with them, each row browses its own dataset.
+	case 'snapshot_popup_parent':
+	case 'snapshot_popup_children':
+		@mkdir('/mnt/tank/.zfs/snapshot', 0755, true);
+		@mkdir('/mnt/tank/data/.zfs/snapshot', 0755, true);
+		putenv('ZFSM_TEST_MOUNT_ROOT=/mnt');
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank');
+		if ($check === 'snapshot_popup_children') $_GET['children'] = '1';
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		$children = $check === 'snapshot_popup_children';
+		if (strpos($html, 'tank@root') === false || (strpos($html, 'tank/data@daily') !== false) !== $children) { fwrite(STDERR, "snapshot popup listed the wrong datasets' snapshots\n"); exit(1); }
+		if (strpos($html, '<input type="checkbox" id="zfsm-children"'.($children ? ' checked' : '').'>') === false) { fwrite(STDERR, "snapshot popup lost its Include child datasets box\n"); exit(1); }
+		if (!$children) break;
+		if (strpos($html, '2 snapshots in 2 datasets · ') === false) { fwrite(STDERR, "snapshot popup header did not count the datasets\n"); exit(1); }
+		if (strpos($html, 'data-snapshot="tank/data@daily"') === false || strpos($html, 'placeholder="Filter by dataset or name"') === false) { fwrite(STDERR, "the filter does not match dataset names\n"); exit(1); }
+		foreach (array('%2Fmnt%2Ftank%2F.zfs%2Fsnapshot%2Froot', '%2Fmnt%2Ftank%2Fdata%2F.zfs%2Fsnapshot%2Fdaily') as $dir) {
+			if (strpos($html, 'href="/Main/Browse?dir='.$dir.'"') === false) { fwrite(STDERR, "a child dataset's snapshot does not browse its own dataset\n"); exit(1); }
+		}
 		break;
 
 	// Both icons need the dataset mounted with a .zfs folder; Unraid's file browser also needs /mnt or /boot.

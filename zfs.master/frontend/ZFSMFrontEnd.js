@@ -398,6 +398,11 @@ function datasetSnapInfo(zdataset, snap_max_days_alert, properties) {
 	return {icon_color: daysToNow(snap['creation']) > snap_max_days_alert ? 'orange' : '#486dba', snap_count: zdataset['snapshots'].length};
 }
 
+// Snapshots of every dataset under this one, which Snapshots Admin can list with it.
+function childSnapshotCount(zdataset) {
+	return Object.values(zdataset['child'] || {}).reduce((count, child) => count + (child['snapshots'] || []).length + childSnapshotCount(child), 0);
+}
+
 // the icons after a dataset's name: znapzend plan, children, clone, encryption
 function datasetBadges(zdataset) {
 	var html = '';
@@ -458,7 +463,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	tr += '<td>';
 	var id = elementToken(zdataset['name']);
 
-	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
+	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+', '+childSnapshotCount(zdataset)+');" class="zfs_compact">Actions</button>';
 	tr += '</td>';
 
 	//mountpoint

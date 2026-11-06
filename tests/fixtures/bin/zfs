@@ -79,6 +79,7 @@ if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'fil
 fi
 
 if [ "$1" = "list" ] && contains_arg 'filesystem,volume' "$@" && contains_arg '-r' "$@"; then
+	[ "${ZFSM_TEST_CHILD_LIST_FAIL:-0}" = 1 ] && { printf 'simulated child list failure\n' >&2; exit 1; }
 	printf 'tank\tfilesystem\t100\t900\t80\toff\t-\t/mnt/tank\tlz4\t1.00x\t20\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000000\t-\t-\n'
 	printf 'tank/data\tfilesystem\t60\t900\t50\toff\t-\t/mnt/tank/data\tzstd\t1.25x\t10\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000100\t-\t-\n'
 	printf 'tank/vol\tvolume\t40\t900\t30\toff\t-\t-\tlz4\t1.10x\t10\t-\t-\t-\t-\tall\toff\t-\tstandard\t1700000200\t-\t16384\n'
