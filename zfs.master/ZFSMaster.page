@@ -30,6 +30,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
   /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
   #zfs_master.zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
+  #zfs_master.zfs_table .fa-plus-square,#zfs_master.zfs_table .fa-minus-square{font-size:calc(1em + 1px);margin-right:4px}
+  /* A row's details show from the end of the page instead (zfsmShowTip), where nothing cuts them off. */
+  #zfs_master a.info:hover>span{display:none}
   
   .zfs_bar_button {
 	  padding-right: 8px;
@@ -182,8 +185,38 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Object.keys(zfsm_copy_progress).forEach(function(dataset) { zfsmShowCopyProgress(dataset, null); });
   }
 
+  // Inside the table a row's details get cut off at its edge on phones, so a copy shows from the end of the page.
+  // Below and right of the row as Unraid places them, but kept inside the window, above the row if there is no room below.
+  function zfsmTipPlace(anchor, size, view) {
+	const left = Math.max(4, Math.min(anchor.left + 16, view.width - size.width - 4));
+	const below = anchor.top + 16;
+	const top = below + size.height <= view.height - 4 ? below : Math.max(4, anchor.top - size.height - 4);
+	return {left: left, top: top};
+  }
+
+  function zfsmHideTip() {
+	$('#zfsm-tip').remove();
+  }
+
+  // The copy sits in an a.info of its own, so it keeps Unraid's tooltip look.
+  function zfsmShowTip(link) {
+	zfsmHideTip();
+	const source = $(link).children('span').first();
+	if (!source.length) return;
+	const host = $('<a class="info" id="zfsm-tip"></a>').css('font-size', $(link).css('font-size')).appendTo(document.body);
+	const tip = source.clone().css({display: 'block', position: 'fixed', visibility: 'hidden', zIndex: 1000, pointerEvents: 'none', margin: 0, left: 0, top: 0}).appendTo(host);
+	const place = zfsmTipPlace(link.getBoundingClientRect(), {width: tip.outerWidth(), height: tip.outerHeight()}, {width: window.innerWidth, height: window.innerHeight});
+	tip.css({left: place.left, top: place.top, visibility: 'visible'});
+  }
+
+  $(document).on('mouseenter', '#zfs_master a.info', function() { zfsmShowTip(this); });
+  $(document).on('mouseleave', '#zfs_master a.info', zfsmHideTip);
+  // A fixed copy would stay put while its row scrolls away.
+  window.addEventListener('scroll', zfsmHideTip, true);
+
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {
+	zfsmHideTip();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();

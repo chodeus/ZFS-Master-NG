@@ -101,7 +101,7 @@ async function confirm() {
     return request;
   };
   window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
-  window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
+  window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
@@ -149,6 +149,33 @@ async function confirm() {
   assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
   replies.at(-1).reject();
   assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
+
+  // A row's details show from the end of the page, out of the table that cuts them off on phones, and go when the pointer leaves.
+  assert.match(page, /#zfs_master a\.info:hover>span\{display:none\}/, 'the row\'s own details must stay hidden while the copy shows');
+  const details = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('a.info');
+  const tip = () => window.document.getElementById('zfsm-tip');
+  window.$(details()).trigger('mouseenter');
+  assert.ok(tip(), 'hovering a row must show its details');
+  assert.equal(tip().parentNode, window.document.body, 'the details must show from the end of the page, outside the table');
+  assert.equal(tip().textContent, details().querySelector('span').textContent, 'the copy shows the row\'s own details');
+  const shownTip = tip().firstElementChild;
+  assert.deepEqual([shownTip.style.position, shownTip.style.display, shownTip.style.visibility, shownTip.style.pointerEvents], ['fixed', 'block', 'visible', 'none']);
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'the details go when the pointer leaves');
+  window.$(details()).trigger('mouseenter');
+  redraw();
+  assert.equal(tip(), null, 'a redraw replaces the row, so its details go too');
+  window.$(details()).trigger('mouseenter');
+  window.document.dispatchEvent(new window.Event('scroll'));
+  assert.equal(tip(), null, 'scrolling moves the row away, so its details go');
+  // Below and right of the row, but inside the window: above the row when there is no room below.
+  const view = {width: 400, height: 800};
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 100}, {width: 200, height: 300}, view)}, {left: 116, top: 116}, 'room below: under the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 600}, {width: 200, height: 300}, view)}, {left: 116, top: 296}, 'no room below: above the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 300, top: 100}, {width: 200, height: 300}, view)}, {left: 196, top: 116}, 'no room on the right: moved left');
+  assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
+  // The expand and collapse box is a pixel larger, with a gap before the name.
+  assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\);margin-right:4px\}/);
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

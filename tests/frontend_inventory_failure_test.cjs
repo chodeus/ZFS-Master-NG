@@ -22,7 +22,7 @@ function launch({interval = 30} = {}) {
       const element = {
         text(value) { if (value === undefined) return texts.get(selector); texts.set(selector, value); return this; },
         css() { return this; }, removeClass() { return this; }, addClass() { return this; },
-        click() { return this; }, hide() { return this; }, attr() { return this; }, ajaxSuccess() { return this; }
+        click() { return this; }, on() { return this; }, remove() { return this; }, hide() { return this; }, attr() { return this; }, ajaxSuccess() { return this; }
       };
       elements.set(selector, element);
     }
