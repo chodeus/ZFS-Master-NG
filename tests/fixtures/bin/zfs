@@ -12,6 +12,9 @@ contains_arg() {
 last_arg=''
 for arg in "$@"; do last_arg="$arg"; done
 
+# Every call, for a test that counts how many reads a page makes.
+if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
+
 if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 	if [ "${ZFSM_TEST_DESTROY_REFUSED:-0}" = 1 ]; then
 		# Like ZFS, the refusal runs over several lines.
@@ -147,6 +150,16 @@ fi
 
 if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
 	printf '%s\n' "${ZFSM_TEST_ENCRYPTION:-off}"
+	exit 0
+fi
+
+# The filesystems' mounted and mountpoint in one read: tank and tank/data, as far down as asked.
+if [ "$1" = "get" ] && contains_arg 'mounted,mountpoint' "$@"; then
+	for ds in tank tank/data; do
+		case "$ds" in "$last_arg"|"$last_arg"/*) ;; *) continue ;; esac
+		if [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then mp="$ZFSM_TEST_MOUNT_ROOT/$ds"; else mp="${ZFSM_TEST_DATASET_MOUNT:-/mnt/tank/data}"; fi
+		printf '%s\tmounted\t%s\n%s\tmountpoint\t%s\n' "$ds" "${ZFSM_TEST_MOUNTED:-yes}" "$ds" "$mp"
+	done
 	exit 0
 fi
 

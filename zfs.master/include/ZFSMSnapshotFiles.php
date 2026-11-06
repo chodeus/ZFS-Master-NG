@@ -9,11 +9,28 @@ function zfsmSnapshotBrowseRoot($mountpoint) {
 }
 
 // What a dataset's snapshot rows offer; both need it mounted with its .zfs folder. A failed read offers neither.
-function zfsmSnapshotAccess($zpool, $zdataset) {
-	$mountpoint = getDatasetProperty($zpool, $zdataset, 'mounted') === 'yes' ? getDatasetProperty($zpool, $zdataset, 'mountpoint') : null;
+function zfsmSnapshotAccessFrom($mounted, $mountpoint) {
 	// zfs diff stats .zfs/shares first; snapdir=disabled, or a filesystem mounted over this one, leaves no .zfs.
-	$has_zfs = is_string($mountpoint) && strncmp($mountpoint, '/', 1) === 0 && is_dir(rtrim($mountpoint, '/').'/.zfs/snapshot');
+	$has_zfs = $mounted === 'yes' && is_string($mountpoint) && strncmp($mountpoint, '/', 1) === 0 && is_dir(rtrim($mountpoint, '/').'/.zfs/snapshot');
 	return array('diff' => $has_zfs, 'browse' => $has_zfs ? zfsmSnapshotBrowseRoot($mountpoint) : '');
+}
+
+function zfsmSnapshotAccess($zpool, $zdataset) {
+	$mounted = getDatasetProperty($zpool, $zdataset, 'mounted');
+	return zfsmSnapshotAccessFrom($mounted, $mounted === 'yes' ? getDatasetProperty($zpool, $zdataset, 'mountpoint') : null);
+}
+
+// The same for the dataset and every filesystem under it, from one zfs get; one the read missed is not in the list.
+function zfsmSnapshotAccessTree($zdataset) {
+	if (!zfsmValidDatasetName($zdataset)) return array();
+	$result = runProcess('zfs', array('get', '-H', '-r', '-t', 'filesystem', '-o', 'name,property,value', 'mounted,mountpoint', $zdataset));
+	if (($result['code'] ?? 1) !== 0) return array();
+	$values = array();
+	foreach (preg_split('/\R/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $line) {
+		$parts = explode("\t", $line, 3);
+		if (count($parts) === 3) $values[$parts[0]][$parts[1]] = $parts[2];
+	}
+	return array_map(function($props) { return zfsmSnapshotAccessFrom($props['mounted'] ?? '', $props['mountpoint'] ?? null); }, $values);
 }
 
 // zfs diff writes spaces, backslashes and every non-ASCII byte of a name as \0ooo, from \0000 to \0377.

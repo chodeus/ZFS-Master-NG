@@ -154,6 +154,14 @@ const helpers = ['function parseJSONResponse(', 'function escapeHtml(', 'functio
   assert.ok(at > 0, from+' found in the page');
   return page.slice(at, page.indexOf('\n  }\n', at)+4);
 }).join('\n');
+// A running action keeps the Include child datasets box off, so the list can't reload under it.
+const acting = load(family, {children: true});
+acting.window.Swal2 = {fire: () => new Promise(() => {})};
+acting.window.eval(['function parseJSONResponse(', 'function showResult(', 'function formatAnswer('].map(pageFunction).join('\n'));
+assert.equal(acting.window.$('#zfsm-children').prop('disabled'), false);
+acting.window.showResult('Hold Result', acting.window.$.Deferred().promise());
+assert.equal(acting.window.$('#zfsm-children').prop('disabled'), true, 'a running action must keep the box off');
+
 const results = load([]);
 const shown = [];
 results.window.Swal2 = {fire: options => { shown.push([options.icon, options.html ?? options.text]); return new Promise(() => {}); }};

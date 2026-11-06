@@ -108,4 +108,17 @@ foreach (array('plain' => null, 'under the read time limit' => microtime(true) +
 unset($GLOBALS['zfsm_inventory_deadline']);
 putenv('ZFSM_TEST_DIFF_ENDLESS');
 
+// One read for a dataset and its children gives each the access reading it alone would; a failed read offers none.
+putenv('ZFSM_TEST_MOUNT_ROOT=/mnt/user/zfsm-tree');
+@mkdir('/mnt/user/zfsm-tree/tank/.zfs/snapshot', 0755, true);
+@mkdir('/mnt/user/zfsm-tree/tank/data', 0755, true);
+$tree = zfsmSnapshotAccessTree('tank');
+same(array('tank' => array('diff' => true, 'browse' => '/mnt/user/zfsm-tree/tank/.zfs/snapshot'), 'tank/data' => array('diff' => false, 'browse' => '')), $tree, 'each dataset in the read gets its own access');
+same(zfsmSnapshotAccess('tank', 'tank'), $tree['tank'], 'the same as reading the dataset alone');
+same(array_keys(zfsmSnapshotAccessTree('tank/data')), array('tank/data'), 'only the dataset asked for and those under it');
+putenv('ZFSM_TEST_GET_FAIL=tank');
+same(array(), zfsmSnapshotAccessTree('tank'), 'a failed read offers no access');
+putenv('ZFSM_TEST_GET_FAIL');
+putenv('ZFSM_TEST_MOUNT_ROOT');
+
 echo "snapshot files: browse paths and zfs diff passed\n";

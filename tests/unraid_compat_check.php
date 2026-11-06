@@ -257,6 +257,7 @@ switch ($check) {
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank');
 		if ($check !== 'snapshot_popup_parent') $_GET['children'] = '1';
+		putenv('ZFSM_TEST_CALL_LOG=/tmp/zfsm-calls-'.$check);
 		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
 		$saved_cfg = @file_get_contents($cfg);
 		if ($check === 'snapshot_popup_excluded') file_put_contents($cfg, "[general]\nexclusion = \"tank/data\"\n");
@@ -279,6 +280,9 @@ switch ($check) {
 		foreach (array('%2Fmnt%2Ftank%2F.zfs%2Fsnapshot%2Froot', '%2Fmnt%2Ftank%2Fdata%2F.zfs%2Fsnapshot%2Fdaily') as $dir) {
 			if (strpos($html, 'href="/Main/Browse?dir='.$dir.'"') === false) { fwrite(STDERR, "a child dataset's snapshot does not browse its own dataset\n"); exit(1); }
 		}
+		// One read for every dataset's browse and changes, not two per dataset.
+		$calls = (string)@file_get_contents('/tmp/zfsm-calls-'.$check);
+		if (substr_count($calls, 'mounted,mountpoint') !== 1 || preg_match('/^get .* (mounted|mountpoint) /m', $calls)) { fwrite(STDERR, "the child list read access per dataset:\n$calls\n"); exit(1); }
 		break;
 
 	// Both icons need the dataset mounted with a .zfs folder; Unraid's file browser also needs /mnt or /boot.

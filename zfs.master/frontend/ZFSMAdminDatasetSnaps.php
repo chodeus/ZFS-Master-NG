@@ -19,8 +19,8 @@ $snapshot_error = $snapshot_result['error'];
 $destructive_mode = (int)($config['destructive_mode'] ?? 0) === 1;
 // Shown while ticked even if the children are gone, so it can be unticked.
 $offer_children = $with_children || zfsmHasChildDatasets($zdataset, $exclusion);
-// Browse and changes for each dataset with a row, read once each.
-$snapshot_access = array();
+// Browse and changes for each dataset with a row: one read for a dataset and its children, else one per dataset.
+$snapshot_access = $with_children && $snapshots ? zfsmSnapshotAccessTree($zdataset) : array();
 
 ?>
 
@@ -134,7 +134,8 @@ $snapshot_access = array();
 			$holds = (int)($snap['userrefs'] ?? 0);
 			// With child datasets the filter and sort go by the whole name, so a dataset's rows can be picked out.
 			$listed_name = $with_children ? $snapshot_name : $snapshot_short;
-			$access = $snapshot_access[$snapshot_dataset] = $snapshot_access[$snapshot_dataset] ?? zfsmSnapshotAccess($zpool, $snapshot_dataset);
+			if (!isset($snapshot_access[$snapshot_dataset])) $snapshot_access[$snapshot_dataset] = $with_children ? zfsmSnapshotAccessFrom('', null) : zfsmSnapshotAccess($zpool, $snapshot_dataset);
+			$access = $snapshot_access[$snapshot_dataset];
 			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($listed_name, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
 			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
 			echo '<td class="zfsm-snap-name"'.$sort_value($listed_name).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
@@ -285,6 +286,8 @@ $snapshot_access = array();
 
   // Every action ends here, then reloads: a failed request or an unreadable answer still says so, since the change may have happened.
   function showResult(title, request) {
+	// The list must not reload under a running action, or its result and the Main tab's refresh would be lost.
+	$('#zfsm-children').prop('disabled', true);
 	const reload = () => window.location.reload();
 	const unknown = reason => Swal2.fire({title: title, icon: 'error', text: reason+' The page will reload to show what changed.'}).then(reload);
 	request.done(function(data) {
