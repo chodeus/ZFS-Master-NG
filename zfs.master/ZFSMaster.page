@@ -120,6 +120,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   var zfs_sub = null;
   var zfsm_inventory = null;
   var zfsm_config = <?=json_encode($zfsm_cfg, JSON_HEX_TAG | JSON_HEX_AMP)?>;
+  var zfsm_display = <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>;
 
   function zfsmStatus(message, error = false) {
 	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
@@ -146,17 +147,46 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
     		Swal2.showLoading();
 		  }
 	  	});
+		// The new dataset has no row until the page refreshes.
+		requestRefresh();
+	} else if (msg.op == 'clone_directory') {
+		zfsmShowCopyProgress(msg.data.dataset, 'Cloning files…');
 	} else if (msg.op == 'directory_copy') {
-		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').html(htmlProgress);
+		zfsmShowCopyProgress(msg.data.dataset, parseDirectoryCopy(msg.data.line));
 	} else if (msg.op == 'stop_directory_copy') {
-		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').text('');
+		zfsmShowCopyProgress(msg.data.dataset, null);
 	}
 
 	processHiddenDatasets();
 	} catch (error) {
 		console.error('ZFS Master NG copy-progress message failed', error);
 	}
+  }
+
+  // Each running copy's progress, put back after every render; null once the copy stops.
+  var zfsm_copy_progress = {};
+  function zfsmShowCopyProgress(dataset, html) {
+	if (html === null) delete zfsm_copy_progress[dataset];
+	else zfsm_copy_progress[dataset] = html;
+	$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(html ?? '');
+  }
+
+  function zfsmRestoreCopyProgress() {
+	Object.keys(zfsm_copy_progress).forEach(function(dataset) {
+		$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(zfsm_copy_progress[dataset]);
+	});
+  }
+
+  // For when a stop message may be lost: a copy still running shows its progress again with its next update.
+  function zfsmClearCopyProgress() {
+	Object.keys(zfsm_copy_progress).forEach(function(dataset) { zfsmShowCopyProgress(dataset, null); });
+  }
+
+  // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
+  function zfsmRender(data) {
+	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
+	zfsmRestoreCopyProgress();
+	processHiddenDatasets();
   }
 
   $(function() {
@@ -170,8 +200,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
-				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
-				processHiddenDatasets();
+				zfsmRender(data);
 				if (complete) saveCache(data);
 			}
 		});
@@ -189,6 +218,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	try {
 		zfs_sub = new NchanSubscriber('/sub/zfs_master',{subscriber:'websocket'});
 		zfs_sub.on('message', zfsmHandleMessage);
+		zfs_sub.on('disconnect', zfsmClearCopyProgress);
 		zfs_sub.start();
 	} catch (error) {
 		console.warn('ZFS Master NG live copy progress is unavailable', error);
@@ -217,12 +247,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return false;
 	}
 
-	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
+	zfsmRender(data);
 
 	const notes = zfsmInventoryNotes(data);
 	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');
-
-	processHiddenDatasets();
 	return true;
   }
 
@@ -803,19 +831,20 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
-		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> The pool needs free space for a second copy while this runs.',
+		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> On an unencrypted dataset in a pool with block cloning (OpenZFS 2.2 and later), the files are cloned, which usually needs almost no extra space. Otherwise, and for any file that cannot be cloned, the pool needs free space for a second copy while this runs.',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true
 	  }).then((result) => {
 		  if (result.isConfirmed) {
+			  // The copy is over once this request returns, whether or not its stop message arrived.
 			  $.post('<?=$urlzmadmin?>',{cmd: 'convertdirectory', directory: directory, pool: pool}, function(data) {
 				Swal2.fire({
 					title: 'Convert Result',
 					icon: 'info',
 					html: formatAnswer(parseJSONResponse(data))
 				});
-			  });
+			  }).always(zfsmClearCopyProgress);
 		  }
 	  });
   }

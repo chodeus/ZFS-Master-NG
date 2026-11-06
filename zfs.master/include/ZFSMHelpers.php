@@ -65,12 +65,18 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
+// How much a command that can print a line per file keeps of its output: enough for its first errors.
+define('ZFSM_KEEP_OUTPUT', 4096);
+
 // With $max_lines, stops the command after that many lines; when it had more, sets 'truncated' and the line after them, 'next_line'.
-function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
+// With $keep_bytes, lets the command run to its end but keeps only that much of its output, and counts its lines in 'lines'.
+function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
 	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
 	if ($test_bin_dir !== false && $test_bin_dir !== '') {
 		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
 		if (is_file($candidate)) $command = $candidate;
+		// A test never reaches the host's zfs or zpool, even when its fake is missing.
+		elseif (in_array(basename($command), array('zfs', 'zpool'), true)) return array('code' => 127, 'output' => basename($command).' is not in ZFSM_TEST_BIN_DIR');
 	}
 	$descriptor_spec = array(
 		0 => array('pipe', 'r'),
@@ -100,7 +106,9 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 		fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
-	list($output, $next_line) = zfsmReadOutput($pipes[1], $max_lines);
+	$lines = null;
+	if ($keep_bytes > 0) list($output, $next_line, $lines) = zfsmReadOutputHead($pipes[1], $keep_bytes);
+	else list($output, $next_line) = zfsmReadOutput($pipes[1], $max_lines);
 	$limit_code = $next_line === null ? null : zfsmStopAtLimit($process);
 	fclose($pipes[1]);
 	$code = proc_close($process);
@@ -109,7 +117,22 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
 	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException(basename($command).' timed out');
 
-	return array('code' => $code, 'output' => trim((string)$output));
+	$answer = array('code' => $code, 'output' => trim((string)$output));
+	if ($lines !== null) $answer['lines'] = $lines;
+	return $answer;
+}
+
+// Reads to the end, keeping the first $keep_bytes; also returns how many lines there were in all.
+function zfsmReadOutputHead($pipe, $keep_bytes) {
+	$head = '';
+	$lines = 0;
+	$last = "\n";
+	while (($chunk = fread($pipe, 65536)) !== false && $chunk !== '') {
+		if (strlen($head) < $keep_bytes) $head .= substr($chunk, 0, $keep_bytes - strlen($head));
+		$lines += substr_count($chunk, "\n");
+		$last = substr($chunk, -1);
+	}
+	return array($head, null, $lines + ($last === "\n" ? 0 : 1));
 }
 
 // Past the line limit: stops a command still running and returns 0; one that already exited keeps its exit code.

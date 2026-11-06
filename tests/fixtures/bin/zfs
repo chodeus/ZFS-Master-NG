@@ -74,7 +74,7 @@ if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && [ -n "${ZFSM_TEST
 fi
 
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
-	printf 'tank\t/tmp/zfsm-test-mount\n'
+	printf 'tank\t%s\n' "${ZFSM_TEST_FILESYSTEM_MOUNT:-/tmp/zfsm-test-mount}"
 	exit 0
 fi
 
@@ -142,6 +142,11 @@ fi
 if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_GET_FAIL" ]; then
 	printf "cannot open '%s': permission denied\n" "$last_arg" >&2
 	exit 1
+fi
+
+if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
+	printf '%s\n' "${ZFSM_TEST_ENCRYPTION:-off}"
+	exit 0
 fi
 
 if [ "$1" = "get" ] && contains_arg 'mounted' "$@"; then

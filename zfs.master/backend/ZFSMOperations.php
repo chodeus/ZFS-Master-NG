@@ -721,7 +721,7 @@ function deleteDirectory($directory, $force) {
 	if (!$resolved) return zfsmFailure($directory, 'Directory is outside a mounted ZFS filesystem');
 	$mounted = (string)$force === '1' ? zfsmNestedMountProblem($resolved['path']) : '';
 	if ($mounted !== '') return zfsmFailure($directory, $mounted);
-	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path'])));
+	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path']), null, 0, ZFSM_KEEP_OUTPUT));
 	return commandAnswer($resolved['path'], runProcess('rmdir', array('--', $resolved['path'])));
 }
 
@@ -747,7 +747,6 @@ function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {
 	if (!is_resource($process)) return -1;
 	fclose($pipes[0]);
 	stream_set_blocking($pipes[1], false);
-	zfsmCopyProgress('start_directory_copy', array('dataset' => $dataset_name));
 	do {
 		$output = stream_get_contents($pipes[1]);
 		if ($output !== '') zfsmCopyProgress('directory_copy', array('line' => $output, 'dataset' => $dataset_name));
@@ -758,17 +757,17 @@ function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {
 	if ($remaining !== '') zfsmCopyProgress('directory_copy', array('line' => $remaining, 'dataset' => $dataset_name));
 	fclose($pipes[1]);
 	$closed_code = proc_close($process);
-	zfsmCopyProgress('stop_directory_copy', array('dataset' => $dataset_name));
 	return $status['exitcode'] >= 0 ? $status['exitcode'] : $closed_code;
 }
 
 // Empty only when a checksum comparison of the two trees finds nothing to change.
 function zfsmCopyDifferences($rsync_args, $from, $to) {
 	$args = array_merge($rsync_args, array('--checksum', '--dry-run', '--delete', '--itemize-changes', rtrim($from, '/').'/', rtrim($to, '/').'/'));
-	$result = runProcess('rsync', $args);
+	// A copy that went badly wrong differs in every file: count them, keep the first.
+	$result = runProcess('rsync', $args, null, 0, ZFSM_KEEP_OUTPUT);
 	if (($result['code'] ?? 1) !== 0) return 'rsync exit code '.($result['code'] ?? 1);
-	$changes = preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	return $changes ? count($changes).' differing, first: '.$changes[0] : '';
+	$first = preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), 2)[0];
+	return ($result['lines'] ?? 0) > 0 ? $result['lines'].' differing, first: '.$first : '';
 }
 
 // [the directory, the dataset it becomes] when it can be converted within $pool; a string saying why not otherwise.
@@ -793,12 +792,32 @@ function zfsmConvertUndo($dataset_name, $temp, $path) {
 	return 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required';
 }
 
+// Whether files can be cloned into $dataset: OpenZFS 2.2+ with cloning switched on and the pool's feature enabled.
+// Never when encrypted: each encrypted dataset has its own key, and ZFS refuses to clone between keys.
+function zfsmBlockCloning($dataset) {
+	$pool = explode('/', $dataset, 2)[0];
+	if (trim((string)@file_get_contents($GLOBALS['zfsm_bclone_param'] ?? '/sys/module/zfs/parameters/zfs_bclone_enabled')) !== '1') return false;
+	$feature = runProcess('zpool', array('get', '-H', '-o', 'value', 'feature@block_cloning', $pool));
+	if (($feature['code'] ?? 1) !== 0 || !in_array($feature['output'], array('enabled', 'active'), true)) return false;
+	return getDatasetProperty($pool, $dataset, 'encryption') === 'off';
+}
+
+// Clones the files into the dataset, sharing their blocks; rsync then copies whatever this missed, so a failure here only costs space.
+function zfsmCloneTree($from, $to, $dataset_name) {
+	zfsmCopyProgress('clone_directory', array('dataset' => $dataset_name));
+	$result = runProcess('cp', array('-a', '--reflink=auto', '--one-file-system', '--', rtrim($from, '/').'/.', rtrim($to, '/').'/'), null, 0, ZFSM_KEEP_OUTPUT);
+	if (($result['code'] ?? 1) !== 0) zfsmLog('Convert: cloning '.$from.' failed, so rsync copies it: '.zfsmCommandError($result, 'cp failed'), LOG_WARNING);
+}
+
 // Copies the moved-aside directory into the dataset, verifies the copy, then removes the original; '' when all of it worked.
 function zfsmConvertCopy($temp, $mountpoint, $dataset_name) {
 	$retained = 'original data remains at '.$temp.' and the partial dataset was retained for inspection';
 	$rsync_args = zfsmRsyncArgs();
 	if ($rsync_args === null) return 'Unable to run rsync; '.$retained;
+	zfsmCopyProgress('start_directory_copy', array('dataset' => $dataset_name));
+	if (zfsmBlockCloning($dataset_name)) zfsmCloneTree($temp, $mountpoint, $dataset_name);
 	$exit_code = zfsmCopyWithProgress($rsync_args, $temp, $mountpoint, $dataset_name);
+	zfsmCopyProgress('stop_directory_copy', array('dataset' => $dataset_name));
 	if ($exit_code !== 0) return 'rsync failed with exit code '.$exit_code.'; '.$retained;
 	$differences = zfsmCopyDifferences($rsync_args, $temp, $mountpoint);
 	if ($differences !== '') return 'The copy did not verify ('.$differences.'); '.$retained;
