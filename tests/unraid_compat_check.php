@@ -250,15 +250,26 @@ switch ($check) {
 	// A parent dataset offers its children's snapshots; with them, each row browses its own dataset.
 	case 'snapshot_popup_parent':
 	case 'snapshot_popup_children':
+	case 'snapshot_popup_excluded':
 		@mkdir('/mnt/tank/.zfs/snapshot', 0755, true);
 		@mkdir('/mnt/tank/data/.zfs/snapshot', 0755, true);
 		putenv('ZFSM_TEST_MOUNT_ROOT=/mnt');
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank');
-		if ($check === 'snapshot_popup_children') $_GET['children'] = '1';
+		if ($check !== 'snapshot_popup_parent') $_GET['children'] = '1';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$saved_cfg = @file_get_contents($cfg);
+		if ($check === 'snapshot_popup_excluded') file_put_contents($cfg, "[general]\nexclusion = \"tank/data\"\n");
 		ob_start();
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
 		$html = ob_get_clean();
+		if ($saved_cfg === false) @unlink($cfg); else file_put_contents($cfg, $saved_cfg);
+		if ($check === 'snapshot_popup_excluded') {
+			// Hidden from the main list, so hidden here: tank/vol still makes tank a parent.
+			if (strpos($html, 'tank/data@daily') !== false || strpos($html, '1 snapshot in 1 dataset · ') === false) { fwrite(STDERR, "an excluded child dataset's snapshots were listed\n"); exit(1); }
+			if (strpos($html, '<input type="checkbox" id="zfsm-children" checked>') === false) { fwrite(STDERR, "snapshot popup lost its Include child datasets box\n"); exit(1); }
+			break;
+		}
 		$children = $check === 'snapshot_popup_children';
 		if (strpos($html, 'tank@root') === false || (strpos($html, 'tank/data@daily') !== false) !== $children) { fwrite(STDERR, "snapshot popup listed the wrong datasets' snapshots\n"); exit(1); }
 		if (strpos($html, '<input type="checkbox" id="zfsm-children"'.($children ? ' checked' : '').'>') === false) { fwrite(STDERR, "snapshot popup lost its Include child datasets box\n"); exit(1); }

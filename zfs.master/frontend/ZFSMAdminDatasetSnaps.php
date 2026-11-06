@@ -10,13 +10,15 @@ require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
 
 $zpool = $_GET['zpool'] ?? '';
 $zdataset = $_GET['zdataset'] ?? '';
+$config = loadConfig(parse_plugin_cfg($plugin, true));
+$exclusion = (string)($config['dataset_exclusion'] ?? '');
 $with_children = ($_GET['children'] ?? '') === '1';
-$snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset, $with_children);
+$snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset, $with_children, $exclusion);
 $snapshots = $snapshot_result['snapshots'];
 $snapshot_error = $snapshot_result['error'];
-$destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructive_mode'] ?? 0) === 1;
+$destructive_mode = (int)($config['destructive_mode'] ?? 0) === 1;
 // Shown while ticked even if the children are gone, so it can be unticked.
-$offer_children = $with_children || zfsmHasChildDatasets($zdataset);
+$offer_children = $with_children || zfsmHasChildDatasets($zdataset, $exclusion);
 // Browse and changes for each dataset with a row, read once each.
 $snapshot_access = array();
 

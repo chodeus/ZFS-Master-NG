@@ -37,13 +37,17 @@ function zfsmShowChildren(children) {
 }
 
 function zfsmFilterSnapshots() {
-	const text = String($('#zfsm-snap-filter').val() || '').toLowerCase();
+	// A / or @ means a dataset or snapshot path, and ZFS names differ by case: tank/Media is not tank/media.
+	const typed = String($('#zfsm-snap-filter').val() || '');
+	const exact = /[\/@]/.test(typed);
+	const text = exact ? typed : typed.toLowerCase();
 	const hideAutomatic = $('#zfsm-hide-auto').prop('checked') === true;
 	const rows = $('#zpools tr[data-snapshot]');
 	let shown = 0;
 	rows.each(function() {
 		const row = $(this);
-		const hide = (text !== '' && String(row.attr('data-snapshot')).toLowerCase().indexOf(text) === -1) || (hideAutomatic && row.attr('data-automatic') === '1');
+		const name = String(row.attr('data-snapshot'));
+		const hide = (text !== '' && (exact ? name : name.toLowerCase()).indexOf(text) === -1) || (hideAutomatic && row.attr('data-automatic') === '1');
 		row.toggleClass('zfsm-hidden', hide);
 		if (hide) row.find('.snapl-check').prop('checked', false);
 		else shown++;

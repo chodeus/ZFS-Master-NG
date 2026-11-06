@@ -114,6 +114,12 @@ assert.equal(kids.window.zfsmTickedDataset(), null);
 kids.filter('tank/b@');
 assert.deepEqual(kids.shown(), ['tank/b@daily', 'tank/b@weekly'], 'the filter matches the dataset name');
 assert.equal(kids.state().deleteOff, false, 'the other dataset filtered out and unticked, Delete works again');
+// ZFS names differ by case, so a path in the filter matches case exactly; a plain word still matches any case.
+const cased = load([['daily', 1, 1, '', 'tank/Media'], ['daily', 2, 2, '', 'tank/media']], {children: true});
+cased.filter('tank/media@');
+assert.deepEqual(cased.shown(), ['tank/media@daily'], 'a dataset path picks out only that dataset');
+cased.filter('DAILY');
+assert.deepEqual(cased.shown(), ['tank/Media@daily', 'tank/media@daily'], 'a word still matches any case');
 const reloads = [];
 kids.window.zfsmShowChildren = children => reloads.push(children);
 kids.window.$('#zfsm-children').prop('checked', false).trigger('change');

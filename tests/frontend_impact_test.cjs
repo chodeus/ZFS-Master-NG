@@ -59,7 +59,8 @@ assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}', after: ''
 const page = fs.readFileSync(path.resolve(__dirname, '../zfs.master/ZFSMaster.page'), 'utf8');
 const popup = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMAdminDatasetSnaps.php'), 'utf8');
 for (const file of [page, popup]) assert.match(file, /frontend\/ZFSMImpact\.js/, 'both pages load the review');
-const bulk = popup.slice(popup.indexOf('#delete-snaps").click'), popup.indexOf('#checkAll'));
+assert.ok(popup.includes('$("#delete-snaps").click(deleteSnapshots);'), 'Delete selected runs deleteSnapshots');
+const bulk = popup.slice(popup.indexOf('function deleteSnapshots('), popup.indexOf('$("#delete-snaps").click(deleteSnapshots);'));
 const confirmed = bulk.indexOf('if (!result.isConfirmed) return;');
 assert.ok(bulk.indexOf('zfsmFetchReview(') >= 0 && confirmed > bulk.indexOf('zfsmFetchReview('), 'bulk delete fetches the review, then waits for the confirm');
 assert.ok([...bulk.matchAll(/destroysnapshot/g)].every(found => found.index > confirmed), 'bulk delete destroys nothing before the confirm');

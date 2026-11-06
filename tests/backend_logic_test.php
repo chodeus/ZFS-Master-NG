@@ -122,6 +122,11 @@ assertSameValue(array(true, false, false), array(zfsmHasChildDatasets('tank'), z
 putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
 assertSameValue(false, zfsmHasChildDatasets('tank'), 'A failed child list offers no children');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL');
+// The exclusion pattern hides a child's snapshots as it hides the child: a match on it or on a dataset above it.
+assertSameValue(array(true, true, false), array(zfsmDatasetExcluded('cache/docker', 'cache/docker$'), zfsmDatasetExcluded('cache/docker/layer1', 'cache/docker$'), zfsmDatasetExcluded('cache/dockerx', 'cache/docker$')), 'A dataset under an excluded one is excluded too');
+assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank', true, 'tank/data')['snapshots'], 'name'), 'An excluded child\'s snapshots are not listed');
+assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', false, 'tank/data')['snapshots'], 'name'), 'A dataset opened directly still lists its own');
+assertSameValue(array(true, false), array(zfsmHasChildDatasets('tank', 'tank/data'), zfsmHasChildDatasets('tank', 'tank/(data|vol)')), 'Children the pattern hides are not offered');
 
 $tree = zfsmLoadPoolTree('tank', true, '', 1);
 assertSameValue('tank', $tree['name'], 'Pool root dataset was not returned');
