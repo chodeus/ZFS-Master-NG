@@ -76,9 +76,25 @@ function zfsmDestroyDryRun($output) {
 	return array($objects, $reclaim);
 }
 
+// How Sanoid and Syncoid name snapshots, and Syncoid its bookmarks; Snapshots Admin and every review use this one rule.
+function zfsmIsAutomaticSnapshot($name) {
+	return preg_match('/[@#](?:autosnap_|syncoid_)/', (string)$name) === 1;
+}
+
+// The pool of the ZFS dataset mounted at /boot; '' when /boot is not ZFS or the mount list can't be read.
+// Pool names hold nothing /proc/mounts escapes, so the source needs no unescaping before the first slash.
+function zfsmBootPool($mounts = '/proc/self/mounts') {
+	foreach (zfsmImpactRows(@file_get_contents($mounts)) as $line) {
+		$fields = explode(' ', $line);
+		if (($fields[1] ?? '') === '/boot' && ($fields[2] ?? '') === 'zfs') return explode('/', $fields[0], 2)[0];
+	}
+	return '';
+}
+
 // The preview with its clones, holds and token; its error set instead when clones and holds can't be read.
 function zfsmPreviewFinish($preview, $target, $mode, $objects, $dataset) {
-	$clones = zfsmClonesOf($objects, explode('/', $dataset, 2)[0]);
+	$pool = explode('/', $dataset, 2)[0];
+	$clones = zfsmClonesOf($objects, $pool);
 	$held = zfsmHeldOf($objects, $dataset);
 	if ($clones === null || $held === null) {
 		$preview['error'] = 'Unable to check for clones and holds';
@@ -86,13 +102,15 @@ function zfsmPreviewFinish($preview, $target, $mode, $objects, $dataset) {
 	}
 	$preview['clones'] = $clones;
 	$preview['held'] = $held;
+	$preview['automatic'] = count(array_filter($objects, 'zfsmIsAutomaticSnapshot'));
+	$preview['boot_pool'] = $pool === zfsmBootPool($GLOBALS['zfsm_mounts'] ?? '/proc/self/mounts') ? $pool : '';
 	$preview['can_proceed'] = !$clones && !$held;
 	$preview['token'] = zfsmImpactToken($target, $mode, $objects, array_merge($clones, $held));
 	return $preview;
 }
 
 function zfsmDestroyPreview($target, $recursive) {
-	$preview = array('objects' => array(), 'reclaim' => null, 'clones' => array(), 'held' => array(), 'error' => '', 'can_proceed' => false, 'token' => '');
+	$preview = array('objects' => array(), 'reclaim' => null, 'clones' => array(), 'held' => array(), 'automatic' => 0, 'boot_pool' => '', 'error' => '', 'can_proceed' => false, 'token' => '');
 	$preview['error'] = zfsmDestroyTargetRefusal($target);
 	if ($preview['error'] !== '') return $preview;
 	$force = (string)$recursive === '1';
@@ -120,7 +138,7 @@ function zfsmTxgIsNewer($txg, $than) {
 }
 
 function zfsmRollbackPreview($snapshot) {
-	$preview = array('newer' => array(), 'clones' => array(), 'held' => array(), 'error' => '', 'can_proceed' => false, 'token' => '');
+	$preview = array('newer' => array(), 'clones' => array(), 'held' => array(), 'automatic' => 0, 'boot_pool' => '', 'error' => '', 'can_proceed' => false, 'token' => '');
 	if (!zfsmValidSnapshotName($snapshot)) {
 		$preview['error'] = 'Invalid snapshot name';
 		return $preview;

@@ -50,6 +50,14 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
   .zfsm-message.zfsm-error td{color:#e22828;opacity:1}
   .zfsm-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px}
   .zfsm-status{opacity:.75}
+  .zfsm-snap-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;padding:10px 12px}
+  .zfsm-snap-tools input[type=text]{width:16em;margin:0}
+  .zfsm-hidden{display:none}
+  .zfsm-snap-table .tablesorter-header:not(.sorter-false){cursor:pointer}
+  .zfsm-snap-table .tablesorter-header-inner{display:inline}
+  .zfsm-snap-table .tablesorter-headerAsc:after,.zfsm-snap-table .tablesorter-headerDesc:after{font-family:FontAwesome;margin-left:6px}
+  .zfsm-snap-table .tablesorter-headerAsc:after{content:"\f0de"}
+  .zfsm-snap-table .tablesorter-headerDesc:after{content:"\f0dd"}
 </style>
 
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
@@ -70,10 +78,18 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 	<?php
 	$total_used = array_sum(array_map(function($snap) { return (int)($snap['used'] ?? 0); }, $snapshots));
 	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').' · '.fromBytesToString($total_used).' used';
+	$has_automatic = (bool)array_filter(array_column($snapshots, 'name'), 'zfsmIsAutomaticSnapshot');
 	?>
 	<div class="zfsm-snaps">
 	<details class="zfsm-section" open>
 	<summary><?=htmlspecialchars($zdataset, ENT_QUOTES, 'UTF-8')?><span class="zfsm-count"><?=htmlspecialchars($count_text, ENT_QUOTES, 'UTF-8')?></span></summary>
+	<?php if ($snapshots): ?>
+	<div class="zfsm-snap-tools">
+		<input type="text" id="zfsm-snap-filter" placeholder="Filter by name" aria-label="Filter snapshots by name" autocomplete="off" spellcheck="false">
+		<?php if ($has_automatic): ?><label><input type="checkbox" id="zfsm-hide-auto"> Hide Sanoid and Syncoid snapshots</label><?php endif; ?>
+		<span id="zfsm-snap-shown" class="zfsm-status"></span>
+	</div>
+	<?php endif; ?>
 	<table class="zfsm-snap-table">
 	<thead>
 		<tr>
@@ -87,30 +103,35 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		<th>Actions</th>
 		</tr>
 	</thead>
-	<tbody id="zpools">
+	<tbody class="tablesorter-infoOnly">
 		<?php
 		if ($snapshot_error !== ''):
 			echo '<tr class="zfsm-message zfsm-error"><td colspan="8">'.htmlspecialchars($snapshot_error, ENT_QUOTES, 'UTF-8').'</td></tr>';
 		elseif (!$snapshots):
 			echo '<tr class="zfsm-message"><td colspan="8">This dataset has no snapshots.</td></tr>';
 		endif;
+		?>
+	</tbody>
+	<tbody id="zpools">
+		<?php
+		$sort_value = function($value) { return ' data-text="'.htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8').'"'; };
 		foreach ($snapshots as $snap):
 			$snapshot_name = (string)($snap['name'] ?? '');
 			list($snapshot_dataset, $snapshot_short) = array_pad(explode('@', $snapshot_name, 2), 2, '');
 			$snapshot_html = htmlspecialchars($snapshot_name, ENT_QUOTES, 'UTF-8');
 			$snapshot_js = htmlspecialchars(json_encode($snapshot_name), ENT_QUOTES, 'UTF-8');
 			$holds = (int)($snap['userrefs'] ?? 0);
-			echo '<tr id="snap-'.sha1($snapshot_name).'">';
+			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
 			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
-			echo '<td class="zfsm-snap-name"><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
+			echo '<td class="zfsm-snap-name"'.$sort_value($snapshot_short).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
 				if ($holds > 0) echo '<span class="zfsm-badge">held</span>';
 				if (($snap['defer_destroy'] ?? '') === 'on') echo '<span class="zfsm-badge">deferred</span>';
 			echo '</td>';
-			echo '<td class="num">'.fromBytesToString($snap['used']).'</td>';
-			echo '<td class="num">'.fromBytesToString($snap['referenced']).'</td>';
-			echo '<td class="num">'.fromBytesToString($snap['written']).'</td>';
-			echo '<td class="num">'.$holds.'</td>';
-			echo '<td>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
+			echo '<td class="num"'.$sort_value($snap['used']).'>'.fromBytesToString($snap['used']).'</td>';
+			echo '<td class="num"'.$sort_value($snap['referenced']).'>'.fromBytesToString($snap['referenced']).'</td>';
+			echo '<td class="num"'.$sort_value($snap['written']).'>'.fromBytesToString($snap['written']).'</td>';
+			echo '<td class="num"'.$sort_value($holds).'>'.$holds.'</td>';
+			echo '<td'.$sort_value($snap['creation']).'>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
 			echo '<td><span class="zfsm-actions">';
 				echo '<a class="zfsm-rollback" title="Roll back to this snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward"></i></a>';
 				echo '<a title="Rename" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a>';
@@ -133,6 +154,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMSnapshotList.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
   installZFSMActionRefresh(function() {
@@ -171,21 +193,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 	});
   });
 
-  // Counts what is ticked now, so Delete and Select all stay right with no rows or after a change.
-  function syncSelection() {
-	const boxes = $('.snapl-check');
-	const ticked = boxes.filter(':checked').length;
-	$('#delete-snaps').prop('disabled', ticked === 0).text(ticked ? 'Delete selected ('+ticked+')' : 'Delete selected');
-	$('#checkAll').prop({checked: boxes.length > 0 && ticked === boxes.length, disabled: boxes.length === 0});
-	updateStatus(ticked ? ticked+' selected' : (boxes.length ? 'Tick snapshots to delete them together.' : ''));
-  }
-
-  $("#checkAll").click(function(){
-	$('.snapl-check').prop('checked', this.checked);
-	syncSelection();
-  });
-  $(document).on('change', '.snapl-check', syncSelection);
-  syncSelection();
+  zfsmInitSnapshotList();
 
   function rollbackSnapshot(snapshot) {
 	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewrollback', 'snapshot': snapshot, 'csrf_token': zfsm_csrf_token}, function(preview) {
@@ -260,10 +268,6 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 		if (!answer || typeof answer !== 'object') return unknown('The answer could not be read.');
 		Swal2.fire({title: title, icon: 'info', html: formatAnswer(answer)}).then(reload);
 	}).fail(function() { unknown('The request failed.'); });
-  }
-
-  function updateStatus(text) {
-	$("#zfs_status").text(text);
   }
 
   function formatAnswer(answer, indentLevel = 0) {

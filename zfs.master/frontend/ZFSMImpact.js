@@ -8,9 +8,11 @@ function zfsmImpactHtml(preview, heading) {
 	};
 	const warn = text => '<p style="color:#e22828;margin:.5em 0">'+text+'</p>';
 	if (preview.error) return warn(esc(preview.error));
-	let html = heading ? '<p style="margin:.5em 0">'+esc(heading)+'</p>' : '';
+	let html = preview.boot_pool ? warn('This is on '+esc(preview.boot_pool)+', the pool Unraid boots from. A mistake here can stop the server from starting.') : '';
+	html += heading ? '<p style="margin:.5em 0">'+esc(heading)+'</p>' : '';
 	const items = preview.objects || preview.newer || [];
 	if (items.length) html += list(items);
+	if (preview.automatic > 0) html += warn(esc(preview.automatic)+' of these '+(preview.automatic === 1 ? 'was' : 'were')+' made by Sanoid or Syncoid. Replication may need them.');
 	if (preview.clones && preview.clones.length) html += warn('These clones depend on it. Promote or remove them first:')+list(preview.clones);
 	if (preview.held && preview.held.length) html += warn('These snapshots have a hold. Release them first:')+list(preview.held);
 	return html;

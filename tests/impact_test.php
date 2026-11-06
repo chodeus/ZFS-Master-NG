@@ -123,6 +123,27 @@ $dataset_token = zfsmDestroyPreview('tank/data', 0)['token'];
 same(true, empty(zfsmDeleteSnapshotsReviewed('tank/data', 0, $dataset_token)['succeeded']), 'a dataset is refused by the snapshot path');
 same('', (string)@file_get_contents($log), 'and nothing is destroyed');
 
+// A review counts the Sanoid and Syncoid snapshots it would remove, by how their names start.
+same(2, zfsmDestroyPreview('tank/data@autosnap_2026-11-06_00:00:01_hourly,manual,syncoid_tower_2026-11-06:00:00:01-GMT08:00', 0)['automatic'], 'a bulk delete counts its Sanoid and Syncoid snapshots');
+same(0, zfsmDestroyPreview('tank/data@daily,my_autosnap_x', 0)['automatic'], 'only a name that starts that way counts');
+same(0, zfsmDestroyPreview('tank/autosnap_data', 0)['automatic'], 'a dataset named like one is not a snapshot');
+
+// The boot pool is the pool of the ZFS dataset mounted at /boot.
+$mounts = sys_get_temp_dir().'/zfsm-impact-mounts';
+file_put_contents($mounts, "/dev/sda1 /boot vfat rw,noatime 0 0\n");
+same('', zfsmBootPool($mounts), 'a USB stick at /boot is no boot pool');
+file_put_contents($mounts, "overlay /boot overlay rw 0 0\n");
+same('', zfsmBootPool($mounts), 'only a ZFS dataset at /boot names a pool');
+same('', zfsmBootPool($mounts.'-missing'), 'an unreadable mount list gives none');
+file_put_contents($mounts, "rootfs / rootfs rw 0 0\ncache/boot /mnt/boot zfs rw 0 0\nflash/boot\\040files /boot zfs rw,xattr 0 0\ncache/appdata /mnt/cache/appdata zfs rw 0 0\n");
+same('flash', zfsmBootPool($mounts), 'the dataset mounted at /boot names its pool');
+$GLOBALS['zfsm_mounts'] = $mounts;
+same('flash', zfsmDestroyPreview('flash/boot files@daily', 0)['boot_pool'], 'a review on the boot pool names it');
+same('flash', zfsmRollbackPreview('flash/boot files@daily')['boot_pool'], 'so does a rollback there');
+same('', zfsmDestroyPreview('cache/boot', 0)['boot_pool'], 'another pool is not the boot pool');
+unset($GLOBALS['zfsm_mounts']);
+@unlink($mounts);
+
 // Two newest snapshots both review as "nothing newer", so only the target tells their confirmations apart.
 same(false, zfsmImpactToken('tank/a@x', 'plain', array(), array()) === zfsmImpactToken('tank/b@x', 'plain', array(), array()), 'a token confirms only the target that was reviewed');
 // A leaf dataset lists the same with or without force, but force also unmounts: its token must not confirm a forced destroy.
@@ -146,6 +167,11 @@ env(array('ZFSM_TEST_CLONE' => ''));
 env(array('ZFSM_TEST_TXG_FAIL' => '1'));
 same(false, zfsmRollbackPreview('tank/data@daily')['can_proceed'], 'an unreadable list blocks');
 env(array('ZFSM_TEST_TXG_FAIL' => '0'));
+env(array('ZFSM_TEST_TXG_EXTRA' => 'syncoid_tower_2026-11-06:01:00:00-GMT08:00'));
+same(1, zfsmRollbackPreview('tank/data@daily')['automatic'], 'a rollback counts the Syncoid snapshot it would remove');
+env(array('ZFSM_TEST_TXG_BOOKMARK' => 'syncoid_tower_2026-11-06:01:00:00-GMT08:00'));
+same(2, zfsmRollbackPreview('tank/data@daily')['automatic'], 'and its bookmark, which rollback -r removes too');
+env(array('ZFSM_TEST_TXG_EXTRA' => '', 'ZFSM_TEST_TXG_BOOKMARK' => ''));
 $token = zfsmRollbackPreview('tank/data@daily')['token'];
 env(array('ZFSM_TEST_TXG_EXTRA' => 'justnow'));
 same(true, empty(zfsmRollbackReviewed('tank/data@daily', 1, $token)['succeeded']), 'a snapshot taken after the review refuses the rollback');
