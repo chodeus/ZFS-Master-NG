@@ -8,12 +8,12 @@ function zfsmSnapshotBrowseRoot($mountpoint) {
 	return is_string($mountpoint) && preg_match('#^/(?:mnt|boot)(?:/|$)#', $mountpoint) ? rtrim($mountpoint, '/').'/.zfs/snapshot' : '';
 }
 
-// What a dataset's snapshot rows offer: zfs diff needs it mounted, the file browser a .zfs folder too. A failed read offers neither.
+// What a dataset's snapshot rows offer; both need it mounted with its .zfs folder. A failed read offers neither.
 function zfsmSnapshotAccess($zpool, $zdataset) {
-	$mounted = getDatasetProperty($zpool, $zdataset, 'mounted') === 'yes';
-	$root = $mounted ? zfsmSnapshotBrowseRoot(getDatasetProperty($zpool, $zdataset, 'mountpoint')) : '';
-	// Checked on disk: snapdir=disabled, or another filesystem mounted over this one, leaves no .zfs there.
-	return array('diff' => $mounted, 'browse' => $root !== '' && is_dir($root) ? $root : '');
+	$mountpoint = getDatasetProperty($zpool, $zdataset, 'mounted') === 'yes' ? getDatasetProperty($zpool, $zdataset, 'mountpoint') : null;
+	// zfs diff stats .zfs/shares first; snapdir=disabled, or a filesystem mounted over this one, leaves no .zfs.
+	$has_zfs = is_string($mountpoint) && strncmp($mountpoint, '/', 1) === 0 && is_dir(rtrim($mountpoint, '/').'/.zfs/snapshot');
+	return array('diff' => $has_zfs, 'browse' => $has_zfs ? zfsmSnapshotBrowseRoot($mountpoint) : '');
 }
 
 // zfs diff writes spaces, backslashes and every non-ASCII byte of a name as \0ooo, from \0000 to \0377.

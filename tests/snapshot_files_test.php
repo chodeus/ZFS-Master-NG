@@ -45,7 +45,7 @@ $outside = sys_get_temp_dir().'/zfsm-elsewhere/data';
 mkdir($outside.'/.zfs/snapshot', 0755, true);
 $cases = array(
 	'a mounted dataset with a .zfs folder offers both' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs), array('diff' => true, 'browse' => $with_zfs.'/.zfs/snapshot')),
-	'no .zfs folder (snapdir=disabled, or mounted over): no browse' => array(array('ZFSM_TEST_DATASET_MOUNT='.$without_zfs), array('diff' => true, 'browse' => '')),
+	'no .zfs folder (snapdir=disabled, or mounted over): neither, since zfs diff stats .zfs/shares' => array(array('ZFSM_TEST_DATASET_MOUNT='.$without_zfs), array('diff' => false, 'browse' => '')),
 	'unmounted: neither, even with a folder there' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_MOUNTED=no'), array('diff' => false, 'browse' => '')),
 	'outside /mnt and /boot: no browse, even with a .zfs folder' => array(array('ZFSM_TEST_DATASET_MOUNT='.$outside), array('diff' => true, 'browse' => '')),
 	'a failed read: neither' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '')),

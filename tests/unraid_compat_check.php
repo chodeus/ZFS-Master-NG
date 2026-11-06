@@ -222,7 +222,7 @@ switch ($check) {
 		break;
 
 	case 'snapshot_popup':
-		// The fixture dataset's .zfs folder, which the Browse icon needs; this runs in a disposable container.
+		// The fixture dataset's .zfs folder, which both icons need; this runs in a disposable container.
 		@mkdir('/mnt/tank/data/.zfs/snapshot', 0755, true);
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
@@ -240,10 +240,11 @@ switch ($check) {
 		popup_styles($html, $docroot);
 		break;
 
-	// zfs diff needs the dataset mounted; Unraid's file browser also needs it under /mnt or /boot.
+	// Both icons need the dataset mounted with a .zfs folder; Unraid's file browser also needs /mnt or /boot.
 	case 'snapshot_popup_unmounted':
 	case 'snapshot_popup_elsewhere':
 		@mkdir('/mnt/tank/data/.zfs/snapshot', 0755, true);
+		@mkdir('/srv/data/.zfs/snapshot', 0755, true);
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
 		putenv($check === 'snapshot_popup_unmounted' ? 'ZFSM_TEST_MOUNTED=no' : 'ZFSM_TEST_DATASET_MOUNT=/srv/data');
