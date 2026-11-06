@@ -177,7 +177,7 @@ try {
 			break;
 
 		case 'snapshotdataset':
-			$snapshot = ($zfsm_cfg['snap_prefix'] ?? '').date($zfsm_cfg['snap_pattern'] ?? 'Y-m-d-His');
+			$snapshot = zfsmNewSnapshotName($zfsm_cfg, time());
 			zfsmReturnAnswer(createDatasetSnapshot(zfsmPostString('zdataset'), $snapshot, zfsmPostString('recursive')), 'ZFS Snapshot Create', 'Snapshot created successfully', 'Unable to create snapshot');
 			break;
 

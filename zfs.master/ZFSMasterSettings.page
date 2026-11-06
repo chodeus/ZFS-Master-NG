@@ -114,6 +114,16 @@ _(Snapshots Pattern)_:
 > `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`.
 :end
 
+_(Snapshot Time)_:
+: <select name="snap_utc">
+	<?=mk_option($zfsm_cfg['snap_utc'], "0", _('Local time'))?>
+	<?=mk_option($zfsm_cfg['snap_utc'], "1", _('UTC'))?>
+  </select>
+
+:zc_settings_snapshots_utc_plug:
+> The clock used for the date in new snapshot names. UTC names sort the same on every server and across daylight-saving changes.
+:end
+
 _(Snapshots Prefix (Do not include the '@'))_:
 : <input type="text" name="snap_prefix" value="<?=htmlspecialchars($zfsm_cfg['snap_prefix'], ENT_QUOTES, 'UTF-8')?>" placeholder="default blank">
 
@@ -139,6 +149,7 @@ var zfsm_tips = <?=json_encode(array(
 	'snap_max_days_alert' => _('Days since the last snapshot before the camera icon turns orange.'),
 	'snap_pattern' => _('Date format for new snapshot names, using PHP date() letters.'),
 	'snap_prefix' => _('Text placed before the date in new snapshot names.'),
+	'snap_utc' => _('Clock used for the date in new snapshot names.'),
 ), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
