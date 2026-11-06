@@ -228,7 +228,22 @@ switch ($check) {
 		$html = ob_get_clean();
 		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
 		if (strpos($html, '1 snapshot · ') === false) { fwrite(STDERR, "snapshot popup header did not count one snapshot\n"); exit(1); }
+		// Filter and sort read these attributes: ZFSMSnapshotList.js.
+		if (!preg_match('#<tr id="snap-[0-9a-f]{40}" data-snapshot="daily" data-automatic="0">.*<td class="num" data-text="2">[^<]+</td><td class="num" data-text="50">.*<td data-text="1700000400">#', $html)) { fwrite(STDERR, "snapshot row lost its filter or sort values\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-snap-filter"') === false || strpos($html, 'ZFSMSnapshotList.js') === false) { fwrite(STDERR, "snapshot popup lost its filter box or list script\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-hide-auto"') !== false) { fwrite(STDERR, "snapshot popup offers to hide automatic snapshots it does not have\n"); exit(1); }
 		popup_styles($html, $docroot);
+		break;
+
+	case 'snapshot_popup_automatic':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		putenv('ZFSM_TEST_SNAPSHOT_AUTO=1');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'data-snapshot="autosnap_2023-11-14_22:15:00_hourly" data-automatic="1"') === false) { fwrite(STDERR, "a Sanoid snapshot is not marked automatic\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-hide-auto"') === false) { fwrite(STDERR, "snapshot popup does not offer to hide its Sanoid snapshot\n"); exit(1); }
 		break;
 
 	case 'snapshot_popup_failed':
@@ -240,6 +255,7 @@ switch ($check) {
 		$html = ob_get_clean();
 		if (strpos($html, 'simulated dataset snapshot failure') === false) { fwrite(STDERR, "snapshot popup did not show the listing error\n"); exit(1); }
 		if (strpos($html, 'Snapshots could not be listed') === false || strpos($html, '0 snapshots') !== false) { fwrite(STDERR, "snapshot popup header claims a count after a failed listing\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-snap-filter"') !== false) { fwrite(STDERR, "snapshot popup offers a filter with nothing listed\n"); exit(1); }
 		break;
 
 	default:

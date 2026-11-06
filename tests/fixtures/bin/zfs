@@ -59,6 +59,7 @@ if [ "$1" = "list" ] && contains_arg 'name,createtxg' "$@"; then
 	[ "${ZFSM_TEST_TXG_FAIL:-0}" = 1 ] && { printf 'simulated txg failure\n' >&2; exit 1; }
 	printf '%s@old\t99\n%s@daily\t100\n%s@new\t101\n%s#mark\t1000\n' "$last_arg" "$last_arg" "$last_arg" "$last_arg"
 	[ -n "${ZFSM_TEST_TXG_EXTRA:-}" ] && printf '%s@%s\t2000\n' "$last_arg" "$ZFSM_TEST_TXG_EXTRA"
+	[ -n "${ZFSM_TEST_TXG_BOOKMARK:-}" ] && printf '%s#%s\t2001\n' "$last_arg" "$ZFSM_TEST_TXG_BOOKMARK"
 	exit 0
 fi
 
@@ -103,6 +104,7 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; 
 		printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
 	else
 		printf '%s@daily\t2\t50\t2\toff\t0\t1700000400\n' "$last_arg"
+		[ "${ZFSM_TEST_SNAPSHOT_AUTO:-0}" = 1 ] && printf '%s@autosnap_2023-11-14_22:15:00_hourly\t3\t60\t1\toff\t0\t1700000500\n' "$last_arg"
 	fi
 	exit 0
 fi

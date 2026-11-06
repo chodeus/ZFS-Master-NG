@@ -15,6 +15,13 @@ assert.match(html({newer: ['tank/a@b'], clones: []}, 'h'), /tank\/a@b/, 'rollbac
 assert.match(html({objects: ['a'], clones: ['c'], held: []}, 'h'), /clones depend/);
 assert.match(html({objects: ['a'], clones: [], held: ['b']}, 'h'), /have a hold/);
 
+assert.match(html({objects: ['flash/boot@a'], clones: [], held: [], boot_pool: '<b>flash'}, 'h'), /^<p[^>]*>This is on &lt;b&gt;flash, the pool Unraid boots from\./, 'the boot pool leads the review, escaped');
+assert.doesNotMatch(html({objects: ['tank/a'], clones: [], held: [], boot_pool: ''}, 'h'), /boots from/, 'another pool gets no boot warning');
+assert.match(html({objects: ['a', 'b'], clones: [], held: [], automatic: 2}, 'h'), /2 of these were made by Sanoid or Syncoid\. Replication may need them\./);
+assert.match(html({newer: ['a'], clones: [], automatic: 1}, 'h'), /1 of these was made by Sanoid or Syncoid/, 'rollback too, in the singular');
+assert.doesNotMatch(html({objects: ['a'], clones: [], held: [], automatic: 0}, 'h'), /Sanoid/, 'none counted, no line');
+assert.doesNotMatch(html({error: 'nope', boot_pool: 'flash', automatic: 3}, 'h'), /boots from|Sanoid/, 'an error shows only itself');
+
 const many = html({objects: Array.from({length: 60}, (_, n) => `tank@${n}`), clones: [], held: []}, 'h');
 assert.equal((many.match(/<li/g) || []).length, 51, 'a long list is capped');
 assert.match(many, /and 10 more/);
