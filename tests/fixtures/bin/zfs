@@ -95,6 +95,13 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-r' "$@"; 
 	exit 0
 fi
 
+# Every snapshot with its creation time, as the alert check reads them.
+if [ "$1" = "list" ] && [ "$last_arg" = "name,creation" ]; then
+	[ "${ZFSM_TEST_SNAPSHOT_LIST_FAIL:-0}" = 1 ] && { printf 'simulated snapshot list failure\n' >&2; exit 1; }
+	[ -n "${ZFSM_TEST_SNAPSHOT_LIST:-}" ] && cat "$ZFSM_TEST_SNAPSHOT_LIST"
+	exit 0
+fi
+
 if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; then
 	if [ "${ZFSM_TEST_DATASET_SNAPSHOTS_FAIL:-0}" = 1 ]; then
 		printf 'simulated dataset snapshot failure\n' >&2

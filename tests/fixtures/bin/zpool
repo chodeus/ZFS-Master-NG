@@ -10,6 +10,9 @@ if [ "$1" = "list" ]; then
 fi
 
 if [ "$1" = "status" ]; then
+	[ "${ZFSM_TEST_ZPOOL_STATUS_FAIL:-0}" = 1 ] && { printf 'simulated zpool status failure\n' >&2; exit 1; }
+	[ "${ZFSM_TEST_ZPOOL_STATUS_SLOW:-0}" = 1 ] && { sleep 5; exit 0; }
+	[ -n "${ZFSM_TEST_ZPOOL_STATUS:-}" ] && { cat "$ZFSM_TEST_ZPOOL_STATUS"; exit 0; }
 	cat <<'EOF'
   pool: tank
  state: ONLINE

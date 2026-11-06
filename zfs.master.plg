@@ -269,7 +269,7 @@ done
 rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -vF '&pkgname;')
 # Older versions unpacked a tar with no package record, so upgradepkg leaves these behind
 rm -f &plugdir;/nchan/zfs_master &plugdir;/scripts/zfs_*.lua
-rmdir &plugdir;/nchan &plugdir;/scripts 2>/dev/null || true
+rmdir &plugdir;/nchan 2>/dev/null || true
 rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"

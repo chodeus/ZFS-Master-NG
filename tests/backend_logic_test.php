@@ -59,6 +59,8 @@ assertSameValue('^old$', $config['dataset_exclusion'], 'The misspelt exclusion s
 assertSameValue('Y-m-d-His', $config['snap_pattern'], 'A blank snapshot pattern did not fall back');
 assertSameValue(45, $config['refresh_interval'], 'A saved refresh interval was ignored');
 assertSameValue(0, $config['snap_utc'], 'Snapshot names did not default to local time');
+assertSameValue(0, $config['alert_interval'], 'Pool health alerts did not default to off');
+assertSameValue(0, $config['alert_stale'], 'Stale snapshot alerts did not default to off');
 
 // New snapshot names: the prefix, then the date on the clock the settings name. Perth is UTC+8 all year.
 $zone = date_default_timezone_get();

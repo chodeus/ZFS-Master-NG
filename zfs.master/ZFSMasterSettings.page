@@ -18,6 +18,8 @@ $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true), false);
 <input type="hidden" name="csrf_token" value="<?=$var['csrf_token'] ?? ''?>"/>
 <input type="hidden" name="#file" value="zfs.master/zfs.master.cfg"/>
 <input type="hidden" name="#section" value="general"/>
+<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>
+<input type="hidden" name="#arg[1]" value="schedule"/>
 <details class="zfsm-section" open markdown="1">
 <summary>_(General Settings)_</summary>
 
@@ -134,6 +136,35 @@ _(Snapshots Prefix (Do not include the '@'))_:
 
 </details>
 
+<details class="zfsm-section" open markdown="1">
+<summary>_(Alerts)_</summary>
+
+_(Pool Health Alerts)_:
+: <select name="alert_interval">
+	<?=mk_option($zfsm_cfg['alert_interval'], "0", _('Off'))?>
+	<?=mk_option($zfsm_cfg['alert_interval'], "15", _('Every 15 minutes'))?>
+	<?=mk_option($zfsm_cfg['alert_interval'], "60", _('Hourly'))?>
+	<?=mk_option($zfsm_cfg['alert_interval'], "1440", _('Daily'))?>
+  </select>
+
+:zc_settings_alerts_interval_plug:
+> Sends an Unraid notification when a pool is not ONLINE, has read, write or checksum errors or damaged files, or is still not imported 10 minutes after the array starts; and again when it recovers.
+> Checks start once the array has started. With **Off**, ZFS is read only while the Main tab is open.
+:end
+
+_(Stale Snapshot Alerts)_:
+: <select name="alert_stale">
+	<?=mk_option($zfsm_cfg['alert_stale'], "0", _('Off'))?>
+	<?=mk_option($zfsm_cfg['alert_stale'], "1", _('On'))?>
+  </select>
+
+:zc_settings_alerts_stale_plug:
+> With pool health alerts on, also notifies when a dataset's newest snapshot is older than **Dataset Icon Alert Max Days**.
+> Datasets with no snapshots, and datasets the exclusion pattern hides, are left out.
+:end
+
+</details>
+
 &nbsp;
 : <input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()">
 </form>
@@ -150,6 +181,8 @@ var zfsm_tips = <?=json_encode(array(
 	'snap_pattern' => _('Date format for new snapshot names, using PHP date() letters.'),
 	'snap_prefix' => _('Text placed before the date in new snapshot names.'),
 	'snap_utc' => _('Clock used for the date in new snapshot names.'),
+	'alert_interval' => _('How often to check pool health and send Unraid notifications.'),
+	'alert_stale' => _('Also notify when snapshots are older than the Max Days setting.'),
 ), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');

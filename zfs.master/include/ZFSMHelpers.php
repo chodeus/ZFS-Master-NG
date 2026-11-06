@@ -26,13 +26,16 @@ function loadConfig($config) {
 		'snap_prefix' => $general['snap_prefix'] ?? '',
 		'snap_pattern' => zfsmSettingText($general, 'snap_pattern', 'Y-m-d-His'),
 		'snap_utc' => zfsmSettingInt($general, 'snap_utc', 0),
+		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
+		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }
 
-function zfsnotify( $subject, $description, $message, $type="normal") {	
+// Whether Unraid's notify script took the notification.
+function zfsnotify( $subject, $description, $message, $type="normal") {
 	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
-	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
+	return (runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type))['code'] ?? 1) === 0;
 }
 
 // Plain text: notification agents such as Discord and email show HTML tags as typed.
