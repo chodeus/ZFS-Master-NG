@@ -793,11 +793,25 @@ function zfsmConvertUndo($dataset_name, $temp, $path) {
 	return 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required';
 }
 
+// Whether files can be cloned within $pool: OpenZFS 2.2+ with cloning switched on and the pool's feature enabled.
+function zfsmBlockCloning($pool) {
+	if (trim((string)@file_get_contents($GLOBALS['zfsm_bclone_param'] ?? '/sys/module/zfs/parameters/zfs_bclone_enabled')) !== '1') return false;
+	$feature = runProcess('zpool', array('get', '-H', '-o', 'value', 'feature@block_cloning', $pool));
+	return ($feature['code'] ?? 1) === 0 && in_array($feature['output'], array('enabled', 'active'), true);
+}
+
+// Clones the files into the dataset, sharing their blocks; rsync then copies whatever this missed, so a failure here only costs space.
+function zfsmCloneTree($from, $to) {
+	$result = runProcess('cp', array('-a', '--reflink=auto', '--one-file-system', '--', rtrim($from, '/').'/.', rtrim($to, '/').'/'));
+	if (($result['code'] ?? 1) !== 0) zfsmLog('Convert: cloning '.$from.' failed, so rsync copies it: '.zfsmCommandError($result, 'cp failed'), LOG_WARNING);
+}
+
 // Copies the moved-aside directory into the dataset, verifies the copy, then removes the original; '' when all of it worked.
 function zfsmConvertCopy($temp, $mountpoint, $dataset_name) {
 	$retained = 'original data remains at '.$temp.' and the partial dataset was retained for inspection';
 	$rsync_args = zfsmRsyncArgs();
 	if ($rsync_args === null) return 'Unable to run rsync; '.$retained;
+	if (zfsmBlockCloning(explode('/', $dataset_name, 2)[0])) zfsmCloneTree($temp, $mountpoint);
 	$exit_code = zfsmCopyWithProgress($rsync_args, $temp, $mountpoint, $dataset_name);
 	if ($exit_code !== 0) return 'rsync failed with exit code '.$exit_code.'; '.$retained;
 	$differences = zfsmCopyDifferences($rsync_args, $temp, $mountpoint);

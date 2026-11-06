@@ -803,7 +803,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
-		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> The pool needs free space for a second copy while this runs.',
+		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> Where the pool has block cloning (OpenZFS 2.2 and later), the files are cloned and need almost no extra space; otherwise the pool needs free space for a second copy while this runs.',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true

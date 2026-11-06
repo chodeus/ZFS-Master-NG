@@ -41,11 +41,11 @@ function mount_tmpfs($path, $options = '') {
 	return $status;
 }
 
-function shim($body) {
+function shim($body, $name = 'rsync') {
 	$bin = '/tmp/zfsm-rsync-shim';
 	if (!is_dir($bin)) mkdir($bin);
-	file_put_contents($bin.'/rsync', "#!/bin/sh\n".$body."\n");
-	chmod($bin.'/rsync', 0755);
+	file_put_contents($bin.'/'.$name, "#!/bin/sh\n".$body."\n");
+	chmod($bin.'/'.$name, 0755);
 	putenv('PATH='.$bin.':'.getenv('PATH'));
 }
 
@@ -154,6 +154,52 @@ check(strpos(reset($result['failed']) ?: '', 'mounted inside') !== false, 'a nes
 check(is_file($target.'/inner/data') && is_file($target.'/sub dir/file'), 'refused conversion changed the source');
 check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the source');
 exec('umount '.escapeshellarg($target.'/inner'));
+
+// Cloning only where the pool can: OpenZFS 2.2+ with zfs_bclone_enabled=1 and the feature enabled on that pool.
+$bclone = sys_get_temp_dir().'/zfsm-bclone-'.getmypid();
+file_put_contents($bclone, "1\n");
+$GLOBALS['zfsm_bclone_param'] = $bclone;
+putenv('ZFSM_TEST_BCLONE=active');
+check(zfsmBlockCloning('tank'), 'an active block_cloning feature must allow cloning');
+check(!zfsmBlockCloning('other'), 'another pool must be asked about its own feature');
+putenv('ZFSM_TEST_BCLONE=enabled');
+check(zfsmBlockCloning('tank'), 'an enabled block_cloning feature must allow cloning');
+putenv('ZFSM_TEST_BCLONE=disabled');
+check(!zfsmBlockCloning('tank'), 'a disabled block_cloning feature must not clone');
+putenv('ZFSM_TEST_BCLONE');
+check(!zfsmBlockCloning('tank'), 'a pool without the feature must not clone');
+putenv('ZFSM_TEST_BCLONE=active');
+file_put_contents($bclone, "0\n");
+check(!zfsmBlockCloning('tank'), 'zfs_bclone_enabled=0 must not clone');
+unlink($bclone);
+check(!zfsmBlockCloning('tank'), 'OpenZFS without zfs_bclone_enabled must not clone');
+
+// With cloning off, cp never runs and rsync copies as before.
+$real_rsync = trim((string)shell_exec('command -v rsync'));
+$cp_log = sys_get_temp_dir().'/zfsm-cp-log';
+@unlink($cp_log);
+reset_tree($target, $mount, $root);
+shim('echo ran >> '.escapeshellarg($cp_log).'; exit 1', 'cp');
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']) && !file_exists($cp_log), 'cp ran without block cloning: '.json_encode($result));
+
+// With cloning on, the clone alone must give a copy that verifies: this rsync copies nothing, it only checks.
+file_put_contents($bclone, "1\n");
+unlink('/tmp/zfsm-rsync-shim/cp');
+reset_tree($target, $mount, $root);
+shim('case "$*" in *--version*|*--dry-run*) exec '.escapeshellarg($real_rsync).' "$@";; esac; exit 0');
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode($result));
+
+// A clone that fails partway leaves the rest to rsync.
+reset_tree($target, $mount, $root);
+shim('exec '.escapeshellarg($real_rsync).' "$@"');
+shim('for last; do :; done; mkdir -p "${last}sub dir"; printf x > "${last}sub dir/file"; echo "cp: failed to clone" >&2; exit 1', 'cp');
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']) && file_get_contents($mount.'/sub dir/file') === 'payload', 'rsync did not finish a failed clone: '.json_encode($result));
+unlink('/tmp/zfsm-rsync-shim/cp');
+unlink($bclone);
+putenv('ZFSM_TEST_BCLONE');
 
 // A failed copy keeps the source.
 reset_tree($target, $mount, $root);
