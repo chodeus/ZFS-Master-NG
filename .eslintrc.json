@@ -1,0 +1,56 @@
+{
+  "root": true,
+  "extends": "eslint:recommended",
+  "env": {
+    "es2022": true,
+    "browser": true,
+    "jquery": true
+  },
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "script"
+  },
+  "ignorePatterns": [
+    "zfs.master/assets/",
+    "tests/node_modules/"
+  ],
+  "rules": {
+    "no-undef": "off",
+    "no-fallthrough": "off",
+    "no-mixed-spaces-and-tabs": "off",
+    "no-redeclare": "off",
+    "no-with": "off",
+    "no-prototype-builtins": "off",
+    "no-misleading-character-class": "off",
+    "no-async-promise-executor": "off",
+    "no-import-assign": "off",
+    "no-sparse-arrays": "off",
+    "no-useless-escape": "off",
+    "no-empty": [
+      "error",
+      {
+        "allowEmptyCatch": true
+      }
+    ],
+    "no-unused-vars": [
+      "warn",
+      {
+        "vars": "local",
+        "args": "after-used",
+        "ignoreRestSiblings": false
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "tests/**",
+        ".github/**"
+      ],
+      "env": {
+        "node": true,
+        "browser": false
+      }
+    }
+  ]
+}

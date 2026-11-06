@@ -20,12 +20,20 @@ sudo unshare --mount --propagation private sh tests/run_http_inventory_tests.sh 
 ```
 
 PHP and its libraries must reside outside `/tmp`, which the runner overlays.
-Set `ZFSM_TEST_POSIX` to a custom `posix.so` path if necessary. The default is
-the runtime's `posix` extension. Do not run this test runner on a production
+Set `ZFSM_TEST_POSIX` to a `posix.so` path if your PHP does not build it in.
+Do not run this test runner on a production
 Unraid host. Testing uses simulated ZFS results, not real pool administration.
 
-For live Unraid 7.3.2 verification after installation, confirm the plugin version
-is 2026.09.25.112, hard-reload Main, and check the `inventory` HTTP response and
+For live verification after installation, confirm the plugin version, hard-reload
+Main, and check the `inventory` HTTP response and
 displayed dataset/snapshot counts. Check manual and automatic refresh and test
 mutations only on an explicitly disposable dataset/snapshot. No changes to the
 system publishing flag, nginx configuration, or Unraid API are required.
+
+Run the plugin through a real Unraid webGUI tree (its plugin installer, CSRF prepend, helpers and pages), in a
+disposable container, with `unraid/webgui` checked out at the tag under test inside this repository:
+
+```sh
+docker run --rm -v "$PWD:/repo" -w /repo php:7.4-cli bash tests/unraid_compat_test.sh .webgui 6.9.2
+```
+

@@ -1,0 +1,21 @@
+/* Collapsible groups as in FolderView3's folder editor; neutral colours so every Unraid theme works. */
+.zfsm-section{margin-bottom:6px;border:1px solid rgba(128,128,128,.3);border-radius:4px}
+.zfsm-section>summary{padding:10px 16px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;background:rgba(128,128,128,.08);user-select:none}
+.zfsm-section[open]>summary{border-bottom:1px solid rgba(128,128,128,.3)}
+.zfsm-section>summary::-webkit-details-marker{display:none}
+.zfsm-section>summary::before{content:'\f054';font-family:FontAwesome;font-size:.75em;transition:transform .15s;display:inline-block;width:1em;text-align:center}
+.zfsm-section[open]>summary::before{transform:rotate(90deg)}
+.zfsm-section>summary:hover{background:rgba(128,128,128,.15)}
+.zfsm-section>:not(summary){padding:0 16px}
+
+/* A label with a hint shows the help cursor; hovering it shows the hint, styled like Unraid's tooltips. */
+.zfsm-tip{position:relative;cursor:help}
+.zfsm-tip:hover::after,.zfsm-tip:focus::after{content:attr(data-tip);position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
+
+/* Label and control rows for the dialogs; Unraid's own input styles do the rest. */
+.zfsm-form dl{display:grid;grid-template-columns:minmax(120px,32%) minmax(0,1fr);align-items:center;gap:0 16px;margin:0;padding:6px 0}
+.zfsm-form dt{float:none;width:auto;margin:0;text-align:right}
+.zfsm-form dd{float:none;width:auto;margin:0;display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0}
+.zfsm-form dd .zfsm-wide,.zfsm-form dd>select:only-child{flex:1;min-width:8em;max-width:480px}
+/* Labels take the full row on narrow screens, so the hint drops under them and wraps. */
+@media (max-width:768px){.zfsm-tip:hover::after,.zfsm-tip:focus::after{left:0;margin-left:0;white-space:normal;max-width:calc(100vw - 48px)}}

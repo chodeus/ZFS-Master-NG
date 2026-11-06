@@ -54,9 +54,9 @@ function launch({interval = 30, cache = null, storageThrows = false, missingSubs
   vm.runInContext(frontend, context);
   vm.runInContext(inventory, context);
   const script = mainScript.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php => {
-    if (php.includes('json_encode($zfsm_cfg)')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
+    if (php.includes('json_encode($zfsm_cfg')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
       destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []});
-    if (php.includes('json_encode($display)')) return JSON.stringify({text: 0, warning: 80, critical: 90});
+    if (php.includes('json_encode($display')) return JSON.stringify({text: 0, warning: 80, critical: 90});
     if (php.includes('$urlzmadmin')) return '/plugins/zfs.master/backend/ZFSMAdmin.php';
     return '';
   });
@@ -95,6 +95,15 @@ state.requests[1].reject({status: 403}, 'error');
 assert.match(state.status(), /HTTP 403.*stale/);
 assert.match(state.body.innerHTML, /No imported ZFS pools/);
 
+// Cached rows keep the warnings they were saved with, not just a timestamp.
+const cachedInventory = extra => JSON.stringify({pools: {}, devices: {}, datasets: {}, errors: {}, timestamp: 'T', ...extra});
+state = launch({cache: cachedInventory({warning: 'Invalid exclusion'}), interval: 0});
+assert.match(state.status(), /Last refresh at T.*Invalid exclusion/);
+state = launch({cache: cachedInventory({errors: {tank: 'zpool failed'}}), interval: 0});
+assert.match(state.status(), /Last refresh at T.*Query errors: zpool failed/);
+state = launch({cache: cachedInventory({}), interval: 0});
+assert.equal(state.status(), 'Last refresh at T');
+
 state = launch({cache: '{bad json', interval: 0});
 assert.match(state.status(), /no cached data/);
 state = launch({storageThrows: true});
@@ -129,6 +138,12 @@ assert.match(state.status(), /zpool failed.*stale/);
 state = launch();
 state.requests[0].reject({status: 0}, 'timeout');
 assert.match(state.status(), /timeout.*stale/);
+
+// An ignored exclusion pattern is reported, even on an otherwise clean read.
+state = launch();
+state.context.updateFullBodyTable = () => {};
+state.requests[0].resolve({...empty(), data: {...empty().data, warning: 'pattern ignored'}});
+assert.match(state.status(), /pattern ignored/);
 
 // Actions update manual mode; errors and read-only results do not.
 state = launch({interval: 0});
@@ -170,9 +185,25 @@ state = launch();
 state.context.updateFullBodyTable = () => {};
 state.requests[0].resolve(partial());
 state.requests[1].reject({status: 504}, 'error');
-assert.match(state.status(), /504.*stale/);
-assert.equal(state.storage.has('zfsm-cache'), false);
-assert.equal(state.requests.length, 2);
+assert.equal(state.requests[2].options.data.pool, 'cache', 'a failed pool must not stop the next one');
+state.requests[2].resolve(poolResult('cache', 181));
+assert.match(state.status(), /504/);
+assert.equal(state.storage.has('zfsm-cache'), false, 'incomplete data must not be cached');
+
+// Failed reads back off and a clean read resets the delay.
+state = launch({interval: 30});
+state.context.updateFullBodyTable = () => {};
+const delays = () => [...state.timers.values()].map(timer => timer.ms);
+state.requests[0].reject({status: 0}, 'timeout');
+assert.deepEqual(delays(), [60000]);
+state.expire();
+state.requests[1].reject({status: 0}, 'timeout');
+assert.deepEqual(delays(), [120000]);
+state.expire();
+state.requests[2].resolve(empty());
+assert.deepEqual(delays(), [30000]);
+
+assert.doesNotMatch(page, /ajaxSetup/, 'Global jQuery settings would affect every plugin on the Main tab');
 
 assert.doesNotMatch(page, /^Nchan=/m, 'Main page must not start the obsolete inventory daemon');
 console.log('HTTP inventory and frontend startup regression tests passed');

@@ -16,7 +16,7 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title>ZFS Master - Create Dataset</title>
+<title>ZFS Master NG - Create Dataset</title>
 
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -24,235 +24,63 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="same-origin">
 
-<style>
-#spinner_image{position:fixed;left:46%;top:46%;width:16px;height:16px;display:none}
-#control_panel{position:fixed;left:0;right:0;top:0;padding-top:8px;line-height:24px;white-space:nowrap}
-.four{text-align:center;box-sizing:border-box;-moz-box-sizing:border-box;-webkit-box-sizing:border-box}
-.four label:first-child{margin-left:0}
-.four label{margin-left:2%;cursor:pointer}
-.allpanels{display:none;position:absolute;left:0;right:0;top:40px;bottom:25px;overflow:auto;margin:15px}
-#footer_panel{position:fixed;left:0;right:0;bottom:0;height:30px;line-height:10px;text-align:center}
-textarea{width:96%;height:250px;margin:10px 0;resize:none}
-input[type=button]{margin-right:0;float:right}
-input[type=email]{margin-top:8px;float:left}
-</style>
-
-<style type="text/css">	
-  .zfsm-dialog {
-	  width: 90%;
-	  height: 90%;
-	  margin: auto;
-  }
-  
-  .zfsm-form {
-	  font-size: 14px;
-	  text-align: center;
-  }
-  
-  .zfsm-title {
-	  font-weight: 400;
-	  position: relative;
-	  display: block;
-	  font-size: 25px;
-	  text-align: center;
-	  margin-bottom: 0;
-  }
-  
-  .zfsm-input:disabled {
-	  background-color: lightgrey;
-  }
-  
-  .zfsm-input {
-	  background-color: #fff;
-	  width: auto;
-	  border: 1px solid rgba(0,0,0,.10);
-	  display: inline-block;
-	  padding: 10px 5px;
-	  border-radius: 5px;
-  }
-  
-  .zfsm-zpool {
-	  color: #ff8c2f;
-	  width: auto;
-	  border: 1px solid rgba(0,0,0,.10);
-	  display: inline-block;
-	  padding: 10px 5px;
-	  border-radius: 5px;
-	  background: linear-gradient(90deg,#e22828 0,#ff8c2f) 0 0 no-repeat,linear-gradient(90deg,#e22828 0,#ff8c2f) 0 100% no-repeat,linear-gradient(0deg,#e22828 0,#e22828) 0 100% no-repeat,linear-gradient(0deg,#ff8c2f 0,#ff8c2f) 100% 100% no-repeat;
-	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
-  }
-  
-  .zfsm-unraid-border {
-	  border: 1px solid rgba(0,0,0,.10);
-	  background-color: #fff!important;
-	  background: linear-gradient(90deg,#e22828 0,#ff8c2f) 0 0 no-repeat,linear-gradient(90deg,#e22828 0,#ff8c2f) 0 100% no-repeat,linear-gradient(0deg,#e22828 0,#e22828) 0 100% no-repeat,linear-gradient(0deg,#ff8c2f 0,#ff8c2f) 100% 100% no-repeat;
-	  background-size: 100% 2px,100% 2px,2px 100%,2px 100%;
-  }
-  
-  .zfsm-wauto {
-	  width: auto;
-  }
-
-  .zfsm-w5 {
-	  width: 5%;
-  }
-  
-  .zfsm-w10 {
-	  width: 10%;
-  }
-  
-  .zfsm-w15 {
-	  width: 15%;
-  }
-  
-  .zfsm-w50 {
-	  width: 50%;
-  }
-  
-  .zfsm-w70 {
-	  width: 70%;
-  }
-  
-  .zfsm-w75 {
-	  width: 75%;
-  }
-  
-</style>
-
 <script src="<?php autov('/webGui/javascript/dynamix.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-fonts.css'); ?>">
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/default-popup.css'); ?>">
-
-<script src="<?php autov('/webGui/javascript/jquery.filetree.js'); ?>"></script>
-
-<script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/font-awesome.css'); ?>">
+<?php foreach (zfsmPopupStylesheets($docroot) as $sheet): ?>
+<link type="text/css" rel="stylesheet" href="<?php autov($sheet); ?>">
+<?php endforeach; ?>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDialogs.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-dialogs.css'); ?>">
+<style>
+  .zfsm-form{max-width:760px;margin:16px auto}
+  .zfsm-pool{color:var(--orange-500, #ff8c2f);font-weight:600;min-width:0;overflow-wrap:anywhere}
+  .zfsm-footer{display:flex;justify-content:center;padding:12px 0}
+</style>
 
 </head>
 
 <body>
-	<div id="dataset-form-div" class="zfsm-dialog">
-		<form id="dataset-form" name="dataset-form" class="zfsm-form" method="POST">
-			<hr>
-				<div class="zfsm-title">Base Options</div>
-			<hr>
-			<div id="dataset-base-options">
-				<dl>
-					Dataset Name<br>
-					<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
-					<span class="zfsm-zpool" id="pool" name="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span> / <input id="name" class="zfsm-input zfsm-w75 zfsm-unraid-border" name="name" maxlength="768" pattern="[A-Za-z0-9][A-Za-z0-9_.:%/-]*" placeholder="Complete path, without the pool name." list="zpool-datasets" required>
-					<datalist id="zpool-datasets">
-					<?php
-						generatePoolDatasetOptions($zpool_datasets);
-					?>
-					</datalist>
-				</dl>
-				<dl>
-					Mount
-					<select id="mount" name="mount" class="zfsm-input">
-						<option value="yes" selected>Yes</option>
-						<option value="no">No</option>
-					</select>
-					<input id="mountpoint" name="mountpoint" class="zfsm-input zfsm-w0 zfsm-unraid-border" placeholder="Empty for default, otherwise complete mountpoint path. ">
-					Access Time
-					<select id="atime" name="atime" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="off">Off</option>
-						<option value="on">On</option>
-					</select>
-				</dl>
-				<dl>
-					Case Sensitivity
-					<select id="casesensitivity" name="casesensitivity" class="zfsm-input">
-						<option value="sensitive" selected>Sensitive (Default)</option>
-						<option value="insensitive">Insensitive</option>
-						<option value="mixed">Mixed</option>
-					</select>
-					Compression
-					<select id="compression" name="compression" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="off">Off</option>
-						<option value="lz4">lz4</option>
-						<option value="gzip">gzip</option>
-						<option value="zstd">zstd</option>
-					</select>
-					Quota
-					<input id="quota" name="quota" class="zfsm-input zfsm-w5" maxlength="5">
-					<select id="quotaunit" name="quotaunit" class="zfsm-input">
-						<option value="M" selected>MiB</option>
-						<option value="G">GiB</option>
-						<option value="T">TiB</option>
-					</select>
-				</dl>
+	<form id="dataset-form" name="dataset-form" class="zfsm-form" method="POST">
+		<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
+		<details class="zfsm-section" open>
+			<summary>Basic</summary>
+			<div>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Where the dataset goes in the pool, for example appdata/plex.">Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="No leaves the dataset unmounted.">Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Leave empty to mount it under its parent, or enter a full path.">Mount point:</dt><dd><input type="text" id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Record when files are read. Off saves disk writes.">Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="How file names are compared. Can only be set now.">Case sensitivity:</dt><dd><select id="casesensitivity" name="casesensitivity"><option value="inherit" selected>Inherit</option><option value="sensitive">Sensitive</option><option value="insensitive">Insensitive</option><option value="mixed">Mixed</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Compress data as it is written. lz4 is fast; zstd saves more space.">Compression:</dt><dd><select id="compression" name="compression"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Most space this dataset and its children can use. Empty means no limit.">Quota:</dt><dd><input type="text" id="quota" name="quota" size="8" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" placeholder="None"><select id="quotaunit" name="quotaunit"><option value="M" selected>MiB</option><option value="G">GiB</option><option value="T">TiB</option></select></dd></dl>
 			</div>
-			<hr>
-				<div class="zfsm-title">Advanced Options</div>
-			<hr>
-			<div id="dataset-advanced-options">
-				<dl>
-					Encryption
-					<select id="encryption" name="encryption" class="zfsm-input">
-						<option value="yes">Yes</option>
-						<option value="no" selected>No</option>
-					</select>
-					<input id="passphrase" name="passphrase" autocomplete="off" type="password" class="zfsm-input zfsm-w50 zfsm-unraid-border" placeholder="Encryption PassPhrase" disabled>
-				</dl>
-				<dl>
-					Extended Attributes:
-					<select id="xattr" name="xattr" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="sa">sa</option>
-						<option value="on">on</option>
-						<option value="off">off</option>
-					</select>
-					Record Size:
-					<select id="recordsize" name="recordsize" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="512">512</option>
-						<option value="4K">4KB</option>
-						<option value="8K">8KB</option>
-						<option value="16K">16KB</option>
-						<option value="64K">64KB</option>
-						<option value="128K">128KB</option>
-						<option value="1M">1MB</option>
-					</select>
-				</dl>
-				<dl>
-					Primary Cache:
-					<select id="primarycache" name="primarycache" class="zfsm-input">
-						<option value="inherit" selected>Inherit</option>
-						<option value="all">All</option>
-						<option value="metadata">Metadata</option>
-						<option value="none">None</option>
-					</select>
-					Read Only:
-					<select id="readonly" name="readonly" class="zfsm-input">
-						<option value="off" selected>Off (Default)</option>
-						<option value="on">On</option>
-					</select>
-					Sync:
-					<select id="sync" name="sync" class="zfsm-input">
-						<option value="standard" selected>Standard (Default)</option>
-						<option value="always">Always</option>
-						<option value="disabled">Disabled</option>
-					</select>
-				</dl>
+		</details>
+		<details class="zfsm-section">
+			<summary>Advanced</summary>
+			<div>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Lock the dataset with a passphrase. Can only be set now.">Encryption:</dt><dd><select id="encryption" name="encryption"><option value="yes">Yes</option><option value="no" selected>No</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="At least 8 characters. You need it to unlock the dataset after a reboot.">Passphrase:</dt><dd><input id="passphrase" class="zfsm-wide" name="passphrase" autocomplete="off" type="password" minlength="8" disabled></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="How file attributes are stored. sa is faster on Linux.">Extended attributes:</dt><dd><select id="xattr" name="xattr"><option value="inherit" selected>Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Largest block size. Bigger suits media; smaller suits databases.">Record size:</dt><dd><select id="recordsize" name="recordsize"><option value="inherit" selected>Inherit</option><option value="512">512</option><option value="4K">4KB</option><option value="8K">8KB</option><option value="16K">16KB</option><option value="64K">64KB</option><option value="128K">128KB</option><option value="1M">1MB</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="What ZFS keeps in RAM: everything, only metadata, or nothing.">Primary cache:</dt><dd><select id="primarycache" name="primarycache"><option value="inherit" selected>Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Block all changes to the dataset's files.">Read only:</dt><dd><select id="readonly" name="readonly"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Disabled is faster but can lose the last writes in a power cut.">Sync:</dt><dd><select id="sync" name="sync"><option value="inherit" selected>Inherit</option><option value="standard">Standard</option><option value="always">Always</option><option value="disabled">Disabled</option></select></dd></dl>
 			</div>
-			<hr>
-			<div id="dataset-footer" class="zfsm-footer">
-				<button type="submit">Create</button>
-			</div>
-		</form>
-	</div>
+		</details>
+		<datalist id="zpool-datasets">
+		<?php generatePoolDatasetOptions($zpool_datasets); ?>
+		</datalist>
+		<div class="zfsm-footer"><button type="submit">Create</button></div>
+	</form>
 </body>
 </html>
 
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
-  $.ajaxSetup({
-	headers: { 'X-CSRF-Token': zfsm_csrf_token }
-  });
   installZFSMActionRefresh(function() {
 	if (window.parent && typeof window.parent.requestRefresh === 'function') window.parent.requestRefresh();
   });
@@ -287,23 +115,24 @@ input[type=email]{margin-top:8px;float:left}
   });
 
   $("select[name='encryption']").change(function() {
-	$("#passphrase").attr('disabled', $(this).val() == 'no');
+	$("#passphrase").prop('disabled', $(this).val() == 'no').prop('required', $(this).val() == 'yes');
   });
    
   function createDataset() {
 	let formData = getFormData("#dataset-form");
 		
 	$.post('<?=$urlzmadmin?>',{cmd: 'createdataset', 'data': formData, 'csrf_token': zfsm_csrf_token}, function(data){
-		top.Swal2.fire({
-			title: 'Create Result',
-			icon: 'info',
-			html: formatAnswer(parseJSONResponse(data))
-		});
-		if (!parseJSONResponse(data).failed || Object.keys(parseJSONResponse(data).failed).length === 0) {
-			// Refresh before closing the iframe; its global AJAX event may not run after removal.
-			if (typeof top.requestRefresh === 'function') top.requestRefresh();
-			top.Shadowbox.close();
+		const answer = parseJSONResponse(data);
+		const result = {title: 'Create Result', icon: 'info', html: formatAnswer(answer)};
+		// Refresh on every answer: "Created, but ..." is a failure whose dataset exists. The iframe's AJAX event may not run after removal.
+		if (typeof top.requestRefresh === 'function') top.requestRefresh();
+		// The Main page's dialogs open under this Shadowbox, so a failure shows here and the form stays open.
+		if (answer.failed && Object.keys(answer.failed).length > 0) {
+			Swal2.fire(Object.assign(result, {icon: 'error'}));
+			return;
 		}
+		top.Swal2.fire(result);
+		top.Shadowbox.close();
 	});
   }
 

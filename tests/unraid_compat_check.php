@@ -1,0 +1,253 @@
+<?php
+// One request through real Unraid code. Warnings from this plugin's files fail the check; Unraid's own do not.
+error_reporting(E_ALL); // PHP 7.4 hides notices by default
+$check = $argv[1];
+$docroot = '/usr/local/emhttp';
+$plugin_dir = $docroot.'/plugins/zfs.master/';
+$token = 'compat-test-token';
+
+$GLOBALS['zfsm_problems'] = array();
+$GLOBALS['zfsm_page_files'] = array(); // the temp copies run_page renders: their warnings are the plugin's
+set_error_handler(function($severity, $message, $file, $line) use ($plugin_dir) {
+	if (!(error_reporting() & $severity)) return true;
+	if (strpos($file, $plugin_dir) === 0 || in_array($file, $GLOBALS['zfsm_page_files'], true)) $GLOBALS['zfsm_problems'][] = "$message in $file:$line";
+	return true;
+});
+register_shutdown_function(function() {
+	$fatal = error_get_last();
+	if ($fatal && in_array($fatal['type'], array(E_ERROR, E_PARSE, E_COMPILE_ERROR), true)) {
+		fwrite(STDERR, 'fatal: '.$fatal['message'].' in '.$fatal['file'].':'.$fatal['line']."\n");
+		exit(1);
+	}
+	if (empty($GLOBALS['zfsm_check_finished'])) {
+		fwrite(STDERR, "check ended before its assertions ran\n");
+		exit(1);
+	}
+});
+
+$var = array('csrf_token' => $token);
+$display = array('text' => 0, 'critical' => 90, 'warning' => 70, 'theme' => 'black', 'date' => '%c', 'time' => '%R');
+$_SERVER['DOCUMENT_ROOT'] = $docroot;
+$_SERVER['SCRIPT_NAME'] = '/plugins/zfs.master/backend/ZFSMAdmin.php';
+$_SERVER['HTTP_HOST'] = 'tower';
+
+function run_page($path, $strip_header) {
+	global $docroot, $var, $display;
+	$source = file_get_contents($path);
+	if ($strip_header) $source = substr($source, strpos($source, "\n---\n") + 5);
+	if (!function_exists('_')) { function _($text) { return $text; } }
+	$file = tempnam(sys_get_temp_dir(), 'zfsm-page');
+	$GLOBALS['zfsm_page_files'][] = $file;
+	file_put_contents($file, $source);
+	ob_start();
+	try {
+		include $file;
+	} finally {
+		unlink($file);
+	}
+	return ob_get_clean();
+}
+
+// Every stylesheet a dialog links must exist in this Unraid, and one of them must carry the theme.
+function popup_styles($html, $docroot) {
+	preg_match_all('#href="(/webGui/styles/[^"?]+)#', $html, $matches);
+	foreach ($matches[1] as $sheet) {
+		if (!is_file($docroot.$sheet)) { fwrite(STDERR, "dialog links a stylesheet this Unraid lacks: $sheet\n"); exit(1); }
+	}
+	if (!preg_grep('#/(default-popup|themes/[a-z]+)\.css$#', $matches[1])) { fwrite(STDERR, "dialog has no theme stylesheet: ".implode(' ', $matches[1])."\n"); exit(1); }
+}
+
+switch ($check) {
+	case 'body_token':
+	case 'no_token':
+	case 'wrong_token':
+		$GLOBALS['zfsm_check_finished'] = true; // asserts in its own shutdown function: csrf_terminate exits
+		$_SERVER['REQUEST_METHOD'] = 'POST';
+		$_POST = array('cmd' => 'inventory');
+		if ($check === 'body_token') $_POST['csrf_token'] = $token;
+		if ($check === 'wrong_token') $_POST['csrf_token'] = 'not-the-token';
+		ob_start();
+		register_shutdown_function(function() use ($check) {
+			$output = ob_get_clean();
+			$answer = json_decode((string)$output, true);
+			$served = is_array($answer) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
+			if ($check === 'body_token' ? !$served : $served) {
+				fwrite(STDERR, $check.' got: '.substr((string)$output, 0, 300)."\n");
+				exit(1);
+			}
+			if ($GLOBALS['zfsm_problems']) {
+				fwrite(STDERR, implode("\n", $GLOBALS['zfsm_problems'])."\n");
+				exit(1);
+			}
+		});
+		require $docroot.'/webGui/include/local_prepend.php';
+		require $docroot.'/plugins/zfs.master/backend/ZFSMAdmin.php';
+		break;
+
+	case 'main_page':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		// A saved setting that closes the script tag must stay inside the page's JSON.
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		file_put_contents($cfg, str_replace('snap_prefix = ""', 'snap_prefix = "</script><i id=zfsm-injected>"', $original));
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+		// Unraid 7 strips tags when it reads settings; 6.x hands them over as saved.
+		$tags_survive = strpos(parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? '', '<') !== false;
+		file_put_contents($cfg, $original);
+		if (strpos($html, 'zfs_master_body') === false) { fwrite(STDERR, "main page did not render\n"); exit(1); }
+		if ($tags_survive && strpos($html, 'zfsm-injected') === false) { fwrite(STDERR, "the hostile setting never reached the page\n"); exit(1); }
+		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
+		break;
+
+	case 'saved_settings':
+		// A settings file as older versions left it: CRLF list, Lua exclusion, the old misspelt key.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
+		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d',
+			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
+		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
+		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
+		break;
+
+	case 'menu_order':
+		// Real find_pages: the ZFS guard works and the tab sits below the boot device.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/webGui/include/PageBuilder.php';
+		$site = array();
+		// Other pages' conditions read live array state this harness doesn't have.
+		build_pages($docroot.'/plugins/zfs.master/*.page');
+		build_pages($docroot.'/plugins/dynamix/BootDevice.page');
+		$names = array_column(array_values(find_pages('Main')), 'name');
+		$position = array_search('ZFSMaster', $names, true);
+		if (is_file('/usr/sbin/zpool')) {
+			$boot = array_search('BootDevice', $names, true);
+			if ($position === false) { fwrite(STDERR, "tab missing with ZFS present\n"); exit(1); }
+			if ($boot !== false && $position < $boot) { fwrite(STDERR, 'tab above the boot device: '.implode(',', $names)."\n"); exit(1); }
+		} elseif ($position !== false) {
+			fwrite(STDERR, "tab shown without ZFS\n");
+			exit(1);
+		}
+		$GLOBALS['zfsm_problems'] = array();
+		break;
+
+	case 'time_format':
+		// Dates must come out exactly as this Unraid's own my_time() writes them, in the user's display format.
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$at = 1793700000;
+		if (zfsmTime($at) !== my_time($at)) { fwrite(STDERR, "zfsmTime differs from my_time: ".zfsmTime($at).' vs '.my_time($at)."\n"); exit(1); }
+		if (function_exists('my_date')) {
+			$display['date'] = 'd-m-Y';
+			$display['time'] = 'H:i';
+			if (zfsmTime($at) !== date('d-m-Y, H:i', $at)) { fwrite(STDERR, "display format ignored: ".zfsmTime($at)."\n"); exit(1); }
+		}
+		break;
+
+	case 'settings_roundtrip':
+		// What saveConfig writes reads back unchanged through this Unraid's parse_plugin_cfg; anything that wouldn't is refused.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		$bad = array();
+		foreach (array('plain', 'say "hi"', 'C:\\temp\\', 'x&y', 'cost $5', 'a;b', 'tank/My Share', '(?!x)') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$read = saveConfig($config) ? (parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? null) : 'not saved';
+			if ($read !== $value) $bad[] = 'snap_prefix '.json_encode($value).' read back as '.json_encode($read);
+		}
+		foreach (array('pre${HOME}post', 'x<b', 'a&quot;b', 'x&#92;') as $value) {
+			$config = parse_plugin_cfg('zfs.master', true);
+			$config['general']['snap_prefix'] = $value;
+			$before = file_get_contents($cfg);
+			if (saveConfig($config) || file_get_contents($cfg) !== $before) $bad[] = 'saved '.json_encode($value);
+		}
+		$listing = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['directory_listing']; };
+		file_put_contents($cfg, "[general]\r\ndirectory_listing = \"cache/appdata\r\ncache/R&D\"\r\n");   // a list older versions saved with CRLF
+		$ret = addToDirectoryListing('tank/data');
+		if ($listing() !== array('cache/appdata', 'cache/R&D', 'tank/data')) $bad[] = 'listing after add: '.json_encode($listing()).' '.json_encode($ret);
+		$ret = removeFromDirectoryListing('cache/appdata');
+		if ($listing() !== array('cache/R&D', 'tank/data')) $bad[] = 'listing after remove: '.json_encode($listing()).' '.json_encode($ret);
+		// An entry with a quote, as the Settings page can save one: the add is refused and the file is left as it was.
+		file_put_contents($cfg, $quoted = "[general]\ndirectory_listing = \"cache/appdata\ncache/a\\\"b\"\n");
+		$ret = addToDirectoryListing('tank/data');
+		if (!is_string($ret['failed']['tank/data'] ?? null) || file_get_contents($cfg) !== $quoted) $bad[] = 'a quoted entry: '.json_encode($ret).' '.json_encode(file_get_contents($cfg));
+		// A change waits while another holds the settings lock, then lands: two overlapping changes both stay.
+		file_put_contents($cfg, "[general]\ndirectory_listing = \"cache/appdata\"\n");
+		foreach (array('add' => array('addToDirectoryListing', 'tank/data', array('cache/appdata', 'tank/data')), 'remove' => array('removeFromDirectoryListing', 'cache/appdata', array('tank/data'))) as $name => list($call, $dataset, $after)) {
+			$held = fopen('/var/run/zfs.master.lock', 'c');
+			flock($held, LOCK_EX);
+			$before = $listing();
+			$child = proc_open(array(PHP_BINARY, '-n', '-r', '$docroot = '.var_export($docroot, true).'; $_SERVER["REQUEST_METHOD"] = "GET"; require_once $docroot."/webGui/include/Helpers.php"; require_once $docroot."/plugins/zfs.master/backend/ZFSMOperations.php"; '.$call.'('.var_export($dataset, true).');'), array(), $pipes);
+			usleep(400000);
+			if ($listing() !== $before) $bad[] = "$name ran while the settings lock was held: ".json_encode($listing());
+			flock($held, LOCK_UN);
+			fclose($held);
+			proc_close($child);
+			if ($listing() !== $after) $bad[] = "$name after the lock: ".json_encode($listing());
+		}
+		file_put_contents($cfg, $original);
+		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
+		break;
+
+	case 'settings_page':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if (strpos($html, 'name="exclusion"') === false) { fwrite(STDERR, "settings page did not render\n"); exit(1); }
+		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
+		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
+		$rendered = Markdown($html);
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern') as $section => $field) {
+			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
+		}
+		break;
+
+	case 'create_popup':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMCreateDataset.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'zfsm_csrf_token') === false) { fwrite(STDERR, "create popup did not render\n"); exit(1); }
+		foreach (array('name', 'mount', 'mountpoint', 'quota', 'encryption', 'passphrase', 'sync') as $field) {
+			if (!preg_match('#<dl><dt class="zfsm-tip" tabindex="0" data-tip="[^"]+">[^<]+</dt><dd>[^\n]*name="'.$field.'"#', $html)) { fwrite(STDERR, "create popup lost the $field row or its tooltip\n"); exit(1); }
+		}
+		popup_styles($html, $docroot);
+		break;
+
+	case 'snapshot_popup':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		if (strpos($html, '1 snapshot · ') === false) { fwrite(STDERR, "snapshot popup header did not count one snapshot\n"); exit(1); }
+		popup_styles($html, $docroot);
+		break;
+
+	case 'snapshot_popup_failed':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		putenv('ZFSM_TEST_DATASET_SNAPSHOTS_FAIL=1');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'simulated dataset snapshot failure') === false) { fwrite(STDERR, "snapshot popup did not show the listing error\n"); exit(1); }
+		if (strpos($html, 'Snapshots could not be listed') === false || strpos($html, '0 snapshots') !== false) { fwrite(STDERR, "snapshot popup header claims a count after a failed listing\n"); exit(1); }
+		break;
+
+	default:
+		exit(2);
+}
+
+$GLOBALS['zfsm_check_finished'] = true;
+if ($GLOBALS['zfsm_problems']) {
+	fwrite(STDERR, implode("\n", $GLOBALS['zfsm_problems'])."\n");
+	exit(1);
+}

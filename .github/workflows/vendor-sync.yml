@@ -1,0 +1,65 @@
+name: Bundled libraries
+
+# Renovate bumps a version in vendor.json but not the files it names; this copies them into the PR.
+on:
+  pull_request:
+    branches: [beta]
+    paths: ['vendor.json']
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    # Same-repo Renovate branches only; a fork PR's token can't push, and nothing else should be rewritten.
+    if: startsWith(github.head_ref, 'renovate/') && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push the copied files
+      actions: write    # re-run the required checks on them
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Copy the bumped libraries in
+        id: sync
+        run: |
+          set -euo pipefail
+          summary=$(python3 .github/scripts/vendor.py sync)
+          if [ -z "$(git status --porcelain -- zfs.master/assets)" ]; then
+            echo "Bundled files already match vendor.json."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            # A re-run after a failed dispatch finds its own commit: CI still has to start.
+            [ "$(git log -1 --format=%ae)" != '41898282+github-actions[bot]@users.noreply.github.com' ] || echo "redispatch=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$summary"
+          {
+            echo "changed=true"
+            echo "summary<<EOF"
+            echo "$summary"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # CI on a GITHUB_TOKEN push waits for an approval nobody gives, so it is dispatched; its gate posts the PR's status.
+      - name: Commit the files
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          SUMMARY: ${{ steps.sync.outputs.summary }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- zfs.master/assets
+          git commit -q -m "chore(deps): copy the updated bundled libraries in" -m "$SUMMARY"
+          git push origin "HEAD:${HEAD_REF}"
+
+      - name: Run CI on them
+        if: steps.sync.outputs.changed == 'true' || steps.sync.outputs.redispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: gh workflow run ci.yml --ref "$HEAD_REF" -f base="$BASE_REF"

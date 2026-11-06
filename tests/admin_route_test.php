@@ -21,6 +21,18 @@ if (!isset($routes[$route])) exit(2);
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 $_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $routes[$route];
+if ($route === 'createdataset') {
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/new');
+	$mount = sys_get_temp_dir().'/zfsm-route-new';
+	if (!is_dir($mount)) mkdir($mount);
+	putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
+}
+
+// These need a token from the review the dialogs show first.
+require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+if ($route === 'rollbacksnapshot') $_POST['token'] = zfsmRollbackPreview($_POST['snapshot'])['token'];
+if ($route === 'destroydataset') $_POST['token'] = zfsmDestroyPreview($_POST['zdataset'], $_POST['force'])['token'];
+if ($route === 'destroysnapshot') $_POST['token'] = zfsmDestroyPreview($_POST['snapshot'], $_POST['recursive'])['token'];
 
 ob_start();
 require $docroot.'/plugins/zfs.master/backend/ZFSMAdmin.php';

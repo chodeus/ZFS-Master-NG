@@ -1,48 +1,47 @@
 <?php
 
-function loadConfig($config) {	
-	$config = is_array($config) ? $config : [];
-	$zfsm_ret['refresh_interval'] = isset($config['general']['refresh_interval']) ? intval($config['general']['refresh_interval']) : 30;
-	$zfsm_ret['lazy_load'] = isset($config['general']['lazy_load']) ? intval($config['general']['lazy_load']) : "0";
-	$zfsm_ret['znapzend_data'] = isset($config['general']['znapzend_data']) ? intval($config['general']['znapzend_data']) : "0";
+// A general setting as an integer, or $default when it isn't there.
+function zfsmSettingInt($general, $key, $default) {
+	return isset($general[$key]) ? intval($general[$key]) : $default;
+}
 
-	$zfsm_ret['destructive_mode'] = isset($config['general']['destructive_mode']) ? intval($config['general']['destructive_mode']) : 0;
+// A general setting as saved, or $default when it isn't there or equals (==) one of the $blank values.
+function zfsmSettingText($general, $key, $default, $blank = array('')) {
+	if (!isset($general[$key])) return $default;
+	foreach ($blank as $value) if ($general[$key] == $value) return $default;
+	return $general[$key];
+}
 
-	if (isset($config['general']['exclussion']) && $config['general']['exclussion'] != '' && !isset($config['general']['exclusion'])):
-		$config['general']['exclusion'] = $config['general']['exclussion'];
-	endif;
-
-	if (!isset($config['general']['exclusion']) || $config['general']['exclusion'] == '' || $config['general']['exclusion'] == ' '):
-		$zfsm_ret['dataset_exclusion'] = '';
-	else:
-		$zfsm_ret['dataset_exclusion'] = $config['general']['exclusion'];
-	endif;
-		
-	$zfsm_ret['snap_max_days_alert'] = isset($config['general']['snap_max_days_alert']) ? intval($config['general']['snap_max_days_alert']) : 30;
-	$zfsm_ret['snap_prefix'] = isset($config['general']['snap_prefix']) ? $config['general']['snap_prefix'] : '';
-
-	if (!isset($config['general']['snap_pattern']) || $config['general']['snap_pattern'] == ''):
-		$zfsm_ret['snap_pattern'] = 'Y-m-d-His';
-	else:
-		$zfsm_ret['snap_pattern'] = $config['general']['snap_pattern'];
-	endif;
-
-	if (!isset($config['general']['directory_listing']) || $config['general']['directory_listing'] == ''):
-		$zfsm_ret['directory_listing'] = array();
-	else:
-		$zfsm_ret['directory_listing'] = preg_split('/\r\n|\r|\n/', $config['general']['directory_listing']);
-	endif;
-	
-	return $zfsm_ret;
+function loadConfig($config) {
+	$general = is_array($config) && is_array($config['general'] ?? null) ? $config['general'] : array();
+	// The setting was first saved under a misspelt name; that one still counts.
+	if (isset($general['exclussion']) && $general['exclussion'] != '' && !isset($general['exclusion'])) $general['exclusion'] = $general['exclussion'];
+	return array(
+		'refresh_interval' => zfsmSettingInt($general, 'refresh_interval', 30),
+		'lazy_load' => zfsmSettingInt($general, 'lazy_load', 1),
+		'znapzend_data' => zfsmSettingInt($general, 'znapzend_data', "0"),
+		'destructive_mode' => zfsmSettingInt($general, 'destructive_mode', 0),
+		'dataset_exclusion' => zfsmSettingText($general, 'exclusion', '', array('', ' ')),
+		'snap_max_days_alert' => zfsmSettingInt($general, 'snap_max_days_alert', 30),
+		'snap_prefix' => $general['snap_prefix'] ?? '',
+		'snap_pattern' => zfsmSettingText($general, 'snap_pattern', 'Y-m-d-His'),
+		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
+	);
 }
 
 function zfsnotify( $subject, $description, $message, $type="normal") {	
 	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
-	runProcess($notify, array('-e', 'ZFS Master', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
+	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
+}
+
+// Plain text: notification agents such as Discord and email show HTML tags as typed.
+function zfsmNotifyAnswer($title, $answer, $success_text, $failed_text) {
+	if ($answer['succeeded']) zfsnotify($title, $success_text.': '.implode(', ', array_keys($answer['succeeded'])), '', 'normal');
+	if ($answer['failed']) zfsnotify($title, $failed_text.': '.implodeWithKeys('; ', $answer['failed']), '', 'warning');
 }
 
 function fromBytesToString($bytes) {
-	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB'); 
+	$units = array('B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'); 
 
 	$bytes = is_numeric($bytes) ? max((float)$bytes, 0) : 0;
    	$pow = floor(($bytes ? log($bytes) : 0) / log(1024)); 
@@ -104,12 +103,44 @@ function runProcess($command, $args = array(), $stdin = null) {
 	return array('code' => $code, 'output' => trim((string)$output));
 }
 
+// Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.
+function zfsmPopupStylesheets($docroot) {
+	if (is_file($docroot.'/webGui/styles/default-popup.css')) return array('/webGui/styles/default-popup.css');
+	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
+	$theme = preg_match('/^[a-z]+$/', (string)($display['theme'] ?? '')) === 1 ? $display['theme'] : 'black';
+	$sheets = array('/webGui/styles/default-color-palette.css', '/webGui/styles/default-base.css', '/webGui/styles/themes/'.$theme.'.css');
+	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
+}
+
+// File and process names are anyone's to choose, and these strings reach notifications and the log.
+function zfsmSafeText($text) {
+	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
+}
+
+// Command output as one line: dialogs run lines together and syslog prints a newline as ?.
+// CR and LF by name: without /u, \R also matches the 0x85 byte inside UTF-8 such as Å.
+function zfsmOneLine($text) {
+	return preg_replace(array('/:\s*(?:\r\n|\r|\n)\s*/', '/\s*(?:\r\n|\r|\n)\s*/'), array(': ', '; '), trim((string)$text));
+}
+
+// runProcess output is always a string, so a command killed or failing silently needs this fallback.
+function zfsmCommandError($result, $fallback) {
+	$text = zfsmOneLine($result['output'] ?? '');
+	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
+}
+
+function zfsmLog($message, $priority = LOG_ERR) {
+	openlog('zfs.master', LOG_PID, LOG_USER);
+	syslog($priority, zfsmSafeText($message));
+	closelog();
+}
+
 function commandAnswer($subject, $result) {
 	$answer = array('succeeded' => array(), 'failed' => array());
 	if (($result['code'] ?? 1) === 0) {
 		$answer['succeeded'][$subject] = 0;
 	} else {
-		$message = trim((string)($result['output'] ?? ''));
+		$message = zfsmOneLine($result['output'] ?? '');
 		$answer['failed'][$subject] = $message !== '' ? $message : (int)($result['code'] ?? 1);
 	}
 	return $answer;
@@ -139,13 +170,10 @@ function cleanZFSCreateDatasetParams($params) {
 		unset($retParams['encryption']);
 		unset($retParams['passphrase']);
 	else:
-		if (!isset($retParams['passphrase']) || $retParams['passphrase'] == ''):
-			unset($retParams['encryption']);
-		else:
-			$retParams['encryption'] = 'on';
-			$retParams['keylocation'] = 'prompt';
-			$retParams['keyformat'] = 'passphrase';
-		endif;
+		// createDataset refuses a short or missing passphrase; dropping encryption here would create it unencrypted.
+		$retParams['encryption'] = 'on';
+		$retParams['keylocation'] = 'prompt';
+		$retParams['keyformat'] = 'passphrase';
 	endif;
 		
 	unset($retParams['mount']);
