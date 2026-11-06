@@ -6,6 +6,8 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+require __DIR__.'/fixtures/fake_bin_guard.php';
+
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 
 function assertSameValue($expected, $actual, $message) {
@@ -127,6 +129,14 @@ assertSameValue(array(true, true, false), array(zfsmDatasetExcluded('cache/docke
 assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank', true, 'tank/data')['snapshots'], 'name'), 'An excluded child\'s snapshots are not listed');
 assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', false, 'tank/data')['snapshots'], 'name'), 'A dataset opened directly still lists its own');
 assertSameValue(array(true, false), array(zfsmHasChildDatasets('tank', 'tank/data'), zfsmHasChildDatasets('tank', 'tank/(data|vol)')), 'Children the pattern hides are not offered');
+
+// A command that prints a line per file runs to its end, keeping only the first of its output and counting its lines.
+$kept = runProcess('sh', array('-c', 'seq 300000; exit 3'), null, 0, 100);
+assertSameValue(array(3, true, 300000), array($kept['code'], strlen($kept['output']) <= 100, $kept['lines']), 'Kept output must be cut and counted, with the exit code');
+$kept = runProcess('printf', array('a\nb'), null, 0, 100);
+assertSameValue(array("a\nb", 2), array($kept['output'], $kept['lines']), 'A last line without a newline still counts');
+$kept = runProcess('true', array(), null, 0, 100);
+assertSameValue(array('', 0), array($kept['output'], $kept['lines']), 'No output is no lines');
 
 $tree = zfsmLoadPoolTree('tank', true, '', 1);
 assertSameValue('tank', $tree['name'], 'Pool root dataset was not returned');

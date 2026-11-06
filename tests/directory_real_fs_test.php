@@ -6,11 +6,25 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
-// convertDirectory runs zfs create and destroy, so never let this reach the host's real zfs.
-$bin_dir = getenv('ZFSM_TEST_BIN_DIR');
-if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
-	fwrite(STDERR, "FAILED: ZFSM_TEST_BIN_DIR must hold the fake zfs\n");
-	exit(1);
+require __DIR__.'/fixtures/fake_bin_guard.php';
+
+// Everything this run makes lives in its own folder. On any exit, a failed check too, its tmpfs mounts come off and the folder goes.
+$work = sys_get_temp_dir().'/zfsm-real-fs-'.getmypid().'-'.bin2hex(random_bytes(4));
+mkdir($work, 0700);
+$GLOBALS['zfsm_mounted'] = array();
+register_shutdown_function(function() use ($work) {
+	foreach (array_reverse($GLOBALS['zfsm_mounted']) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null');
+	exec('rm -rf --one-file-system '.escapeshellarg($work));
+});
+$root = $work.'/test-mount';
+$mount = $work.'/new-dataset';
+
+// The progress feed, each message with the number of entries the new dataset held when it was sent.
+$GLOBALS['zfsm_feed'] = array();
+function publish($channel, $message) {
+	global $mount;
+	$held = is_dir($mount) ? count(scandir($mount)) - 2 : -1;
+	$GLOBALS['zfsm_feed'][] = array(json_decode($message, true)['op'], $held);
 }
 
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
@@ -29,30 +43,24 @@ function fill($dir) {
 	chmod($dir.'/sub dir/file', 0640);
 }
 
-// Every tmpfs this run mounts is unmounted on exit too, so a failed check never leaves one behind.
 function mount_tmpfs($path, $options = '') {
-	static $mounted = null;
-	if ($mounted === null) {
-		$mounted = array();
-		register_shutdown_function(function() use (&$mounted) { foreach (array_reverse($mounted) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null'); });
-	}
 	exec('mount -t tmpfs '.$options.' tmpfs '.escapeshellarg($path), $out, $status);
-	if ($status === 0) $mounted[] = $path;
+	if ($status === 0) $GLOBALS['zfsm_mounted'][] = $path;
 	return $status;
 }
 
-function shim($body) {
-	$bin = '/tmp/zfsm-rsync-shim';
+function shim($body, $name = 'rsync') {
+	global $work;
+	$bin = $work.'/shim';
 	if (!is_dir($bin)) mkdir($bin);
-	file_put_contents($bin.'/rsync', "#!/bin/sh\n".$body."\n");
-	chmod($bin.'/rsync', 0755);
+	file_put_contents($bin.'/'.$name, "#!/bin/sh\n".$body."\n");
+	chmod($bin.'/'.$name, 0755);
 	putenv('PATH='.$bin.':'.getenv('PATH'));
 }
 
-$root = '/tmp/zfsm-test-mount';
-if (!is_dir($root)) mkdir($root, 0777, true);
+mkdir($root);
 $target = $root.'/My Share';
-$mount = '/tmp/zfsm-new-dataset';
+putenv('ZFSM_TEST_FILESYSTEM_MOUNT='.$root);
 putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
 putenv('ZFSM_TEST_MISSING_DATASET=tank/My Share');
 
@@ -77,7 +85,7 @@ exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
 // A full filesystem must not cost the settings already saved.
-$small = sys_get_temp_dir().'/zfsm-small-fs-'.getmypid();
+$small = $work.'/small-fs';
 mkdir($small);
 $mounted = mount_tmpfs($small, '-o size=16k');
 check($mounted === 0, 'test needs a tmpfs mount');
@@ -108,13 +116,22 @@ exec('umount '.escapeshellarg($root.'/mounted'));
 rmdir($root.'/mounted');
 
 // A symlink to outside must not let delete reach the outside tree.
-if (!is_dir('/tmp/zfsm-outside')) mkdir('/tmp/zfsm-outside');
-file_put_contents('/tmp/zfsm-outside/data', 'keep');
-symlink('/tmp/zfsm-outside', $root.'/escape');
+$outside = $work.'/outside';
+mkdir($outside);
+file_put_contents($outside.'/data', 'keep');
+symlink($outside, $root.'/escape');
 $result = deleteDirectory($root.'/escape', 1);
 check(!empty($result['failed']), 'symlink to outside must be refused');
-check(is_file('/tmp/zfsm-outside/data'), 'delete followed a symlink out of the dataset');
+check(is_file($outside.'/data'), 'delete followed a symlink out of the dataset');
 unlink($root.'/escape');
+
+// rm prints a line for each file it can't remove: 150 MB of them must not exhaust PHP's 128 MB, nor reach the answer.
+mkdir($root.'/stuck');
+shim('yes "rm: cannot remove: Operation not permitted" 2>/dev/null | head -c 150000000; exit 1', 'rm');
+$result = deleteDirectory($root.'/stuck', 1);
+unlink($work.'/shim/rm');
+check(strlen((string)reset($result['failed'])) < 2 * ZFSM_KEEP_OUTPUT, 'a failed rm must give its first errors only: '.strlen((string)reset($result['failed'])).' bytes');
+rmdir($root.'/stuck');
 
 // Clean conversion: name with a space, identical tree, source gone.
 reset_tree($target, $mount, $root);
@@ -155,6 +172,77 @@ check(is_file($target.'/inner/data') && is_file($target.'/sub dir/file'), 'refus
 check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the source');
 exec('umount '.escapeshellarg($target.'/inner'));
 
+// Cloning only where the pool can: OpenZFS 2.2+ with zfs_bclone_enabled=1 and the feature enabled on that pool.
+$bclone = $work.'/bclone';
+file_put_contents($bclone, "1\n");
+$GLOBALS['zfsm_bclone_param'] = $bclone;
+putenv('ZFSM_TEST_BCLONE=active');
+check(zfsmBlockCloning('tank/data'), 'an active block_cloning feature must allow cloning');
+check(!zfsmBlockCloning('other/data'), 'another pool must be asked about its own feature');
+putenv('ZFSM_TEST_BCLONE=enabled');
+check(zfsmBlockCloning('tank/data'), 'an enabled block_cloning feature must allow cloning');
+putenv('ZFSM_TEST_BCLONE=disabled');
+check(!zfsmBlockCloning('tank/data'), 'a disabled block_cloning feature must not clone');
+putenv('ZFSM_TEST_BCLONE');
+check(!zfsmBlockCloning('tank/data'), 'a pool without the feature must not clone');
+putenv('ZFSM_TEST_BCLONE=active');
+// A new encrypted dataset gets its own key, so ZFS would copy every file in full.
+putenv('ZFSM_TEST_ENCRYPTION=aes-256-gcm');
+check(!zfsmBlockCloning('tank/data'), 'an encrypted dataset must not clone');
+putenv('ZFSM_TEST_ENCRYPTION');
+putenv('ZFSM_TEST_GET_FAIL=tank/data');
+check(!zfsmBlockCloning('tank/data'), 'an unreadable encryption setting must not clone');
+putenv('ZFSM_TEST_GET_FAIL');
+file_put_contents($bclone, "0\n");
+check(!zfsmBlockCloning('tank/data'), 'zfs_bclone_enabled=0 must not clone');
+unlink($bclone);
+check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must not clone');
+
+// With cloning off, cp never runs and rsync copies as before.
+$real_rsync = trim((string)shell_exec('command -v rsync'));
+$real_cp = trim((string)shell_exec('command -v cp'));
+$cp_log = $work.'/cp-log';
+@unlink($cp_log);
+reset_tree($target, $mount, $root);
+shim('echo ran >> '.escapeshellarg($cp_log).'; exit 1', 'cp');
+$GLOBALS['zfsm_feed'] = array();
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']) && !file_exists($cp_log), 'cp ran without block cloning: '.json_encode($result));
+check(!in_array('clone_directory', array_column($GLOBALS['zfsm_feed'], 0), true), 'the row said cloning without block cloning: '.json_encode($GLOBALS['zfsm_feed']));
+
+// With cloning on, the clone alone must give a copy that verifies: this rsync copies nothing, it only checks.
+file_put_contents($bclone, "1\n");
+unlink($work.'/shim/cp');
+reset_tree($target, $mount, $root);
+shim('case "$*" in *--version*|*--dry-run*) exec '.escapeshellarg($real_rsync).' "$@";; esac; exit 0');
+$GLOBALS['zfsm_feed'] = array();
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode($result));
+// The copy dialog and the row's "Cloning files" come before cp copies anything.
+check($GLOBALS['zfsm_feed'] === array(array('start_directory_copy', 0), array('clone_directory', 0), array('stop_directory_copy', 3)), 'progress came after the clone: '.json_encode($GLOBALS['zfsm_feed']));
+
+// cp prints a line for each file it can't copy: 150 MB of them must not stop rsync from finishing the job.
+reset_tree($target, $mount, $root);
+shim('exec '.escapeshellarg($real_rsync).' "$@"');
+shim('yes "cp: cannot create regular file: No space left on device" 2>/dev/null | head -c 150000000; exit 1', 'cp');
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']) && file_get_contents($mount.'/sub dir/file') === 'payload', 'a cp that printed 150 MB of errors stopped the copy: '.json_encode($result));
+
+// A real cp that fails partway through a file, here on a file-size limit, leaves it short; rsync must finish it.
+reset_tree($target, $mount, $root);
+$big = str_repeat('z', 65536);
+file_put_contents($target.'/big', $big);
+@unlink($cp_log);
+shim('exec '.escapeshellarg($real_rsync).' "$@"');
+shim("trap '' XFSZ; ulimit -f 1; ".escapeshellarg($real_cp).' "$@"; status=$?; for last; do :; done; echo "$status $(stat -c %s "${last}big")" > '.escapeshellarg($cp_log).'; exit $status', 'cp');
+$result = convertDirectory($target, 'tank');
+$cp_left = explode(' ', trim((string)@file_get_contents($cp_log)));
+check(count($cp_left) === 2 && $cp_left[0] !== '0' && (int)$cp_left[1] < strlen($big), 'cp must have failed partway through the file: '.implode(' ', $cp_left));
+check(!empty($result['succeeded']) && file_get_contents($mount.'/big') === $big && file_get_contents($mount.'/sub dir/file') === 'payload', 'rsync did not finish a failed clone: '.json_encode($result));
+unlink($work.'/shim/cp');
+unlink($bclone);
+putenv('ZFSM_TEST_BCLONE');
+
 // A failed copy keeps the source.
 reset_tree($target, $mount, $root);
 shim('case "$*" in *--version*) echo "rsync  version 3.4.1 protocol version 32"; exit 0;; esac; exit 23');
@@ -172,6 +260,11 @@ check(empty($result['succeeded']), 'unverified copy reported success');
 check(strpos(reset($result['failed']), 'did not verify') !== false, 'unverified copy gave the wrong reason');
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'unverified copy lost the source');
+// A copy that differs in every one of 3 million files: counted within PHP's 128 MB, and the source kept.
+reset_tree($target, $mount, $root);
+shim('case "$*" in *--version*) echo "rsync  version 3.4.1 protocol version 32"; exit 0;; *--dry-run*) yes ">f..T...... sub dir/file" 2>/dev/null | head -n 3000000; exit 0;; esac; exit 0');
+$result = convertDirectory($target, 'tank');
+check(strpos((string)reset($result['failed']), '3000000 differing, first: >f..T...... sub dir/file') !== false, 'a copy differing in every file must be counted: '.json_encode($result));
 
 // rsync that cannot run keeps the source too.
 reset_tree($target, $mount, $root);

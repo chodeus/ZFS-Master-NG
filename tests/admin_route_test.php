@@ -6,6 +6,8 @@ set_error_handler(function($severity, $message, $file, $line) {
 	throw new ErrorException($message, 0, $severity, $file, $line);
 });
 
+require __DIR__.'/fixtures/fake_bin_guard.php';
+
 $routes = array(
 	'createdataset' => array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'new', 'mount' => 'yes', 'encryption' => 'no', 'quota' => '', 'quotaunit' => 'G')),
 	'editdatasetproperty' => array('cmd' => 'editdatasetproperty', 'zdataset' => 'tank/data', 'property' => 'compression', 'value' => 'zstd'),

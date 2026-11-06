@@ -19,7 +19,7 @@ function handlers(from, to) {
   return code;
 }
 
-const {window} = new JSDOM('<!doctype html><body></body>', {runScripts: 'outside-only', pretendToBeVisual: true});
+const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true});
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
@@ -28,11 +28,14 @@ window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnap
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
 window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
 
-const posts = [];
+const posts = [], replies = [];
 let properties = {};
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  const reply = window.$.Deferred();
+  replies.push(reply);
+  return reply.promise();
 };
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => window.setTimeout(resolve, 0)); };
 const shown = () => window.document.querySelector('.swal2-html-container');
@@ -87,6 +90,65 @@ async function confirm() {
 
   (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
   assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
+
+  // Copy progress through the page's own script: its feed handler, inventory controller and rows.
+  const main = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]).find(script => script.includes('var zfsm_csrf_token'));
+  const requests = [];
+  const feed = {};
+  window.$.ajax = options => {
+    const request = {options, done(callback) { this.resolve = callback; return this; }, fail() { return this; }};
+    requests.push(request);
+    return request;
+  };
+  window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
+  window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
+  window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
+    php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
+      : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
+      : php.includes('$urlzmadmin') ? '/zfsm-admin' : ''));
+  await settle();
+  assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
+  const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
+  const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
+  const inventory = () => {
+    const tank = dataset('tank');
+    tank.child['tank/new'] = dataset('tank/new');
+    return {op: 'getAll', data: {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}}};
+  };
+  const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
+  const redraw = () => { window.requestRefresh(); answer(); };
+  const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
+  send('start_directory_copy');
+  assert.equal(requests.length, 1, 'a copy must refresh the page so the new dataset gets its row');
+  send('clone_directory');
+  answer();
+  assert.equal(progress(), 'Cloning files…', 'a row drawn after the message must say the files are being cloned');
+  redraw();
+  assert.equal(progress(), 'Cloning files…', 'a redraw must keep the progress');
+  send('stop_directory_copy');
+  assert.equal(progress(), '', 'the row must clear when the copy stops');
+  redraw();
+  assert.equal(progress(), '', 'a redraw after the copy must not bring the progress back');
+  assert.equal(requests.length, 3, 'each redraw is one inventory read');
+
+  // A lost stop message must not leave progress behind: a dropped feed and the finished Convert request each clear it.
+  send('clone_directory');
+  assert.equal(progress(), 'Cloning files…');
+  assert.ok(feed.disconnect, 'the page must listen for a dropped feed');
+  feed.disconnect();
+  assert.equal(progress(), '', 'a dropped feed must clear the progress');
+  redraw();
+  assert.equal(progress(), '', 'a redraw after a dropped feed must not bring the progress back');
+  send('clone_directory');
+  window.convertDirectory('/mnt/tank/new', 'tank');
+  await settle();
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.equal(posts.at(-1).cmd, 'convertdirectory');
+  assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
+  replies.at(-1).reject();
+  assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
 
   // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
   window.eval(handlers('function addDatasetContext(', 'function removeContext('));
