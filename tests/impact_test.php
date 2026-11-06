@@ -174,8 +174,9 @@ same(false, zfsmRollbackPreview('tank/data@daily')['can_proceed'], 'an unreadabl
 env(array('ZFSM_TEST_TXG_FAIL' => '0'));
 env(array('ZFSM_TEST_TXG_EXTRA' => 'syncoid_tower_2026-11-06:01:00:00-GMT08:00'));
 same(1, zfsmRollbackPreview('tank/data@daily')['automatic'], 'a rollback counts the Syncoid snapshot it would remove');
-env(array('ZFSM_TEST_TXG_BOOKMARK' => 'syncoid_tower_2026-11-06:01:00:00-GMT08:00'));
-same(2, zfsmRollbackPreview('tank/data@daily')['automatic'], 'and its bookmark, which rollback -r removes too');
+// syncoid --no-sync-snap --create-bookmark names the bookmark after the snapshot it sent, usually Sanoid's.
+env(array('ZFSM_TEST_TXG_BOOKMARK' => 'autosnap_2026-11-06_01:00:00_hourly'));
+same(2, zfsmRollbackPreview('tank/data@daily')['automatic'], 'and the bookmark of a Sanoid snapshot, which rollback -r removes too');
 env(array('ZFSM_TEST_TXG_EXTRA' => '', 'ZFSM_TEST_TXG_BOOKMARK' => ''));
 $token = zfsmRollbackPreview('tank/data@daily')['token'];
 env(array('ZFSM_TEST_TXG_EXTRA' => 'justnow'));

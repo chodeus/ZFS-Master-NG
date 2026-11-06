@@ -76,7 +76,7 @@ function zfsmDestroyDryRun($output) {
 	return array($objects, $reclaim);
 }
 
-// How Sanoid and Syncoid name snapshots, and Syncoid its bookmarks; Snapshots Admin and every review use this one rule.
+// How Sanoid and Syncoid name snapshots; a Syncoid bookmark takes its snapshot's name. Snapshots Admin and every review use this rule.
 function zfsmIsAutomaticSnapshot($name) {
 	return preg_match('/[@#](?:autosnap_|syncoid_)/', (string)$name) === 1;
 }
