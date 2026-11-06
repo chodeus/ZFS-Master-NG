@@ -74,7 +74,7 @@ if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && [ -n "${ZFSM_TEST
 fi
 
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
-	printf 'tank\t/tmp/zfsm-test-mount\n'
+	printf 'tank\t%s\n' "${ZFSM_TEST_FILESYSTEM_MOUNT:-/tmp/zfsm-test-mount}"
 	exit 0
 fi
 

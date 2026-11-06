@@ -19,7 +19,7 @@ function handlers(from, to) {
   return code;
 }
 
-const {window} = new JSDOM('<!doctype html><body></body>', {runScripts: 'outside-only', pretendToBeVisual: true});
+const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true});
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
@@ -88,30 +88,46 @@ async function confirm() {
   (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
   assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
 
-  // Copy progress: kept for a row the page has not drawn yet, put back after each render, cleared when the copy stops.
-  window.eval(handlers('function zfsmHandleMessage(', '  $(function() {'));
-  assert.match(page, /updateFullBodyTable\([^\n]*\n\s*zfsmRestoreCopyProgress\(\);/, 'each render must put the copy progress back');
-  let refreshes = 0;
-  window.processHiddenDatasets = () => {};
-  window.requestRefresh = () => { refreshes++; };
-  const send = op => window.zfsmHandleMessage(JSON.stringify({op, data: {dataset: 'tank/new'}}));
-  const draw = () => {
-    window.document.getElementById('zfsm-copy-rows')?.remove();
-    window.document.body.insertAdjacentHTML('beforeend', '<table id="zfsm-copy-rows"><tr id="' + window.datasetRowId('tank/new') + '"><td></td><td></td></tr></table>');
-    window.zfsmRestoreCopyProgress();
+  // Copy progress through the page's own script: its feed handler, inventory controller and rows.
+  const main = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]).find(script => script.includes('var zfsm_csrf_token'));
+  const requests = [];
+  let feed = null;
+  window.$.ajax = options => {
+    const request = {options, done(callback) { this.resolve = callback; return this; }, fail() { return this; }};
+    requests.push(request);
+    return request;
   };
+  window.NchanSubscriber = function() { this.on = (event, callback) => { feed = callback; }; this.start = () => {}; };
+  window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
+  window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
+    php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
+      : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
+      : php.includes('$urlzmadmin') ? '/zfsm-admin' : ''));
+  await settle();
+  assert.equal(typeof feed, 'function', 'the page must subscribe to the copy feed');
+  const send = op => feed(JSON.stringify({op, data: {dataset: 'tank/new'}}));
+  const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
+  const inventory = () => {
+    const tank = dataset('tank');
+    tank.child['tank/new'] = dataset('tank/new');
+    return {op: 'getAll', data: {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}}};
+  };
+  const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
+  const redraw = () => { window.requestRefresh(); answer(); };
   const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
   send('start_directory_copy');
-  assert.equal(refreshes, 1, 'a copy must refresh the page so the new dataset gets its row');
+  assert.equal(requests.length, 1, 'a copy must refresh the page so the new dataset gets its row');
   send('clone_directory');
-  draw();
+  answer();
   assert.equal(progress(), 'Cloning files…', 'a row drawn after the message must say the files are being cloned');
-  draw();
+  redraw();
   assert.equal(progress(), 'Cloning files…', 'a redraw must keep the progress');
   send('stop_directory_copy');
   assert.equal(progress(), '', 'the row must clear when the copy stops');
-  draw();
+  redraw();
   assert.equal(progress(), '', 'a redraw after the copy must not bring the progress back');
+  assert.equal(requests.length, 3, 'each redraw is one inventory read');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

@@ -120,6 +120,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   var zfs_sub = null;
   var zfsm_inventory = null;
   var zfsm_config = <?=json_encode($zfsm_cfg, JSON_HEX_TAG | JSON_HEX_AMP)?>;
+  var zfsm_display = <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>;
 
   function zfsmStatus(message, error = false) {
 	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
@@ -176,6 +177,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	});
   }
 
+  // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
+  function zfsmRender(data) {
+	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
+	zfsmRestoreCopyProgress();
+	processHiddenDatasets();
+  }
+
   $(function() {
 	try {
 		zfsm_inventory = createZFSMInventoryController({
@@ -187,9 +195,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
-				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
-				zfsmRestoreCopyProgress();
-				processHiddenDatasets();
+				zfsmRender(data);
 				if (complete) saveCache(data);
 			}
 		});
@@ -235,12 +241,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return false;
 	}
 
-	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
+	zfsmRender(data);
 
 	const notes = zfsmInventoryNotes(data);
 	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');
-
-	processHiddenDatasets();
 	return true;
   }
 

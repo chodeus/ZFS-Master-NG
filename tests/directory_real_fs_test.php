@@ -13,10 +13,22 @@ if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
 	exit(1);
 }
 
+// Everything this run makes lives in its own folder. On any exit, a failed check too, its tmpfs mounts come off and the folder goes.
+$work = sys_get_temp_dir().'/zfsm-real-fs-'.getmypid().'-'.bin2hex(random_bytes(4));
+mkdir($work, 0700);
+$GLOBALS['zfsm_mounted'] = array();
+register_shutdown_function(function() use ($work) {
+	foreach (array_reverse($GLOBALS['zfsm_mounted']) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null');
+	exec('rm -rf --one-file-system '.escapeshellarg($work));
+});
+$root = $work.'/test-mount';
+$mount = $work.'/new-dataset';
+
 // The progress feed, each message with the number of entries the new dataset held when it was sent.
 $GLOBALS['zfsm_feed'] = array();
 function publish($channel, $message) {
-	$held = is_dir('/tmp/zfsm-new-dataset') ? count(scandir('/tmp/zfsm-new-dataset')) - 2 : -1;
+	global $mount;
+	$held = is_dir($mount) ? count(scandir($mount)) - 2 : -1;
 	$GLOBALS['zfsm_feed'][] = array(json_decode($message, true)['op'], $held);
 }
 
@@ -36,13 +48,6 @@ function fill($dir) {
 	chmod($dir.'/sub dir/file', 0640);
 }
 
-// On any exit, a failed check too: unmount every tmpfs this run mounted, then remove what it made.
-$GLOBALS['zfsm_mounted'] = array();
-$GLOBALS['zfsm_made'] = array('/tmp/zfsm-rsync-shim', '/tmp/zfsm-outside');
-register_shutdown_function(function() {
-	foreach (array_reverse($GLOBALS['zfsm_mounted']) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null');
-	foreach ($GLOBALS['zfsm_made'] as $made) exec('rm -rf --one-file-system '.escapeshellarg($made));
-});
 function mount_tmpfs($path, $options = '') {
 	exec('mount -t tmpfs '.$options.' tmpfs '.escapeshellarg($path), $out, $status);
 	if ($status === 0) $GLOBALS['zfsm_mounted'][] = $path;
@@ -50,21 +55,19 @@ function mount_tmpfs($path, $options = '') {
 }
 
 function shim($body, $name = 'rsync') {
-	$bin = '/tmp/zfsm-rsync-shim';
+	global $work;
+	$bin = $work.'/shim';
 	if (!is_dir($bin)) mkdir($bin);
 	file_put_contents($bin.'/'.$name, "#!/bin/sh\n".$body."\n");
 	chmod($bin.'/'.$name, 0755);
 	putenv('PATH='.$bin.':'.getenv('PATH'));
 }
 
-$root = '/tmp/zfsm-test-mount';
-if (!is_dir($root)) mkdir($root, 0777, true);
+mkdir($root);
 $target = $root.'/My Share';
-$mount = '/tmp/zfsm-new-dataset';
+putenv('ZFSM_TEST_FILESYSTEM_MOUNT='.$root);
 putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
 putenv('ZFSM_TEST_MISSING_DATASET=tank/My Share');
-array_push($GLOBALS['zfsm_made'], $root, $mount);
-$run = getmypid().'-'.bin2hex(random_bytes(4));
 
 function reset_tree($target, $mount, $root) {
 	foreach (glob($root.'/*') ?: array() as $old) exec('rm -rf '.escapeshellarg($old));
@@ -87,8 +90,7 @@ exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
 // A full filesystem must not cost the settings already saved.
-$small = sys_get_temp_dir().'/zfsm-small-fs-'.$run;
-$GLOBALS['zfsm_made'][] = $small;
+$small = $work.'/small-fs';
 mkdir($small);
 $mounted = mount_tmpfs($small, '-o size=16k');
 check($mounted === 0, 'test needs a tmpfs mount');
@@ -119,12 +121,13 @@ exec('umount '.escapeshellarg($root.'/mounted'));
 rmdir($root.'/mounted');
 
 // A symlink to outside must not let delete reach the outside tree.
-if (!is_dir('/tmp/zfsm-outside')) mkdir('/tmp/zfsm-outside');
-file_put_contents('/tmp/zfsm-outside/data', 'keep');
-symlink('/tmp/zfsm-outside', $root.'/escape');
+$outside = $work.'/outside';
+mkdir($outside);
+file_put_contents($outside.'/data', 'keep');
+symlink($outside, $root.'/escape');
 $result = deleteDirectory($root.'/escape', 1);
 check(!empty($result['failed']), 'symlink to outside must be refused');
-check(is_file('/tmp/zfsm-outside/data'), 'delete followed a symlink out of the dataset');
+check(is_file($outside.'/data'), 'delete followed a symlink out of the dataset');
 unlink($root.'/escape');
 
 // Clean conversion: name with a space, identical tree, source gone.
@@ -167,8 +170,7 @@ check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the sou
 exec('umount '.escapeshellarg($target.'/inner'));
 
 // Cloning only where the pool can: OpenZFS 2.2+ with zfs_bclone_enabled=1 and the feature enabled on that pool.
-$bclone = sys_get_temp_dir().'/zfsm-bclone-'.$run;
-$GLOBALS['zfsm_made'][] = $bclone;
+$bclone = $work.'/bclone';
 file_put_contents($bclone, "1\n");
 $GLOBALS['zfsm_bclone_param'] = $bclone;
 putenv('ZFSM_TEST_BCLONE=active');
@@ -195,8 +197,8 @@ check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must n
 
 // With cloning off, cp never runs and rsync copies as before.
 $real_rsync = trim((string)shell_exec('command -v rsync'));
-$cp_log = sys_get_temp_dir().'/zfsm-cp-log-'.$run;
-$GLOBALS['zfsm_made'][] = $cp_log;
+$real_cp = trim((string)shell_exec('command -v cp'));
+$cp_log = $work.'/cp-log';
 @unlink($cp_log);
 reset_tree($target, $mount, $root);
 shim('echo ran >> '.escapeshellarg($cp_log).'; exit 1', 'cp');
@@ -207,7 +209,7 @@ check(!in_array('clone_directory', array_column($GLOBALS['zfsm_feed'], 0), true)
 
 // With cloning on, the clone alone must give a copy that verifies: this rsync copies nothing, it only checks.
 file_put_contents($bclone, "1\n");
-unlink('/tmp/zfsm-rsync-shim/cp');
+unlink($work.'/shim/cp');
 reset_tree($target, $mount, $root);
 shim('case "$*" in *--version*|*--dry-run*) exec '.escapeshellarg($real_rsync).' "$@";; esac; exit 0');
 $GLOBALS['zfsm_feed'] = array();
@@ -216,13 +218,18 @@ check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode
 // The copy dialog and the row's "Cloning files" come before cp copies anything.
 check($GLOBALS['zfsm_feed'] === array(array('start_directory_copy', 0), array('clone_directory', 0), array('stop_directory_copy', 3)), 'progress came after the clone: '.json_encode($GLOBALS['zfsm_feed']));
 
-// A clone that fails partway leaves the rest to rsync.
+// A real cp that fails partway through a file, here on a file-size limit, leaves it short; rsync must finish it.
 reset_tree($target, $mount, $root);
+$big = str_repeat('z', 65536);
+file_put_contents($target.'/big', $big);
+@unlink($cp_log);
 shim('exec '.escapeshellarg($real_rsync).' "$@"');
-shim('for last; do :; done; mkdir -p "${last}sub dir"; printf x > "${last}sub dir/file"; echo "cp: failed to clone" >&2; exit 1', 'cp');
+shim("trap '' XFSZ; ulimit -f 1; ".escapeshellarg($real_cp).' "$@"; status=$?; for last; do :; done; echo "$status $(stat -c %s "${last}big")" > '.escapeshellarg($cp_log).'; exit $status', 'cp');
 $result = convertDirectory($target, 'tank');
-check(!empty($result['succeeded']) && file_get_contents($mount.'/sub dir/file') === 'payload', 'rsync did not finish a failed clone: '.json_encode($result));
-unlink('/tmp/zfsm-rsync-shim/cp');
+$cp_left = explode(' ', trim((string)@file_get_contents($cp_log)));
+check(count($cp_left) === 2 && $cp_left[0] !== '0' && (int)$cp_left[1] < strlen($big), 'cp must have failed partway through the file: '.implode(' ', $cp_left));
+check(!empty($result['succeeded']) && file_get_contents($mount.'/big') === $big && file_get_contents($mount.'/sub dir/file') === 'payload', 'rsync did not finish a failed clone: '.json_encode($result));
+unlink($work.'/shim/cp');
 unlink($bclone);
 putenv('ZFSM_TEST_BCLONE');
 
