@@ -58,6 +58,16 @@ $config = loadConfig(array('general' => array('exclussion' => '^old$', 'snap_pat
 assertSameValue('^old$', $config['dataset_exclusion'], 'The misspelt exclusion setting was ignored');
 assertSameValue('Y-m-d-His', $config['snap_pattern'], 'A blank snapshot pattern did not fall back');
 assertSameValue(45, $config['refresh_interval'], 'A saved refresh interval was ignored');
+assertSameValue(0, $config['snap_utc'], 'Snapshot names did not default to local time');
+
+// New snapshot names: the prefix, then the date on the clock the settings name. Perth is UTC+8 all year.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Australia/Perth');
+$naming = loadConfig(array('general' => array('snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d-His')));
+assertSameValue('auto-2026-11-03-180000', zfsmNewSnapshotName($naming, 1793700000), 'A local-time snapshot name used another clock');
+$naming = loadConfig(array('general' => array('snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d-His', 'snap_utc' => '1')));
+assertSameValue('auto-2026-11-03-100000', zfsmNewSnapshotName($naming, 1793700000), 'A UTC snapshot name used local time');
+date_default_timezone_set($zone);
 assertSameValue('', loadConfig(array('general' => array('exclusion' => ' ')))['dataset_exclusion'], 'A blank exclusion was kept');
 assertSameValue('^new$', loadConfig(array('general' => array('exclussion' => '^old$', 'exclusion' => '^new$')))['dataset_exclusion'], 'The misspelt name overrode the current one');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker-old/.*'), 'Unescaped hyphen must stay literal');

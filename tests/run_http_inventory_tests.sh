@@ -30,6 +30,6 @@ for gate in rollback_newer destroy_recursive destroy_dataset rollback_plain dest
 done
 "$zfsm_php" -n "$zfsm_repo/tests/impact_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
-for route in createdataset editdatasetproperty snapshotdataset rollbacksnapshot renamesnapshot destroysnapshot destroydataset; do
+for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset; do
     "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"
 done

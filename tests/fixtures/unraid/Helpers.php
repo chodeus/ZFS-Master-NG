@@ -10,6 +10,7 @@ function parse_plugin_cfg($plugin, $sections = false) {
 		'directory_listing' => '',
 		'snap_max_days_alert' => '30',
 		'snap_prefix' => '',
-		'snap_pattern' => 'Y-m-d-His'
+		'snap_pattern' => 'Y-m-d-His',
+		'snap_utc' => getenv('ZFSM_TEST_SNAP_UTC') ?: '0'
 	));
 }

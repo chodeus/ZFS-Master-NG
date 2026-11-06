@@ -105,7 +105,7 @@ switch ($check) {
 		require_once $docroot.'/webGui/include/Helpers.php';
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
-		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d',
+		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1,
 			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
 		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
@@ -205,6 +205,7 @@ switch ($check) {
 		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern') as $section => $field) {
 			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
+		if (!preg_match('#<dt>(?:<[^>]+>|[^<])*Snapshot Time(?:(?!</dl>).)*<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
 		break;
 
 	case 'create_popup':

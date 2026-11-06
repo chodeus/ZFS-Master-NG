@@ -826,6 +826,12 @@ function convertDirectory($directory, $pool) {
 	return $ret;
 }
 
+// A new snapshot's name: the prefix, then the date in local time or, when set, UTC.
+function zfsmNewSnapshotName($cfg, $now) {
+	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
+	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
 function createDatasetSnapshot($zdataset, $snapshot_name, $recursive) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
 	$args = array('snapshot');
