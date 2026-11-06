@@ -146,19 +146,34 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
     		Swal2.showLoading();
 		  }
 	  	});
+		// The new dataset has no row until the page refreshes.
+		requestRefresh();
 	} else if (msg.op == 'clone_directory') {
-		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').text('Cloning files…');
+		zfsmShowCopyProgress(msg.data.dataset, 'Cloning files…');
 	} else if (msg.op == 'directory_copy') {
-		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').html(htmlProgress);
+		zfsmShowCopyProgress(msg.data.dataset, parseDirectoryCopy(msg.data.line));
 	} else if (msg.op == 'stop_directory_copy') {
-		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').text('');
+		zfsmShowCopyProgress(msg.data.dataset, null);
 	}
 
 	processHiddenDatasets();
 	} catch (error) {
 		console.error('ZFS Master NG copy-progress message failed', error);
 	}
+  }
+
+  // Each running copy's progress, put back after every render; null once the copy stops.
+  var zfsm_copy_progress = {};
+  function zfsmShowCopyProgress(dataset, html) {
+	if (html === null) delete zfsm_copy_progress[dataset];
+	else zfsm_copy_progress[dataset] = html;
+	$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(html ?? '');
+  }
+
+  function zfsmRestoreCopyProgress() {
+	Object.keys(zfsm_copy_progress).forEach(function(dataset) {
+		$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(zfsm_copy_progress[dataset]);
+	});
   }
 
   $(function() {
@@ -173,6 +188,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			},
 			render: function(data, complete) {
 				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
+				zfsmRestoreCopyProgress();
 				processHiddenDatasets();
 				if (complete) saveCache(data);
 			}
@@ -805,7 +821,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
-		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> On an unencrypted dataset in a pool with block cloning (OpenZFS 2.2 and later), the files are cloned and need almost no extra space; otherwise the pool needs free space for a second copy while this runs.',
+		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> On an unencrypted dataset in a pool with block cloning (OpenZFS 2.2 and later), the files are cloned, which usually needs almost no extra space. Otherwise, and for any file that cannot be cloned, the pool needs free space for a second copy while this runs.',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true

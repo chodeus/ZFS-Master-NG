@@ -36,15 +36,16 @@ function fill($dir) {
 	chmod($dir.'/sub dir/file', 0640);
 }
 
-// Every tmpfs this run mounts is unmounted on exit too, so a failed check never leaves one behind.
+// On any exit, a failed check too: unmount every tmpfs this run mounted, then remove what it made.
+$GLOBALS['zfsm_mounted'] = array();
+$GLOBALS['zfsm_made'] = array('/tmp/zfsm-rsync-shim', '/tmp/zfsm-outside');
+register_shutdown_function(function() {
+	foreach (array_reverse($GLOBALS['zfsm_mounted']) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null');
+	foreach ($GLOBALS['zfsm_made'] as $made) exec('rm -rf --one-file-system '.escapeshellarg($made));
+});
 function mount_tmpfs($path, $options = '') {
-	static $mounted = null;
-	if ($mounted === null) {
-		$mounted = array();
-		register_shutdown_function(function() use (&$mounted) { foreach (array_reverse($mounted) as $at) exec('umount '.escapeshellarg($at).' 2>/dev/null'); });
-	}
 	exec('mount -t tmpfs '.$options.' tmpfs '.escapeshellarg($path), $out, $status);
-	if ($status === 0) $mounted[] = $path;
+	if ($status === 0) $GLOBALS['zfsm_mounted'][] = $path;
 	return $status;
 }
 
@@ -62,6 +63,8 @@ $target = $root.'/My Share';
 $mount = '/tmp/zfsm-new-dataset';
 putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
 putenv('ZFSM_TEST_MISSING_DATASET=tank/My Share');
+array_push($GLOBALS['zfsm_made'], $root, $mount);
+$run = getmypid().'-'.bin2hex(random_bytes(4));
 
 function reset_tree($target, $mount, $root) {
 	foreach (glob($root.'/*') ?: array() as $old) exec('rm -rf '.escapeshellarg($old));
@@ -84,7 +87,8 @@ exec('umount '.escapeshellarg($root.'/parent/inner'));
 exec('rm -rf '.escapeshellarg($root.'/parent'));
 
 // A full filesystem must not cost the settings already saved.
-$small = sys_get_temp_dir().'/zfsm-small-fs-'.getmypid();
+$small = sys_get_temp_dir().'/zfsm-small-fs-'.$run;
+$GLOBALS['zfsm_made'][] = $small;
 mkdir($small);
 $mounted = mount_tmpfs($small, '-o size=16k');
 check($mounted === 0, 'test needs a tmpfs mount');
@@ -163,7 +167,8 @@ check(glob($root.'/*_zfsm_tmp_*') === array(), 'refused conversion moved the sou
 exec('umount '.escapeshellarg($target.'/inner'));
 
 // Cloning only where the pool can: OpenZFS 2.2+ with zfs_bclone_enabled=1 and the feature enabled on that pool.
-$bclone = sys_get_temp_dir().'/zfsm-bclone-'.getmypid();
+$bclone = sys_get_temp_dir().'/zfsm-bclone-'.$run;
+$GLOBALS['zfsm_made'][] = $bclone;
 file_put_contents($bclone, "1\n");
 $GLOBALS['zfsm_bclone_param'] = $bclone;
 putenv('ZFSM_TEST_BCLONE=active');
@@ -190,7 +195,8 @@ check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must n
 
 // With cloning off, cp never runs and rsync copies as before.
 $real_rsync = trim((string)shell_exec('command -v rsync'));
-$cp_log = sys_get_temp_dir().'/zfsm-cp-log';
+$cp_log = sys_get_temp_dir().'/zfsm-cp-log-'.$run;
+$GLOBALS['zfsm_made'][] = $cp_log;
 @unlink($cp_log);
 reset_tree($target, $mount, $root);
 shim('echo ran >> '.escapeshellarg($cp_log).'; exit 1', 'cp');

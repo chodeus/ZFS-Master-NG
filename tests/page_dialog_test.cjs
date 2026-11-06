@@ -88,15 +88,30 @@ async function confirm() {
   (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
   assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
 
-  // Copy progress on the dataset row: cloning first, cleared when the copy stops.
+  // Copy progress: kept for a row the page has not drawn yet, put back after each render, cleared when the copy stops.
   window.eval(handlers('function zfsmHandleMessage(', '  $(function() {'));
+  assert.match(page, /updateFullBodyTable\([^\n]*\n\s*zfsmRestoreCopyProgress\(\);/, 'each render must put the copy progress back');
+  let refreshes = 0;
   window.processHiddenDatasets = () => {};
-  window.document.body.insertAdjacentHTML('beforeend', '<table><tr id="' + window.datasetRowId('tank/new') + '"><td></td><td></td></tr></table>');
+  window.requestRefresh = () => { refreshes++; };
+  const send = op => window.zfsmHandleMessage(JSON.stringify({op, data: {dataset: 'tank/new'}}));
+  const draw = () => {
+    window.document.getElementById('zfsm-copy-rows')?.remove();
+    window.document.body.insertAdjacentHTML('beforeend', '<table id="zfsm-copy-rows"><tr id="' + window.datasetRowId('tank/new') + '"><td></td><td></td></tr></table>');
+    window.zfsmRestoreCopyProgress();
+  };
   const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
-  window.zfsmHandleMessage(JSON.stringify({op: 'clone_directory', data: {dataset: 'tank/new'}}));
-  assert.equal(progress(), 'Cloning files…', 'the row must say the files are being cloned');
-  window.zfsmHandleMessage(JSON.stringify({op: 'stop_directory_copy', data: {dataset: 'tank/new'}}));
+  send('start_directory_copy');
+  assert.equal(refreshes, 1, 'a copy must refresh the page so the new dataset gets its row');
+  send('clone_directory');
+  draw();
+  assert.equal(progress(), 'Cloning files…', 'a row drawn after the message must say the files are being cloned');
+  draw();
+  assert.equal(progress(), 'Cloning files…', 'a redraw must keep the progress');
+  send('stop_directory_copy');
   assert.equal(progress(), '', 'the row must clear when the copy stops');
+  draw();
+  assert.equal(progress(), '', 'a redraw after the copy must not bring the progress back');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();
