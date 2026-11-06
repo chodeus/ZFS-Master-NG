@@ -37,7 +37,7 @@ jobs:
     permissions:
       contents: read
       actions: write
-    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-release.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
+    uses: chodeus/chodeus-ops/.github/workflows/unraid-plugin-release.yml@c615a871ba4dfa791eac921b5b8e45652459b20b # main
     with:
       plg_file: zfs.master.plg
       stable_branch: main
@@ -51,7 +51,7 @@ jobs:
     needs: release
     if: failure()
     permissions: {}
-    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@f2a43b46d158b76831c8e8e63126b22baef761bb # main
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@c615a871ba4dfa791eac921b5b8e45652459b20b # main
     with:
       event_type: build
       status: failure
