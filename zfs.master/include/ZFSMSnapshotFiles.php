@@ -11,13 +11,14 @@ function zfsmSnapshotBrowseRoot($mountpoint) {
 // What a dataset's snapshot rows offer: zfs diff needs it mounted, the file browser a .zfs folder too. A failed read offers neither.
 function zfsmSnapshotAccess($zpool, $zdataset) {
 	$mounted = getDatasetProperty($zpool, $zdataset, 'mounted') === 'yes';
-	$has_snapdir = $mounted && in_array(getDatasetProperty($zpool, $zdataset, 'snapdir'), array('hidden', 'visible'), true);
-	return array('diff' => $mounted, 'browse' => $has_snapdir ? zfsmSnapshotBrowseRoot(getDatasetProperty($zpool, $zdataset, 'mountpoint')) : '');
+	$root = $mounted ? zfsmSnapshotBrowseRoot(getDatasetProperty($zpool, $zdataset, 'mountpoint')) : '';
+	// Checked on disk: snapdir=disabled, or another filesystem mounted over this one, leaves no .zfs there.
+	return array('diff' => $mounted, 'browse' => $root !== '' && is_dir($root) ? $root : '');
 }
 
-// zfs diff writes spaces, backslashes and every non-ASCII byte of a name as \0ooo.
+// zfs diff writes spaces, backslashes and every non-ASCII byte of a name as \0ooo, from \0000 to \0377.
 function zfsmDiffName($text) {
-	return preg_replace_callback('/\\\\(0[0-7]{3})/', function($match) { return chr(octdec($match[1])); }, $text);
+	return preg_replace_callback('/\\\\(0[0-3][0-7]{2})/', function($match) { return chr((int)octdec($match[1])); }, $text);
 }
 
 // One `zfs diff -H -F` line as a change; null for anything else, such as an error zfs wrote to the same pipe.

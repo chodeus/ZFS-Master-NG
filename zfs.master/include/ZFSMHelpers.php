@@ -98,14 +98,23 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 	}
 	fclose($pipes[0]);
 	list($output, $next_line) = zfsmReadOutput($pipes[1], $max_lines);
-	// Unraid's PHP workers ignore SIGPIPE and pass that on, so closing the pipe alone may not stop the command.
-	if ($next_line !== null) proc_terminate($process);
+	$limit_code = $next_line === null ? null : zfsmStopAtLimit($process);
 	fclose($pipes[1]);
 	$code = proc_close($process);
-	if ($next_line !== null) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
+	// proc_close can't report an exit that proc_get_status already collected.
+	if ($limit_code !== null) $code = $limit_code;
+	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
 	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException(basename($command).' timed out');
 
 	return array('code' => $code, 'output' => trim((string)$output));
+}
+
+// Past the line limit: stops a command still running and returns 0; one that already exited keeps its exit code.
+function zfsmStopAtLimit($process) {
+	$status = proc_get_status($process);
+	// Unraid's PHP workers ignore SIGPIPE and pass that on, so closing the pipe alone may not stop the command.
+	if ($status['running']) proc_terminate($process);
+	return $status['running'] ? 0 : (int)$status['exitcode'];
 }
 
 // The whole output, or its first $max_lines lines and the line after them; that line is null when none followed.

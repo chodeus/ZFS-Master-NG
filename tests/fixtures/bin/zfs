@@ -142,11 +142,6 @@ if [ "$1" = "get" ] && contains_arg 'mounted' "$@"; then
 	exit 0
 fi
 
-if [ "$1" = "get" ] && contains_arg 'snapdir' "$@"; then
-	printf '%s\n' "${ZFSM_TEST_SNAPDIR:-hidden}"
-	exit 0
-fi
-
 if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then
 	printf '%s/%s\n' "$ZFSM_TEST_MOUNT_ROOT" "$last_arg"
 	exit 0
@@ -166,6 +161,11 @@ if [ "$1" = "diff" ]; then
 	[ "${ZFSM_TEST_DIFF_FAIL:-0}" = 1 ] && { printf 'Cannot diff an unmounted snapshot\n' >&2; exit 1; }
 	[ "${ZFSM_TEST_DIFF_GARBLED:-0}" = 1 ] && { printf 'zfs diff: something else\n'; exit 0; }
 	[ "${ZFSM_TEST_DIFF_SLOW:-0}" = 1 ] && { sleep 5; exit 0; }
+	# Exits with an error before the reader sees its 1001st line: a background writer still holds the pipe.
+	if [ "${ZFSM_TEST_DIFF_FAILED_EARLY:-0}" = 1 ]; then
+		( sleep 0.3; i=0; while [ "$i" -lt 1500 ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done ) &
+		exit 1
+	fi
 	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER:-}" ]; then
 		i=0
 		while [ "$i" -lt "$ZFSM_TEST_DIFF_FAIL_AFTER" ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done

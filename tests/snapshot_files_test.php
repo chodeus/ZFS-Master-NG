@@ -29,16 +29,31 @@ foreach (array('none', 'legacy', '/srv/data', '/mntx/a', '/bootstrap', '', null)
 same('/mnt/a b\\c', zfsmDiffName('/mnt/a\\0040b\\0134c'), 'escaped space and backslash');
 same('/mnt/café', zfsmDiffName('/mnt/caf\\0303\\0251'), 'escaped UTF-8 bytes');
 same('/mnt/\\0040', zfsmDiffName('/mnt/\\01340040'), 'an escaped backslash before digits decodes once');
+same('/mnt/\\0400', zfsmDiffName('/mnt/\\0400'), 'zfs never writes past \\0377, so that is not an escape');
 same(null, zfsmDiffChange('warning: something else'), 'a line not in diff form is not a change');
 same(null, zfsmDiffChange("R\tF\t/mnt/a"), 'a rename without its new name is not a change');
 same(null, zfsmDiffChange("M\tFile\t/mnt/a"), 'the type is one character');
 same(null, zfsmDiffChange("X\tF\t/mnt/a"), 'only + - M R are changes');
 
-same(array('diff' => true, 'browse' => '/mnt/tank/data/.zfs/snapshot'), zfsmSnapshotAccess('tank', 'tank/data'), 'a mounted dataset under /mnt offers both');
-foreach (array('ZFSM_TEST_MOUNTED=no' => array('diff' => false, 'browse' => ''), 'ZFSM_TEST_SNAPDIR=disabled' => array('diff' => true, 'browse' => ''), 'ZFSM_TEST_DATASET_MOUNT=/srv/data' => array('diff' => true, 'browse' => ''), 'ZFSM_TEST_GET_FAIL=tank/data' => array('diff' => false, 'browse' => ''), 'ZFSM_TEST_SNAPDIR=-' => array('diff' => true, 'browse' => '')) as $setting => $expected) {
-	putenv($setting);
-	same($expected, zfsmSnapshotAccess('tank', 'tank/data'), 'what a row offers with '.$setting);
-	putenv(explode('=', $setting)[0]);
+// /mnt/user is a tmpfs here (run_http_inventory_tests.sh); only the dataset with a .zfs folder can be browsed.
+$with_zfs = '/mnt/user/zfsm-browse/data';
+$without_zfs = '/mnt/user/zfsm-browse/plain';
+mkdir($with_zfs.'/.zfs/snapshot', 0755, true);
+mkdir($without_zfs, 0755, true);
+// /tmp is a tmpfs too: a .zfs folder Unraid 7.2+ would still refuse to browse.
+$outside = sys_get_temp_dir().'/zfsm-elsewhere/data';
+mkdir($outside.'/.zfs/snapshot', 0755, true);
+$cases = array(
+	'a mounted dataset with a .zfs folder offers both' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs), array('diff' => true, 'browse' => $with_zfs.'/.zfs/snapshot')),
+	'no .zfs folder (snapdir=disabled, or mounted over): no browse' => array(array('ZFSM_TEST_DATASET_MOUNT='.$without_zfs), array('diff' => true, 'browse' => '')),
+	'unmounted: neither, even with a folder there' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_MOUNTED=no'), array('diff' => false, 'browse' => '')),
+	'outside /mnt and /boot: no browse, even with a .zfs folder' => array(array('ZFSM_TEST_DATASET_MOUNT='.$outside), array('diff' => true, 'browse' => '')),
+	'a failed read: neither' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '')),
+);
+foreach ($cases as $message => list($settings, $expected)) {
+	foreach ($settings as $setting) putenv($setting);
+	same($expected, zfsmSnapshotAccess('tank', 'tank/data'), $message);
+	foreach ($settings as $setting) putenv(explode('=', $setting)[0]);
 }
 
 $diff = zfsmSnapshotDiff('tank/data@daily');
@@ -68,6 +83,9 @@ foreach (array(ZFSM_DIFF_LIMIT - 1, ZFSM_DIFF_LIMIT, 5) as $lines) {
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER='.(ZFSM_DIFF_LIMIT + 1));
 same(true, zfsmSnapshotDiff('tank/data@daily')['truncated'] ?? null, 'a change after the limit means there are more');
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
+putenv('ZFSM_TEST_DIFF_FAILED_EARLY=1');
+same(array('error' => 'Unable to compare the snapshot (exit 1)'), zfsmSnapshotDiff('tank/data@daily'), 'a zfs diff that already failed is not a cut-short success');
+putenv('ZFSM_TEST_DIFF_FAILED_EARLY');
 
 putenv('ZFSM_TEST_DIFF_SLOW=1');
 $GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 0.3;
