@@ -6,6 +6,7 @@ require_once __ROOT__."/include/ZFSMBase.php";
 require_once __ROOT__."/include/ZFSMError.php";
 require_once __ROOT__."/include/ZFSMHelpers.php";
 require_once __ROOT__."/include/ZFSMImpact.php";
+require_once __ROOT__."/include/ZFSMSnapshotFiles.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;

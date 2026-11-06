@@ -233,7 +233,23 @@ switch ($check) {
 		if (!preg_match('#<tr id="snap-[0-9a-f]{40}" data-snapshot="daily" data-automatic="0">.*<td class="num" data-text="2">[^<]+</td><td class="num" data-text="50">.*<td data-text="1700000400">#', $html)) { fwrite(STDERR, "snapshot row lost its filter or sort values\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-snap-filter"') === false || strpos($html, 'ZFSMSnapshotList.js') === false) { fwrite(STDERR, "snapshot popup lost its filter box or list script\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-hide-auto"') !== false) { fwrite(STDERR, "snapshot popup offers to hide automatic snapshots it does not have\n"); exit(1); }
+		if (strpos($html, '<a title="Browse files in this snapshot" href="/Main/Browse?dir=%2Fmnt%2Ftank%2Fdata%2F.zfs%2Fsnapshot%2Fdaily" target="_blank" rel="noopener">') === false) { fwrite(STDERR, "snapshot row does not open the snapshot in the file browser\n"); exit(1); }
+		if (strpos($html, 'onclick="diffSnapshot(') === false || strpos($html, 'ZFSMSnapshotDiff.js') === false) { fwrite(STDERR, "snapshot row does not offer its changes\n"); exit(1); }
 		popup_styles($html, $docroot);
+		break;
+
+	// zfs diff needs the dataset mounted; Unraid's file browser also needs it under /mnt or /boot.
+	case 'snapshot_popup_unmounted':
+	case 'snapshot_popup_elsewhere':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		putenv($check === 'snapshot_popup_unmounted' ? 'ZFSM_TEST_MOUNTED=no' : 'ZFSM_TEST_DATASET_MOUNT=/srv/data');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		if (strpos($html, 'Browse files in this snapshot') !== false) { fwrite(STDERR, "snapshot row offers a file browser path Unraid cannot open\n"); exit(1); }
+		if ((strpos($html, 'onclick="diffSnapshot(') !== false) !== ($check === 'snapshot_popup_elsewhere')) { fwrite(STDERR, "snapshot row offers changes only when the dataset is mounted\n"); exit(1); }
 		break;
 
 	case 'snapshot_popup_automatic':

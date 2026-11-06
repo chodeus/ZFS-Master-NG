@@ -62,7 +62,8 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
-function runProcess($command, $args = array(), $stdin = null) {
+// With $max_lines, stops the command after that many lines and sets 'truncated' when it had more.
+function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
 	if ($test_bin_dir !== false && $test_bin_dir !== '') {
 		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
@@ -96,12 +97,23 @@ function runProcess($command, $args = array(), $stdin = null) {
 		fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
-	$output = stream_get_contents($pipes[1]);
+	list($output, $truncated) = zfsmReadOutput($pipes[1], $max_lines);
+	// A parent that ignores SIGPIPE passes that on, so a closed pipe alone may not stop the command.
+	if ($truncated) proc_terminate($process);
 	fclose($pipes[1]);
 	$code = proc_close($process);
+	if ($truncated) return array('code' => 0, 'output' => trim($output), 'truncated' => true);
 	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException('ZFS inventory timed out while running '.basename($command));
 
 	return array('code' => $code, 'output' => trim((string)$output));
+}
+
+// The whole output, or its first $max_lines lines; true as well when more followed.
+function zfsmReadOutput($pipe, $max_lines) {
+	if ($max_lines <= 0) return array(stream_get_contents($pipe), false);
+	$output = '';
+	for ($count = 0; $count < $max_lines && ($line = fgets($pipe)) !== false; $count++) $output .= $line;
+	return array($output, $count === $max_lines && fgets($pipe) !== false);
 }
 
 // Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.

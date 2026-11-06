@@ -96,6 +96,11 @@ try {
 			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
+		case 'diffsnapshot':
+			$snapshot = zfsmPostString('snapshot');
+			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmSnapshotDiff($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
 		case 'validateexclusion':
 			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;

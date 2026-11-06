@@ -137,6 +137,11 @@ if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFS
 	exit 1
 fi
 
+if [ "$1" = "get" ] && contains_arg 'mounted' "$@"; then
+	printf '%s\n' "${ZFSM_TEST_MOUNTED:-yes}"
+	exit 0
+fi
+
 if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then
 	printf '%s/%s\n' "$ZFSM_TEST_MOUNT_ROOT" "$last_arg"
 	exit 0
@@ -149,6 +154,23 @@ fi
 
 if [ -n "$ZFSM_TEST_LOG" ]; then
 	printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
+fi
+
+# Names as zfs diff escapes them: \0040 is a space, \0303\0251 is é.
+if [ "$1" = "diff" ]; then
+	[ "${ZFSM_TEST_DIFF_FAIL:-0}" = 1 ] && { printf 'Cannot diff an unmounted snapshot\n' >&2; exit 1; }
+	[ "${ZFSM_TEST_DIFF_GARBLED:-0}" = 1 ] && { printf 'zfs diff: something else\n'; exit 0; }
+	if [ -n "${ZFSM_TEST_DIFF_ENDLESS:-}" ]; then
+		# Like a zfs started from a parent that ignores SIGPIPE: only a signal stops it early.
+		trap '' PIPE
+		i=0
+		while [ "$i" -lt 100000 ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i" 2>/dev/null; i=$((i + 1)); done
+		: > "$ZFSM_TEST_DIFF_ENDLESS"
+		exit 0
+	fi
+	printf '%s\t%s\t%s\n' '+' 'F' '/mnt/tank/data/new\0040file.txt' '-' '/' '/mnt/tank/data/old' 'M' 'F' '/mnt/tank/data/caf\0303\0251'
+	printf '%s\t%s\t%s\t%s\n' 'R' 'F' '/mnt/tank/data/a' '/mnt/tank/data/b' 'M' 'F' '/mnt/tank/data/linked' '(+1)'
+	exit 0
 fi
 
 if [ "$1" = "set" ] && [ "${ZFSM_TEST_SET_FAIL:-0}" = 1 ]; then
