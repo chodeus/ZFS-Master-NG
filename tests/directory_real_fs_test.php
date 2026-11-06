@@ -125,6 +125,14 @@ check(!empty($result['failed']), 'symlink to outside must be refused');
 check(is_file($outside.'/data'), 'delete followed a symlink out of the dataset');
 unlink($root.'/escape');
 
+// rm prints a line for each file it can't remove: 150 MB of them must not exhaust PHP's 128 MB, nor reach the answer.
+mkdir($root.'/stuck');
+shim('yes "rm: cannot remove: Operation not permitted" 2>/dev/null | head -c 150000000; exit 1', 'rm');
+$result = deleteDirectory($root.'/stuck', 1);
+unlink($work.'/shim/rm');
+check(strlen((string)reset($result['failed'])) < 2 * ZFSM_KEEP_OUTPUT, 'a failed rm must give its first errors only: '.strlen((string)reset($result['failed'])).' bytes');
+rmdir($root.'/stuck');
+
 // Clean conversion: name with a space, identical tree, source gone.
 reset_tree($target, $mount, $root);
 $result = convertDirectory($target, 'tank');
@@ -213,6 +221,13 @@ check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode
 // The copy dialog and the row's "Cloning files" come before cp copies anything.
 check($GLOBALS['zfsm_feed'] === array(array('start_directory_copy', 0), array('clone_directory', 0), array('stop_directory_copy', 3)), 'progress came after the clone: '.json_encode($GLOBALS['zfsm_feed']));
 
+// cp prints a line for each file it can't copy: 150 MB of them must not stop rsync from finishing the job.
+reset_tree($target, $mount, $root);
+shim('exec '.escapeshellarg($real_rsync).' "$@"');
+shim('yes "cp: cannot create regular file: No space left on device" 2>/dev/null | head -c 150000000; exit 1', 'cp');
+$result = convertDirectory($target, 'tank');
+check(!empty($result['succeeded']) && file_get_contents($mount.'/sub dir/file') === 'payload', 'a cp that printed 150 MB of errors stopped the copy: '.json_encode($result));
+
 // A real cp that fails partway through a file, here on a file-size limit, leaves it short; rsync must finish it.
 reset_tree($target, $mount, $root);
 $big = str_repeat('z', 65536);
@@ -245,6 +260,11 @@ check(empty($result['succeeded']), 'unverified copy reported success');
 check(strpos(reset($result['failed']), 'did not verify') !== false, 'unverified copy gave the wrong reason');
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'unverified copy lost the source');
+// A copy that differs in every one of 3 million files: counted within PHP's 128 MB, and the source kept.
+reset_tree($target, $mount, $root);
+shim('case "$*" in *--version*) echo "rsync  version 3.4.1 protocol version 32"; exit 0;; *--dry-run*) yes ">f..T...... sub dir/file" 2>/dev/null | head -n 3000000; exit 0;; esac; exit 0');
+$result = convertDirectory($target, 'tank');
+check(strpos((string)reset($result['failed']), '3000000 differing, first: >f..T...... sub dir/file') !== false, 'a copy differing in every file must be counted: '.json_encode($result));
 
 // rsync that cannot run keeps the source too.
 reset_tree($target, $mount, $root);

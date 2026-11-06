@@ -721,7 +721,7 @@ function deleteDirectory($directory, $force) {
 	if (!$resolved) return zfsmFailure($directory, 'Directory is outside a mounted ZFS filesystem');
 	$mounted = (string)$force === '1' ? zfsmNestedMountProblem($resolved['path']) : '';
 	if ($mounted !== '') return zfsmFailure($directory, $mounted);
-	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path'])));
+	if ((string)$force === '1') return commandAnswer($resolved['path'], runProcess('rm', array('-rf', '--one-file-system', '--', $resolved['path']), null, 0, ZFSM_KEEP_OUTPUT));
 	return commandAnswer($resolved['path'], runProcess('rmdir', array('--', $resolved['path'])));
 }
 
@@ -763,10 +763,11 @@ function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {
 // Empty only when a checksum comparison of the two trees finds nothing to change.
 function zfsmCopyDifferences($rsync_args, $from, $to) {
 	$args = array_merge($rsync_args, array('--checksum', '--dry-run', '--delete', '--itemize-changes', rtrim($from, '/').'/', rtrim($to, '/').'/'));
-	$result = runProcess('rsync', $args);
+	// A copy that went badly wrong differs in every file: count them, keep the first.
+	$result = runProcess('rsync', $args, null, 0, ZFSM_KEEP_OUTPUT);
 	if (($result['code'] ?? 1) !== 0) return 'rsync exit code '.($result['code'] ?? 1);
-	$changes = preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array();
-	return $changes ? count($changes).' differing, first: '.$changes[0] : '';
+	$first = preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), 2)[0];
+	return ($result['lines'] ?? 0) > 0 ? $result['lines'].' differing, first: '.$first : '';
 }
 
 // [the directory, the dataset it becomes] when it can be converted within $pool; a string saying why not otherwise.
@@ -804,7 +805,7 @@ function zfsmBlockCloning($dataset) {
 // Clones the files into the dataset, sharing their blocks; rsync then copies whatever this missed, so a failure here only costs space.
 function zfsmCloneTree($from, $to, $dataset_name) {
 	zfsmCopyProgress('clone_directory', array('dataset' => $dataset_name));
-	$result = runProcess('cp', array('-a', '--reflink=auto', '--one-file-system', '--', rtrim($from, '/').'/.', rtrim($to, '/').'/'));
+	$result = runProcess('cp', array('-a', '--reflink=auto', '--one-file-system', '--', rtrim($from, '/').'/.', rtrim($to, '/').'/'), null, 0, ZFSM_KEEP_OUTPUT);
 	if (($result['code'] ?? 1) !== 0) zfsmLog('Convert: cloning '.$from.' failed, so rsync copies it: '.zfsmCommandError($result, 'cp failed'), LOG_WARNING);
 }
 
