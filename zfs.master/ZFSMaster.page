@@ -1,6 +1,7 @@
-Menu="Main:2"
-Title="ZFS Master"
+Menu="Main:3"
+Title="ZFS Master NG"
 Tag="database"
+Cond="file_exists('/usr/sbin/zpool') || file_exists('/sbin/zpool')"
 ---
 <?php
 $plugin = "zfs.master";
@@ -18,57 +19,69 @@ $csrf_token = $var_ini['csrf_token'] ?? '';
 $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 ?>
 
-<?php if (file_exists('/usr/local/emhttp/webGui/styles/font-awesome.css')): ?>
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/font-awesome.css'); ?>">
-<?php endif; ?>
-
 <style type="text/css">	
-  .zfs_table td span{margin-left:10px}
-  .zfs_table tr>td{width:auto!important}
-  .zfs_table tr>td+td+td{text-align:left!important}
-  .zfs_table tr>td+td+td+td+td+td+td+td{text-align:left!important}
-  .zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center!important}
+  /* Every rule is scoped to this plugin's own elements; the id outranks Unraid's table and button rules without !important. */
+  #zfs_master.zfs_table td span{margin-left:10px}
+  #zfs_master.zfs_table tr>td{width:auto}
+  #zfs_master.zfs_table tr>td+td+td{text-align:left}
+  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td{text-align:left}
+  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
+  #zfs_master.zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
+  /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
+  #zfs_master.zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
   
   .zfs_bar_button {
 	  padding-right: 8px;
 	  float: right;
   }
 
-  .zfs_bar_text {
-	  font-size: 1.2rem!important;
+  #zfs-master-title span.zfs_bar_text, div.title .zfsm-title-status span.zfs_bar_text, #title .zfsm-title-status span.zfs_bar_text {
+	  font-size: 1.2rem;
   }
   
-  .zfs_compact {
-	  padding: 2px 4px 3px 6px!important;
-	  margin: 2px 2px!important;
+  #zfs_master .zfs_compact {
+	  padding: 2px 4px 3px 6px;
+	  margin: 2px 2px;
   }
 
-  .zfs_master_title {
-	margin-top: <?=$is_unraid7 ? '5px' : '-45px!important'?>;
+  .zfsm-title-right{float:right;padding-right:10px}
+  .zfsm-title-status{display:inline-flex;align-items:center;gap:14px}
+  .zfsm-title-status .zfs_bar_button{float:none;padding-right:0}
+  /* Phones: the status drops under the name, so the name keeps one line. */
+  @media (max-width:768px){
+  div.title.zfsm-title,div#title.zfsm-title{flex-wrap:wrap;height:auto;row-gap:4px}
+  div.title.zfsm-title>span.left,div#title.zfsm-title>span.left{white-space:nowrap}
+  div.title.zfsm-title>span.right,div#title.zfsm-title>span.right{margin-left:auto}
+  div#title.zfsm-title .zfsm-title-right,div.title.zfsm-title .zfsm-title-right{float:none;display:block}
+  }
+
+  #zfs-master-title.zfs_master_title {
+	margin-top: <?=$is_unraid7 ? '5px' : '-45px'?>;
   }
   
 </style>
 
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/jquery.ui.css'); ?>">
 
-<script type="text/javascript" src="<?php autov('/webGui/javascript/jquery.switchbutton.js'); ?>"></script>
-<link type="text/css" rel="stylesheet" href="<?php autov('/webGui/styles/jquery.switchbutton.css'); ?>">
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDialogs.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-dialogs.css'); ?>">
 
 <div id="zfs-master-title" class="title zfs_master_title">
 	<span class="left zfs_bar_text">
-		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh">Starting ZFS Master…</i></a>
+		<a class="tooltip" title="Information refresh time"><i id="zfsm-last-refresh">Starting ZFS Master NG…</i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="ZFS Master Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="ZFS Master NG Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
 		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
-<div id="zfs_master_div">
+<!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
+<div id="zfs_master_div" class="TableContainer">
 	<table id="zfs_master" class='unraid zfs_table disk_status legacy wide'>
 	<thead>
 		<tr>
@@ -84,29 +97,29 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		</tr>
 	</thead>
 	<tbody id="zfs_master_body">
-		<tr id="zfsm-loading"><td colspan="9">Waiting for ZFS Master to start. If this message remains, check the browser console for an error.</td></tr>
+		<tr id="zfsm-loading"><td colspan="9">Waiting for ZFS Master NG to start. If this message remains, check the browser console for an error.</td></tr>
 	</tbody>
 	</table>
 </div>
 
 :zfs_master_help_plug:
-> **ZFS Master.**
+> **ZFS Master NG.**
 >
 > ZPool Information Tool.
 :end
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
 
 <script>
   var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '<?=htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8')?>';
-  $.ajaxSetup({
-	headers: { 'X-CSRF-Token': zfsm_csrf_token }
-  });
+
+  zfsmMoveStatusIntoTitle(document.getElementById('zfs-master-title'));
 
   var zfs_sub = null;
   var zfsm_inventory = null;
-  var zfsm_config = <?=json_encode($zfsm_cfg)?>;
+  var zfsm_config = <?=json_encode($zfsm_cfg, JSON_HEX_TAG | JSON_HEX_AMP)?>;
 
   function zfsmStatus(message, error = false) {
 	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
@@ -135,14 +148,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  	});
 	} else if (msg.op == 'directory_copy') {
 		htmlProgress = parseDirectoryCopy(msg.data.line);
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').html(htmlProgress);
+		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').html(htmlProgress);
 	} else if (msg.op == 'stop_directory_copy') {
-		$('#tr-'+$.escapeSelector(msg.data.dataset)+' > td:nth-child(1)').text('');
+		$(document.getElementById(datasetRowId(msg.data.dataset))).children('td:nth-child(1)').text('');
 	}
 
 	processHiddenDatasets();
 	} catch (error) {
-		console.error('ZFS Master copy-progress message failed', error);
+		console.error('ZFS Master NG copy-progress message failed', error);
 	}
   }
 
@@ -157,7 +170,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
-				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
+				updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
 				processHiddenDatasets();
 				if (complete) saveCache(data);
 			}
@@ -169,8 +182,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			requestRefresh();
 		}
 	} catch (error) {
-		console.error('ZFS Master startup failed', error);
-		zfsmStatus('ZFS Master startup failed: '+error.message, true);
+		console.error('ZFS Master NG startup failed', error);
+		zfsmStatus('ZFS Master NG startup failed: '+error.message, true);
 	}
 	// Optional progress feed: its absence cannot block inventory or actions.
 	try {
@@ -178,7 +191,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		zfs_sub.on('message', zfsmHandleMessage);
 		zfs_sub.start();
 	} catch (error) {
-		console.warn('ZFS Master live copy progress is unavailable', error);
+		console.warn('ZFS Master NG live copy progress is unavailable', error);
 	}
 	window.addEventListener('pagehide', function() { if (zfsm_inventory) zfsm_inventory.stop(); });
   });
@@ -190,62 +203,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function requestRefresh() {
 	if (zfsm_inventory) zfsm_inventory.refresh();
   }
-  
-  function replaceElementClass(element, oldClass, newClass){
-	  $(element).removeClass(oldClass);
-	  $(element).addClass(newClass);
-  }
-  
-  function getUnraidParentElement() {
-	  if (zfsm_config['version'].localeCompare('6.11.9', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
-		return $('.title .left').filter(function(){return $(this).text() === 'ZFS Master';}).parent();
-	  }
-	  return $('div#title > span.left').filter(function(){return $(this).text() === 'ZFS Master';}).parent();
-  }
 
   function saveCache(data) {
-	const curDate = new Date();
-	
-	data['timestamp'] = curDate.toLocaleString('en-US', { hour12: false })
+	data['timestamp'] = data['generated_text'] || new Date().toLocaleString();
 
 	saveToLocalStorage('zfsm-cache', data);
-  }
-  
-  function updateSnapshotCache(data, total_snaps) {
-	var cache = loadFromLocalStorage('zfsm-cache');
-
-	if (cache === null) {
-		return;
-	}
-
-	const stack = [cache];
-	var dataset =  null;
-
-	while (stack.length > 0) {
-		const currentObj = stack.pop();
-
-		if (typeof currentObj !== 'object') {
-			continue;
-		}
-
-		for (const key in currentObj) {
-			if (key === data.dataset['name']) {
-				dataset = currentObj[key];
-			}
-
-			if (typeof currentObj[key] === 'object') {
-				stack.push(currentObj[key]);
-			}
-		}
-	}
-
-	if (dataset === null)
-		return;
-
-	dataset['snapshots'] = data['snapshots'];
-	cache['pools'][data['pool']]['Snapshots'] = total_snaps + data['snapshots'].length;
-
-	saveCache(cache);
   }
 
   function loadCache() {
@@ -255,9 +217,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return false;
 	}
 
-	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display)?>, zfsm_config['directory_listing']);
+	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], <?=json_encode($display, JSON_HEX_TAG | JSON_HEX_AMP)?>);
 
-	$('#zfsm-last-refresh').text('Last refresh at '+data.timestamp);
+	const notes = zfsmInventoryNotes(data);
+	zfsmStatus('Last refresh at '+data.timestamp+notes, notes !== '');
 
 	processHiddenDatasets();
 	return true;
@@ -270,7 +233,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		return;
 
 	for (let zdataset of datasets.hidden) {
-		var myRows = document.getElementsByClassName(zdataset);
+		var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 		
 		for (let row of myRows) {
 			$(row).hide(0);
@@ -295,7 +258,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		datasets.hidden.push(zdataset);
 	}
 
-	var myRows = document.getElementsByClassName(zdataset);
+	var myRows = document.getElementsByClassName(datasetChildClass(zdataset));
 
 	for (let row of myRows) {
 		if (index == -1) {
@@ -325,16 +288,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let mytr of myArray) {
 		if (visibility == 'hide') {
 			var classList = $(mytr).attr('class').split(/\s+/);
-			var cont = false;
-			
-			for (var i = 0; i < classList.length; i++) {
-				if (datasets.hidden.indexOf(classList[i]) != -1) {
-					cont = true;
-					break;
-				}
-			}
-
-			if (cont) {
+			if (datasets.hidden.some(function(name) { return classList.includes(datasetChildClass(name)); })) {
 				continue;
 			}
 
@@ -586,42 +540,50 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 	switch (property) {
 		case 'mountpoint':
-			return '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+escapeHtml(value)+'" type="text" style="display: flex;">';
+			return '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new mountpoint (Full path)" value="'+escapeHtml(value)+'" type="text" style="display: flex;">';
 		case 'quota':
 			if (value) {
 				value = fromBytesToString(value).replace(/ +/g, '');
 			}
 
-			return '<input id="swal2-input" name="quota" class="swal2-input zfsm-w10" maxlength="16" value="'+escapeHtml(value)+'">';
+			return '<input id="zfsm-swal-input" name="quota" class="swal2-input zfsm-w10" maxlength="16" value="'+escapeHtml(value)+'">';
 		case 'compression':
-			tmpHTML = '<select id="swal2-input" name="compression" class="swal2-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="compression" class="swal2-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="lz4">lz4</option><option value="gzip">gzip</option><option value="zstd">zstd</option></select>';
 			break;
 		case 'recordsize':
-			tmpHTML ='<select id="swal2-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512">512 B</option><option value="4096">4 KiB</option><option value="8192">8 KiB</option><option value="16384">16 KiB</option><option value="65536">64 KiB</option><option value="131072">128 KiB</option><option value="1048576">1 MiB</option></select>';
+			tmpHTML ='<select id="zfsm-swal-input" name="recordsize" class="zfsm-input"><option value="inherit">Inherit</option><option value="512">512 B</option><option value="4096">4 KiB</option><option value="8192">8 KiB</option><option value="16384">16 KiB</option><option value="65536">64 KiB</option><option value="131072">128 KiB</option><option value="1048576">1 MiB</option></select>';
 			break;
 		case 'atime':
-			tmpHTML = '<select id="swal2-input" name="atime" class="zfsm-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="on">On</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="atime" class="zfsm-input"><option value="inherit">Inherit</option><option value="off">Off</option><option value="on">On</option></select>';
 			break;
 		case 'xattr':
-			tmpHTML = '<select id="swal2-input" name="xattr" class="zfsm-input"><option value="inherit">Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="xattr" class="zfsm-input"><option value="inherit">Inherit</option><option value="sa">sa</option><option value="on">on</option><option value="off">off</option></select>';
 			break;
 		case 'primarycache':
-			tmpHTML = '<select id="swal2-input" name="primarycache" class="zfsm-input"><option value="inherit">Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="primarycache" class="zfsm-input"><option value="inherit">Inherit</option><option value="all">All</option><option value="metadata">Metadata</option><option value="none">None</option></select>';
 			break;
 		case 'readonly':
-			tmpHTML = '<select id="swal2-input" name="readonly" class="zfsm-input"><option value="off">Off</option><option value="on">On</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="readonly" class="zfsm-input"><option value="off">Off</option><option value="on">On</option></select>';
 			break;
 		case 'sync':
-			tmpHTML = '<select id="swal2-input" name="sync" class="zfsm-input"><option value="standard">Standard</option><option value="always">Always</option><option value="disabled">Disabled</option></select>';
+			tmpHTML = '<select id="zfsm-swal-input" name="sync" class="zfsm-input"><option value="standard">Standard</option><option value="always">Always</option><option value="disabled">Disabled</option></select>';
 			break;
 	}
 
 	var element = $(tmpHTML);
-
-	element.find('option').filter(function() { return $(this).val() === String(value); }).prop('selected', true);
+	var current = element.find('option').filter(function() { return $(this).val() === String(value); });
+	// A value the list lacks (zstd-3, 32K) is offered too, or the dialog opens on another value.
+	if (!current.length && value != null && value !== '') current = $('<option>').val(String(value)).text(String(value)).appendTo(element);
+	// An attribute, not prop(): outerHTML drops a selected property and the dialog opened on the first option.
+	current.attr('selected', 'selected');
 	var res = element.prop('outerHTML');
 
 	return res;
+  }
+
+  // Swal2 resets the body's display after fire(); this must run as didOpen.
+  function zfsmGridBody(popup) {
+	popup.querySelector('.swal2-html-container').style.display = 'grid';
   }
 
   function editDatasetProperty(zdataset, property) {
@@ -637,17 +599,17 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		Swal2.fire({
 			title: '<strong>'+escapeHtml(zdataset)+' - '+escapeHtml(property)+'</strong>',
 			html: getPropertyEditHTML(zdataset, property, properties[property]),
+			didOpen: zfsmGridBody,
 			showConfirmButton: true,
 			showCancelButton: true,
 			preConfirm: function () {
-				return new Promise(function (resolve) {
-					resolve([
-						$('#swal2-input').val()
-					])
-				})
+				var control = $('#zfsm-swal-input');
+				var shown = control.is('select') ? control.find('option[selected]').val() : control.attr('value');
+				return [control.val(), shown];
 			}
 		}).then((result) => {
-			if (result.isConfirmed) {
+			// Sending the value it opened with would round a quota or make an inherited value local.
+			if (result.isConfirmed && result.value[0] !== result.value[1]) {
 				$.post('<?=$urlzmadmin?>',{cmd: 'editdatasetproperty', zdataset: zdataset, property: property, value: result.value[0]}, function(data) {
 					Swal2.fire({
 						title: 'Edit Result',
@@ -657,7 +619,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				});
 			}
 		});
-		$('.swal2-html-container').attr('style', 'display: grid;');
 	});
   }
 
@@ -713,23 +674,24 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function renameDataset(zdataset) {
 	  Swal2.fire({
 		  title: '<strong>New name for '+escapeHtml(zdataset)+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+escapeHtml(zdataset)+'" type="mytext" style="display: flex;">'+
-				'<label for="swal2-checkbox" class="swal2-checkbox" style="display: flex;">'+
-				'<input type="checkbox" id="swal2-checkbox">'+
+		  html: '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Dataset new name (Full name)" value="'+escapeHtml(zdataset)+'" type="mytext" style="display: flex;">'+
+				'<label for="zfsm-swal-checkbox" class="swal2-checkbox" style="display: flex;">'+
+				'<input type="checkbox" id="zfsm-swal-checkbox">'+
 				'<span class="swal2-label">Force unmount any file systems that need to be unmounted in the process</span>'+
 				'</label>',
+		  didOpen: zfsmGridBody,
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
 			return new Promise(function (resolve) {
-			  if ($('#swal2-input').val() == '') {
+			  if ($('#zfsm-swal-input').val() == '') {
 				Swal2.showValidationMessage('Enter a value for the dataset name');
 				Swal2.enableButtons(); // Enable the confirm button again.
               } else {
 				Swal2.resetValidationMessage();
 				resolve([
-				  $('#swal2-input').val(),
-				  $('#swal2-checkbox').prop('checked') ? 1 : 0
+				  $('#zfsm-swal-input').val(),
+				  $('#zfsm-swal-checkbox').prop('checked') ? 1 : 0
 				])
 			  }
 		    })
@@ -745,7 +707,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			});
 		  }
 	  });
-	  $('.swal2-html-container').attr('style', 'display: grid;');
   }
 
   function addDirectoryListing(zdataset) {
@@ -779,33 +740,48 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		  confirmButtonText: 'Destroy',
 		  showCancelButton: true
 	  }).then((result) => {
-		  if (result.isConfirmed) {
-			  $.post('<?=$urlzmadmin?>',{cmd: 'destroydataset', zdataset: zdataset, force: result.value}, function(data) {
-				Swal2.fire({
-					title: 'Destroy Result',
-					icon: 'info',
-					html: formatAnswer(parseJSONResponse(data))
-				});
+		  if (result.isConfirmed) reviewDatasetDestroy(zdataset, result.value);
+	  });
+  }
+
+  function reviewDatasetDestroy(zdataset, force) {
+	  zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewdestroy', target: zdataset, force: force}, function(preview) {
+		  Swal2.fire({
+			  title: '<strong>Review: Destroy '+escapeHtml(zdataset)+'</strong>',
+			  icon: preview.can_proceed ? 'warning' : 'error',
+			  html: zfsmImpactHtml(preview, zfsmImpactSummary(preview, 'destroys')),
+			  showConfirmButton: preview.can_proceed,
+			  confirmButtonText: 'Destroy',
+			  showCancelButton: true
+		  }).then((result) => {
+			  if (!result.isConfirmed) return;
+			  $.post('<?=$urlzmadmin?>',{cmd: 'destroydataset', zdataset: zdataset, force: force, token: preview.token}, function(answer) {
+				  Swal2.fire({
+					  title: 'Destroy Result',
+					  icon: 'info',
+					  html: formatAnswer(parseJSONResponse(answer))
+				  });
 			  });
-		  }
+		  });
 	  });
   }
 
   function moveDirectory(directory) {
 	  Swal2.fire({
 		  title: '<strong>New name for '+escapeHtml(directory)+'</strong>',
-		  html: '<input id="swal2-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
+		  html: '<input id="zfsm-swal-input" maxlength="256" autocapitalize="off" autocorrect="off" class="swal2-input" placeholder="Directory new name (Full name)" value="'+escapeHtml(directory)+'" type="mytext" style="display: flex;">',
+		  didOpen: zfsmGridBody,
 		  showConfirmButton: true,
 		  showCancelButton: true,
 		  preConfirm: function () {
 			return new Promise(function (resolve) {
-			  if ($('#swal2-input').val() == '') {
+			  if ($('#zfsm-swal-input').val() == '') {
 				Swal2.showValidationMessage('Enter a value for the directory name');
 				Swal2.enableButtons(); // Enable the confirm button again.
               } else {
 				Swal2.resetValidationMessage();
 				resolve([
-				  $('#swal2-input').val()
+				  $('#zfsm-swal-input').val()
 				])
 			  }
 		    })
@@ -821,24 +797,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			});
 		  }
 	  });
-	  $('.swal2-html-container').attr('style', 'display: grid;');
   }
 
   function convertDirectory(directory, pool) {
-	if (directory.match(/[^a-zA-Z0-9_\-\./:%]/)) {
-		Swal2.fire({
-			title: 'Invalid dataset name',
-			icon: 'warning',
-			html: 'Directory name contains characters ZFS cannot use in a dataset name. Spaces are not supported.'
-		});
-
-		return;
-	}	
-
 	Swal2.fire({
 		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
 		  icon: 'warning',
-		  html: 'This operation will convert the Directory to a Dataset, <b>The directory will be renamed to &lt;dir&gt;_tmp_&lt;date&gt;</b>; and  the information copy over to the dataset, make sure you have enough space<b>No information is lost in the process</b>',
+		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> The pool needs free space for a second copy while this runs.',
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true

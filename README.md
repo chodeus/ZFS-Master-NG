@@ -4,7 +4,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chodeus/ZFS-Master-NG/ci.yml?branch=beta&label=CI)](https://github.com/chodeus/ZFS-Master-NG/actions/workflows/ci.yml)
 [![Unraid 6.9.2+](https://img.shields.io/badge/Unraid-6.9.2%2B-orange)](#requirements)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](zfs.master/LICENSE)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](LICENSE)
 
 ## Features
 
@@ -17,6 +17,10 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open, pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
 - **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
 
+## Requirements
+
+Unraid 6.9.2 or later. ZFS is built into Unraid from 6.12; older versions need a ZFS plugin.
+
 ## Install
 
 The current release is a beta. Go to **Plugins → Install Plugin** and paste:
@@ -25,30 +29,16 @@ The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
 ```
 
-Then open **Main** and look for **ZFS Master NG**. Settings are under **Settings → ZFS Master NG**.
-
-### Coming from ZFS Master
-
-It installs straight over ZFS Master, either the original or the 7.3 fork, and keeps your settings. There's nothing to uninstall first. From then on, updates come from this repository.
-
-## Requirements
-
-- Unraid 6.9.2 or newer with a ZFS pool
-- Before Unraid 6.12, ZFS itself comes from the ZFS plugin
-
-## Staying safe
-
-Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Snapshot rollback and delete don't need it, so check their warnings before confirming.
-
-A snapshot is a restore point on the same pool, not a backup.
-
-## Support
-
-Found a bug or have an idea? [Open an issue](https://github.com/chodeus/ZFS-Master-NG/issues).
+Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Plain snapshot rollback and delete don't need it, so check their warnings before confirming; the options that also remove other snapshots do.
 
 ## Credits
 
-Created by [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid), with Unraid 7.3 and backend work by [dlang123](https://github.com/dlang123/ZFS-Master-Unraid). Released under the GPL, version 2 or later; see [LICENSE](zfs.master/LICENSE).
+- [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid) — original creator of ZFS Master
+- [dlang123](https://github.com/dlang123/ZFS-Master-Unraid) — Unraid 7.3 port and backend rewrite
+
+## License
+
+GPL, version 2 or later, the same as the original ZFS Master. See [LICENSE](LICENSE).
 
 ## Development
 

@@ -12,6 +12,66 @@ contains_arg() {
 last_arg=''
 for arg in "$@"; do last_arg="$arg"; done
 
+if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
+	if [ "${ZFSM_TEST_DESTROY_REFUSED:-0}" = 1 ]; then
+		# Like ZFS, the refusal runs over several lines.
+		printf "cannot destroy '%s': filesystem has children\nuse '-r' to destroy the following datasets:\n%s/child\n" "$last_arg" "$last_arg" >&2
+		exit 1
+	fi
+	# Like ZFS, a snapshot list (tank/data@a,b) prints one line per snapshot.
+	case "$last_arg" in
+		*@*,*) old_ifs=$IFS; IFS=,; for snap in ${last_arg#*@}; do printf 'destroy\t%s@%s\n' "${last_arg%%@*}" "$snap"; done; IFS=$old_ifs ;;
+		*) printf 'destroy\t%s\n' "$last_arg" ;;
+	esac
+	[ "${ZFSM_TEST_LEAF:-0}" != 1 ] && contains_arg '-r' "$@" && printf 'destroy\t%s/child\ndestroy\t%s@daily\n' "$last_arg" "$last_arg"
+	[ -n "${ZFSM_TEST_DESTROY_EXTRA:-}" ] && printf 'destroy\t%s\n' "$ZFSM_TEST_DESTROY_EXTRA"
+	case "$last_arg" in *@*) printf 'reclaim\t2048\n' ;; esac
+	exit 0
+fi
+
+if [ "$1" = "destroy" ] && [ "${ZFSM_TEST_DESTROY_BUSY:-0}" = 1 ]; then
+	# Like ZFS, -v names each dataset before the unmount fails.
+	contains_arg '-v' "$@" && printf 'will destroy %s\n' "$last_arg"
+	printf "cannot unmount '/mnt/%s/child': pool or dataset is busy\ncannot destroy '%s': dataset is busy\n" "$last_arg" "$last_arg" >&2
+	[ -n "${ZFSM_TEST_LOG:-}" ] && printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
+	exit 1
+fi
+
+if [ "$1" = "list" ] && contains_arg 'used' "$@"; then
+	[ "${ZFSM_TEST_USED_FAIL:-0}" = 1 ] && { printf 'simulated used failure\n' >&2; exit 1; }
+	printf '4096\n'
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'name,origin' "$@"; then
+	[ "${ZFSM_TEST_ORIGIN_FAIL:-0}" = 1 ] && { printf 'simulated origin failure\n' >&2; exit 1; }
+	printf 'tank\t-\ntank/data\t-\n'
+	[ -n "${ZFSM_TEST_CLONE:-}" ] && printf 'tank/clone\t%s\n' "$ZFSM_TEST_CLONE"
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'name,userrefs' "$@"; then
+	printf '%s@daily\t%s\n' "$last_arg" "${ZFSM_TEST_HOLDS:-0}"
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'name,createtxg' "$@"; then
+	[ "${ZFSM_TEST_TXG_FAIL:-0}" = 1 ] && { printf 'simulated txg failure\n' >&2; exit 1; }
+	printf '%s@old\t99\n%s@daily\t100\n%s@new\t101\n%s#mark\t1000\n' "$last_arg" "$last_arg" "$last_arg" "$last_arg"
+	[ -n "${ZFSM_TEST_TXG_EXTRA:-}" ] && printf '%s@%s\t2000\n' "$last_arg" "$ZFSM_TEST_TXG_EXTRA"
+	exit 0
+fi
+
+if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg '-r' "$@" && [ "${ZFSM_TEST_USERS_LIST_FAIL:-0}" = 1 ]; then
+	printf "cannot open '%s': simulated failure\n" "$last_arg" >&2
+	exit 1
+fi
+
+if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && [ -n "${ZFSM_TEST_USERS_MOUNT:-}" ]; then
+	printf '%s\t%s\n' "$last_arg" "$ZFSM_TEST_USERS_MOUNT"
+	exit 0
+fi
+
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
 	printf 'tank\t/tmp/zfsm-test-mount\n'
 	exit 0
@@ -35,12 +95,28 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-r' "$@"; 
 fi
 
 if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-d' "$@"; then
+	if [ "${ZFSM_TEST_DATASET_SNAPSHOTS_FAIL:-0}" = 1 ]; then
+		printf 'simulated dataset snapshot failure\n' >&2
+		exit 1
+	fi
 	if [ "$last_arg" = "tank" ]; then
 		printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
 	else
 		printf '%s@daily\t2\t50\t2\toff\t0\t1700000400\n' "$last_arg"
 	fi
 	exit 0
+fi
+
+if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_LIST_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_LIST_FAIL" ]; then
+	printf "cannot open '%s': permission denied\n" "$last_arg" >&2
+	exit 2
+fi
+
+# ZFSM_TEST_MISSING_DATASET is comma-separated; names may hold spaces.
+if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
+	case ",$ZFSM_TEST_MISSING_DATASET," in
+		*",$last_arg,"*) printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1 ;;
+	esac
 fi
 
 if [ "$1" = "list" ]; then
@@ -54,12 +130,34 @@ if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
 	exit 0
 fi
 
+if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_GET_FAIL" ]; then
+	printf "cannot open '%s': permission denied\n" "$last_arg" >&2
+	exit 1
+fi
+
+if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then
+	printf '%s/%s\n' "$ZFSM_TEST_MOUNT_ROOT" "$last_arg"
+	exit 0
+fi
+
 if [ "$1" = "get" ]; then
-	printf '/mnt/tank/data\n'
+	printf '%s\n' "${ZFSM_TEST_DATASET_MOUNT:-/mnt/tank/data}"
 	exit 0
 fi
 
 if [ -n "$ZFSM_TEST_LOG" ]; then
 	printf '%s\n' "$*" >> "$ZFSM_TEST_LOG"
 fi
+
+if [ "$1" = "set" ] && [ "${ZFSM_TEST_SET_FAIL:-0}" = 1 ]; then
+	printf "cannot set property for '%s': permission denied\n" "$last_arg" >&2
+	exit 1
+fi
+
+if [ "$1" = "create" ] && [ -n "${ZFSM_TEST_CREATE_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_CREATE_FAIL" ]; then
+	printf "cannot create '%s': dataset already exists\n" "$last_arg" >&2
+	exit 1
+fi
+# The new dataset mounting where the moved directory was.
+[ "$1" = "create" ] && [ -n "${ZFSM_TEST_CREATE_MOUNTS_AT:-}" ] && mkdir -p "$ZFSM_TEST_CREATE_MOUNTS_AT"
 exit 0

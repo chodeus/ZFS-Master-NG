@@ -10,30 +10,54 @@ function safeJsArg(value) {
 	return "decodeURIComponent('"+encodeURIComponent(String(value ?? '')).replace(/'/g, '%27')+"')";
 }
 
+// Row class for a dataset's descendants. Encoded so spaces stay one token; prefixed so a pool named "red" can't hit a theme class.
+function datasetChildClass(name) {
+	return 'zfsm-child-'+encodeURIComponent(String(name ?? ''));
+}
+
+function datasetRowId(name) {
+	return 'tr-'+encodeURIComponent(String(name ?? ''));
+}
+
+// Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
+function snapshotCell(color, count, browsePath) {
+	const style = color ? ' style="color:'+escapeHtml(color)+'"' : '';
+	const browse = typeof browsePath === 'string' && browsePath.startsWith('/')
+		? '<a href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
+		: '';
+	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span><span class="zfsm-snap-browse">'+browse+'</span>';
+}
+
+// Puts the refresh time and buttons on Unraid's own title line and opts it out of the reads/writes toggle.
+// Tabbed pages have no title line, so the bar stays where it is.
+function zfsmMoveStatusIntoTitle(bar) {
+	let title = bar ? bar.previousElementSibling : null;
+	// Unraid 6.9 and 6.11 mark it div#title; 6.12 and later use div.title.
+	while (title && !(title.tagName === 'DIV' && (title.id === 'title' || title.classList.contains('title')))) title = title.previousElementSibling;
+	if (!title) return false;
+	title.classList.add('disable_diskio');
+	title.classList.add('zfsm-title');
+	let right = title.querySelector('span.right');
+	if (!right) {
+		right = document.createElement('span');
+		right.className = 'right zfsm-title-right';
+		title.appendChild(right);
+	}
+	const status = document.createElement('span');
+	status.className = 'zfsm-title-status';
+	while (bar.firstChild) status.appendChild(bar.firstChild);
+	right.appendChild(status);
+	bar.remove();
+	return true;
+}
+
 function parseJSONResponse(value) {
 	return typeof value === 'string' ? JSON.parse(value) : value;
 }
 
-function crc16(str) {
-	const crcTable = [];
-	const polynomial = 0xA001;
-  
-	for (let i = 0; i < 256; i++) {
-		let crc = i;
-		for (let j = 0; j < 8; j++) {
-			crc = (crc & 1) ? ((crc >>> 1) ^ polynomial) : (crc >>> 1);
-		}
-		crcTable[i] = crc;
-	}
-	
-	let crc = 0xFFFF;
-
-	for (let i = 0; i < str.length; i++) {
-		const charCode = str.charCodeAt(i);
-		crc = ((crc >>> 8) ^ crcTable[(crc ^ charCode) & 0xFF]) & 0xFFFF;
-	}
-	
-	return crc.toString(16).toUpperCase().padStart(4, '0');
+// One id per name, safe in a # selector: a short checksum let two datasets share a menu button.
+function elementToken(name) {
+	return 'zfsm-'+encodeURIComponent(String(name ?? '')).replace(/[^A-Za-z0-9]/g, char => '_'+char.charCodeAt(0).toString(16));
 }
 
 function nl2br(str, is_xhtml) {
@@ -45,7 +69,7 @@ function nl2br(str, is_xhtml) {
 }
 
 function fromBytesToString(bytes) {
-	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
   
 	bytes = Number(bytes);
 	bytes = Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
@@ -61,6 +85,10 @@ function fromStringToBytes(spacestr) {
 	let returnNumber = parseFloat(spacestr);
 
 	switch (spacestr.slice(-1)) {
+	  case 'E':
+		returnNumber *= 1024;
+	  case 'P':
+		returnNumber *= 1024;
 	  case 'T':
 		returnNumber *= 1024;
 	  case 'G':
@@ -74,6 +102,13 @@ function fromStringToBytes(spacestr) {
 	}
 
 	return returnNumber;
+}
+
+// zpool list prints short sizes (1.12T); dataset rows print 1.1 TiB. A faulted pool prints -.
+function poolSizeText(value) {
+	const text = String(value ?? '');
+	const bytes = fromStringToBytes(text);
+	return Number.isFinite(bytes) ? fromBytesToString(bytes) : escapeHtml(text);
 }
 
 function calculateFreePercent(used, free) {
@@ -105,7 +140,7 @@ function saveToLocalStorage(key, value, encode=true) {
 	try {
 		localStorage.setItem(key, encode ? JSON.stringify(value) : value);
 	} catch (error) {
-		console.warn('ZFS Master could not save its browser cache', error);
+		console.warn('ZFS Master NG could not save its browser cache', error);
 	}
 }
 
@@ -114,14 +149,14 @@ function loadFromLocalStorage(key, decode=true) {
 		const value = localStorage.getItem(key);
 		return value === null ? null : (decode ? JSON.parse(value) : value);
 	} catch (error) {
-		console.warn('ZFS Master ignored an unavailable or invalid browser cache', error);
+		console.warn('ZFS Master NG ignored an unavailable or invalid browser cache', error);
 		return null;
 	}
 }
 
 function removeFromLocalStorage(key) {
 	try { localStorage.removeItem(key); } catch (error) {
-		console.warn('ZFS Master could not clear its browser cache', error);
+		console.warn('ZFS Master NG could not clear its browser cache', error);
 	}
 }
 
@@ -158,26 +193,15 @@ function hasDirectories(dataset) {
 	return true;
 }
 
-function fromTimeToSeconds(time) {
-	parts = time.split(':')
-	console.log(parts);
-	
-	total = parseInt(parts[2]);
-	total += parseInt(parts[1]*60);
-	total += parseInt(parts[0]*60*60);
-	
-	return total;
-}
-
 function parseDirectoryCopy(msg) {
-	regex = /(?<data>[\d,]+)[\s\t]+(?<progress>[\d]+%)[\s\t]+(?<speed>[\d.]+[G|M|K|B]+\/s)[\s\t]+(?<time>[\d]+:[\d]+:[\d]+)/;
+	const regex = /(?<data>[\d,]+)[\s\t]+(?<progress>[\d]+%)[\s\t]+(?<speed>[\d.]+[G|M|K|B]+\/s)[\s\t]+(?<time>[\d]+:[\d]+:[\d]+)/;
 	
-	groups = regex.exec(msg.replace(/(?:\\[rn])+/g, ""));
+	const match = regex.exec(msg.replace(/(?:\\[rn])+/g, ""));
 	
-	if (groups == null || !'groups' in groups)
+	if (match == null)
 		return '';
 
-	groups = groups['groups'];
+	const groups = match.groups;
 
 	groups['data'] = fromBytesToString(groups['data'].replace(/,/g, ''));
 
@@ -250,7 +274,7 @@ function getPoolShowStatus(zpool) {
 	return true;
 }
 
-function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
+function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, destructive_mode) {
 	var agg = '';
 
 	var icon_color = 'grey';
@@ -259,7 +283,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var tr = '<tr id="tr-dir-'+crc16(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+		var tr = '<tr id="tr-dir-'+elementToken(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 		tr += '<td></td><td></td><td>';
 
 		for (let i = 1; i <= depth; i++) {
@@ -274,7 +298,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		// Actions
 
 		tr += '<td>';
-		var id = crc16(directory);
+		var id = elementToken(directory);
 
 		tr += '<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>';
 		tr += '</td>';
@@ -292,12 +316,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		tr += '<td></td>';
 
 		// Snapshots
-		tr += '<td><i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-		// Mountpoint
-
-		tr += '<a href="/Main/Browse?dir='+encodeURIComponent(directory)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(directory)+'"></i></a>';
-		tr += '</td>';
+		tr += '<td>'+snapshotCell(icon_color, snap_count, directory)+'</td>';
 		tr += '</tr>';
 		agg += tr;
 	});
@@ -305,54 +324,22 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 	return agg;
 }
 
-function updateDatasetDirectoryRows(zdataset, snapshots, snap_max_days_alert) {
-	var icon_color = 'grey';
-	var snap_count = 0;
-
-	const depth = zdataset['name'].split('/').length;
-
-	Object.values(zdataset.directories).forEach((directory) => {
-		var row = document.getElementById('tr-dir-'+crc16(directory));
-		if (!row) return;
-
-		tds = row.getElementsByTagName('td');
-
-		td_dataset = tds[2];
-		td_snaps = tds[8];
-	
-		var tmp = '';
-	
-		for (let i = 1; i <= depth; i++) {
-			tmp += '&emsp;&emsp;';
-		}
-
-		tmp += '<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>';
-
-		tmp += escapeHtml(directory.substring(directory.lastIndexOf("/") + 1));
-		tmp += '</td>';
-	
-		td_dataset.innerHTML = tmp;
-	
-		// Snapshots
-	
-		tmp = '<td>';
-		tmp += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-		tmp += '<a href="/Main/Browse?dir='+encodeURIComponent(directory)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(directory)+'"></i></a>';
-	
-		td_snaps.innerHTML = tmp;
-	});
+// ZFS's own form: 116 from the backend reads 1.16x.
+function compressRatioText(value) {
+	const ratio = Number(value) / 100;
+	return Number.isFinite(ratio) && ratio > 0 ? ratio.toFixed(2)+'x' : '';
 }
 
 function getPropertiesByType(zdataset) {
-	const creationDate = new Date(zdataset['creation'] * 1000);
+	const created = zdataset['creation_text'] ?? new Date(zdataset['creation'] * 1000).toLocaleString();
 	var properties = {};
 
 	if (zdataset['type'] !== undefined && zdataset['type'] == "filesystem".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Compression' : zdataset['compression'],
-			'Compress Ratio' : zdataset['compressratio']/100,
+			'Compress Ratio' : compressRatioText(zdataset['compressratio']),
 			'Record Size' : fromBytesToString(zdataset['recordsize']),
 			'Access Time' : zdataset['atime'],
 			'XAttr' : zdataset['xattr'],
@@ -369,11 +356,11 @@ function getPropertiesByType(zdataset) {
 
 	} else if (zdataset['type'] !== undefined && zdataset['type'] == "volume".toLowerCase()) {
 		properties = {
-			'Creation Date' : creationDate.toLocaleString('en-US', { hour12: false }),
+			'Creation Date' : created,
 			'Type' : zdataset['type'],
 			'Block Size' : fromBytesToString(zdataset['volblocksize']),
 			'Compression' : zdataset['compression'],
-			'Compress Ratio' : zdataset['compressratio']/100,
+			'Compress Ratio' : compressRatioText(zdataset['compressratio']),
 			'Primary Cache' : zdataset['primarycache'],
 			'Encryption' : zdataset['encryption'],			
 			'Key Status' : zdataset['keystatus'],
@@ -391,39 +378,66 @@ function getZnapProperties(zdataset) {
 	const ZNAPZEND_PREFIX = "org.znapzend:";
 	var properties = [];
 
-	keys = Object.keys(zdataset).filter(k => k.startsWith(ZNAPZEND_PREFIX));
-
-	keys.forEach((property) => {
+	Object.keys(zdataset).filter(k => k.startsWith(ZNAPZEND_PREFIX)).forEach((property) => {
 		properties[property.slice(ZNAPZEND_PREFIX.length)] = zdataset[property];
 	});
 
 	return Object.fromEntries(Object.entries(properties).sort(([a],[b]) => a.localeCompare(b)));
 }
 
+// the snapshot icon colour and count of a dataset; adds its last snapshot to properties
+function datasetSnapInfo(zdataset, snap_max_days_alert, properties) {
+	if (zdataset['snapshots'] === undefined || zdataset['snapshots'].length === 0)
+		return {icon_color: 'grey', snap_count: 0};
+
+	const snap = getLastSnap(zdataset['snapshots']);
+	properties['Last Snap Date'] = snap['creation_text'] ?? new Date(snap['creation'] * 1000).toLocaleString();
+	properties['Last Snap'] = snap['name'];
+
+	return {icon_color: daysToNow(snap['creation']) > snap_max_days_alert ? 'orange' : '#486dba', snap_count: zdataset['snapshots'].length};
+}
+
+// the icons after a dataset's name: znapzend plan, children, clone, encryption
+function datasetBadges(zdataset) {
+	var html = '';
+	const znap_properties = getZnapProperties(zdataset);
+
+	if (Object.keys(znap_properties).length > 0) {
+		html += '<a class="info hand"><i class="fa fa-clock-o fa-append"></i>';
+		html += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
+	}
+
+	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
+		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
+	}
+
+	if (zdataset['origin'] !== undefined) {
+		html += '<i class="fa fa-clone fa-append"></i>';
+	}
+
+	if (zdataset['keystatus'] != 'none') {
+		html += zdataset['keystatus'] == 'available' ? '<i class="fa fa-unlock fa-append"></i>' : '<i class="fa fa-lock fa-append"></i>';
+	}
+
+	return html;
+}
+
+// one Used or Free cell: the text alone, or a bar when the display setting asks for one
+function usageCell(text, percent, free, display) {
+	const plain = free ? (display['text'] < 10 ? display['text'] % 10 == 0 : display['text'] % 10 != 0) : display['text'] % 10 == 0;
+
+	if (plain)
+		return text;
+
+	return '<div class="usage-disk"><span style="margin:0;width:'+percent+'%" class="'+usage_color(percent, free, display)+'"></span><span>'+text+'</span></div>';
+}
+
 function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
-	var tr = '<tr id="tr-'+escapeHtml(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+	var tr = '<tr id="'+datasetRowId(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 	tr += '<td></td><td></td><td>';
 
 	var properties = getPropertiesByType(zdataset);
-
-	var icon_color = 'grey';
-	var snap_count = 0;
-
-	if (zdataset['snapshots'] !== undefined && zdataset['snapshots'].length > 0) {
-		const snap = getLastSnap(zdataset['snapshots']);
-		var snapdate = new Date(snap['creation'] * 1000);
-
-		if (daysToNow(snap['creation']) > snap_max_days_alert) {
-			icon_color = 'orange';
-		} else {
-			icon_color = '#486dba';
-		}
-
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
-		properties['Last Snap'] = snap['name'];
-
-		snap_count = zdataset['snapshots'].length;
-	}
+	const {icon_color, snap_count} = datasetSnapInfo(zdataset, snap_max_days_alert, properties);
 
 	const depth = zdataset['name'].split('/').length - 1;
 
@@ -431,31 +445,9 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+zdataset['name']+'\');"></i>';
+	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>';
 	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
-
-	var znap_properties = getZnapProperties(zdataset);
-
-	if (Object.keys(znap_properties).length > 0) {
-		tr += '<a class="info hand"><i class="fa fa-clock-o fa-append"></i>';
-		tr += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
-	}
-
-	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		tr += '<i class="fa fa-minus-square fa-append" name="'+zdataset['name']+'"></i>';
-	}
-
-	if (zdataset['origin'] !== undefined) {
-		tr += '<i class="fa fa-clone fa-append"></i>';
-	}
-
-	if (zdataset['keystatus'] != 'none') {
-		if (zdataset['keystatus'] == 'available') {
-			tr += '<i class="fa fa-unlock fa-append"></i>';
-		} else {
-			tr += '<i class="fa fa-lock fa-append"></i>';
-		}
-	}
+	tr += datasetBadges(zdataset);
 
 	tr += escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
 	tr += '</td>';
@@ -463,7 +455,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	// Actions
 
 	tr += '<td>';
-	var id = crc16(zdataset['name']);
+	var id = elementToken(zdataset['name']);
 
 	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
 	tr += '</td>';
@@ -481,38 +473,15 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	tr += fromBytesToString(zdataset['referenced']);
 	tr += '</td>';
 
-	// Used
+	// Used and Free
 	var percent = 100-Math.round(calculateFreePercent(zdataset['used'], zdataset['available']));
 
-	tr += '<td>';
-	if (display['text'] % 10 == 0) {
-		tr += fromBytesToString(zdataset['used']);
-	} else {
-		tr += '<div class="usage-disk"><span style="margin:0;width:'+percent+'%" class="'+usage_color(percent, false, display)+'"></span><span>'+fromBytesToString(zdataset['used'])+'</span></div>';
-	}
-	tr += '</td>';
-
-	// Free
-	tr += '<td>';	
-	if (display['text'] < 10 ? display['text'] % 10 == 0 : display['text'] % 10 != 0) {
-		tr += fromBytesToString(zdataset['available']);
-	} else {
-		tr += '<div class="usage-disk"><span style="margin:0;width:'+(100-percent)+'%" class="'+usage_color(100-percent, true, display)+'"></span><span>'+fromBytesToString(zdataset['available'])+'</span></div>';
-	}
-	tr += '</td>';
+	tr += '<td>'+usageCell(fromBytesToString(zdataset['used']), percent, false, display)+'</td>';
+	tr += '<td>'+usageCell(fromBytesToString(zdataset['available']), 100-percent, true, display)+'</td>';
 
 	// Snapshots
 
-	tr += '<td>';
-	tr += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-	// Mountpoint
-
-	if (zdataset['mountpoint'] != "none") {
-		tr += ' <a href="/Main/Browse?dir='+encodeURIComponent(zdataset['mountpoint'])+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(zdataset['mountpoint'])+'"></i></a>';
-	}
-
-	tr += '</td>';
+	tr += '<td>'+snapshotCell(icon_color, zdataset['_snapshots_unavailable'] ? '—' : snap_count, zdataset['mountpoint'])+'</td>';
 	tr += '</tr>';
 
 	return tr;
@@ -523,10 +492,10 @@ function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructi
 	if (!dataset || dataset['_error']) return tr;
 	tr += generateDatasetRow(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
 	if (hasDirectories(dataset)) {
-		tr += generateDatasetDirectoryRows(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetDirectoryRows(zpool, dataset, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode);
 	}
 	Object.values(dataset.child || {}).forEach((child) => {
-		tr += generateDatasetArrayRows(zpool, child, parent+' '+dataset['name'], show_status, destructive_mode, snap_max_days_alert, display);
+		tr += generateDatasetArrayRows(zpool, child, parent+' '+datasetChildClass(dataset['name']), show_status, destructive_mode, snap_max_days_alert, display);
 	});
 
 	return tr;
@@ -548,7 +517,7 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	tr += '<button type="button" onclick="createDataset(\''+zpool['Pool']+'\')";">Create Dataset</button></td>';
 
 	// Size
-	tr += '<td id="'+zpool['Pool']+'-attribute-size">'+zpool['Size']+'</td>'; 
+	tr += '<td id="'+zpool['Pool']+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
 
 	// Mountpoint
 	tr += '<td id="'+zpool['Pool']+'-attribute-mountpoint">'+zpool['MountPoint']+'</td>'; 
@@ -559,35 +528,21 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	// Used
 	var percent = 100-Math.round(calculateFreePercent(zpool['Used'], zpool['Free']));
 
-	tr += '<td id="'+zpool['Pool']+'-attribute-used">';
-
-	if (display['text'] % 10 == 0) {
-		tr += zpool['Used']+'iB';
-	} else {
-		tr += '<div class="usage-disk"><span style="margin:0;width:'+percent+'%" class="'+usage_color(percent, false, display)+'"></span><span>'+zpool['Used']+'iB</span></div>';
-	}
-	tr += '</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-used">'+usageCell(poolSizeText(zpool['Used']), percent, false, display)+'</td>';
 
 	// Free
-	tr += '<td id="'+zpool['Pool']+'-attribute-free">';
-
-	if (display['text'] < 10 ? display['text'] % 10 == 0 : display['text'] % 10 != 0) {
-		tr += zpool['Free']+'iB';
-	} else {
-		tr += '<div class="usage-disk"><span style="margin:0;width:'+(100-percent)+'%" class="'+usage_color(100-percent, true, display)+'"></span><span>'+zpool['Free']+'iB</span></div>';
-	}
-	tr += '</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-free">'+usageCell(poolSizeText(zpool['Free']), 100-percent, true, display)+'</td>';
 
 	// Snapshots
-	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots"><i class="fa fa-camera-retro icon"></i><span>'+(zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'])+'</span></td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
 
 	return tr; 
 }
 
-function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, display, directory_listing) {
+function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, display) {
 	var html_pools = "";
 
-	zfs_table_body = document.getElementById('zfs_master_body');
+	const zfs_table_body = document.getElementById('zfs_master_body');
 
 	if (!zfs_table_body) {
 		return;
@@ -606,7 +561,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {
 			html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">ZFS query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_error'])+'</td></tr>';
 		} else {
-			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], zpool['Pool'], show_status, destructive_mode, snap_max_days_alert, display);
+			html_pools += generateDatasetArrayRows(zpool['Pool'], data['datasets'][zpool['Pool']], '', show_status, destructive_mode, snap_max_days_alert, display);
 			if (data['datasets'][zpool['Pool']]['_snapshot_error']) {
 				html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">Snapshot query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_snapshot_error'])+'</td></tr>';
 			}
@@ -614,96 +569,4 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 	});
 
 	zfs_table_body.innerHTML = html_pools;
-}
-
-async function updateSnapshotInfo(data, destructive_mode, snap_max_days_alert, directory_listing) {
-	var row = document.getElementById('tr-'+data.dataset['name']);
-	if (!row) return;
-
-	tds = row.getElementsByTagName('td');
-
-	td_dataset = tds[2];
-	td_button = tds[3];
-	td_snaps = tds[8];
-
-	var properties = getPropertiesByType(data.dataset);
-
-	var icon_color = 'grey';
-	var snap_count = 0;
-
-	if (data['snapshots'] !== undefined && data['snapshots'] != null && data['snapshots'].length > 0) {
-		const snap = getLastSnap(data['snapshots']);
-		var snapdate = new Date(snap['creation'] * 1000);
-
-		if (daysToNow(snap['creation']) > snap_max_days_alert) {
-			icon_color = 'orange';
-		} else {
-			icon_color = '#486dba';
-		}
-
-		properties['Last Snap Date'] = snapdate.toLocaleString('en-US', { hour12: false });
-		properties['Last Snap'] = snap['name'];
-
-		snap_count = data['snapshots'].length;
-	}
-
-	const depth = data.dataset['name'].split('/').length - 1;
-
-	var tmp = '';
-
-	for (let i = 1; i <= depth; i++) {
-    	tmp += '&emsp;&emsp;';
-	}
-
-	tmp += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'" onclick="toggleDataset(\''+data.dataset['name']+'\');"></i>';
-	tmp += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
-
-	var znap_properties = getZnapProperties(data.dataset);
-
-	if (Object.keys(znap_properties).length > 0) {
-		tmp += '<a class="info hand"><i class="fa fa-clock-o fa-append"></i>';
-		tmp += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
-	}
-
-	if (Object.keys(data.dataset['child']).length > 0 || hasDirectories(data.dataset)) {
-		tmp += '<i class="fa fa-minus-square fa-append" name="'+data.dataset['name']+'"></i>';
-	}
-
-	if (data.dataset['origin'] !== undefined) {
-		tmp += '<i class="fa fa-clone fa-append"></i>';
-	}
-
-	if (data.dataset['keystatus'] != 'none') {
-		if (data.dataset['keystatus'] == 'available') {
-			tmp += '<i class="fa fa-unlock fa-append"></i>';
-		} else {
-			tmp += '<i class="fa fa-lock fa-append"></i>';
-		}
-	}
-
-	tmp += data.dataset['name'].substring(data.dataset['name'].lastIndexOf("/") + 1);
-	tmp += '</td>';
-
-	td_dataset.innerHTML = tmp;
-
-	// Actions
-
-	tmp = '<td>';
-	var id = crc16(data.dataset['name']);
-
-	tmp += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(data.pool)+', '+safeJsArg(data.dataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(data.dataset['keystatus'])+', '+safeJsArg(data.dataset['origin'] ?? '')+', '+safeJsArg(data.dataset['type'] ?? 'filesystem')+');" class="zfs_compact">Actions</button>';
-	tmp += '</td>';
-
-	td_button.innerHTML = tmp;
-
-	// Snapshots
-
-	tmp = '<td>';
-	tmp += '<i class="fa fa-camera-retro icon" style="color:'+icon_color+'"></i><span>'+snap_count+'</span>';
-
-	if (data.dataset['mountpoint'] != "none") {
-		tmp += ' <a href="/Main/Browse?dir='+data.dataset['mountpoint']+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+data.dataset['mountpoint']+'"></i></a>';
-	}
-
-	td_snaps.innerHTML = tmp;
 }
