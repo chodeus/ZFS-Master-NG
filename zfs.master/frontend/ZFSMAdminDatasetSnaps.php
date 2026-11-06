@@ -14,6 +14,7 @@ $snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset);
 $snapshots = $snapshot_result['snapshots'];
 $snapshot_error = $snapshot_result['error'];
 $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructive_mode'] ?? 0) === 1;
+$snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('diff' => false, 'browse' => '');
 
 ?>
 
@@ -133,6 +134,8 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 			echo '<td class="num"'.$sort_value($holds).'>'.$holds.'</td>';
 			echo '<td'.$sort_value($snap['creation']).'>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
 			echo '<td><span class="zfsm-actions">';
+				if ($snapshot_access['browse'] !== '') echo '<a title="Browse files in this snapshot" href="/Main/Browse?dir='.htmlspecialchars(rawurlencode($snapshot_access['browse'].'/'.$snapshot_short), ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener"><i class="fa fa-folder-open-o"></i></a>';
+				if ($snapshot_access['diff']) echo '<a title="Show changes since this snapshot" onclick="diffSnapshot('.$snapshot_js.')"><i class="fa fa-history"></i></a>';
 				echo '<a class="zfsm-rollback" title="Roll back to this snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward"></i></a>';
 				echo '<a title="Rename" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a>';
 				echo '<a title="Hold, so it cannot be deleted" onclick="holdSnapshot('.$snapshot_js.')"><i class="fa fa-pause"></i></a>';
@@ -155,6 +158,7 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMSnapshotList.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMSnapshotDiff.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
   installZFSMActionRefresh(function() {
@@ -215,6 +219,12 @@ $destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructi
 			showResult('Rollback Result', $.post('<?=$urlzmadmin?>',{cmd: 'rollbacksnapshot', 'snapshot': snapshot, 'destroy_newer': newer.length ? 1 : 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}));
 		});
 	});
+  }
+
+  function diffSnapshot(snapshot) {
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'diffsnapshot', snapshot: snapshot, csrf_token: zfsm_csrf_token}, function(diff) {
+		Swal2.fire({title: '<strong>Changes since '+escapeHtml(snapshot)+'</strong>', icon: diff.error ? 'error' : undefined, html: zfsmDiffHtml(diff), width: '60em'});
+	}, '');
   }
 
   function renameSnapshot(snapshot) {

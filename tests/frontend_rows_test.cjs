@@ -77,6 +77,8 @@ assert.match(datasetCells[1], /Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"/);
 const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=alert(1)>');
 assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
+for (const elsewhere of ['/srv/data', '/mntx/a', 'legacy']) assert.doesNotMatch(context.snapshotCell('', 0, elsewhere), /<a /, 'Unraid 7.2+ cannot browse '+elsewhere);
+assert.match(context.snapshotCell('', 0, '/boot'), /Main\/Browse\?dir=%2Fboot"/, 'the boot pool can be browsed');
 assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
 assert.match(page, /<div id="zfs_master_div" class="TableContainer">\s*<table id="zfs_master"/, 'on Unraid 7.2+ phones the table scrolls in its own box, like Unraid\'s tables');
 assert.match(page, /@media \(max-width:768px\)\{\s*div\.title\.zfsm-title,div#title\.zfsm-title\{flex-wrap:wrap/, 'on phones only the plugin title line wraps');

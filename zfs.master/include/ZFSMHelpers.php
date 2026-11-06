@@ -62,7 +62,8 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
-function runProcess($command, $args = array(), $stdin = null) {
+// With $max_lines, stops the command after that many lines; when it had more, sets 'truncated' and the line after them, 'next_line'.
+function runProcess($command, $args = array(), $stdin = null, $max_lines = 0) {
 	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
 	if ($test_bin_dir !== false && $test_bin_dir !== '') {
 		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
@@ -79,7 +80,7 @@ function runProcess($command, $args = array(), $stdin = null) {
 	$inventory_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
 	if ($inventory_deadline !== null) {
 		$remaining = $inventory_deadline - microtime(true);
-		if ($remaining <= 0) throw new RuntimeException('ZFS inventory timed out');
+		if ($remaining <= 0) throw new RuntimeException(basename($command).' timed out before it started');
 		$timeout = is_executable('/usr/bin/timeout') ? '/usr/bin/timeout' : '/bin/timeout';
 		if (!is_executable($timeout)) throw new RuntimeException('The system timeout utility is unavailable');
 		$duration = number_format(max(0.001, $remaining), 3, '.', '').'s';
@@ -96,12 +97,33 @@ function runProcess($command, $args = array(), $stdin = null) {
 		fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
-	$output = stream_get_contents($pipes[1]);
+	list($output, $next_line) = zfsmReadOutput($pipes[1], $max_lines);
+	$limit_code = $next_line === null ? null : zfsmStopAtLimit($process);
 	fclose($pipes[1]);
 	$code = proc_close($process);
-	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException('ZFS inventory timed out while running '.basename($command));
+	// proc_close can't report an exit that proc_get_status already collected.
+	if ($limit_code !== null) $code = $limit_code;
+	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
+	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException(basename($command).' timed out');
 
 	return array('code' => $code, 'output' => trim((string)$output));
+}
+
+// Past the line limit: stops a command still running and returns 0; one that already exited keeps its exit code.
+function zfsmStopAtLimit($process) {
+	$status = proc_get_status($process);
+	// Unraid's PHP workers ignore SIGPIPE and pass that on, so closing the pipe alone may not stop the command.
+	if ($status['running']) proc_terminate($process);
+	return $status['running'] ? 0 : (int)$status['exitcode'];
+}
+
+// The whole output, or its first $max_lines lines and the line after them; that line is null when none followed.
+function zfsmReadOutput($pipe, $max_lines) {
+	if ($max_lines <= 0) return array(stream_get_contents($pipe), null);
+	$output = '';
+	for ($count = 0; $count < $max_lines && ($line = fgets($pipe)) !== false; $count++) $output .= $line;
+	$next_line = $count === $max_lines ? fgets($pipe) : false;
+	return array($output, $next_line === false ? null : $next_line);
 }
 
 // Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.

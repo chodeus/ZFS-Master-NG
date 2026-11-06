@@ -63,6 +63,7 @@ jobs:
           node tests/frontend_toggle_test.cjs
           node tests/frontend_create_result_test.cjs
           node tests/frontend_impact_test.cjs
+          node tests/frontend_snapshot_diff_test.cjs
           node tests/frontend_inventory_failure_test.cjs
           node tests/package_test.cjs
           node tests/dead_code_test.cjs

@@ -11,6 +11,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Pools at a glance** — health, size, used and free space, and snapshot counts
 - **Datasets** — create, rename, promote and destroy, and edit properties such as compression, quota, record size and access time
 - **Snapshots** — take them singly or recursively, then roll back, rename, clone, hold, release or delete them, with an icon that warns when the newest one is getting old
+- **Snapshots Admin** — filter and sort the list, open a snapshot's files in Unraid's file browser, or see which files changed since it was taken
 - **Encryption** — create encrypted datasets, and lock or unlock them
 - **Directories** — list the folders inside a dataset, move or delete them, or convert one to its own dataset
 - **ZnapZend** — optionally show the backup plans set on each dataset
