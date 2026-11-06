@@ -57,9 +57,10 @@ for ($i = 0; $i < 12; $i++) $many .= "tank/d$i@old\t".($now - 40 * $day)."\n";
 same(1, preg_match('/: tank\/d0, [^ ]+(, [^ ]+){8} and 2 more$/', zfsmStaleProblem($many, $now, 30, '')['detail']), 'a long list shows 10 and counts the rest');
 
 // The real check, run as cron runs it; the boot time comes from a fake /proc/uptime.
-// Its own folder per run, so state from an earlier run can't leak in.
-$tmp = sys_get_temp_dir().'/zfsm-alerts-'.getmypid();
+// Its own folder per run, so state from an earlier run can't leak in; removed again on any exit.
+$tmp = sys_get_temp_dir().'/zfsm-alerts-'.getmypid().'-'.bin2hex(random_bytes(4));
 mkdir($tmp);
+register_shutdown_function(function() use ($tmp) { exec('rm -rf '.escapeshellarg($tmp)); });
 $GLOBALS['zfsm_emhttp'] = $tmp;
 $GLOBALS['zfsm_alert_state'] = $tmp.'/state.json';
 $GLOBALS['zfsm_uptime'] = $tmp.'/uptime';
