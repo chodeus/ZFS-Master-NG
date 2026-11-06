@@ -51,13 +51,21 @@ function zfsmPoolProblem($name, $pool) {
 	return array('title' => $title, 'detail' => $details ? implode('; ', $details) : 'zpool status shows the pool as '.$pool['state'], 'level' => 'alert', 'message' => $pool['text']);
 }
 
-// ZFS pools Unraid lists in disks.ini; array disks formatted ZFS are pools named after the disk.
+// ZFS pools Unraid lists in disks.ini, encrypted ones (luks:zfs) too; array disks formatted ZFS are pools named after the disk.
 function zfsmExpectedPools($disks) {
 	$names = array();
 	foreach (is_array($disks) ? $disks : array() as $disk) {
-		if (($disk['fsType'] ?? '') === 'zfs' && ($disk['name'] ?? '') !== '') $names[] = $disk['name'];
+		if (preg_match('/(^|:)zfs$/', $disk['fsType'] ?? '') && ($disk['name'] ?? '') !== '') $names[] = $disk['name'];
 	}
 	return $names;
+}
+
+// The problems under these key prefixes from the last run: what a failed read or the boot grace couldn't recheck stays as it was.
+function zfsmCarriedProblems($previous, $prefixes) {
+	return array_filter($previous, function($key) use ($prefixes) {
+		foreach ($prefixes as $prefix) if (strncmp($key, $prefix, strlen($prefix)) === 0) return true;
+		return false;
+	}, ARRAY_FILTER_USE_KEY);
 }
 
 // One notice for the datasets whose newest snapshot is older than $max_days; null when none is.
@@ -92,24 +100,28 @@ function zfsmAlertRead($command, $args) {
 	}
 }
 
-// What is wrong now, keyed so the next run can tell what is new and what has cleared.
-function zfsmAlertProblems($cfg, $now, $started_at, $disks) {
+// What is wrong now, keyed so the next run can tell what is new and what has cleared; $missing_due once pools must be imported.
+function zfsmAlertProblems($cfg, $now, $previous, $disks, $missing_due) {
 	$problems = array();
 	$status = zfsmAlertRead('zpool', array('status', '-p'));
 	if (($status['code'] ?? 1) !== 0) {
+		$problems = zfsmCarriedProblems($previous, array('pool:', 'missing:'));
 		$problems['read:pools'] = array('title' => 'ZFS Master NG could not read pool health', 'detail' => zfsmCommandError($status, 'zpool status failed'), 'level' => 'warning');
 	} else {
 		$pools = zfsmParsePoolStatus($status['output']);
 		foreach ($pools as $name => $pool) if ($problem = zfsmPoolProblem($name, $pool)) $problems['pool:'.$name] = $problem;
-		// Pools import a while after the array starts: wait before calling one missing.
-		$missing = $now - $started_at >= ZFSM_ALERT_GRACE ? array_diff(zfsmExpectedPools($disks), array_keys($pools)) : array();
-		foreach ($missing as $name) {
-			$problems['missing:'.$name] = array('title' => 'ZFS pool '.$name.' is not imported', 'detail' => 'Unraid lists '.$name.' as a ZFS pool, but ZFS has not imported it since the array started.', 'level' => 'alert');
+		if (!$missing_due) {
+			$problems += zfsmCarriedProblems($previous, array('missing:'));
+		} else {
+			foreach (array_diff(zfsmExpectedPools($disks), array_keys($pools)) as $name) {
+				$problems['missing:'.$name] = array('title' => 'ZFS pool '.$name.' is not imported', 'detail' => 'Unraid lists '.$name.' as a ZFS pool, but ZFS has not imported it since the array started.', 'level' => 'alert');
+			}
 		}
 	}
 	if ((int)$cfg['alert_stale'] !== 1) return $problems;
 	$snapshots = zfsmAlertRead('zfs', array('list', '-H', '-p', '-t', 'snapshot', '-o', 'name,creation'));
 	if (($snapshots['code'] ?? 1) !== 0) {
+		$problems += zfsmCarriedProblems($previous, array('stale'));
 		$problems['read:snapshots'] = array('title' => 'ZFS Master NG could not read snapshots', 'detail' => zfsmCommandError($snapshots, 'zfs list failed'), 'level' => 'warning');
 	} elseif ($problem = zfsmStaleProblem($snapshots['output'], $now, (int)$cfg['snap_max_days_alert'], $cfg['dataset_exclusion'])) {
 		$problems['stale'] = $problem;
@@ -117,17 +129,24 @@ function zfsmAlertProblems($cfg, $now, $started_at, $disks) {
 	return $problems;
 }
 
-// Notices for problems that are new or worse (a new title or newly listed items), and for those that cleared.
+// Notices, keyed like the problems, for those that are new or worse (a new title or newly listed items) and for those that cleared.
 function zfsmAlertNotices($previous, $current) {
 	$notices = array();
 	foreach ($current as $key => $problem) {
 		$before = $previous[$key] ?? null;
-		if ($before === null || $before['title'] !== $problem['title'] || array_diff($problem['items'] ?? array(), $before['items'] ?? array())) $notices[] = $problem;
+		if ($before === null || $before['title'] !== $problem['title'] || array_diff($problem['items'] ?? array(), $before['items'] ?? array())) $notices[$key] = $problem;
 	}
-	foreach (array_diff_key($previous, $current) as $problem) {
-		$notices[] = array('title' => 'Resolved: '.$problem['title'], 'detail' => 'No longer found at the last check.', 'level' => 'normal');
+	foreach (array_diff_key($previous, $current) as $key => $problem) {
+		$notices[$key] = array('title' => 'Resolved: '.$problem['title'], 'detail' => 'No longer found at the last check.', 'level' => 'normal');
 	}
 	return $notices;
+}
+
+// Whether pools must be imported by now: Unraid has mounted everything, and 10 minutes have passed since the boot or the last check that saw the array stopped.
+function zfsmMissingDue($array, $state, $now) {
+	$uptime = (int)(float)@file_get_contents($GLOBALS['zfsm_uptime'] ?? '/proc/uptime');
+	$since = max($now - $uptime, (int)($state['stopped_at'] ?? 0));
+	return ($array['fsState'] ?? '') === 'Started' && $uptime > 0 && $now - $since >= ZFSM_ALERT_GRACE;
 }
 
 // One check: nothing until the array has started, then a notice for each change since the last run.
@@ -142,11 +161,16 @@ function zfsmRunAlerts($cfg, $now) {
 	$emhttp = $GLOBALS['zfsm_emhttp'] ?? '/var/local/emhttp';
 	$array = @parse_ini_file($emhttp.'/var.ini');
 	if (($array['mdState'] ?? '') !== 'STARTED') {
-		$state['started_at'] = null;
+		$state['stopped_at'] = $now;
 	} else {
-		$state['started_at'] = $state['started_at'] ?? $now;
-		$problems = zfsmAlertProblems($cfg, $now, $state['started_at'], @parse_ini_file($emhttp.'/disks.ini', true));
-		foreach (zfsmAlertNotices($state['problems'] ?? array(), $problems) as $notice) zfsnotify($notice['title'], $notice['detail'], substr($notice['message'] ?? '', 0, 4000), $notice['level']);
+		$previous = $state['problems'] ?? array();
+		$problems = zfsmAlertProblems($cfg, $now, $previous, @parse_ini_file($emhttp.'/disks.ini', true), zfsmMissingDue($array, $state, $now));
+		foreach (zfsmAlertNotices($previous, $problems) as $key => $notice) {
+			if (zfsnotify($notice['title'], $notice['detail'], substr($notice['message'] ?? '', 0, 4000), $notice['level'])) continue;
+			// Not sent: leave this one as it was, so the next run sends it again.
+			if (isset($previous[$key])) $problems[$key] = $previous[$key];
+			else unset($problems[$key]);
+		}
 		$state['problems'] = array_map(function($problem) { unset($problem['message']); return $problem; }, $problems);
 	}
 	file_put_contents($state_file.'.tmp', json_encode($state));

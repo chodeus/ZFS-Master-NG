@@ -1,6 +1,8 @@
 #!/bin/sh
 # Unraid's notify script, faked: logs "<importance>: <subject>" per notification.
 [ -n "${ZFSM_TEST_NOTIFY_LOG:-}" ] || exit 0
+# A notify script that fails, as when Unraid can't write the notification.
+[ "${ZFSM_TEST_NOTIFY_FAIL:-0}" = 1 ] && exit 1
 subject=''
 importance=''
 while [ $# -gt 0 ]; do

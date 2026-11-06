@@ -32,9 +32,10 @@ function loadConfig($config) {
 	);
 }
 
-function zfsnotify( $subject, $description, $message, $type="normal") {	
+// Whether Unraid's notify script took the notification.
+function zfsnotify( $subject, $description, $message, $type="normal") {
 	$notify = ($GLOBALS["docroot"] ?? '/usr/local/emhttp').'/plugins/dynamix/scripts/notify';
-	runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type));
+	return (runProcess($notify, array('-e', 'ZFS Master NG', '-s', $subject, '-d', $description, '-m', (string)$message, '-i', $type))['code'] ?? 1) === 0;
 }
 
 // Plain text: notification agents such as Discord and email show HTML tags as typed.
