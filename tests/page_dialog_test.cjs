@@ -28,11 +28,14 @@ window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnap
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
 window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
 
-const posts = [];
+const posts = [], replies = [];
 let properties = {};
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  const reply = window.$.Deferred();
+  replies.push(reply);
+  return reply.promise();
 };
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => window.setTimeout(resolve, 0)); };
 const shown = () => window.document.querySelector('.swal2-html-container');
@@ -91,13 +94,13 @@ async function confirm() {
   // Copy progress through the page's own script: its feed handler, inventory controller and rows.
   const main = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]).find(script => script.includes('var zfsm_csrf_token'));
   const requests = [];
-  let feed = null;
+  const feed = {};
   window.$.ajax = options => {
     const request = {options, done(callback) { this.resolve = callback; return this; }, fail() { return this; }};
     requests.push(request);
     return request;
   };
-  window.NchanSubscriber = function() { this.on = (event, callback) => { feed = callback; }; this.start = () => {}; };
+  window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
   window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
@@ -105,8 +108,8 @@ async function confirm() {
       : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
       : php.includes('$urlzmadmin') ? '/zfsm-admin' : ''));
   await settle();
-  assert.equal(typeof feed, 'function', 'the page must subscribe to the copy feed');
-  const send = op => feed(JSON.stringify({op, data: {dataset: 'tank/new'}}));
+  assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
+  const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
   const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
   const inventory = () => {
     const tank = dataset('tank');
@@ -128,6 +131,24 @@ async function confirm() {
   redraw();
   assert.equal(progress(), '', 'a redraw after the copy must not bring the progress back');
   assert.equal(requests.length, 3, 'each redraw is one inventory read');
+
+  // A lost stop message must not leave progress behind: a dropped feed and the finished Convert request each clear it.
+  send('clone_directory');
+  assert.equal(progress(), 'Cloning files…');
+  assert.ok(feed.disconnect, 'the page must listen for a dropped feed');
+  feed.disconnect();
+  assert.equal(progress(), '', 'a dropped feed must clear the progress');
+  redraw();
+  assert.equal(progress(), '', 'a redraw after a dropped feed must not bring the progress back');
+  send('clone_directory');
+  window.convertDirectory('/mnt/tank/new', 'tank');
+  await settle();
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.equal(posts.at(-1).cmd, 'convertdirectory');
+  assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
+  replies.at(-1).reject();
+  assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();
