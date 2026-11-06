@@ -88,6 +88,16 @@ async function confirm() {
   (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
   assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
 
+  // Copy progress on the dataset row: cloning first, cleared when the copy stops.
+  window.eval(handlers('function zfsmHandleMessage(', '  $(function() {'));
+  window.processHiddenDatasets = () => {};
+  window.document.body.insertAdjacentHTML('beforeend', '<table><tr id="' + window.datasetRowId('tank/new') + '"><td></td><td></td></tr></table>');
+  const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
+  window.zfsmHandleMessage(JSON.stringify({op: 'clone_directory', data: {dataset: 'tank/new'}}));
+  assert.equal(progress(), 'Cloning files…', 'the row must say the files are being cloned');
+  window.zfsmHandleMessage(JSON.stringify({op: 'stop_directory_copy', data: {dataset: 'tank/new'}}));
+  assert.equal(progress(), '', 'the row must clear when the copy stops');
+
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();
 })().catch(error => { console.error(error); process.exit(1); });

@@ -144,6 +144,11 @@ if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFS
 	exit 1
 fi
 
+if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
+	printf '%s\n' "${ZFSM_TEST_ENCRYPTION:-off}"
+	exit 0
+fi
+
 if [ "$1" = "get" ] && contains_arg 'mounted' "$@"; then
 	printf '%s\n' "${ZFSM_TEST_MOUNTED:-yes}"
 	exit 0

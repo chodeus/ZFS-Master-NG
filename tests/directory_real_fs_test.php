@@ -13,6 +13,13 @@ if (!is_string($bin_dir) || !is_executable($bin_dir.'/zfs')) {
 	exit(1);
 }
 
+// The progress feed, each message with the number of entries the new dataset held when it was sent.
+$GLOBALS['zfsm_feed'] = array();
+function publish($channel, $message) {
+	$held = is_dir('/tmp/zfsm-new-dataset') ? count(scandir('/tmp/zfsm-new-dataset')) - 2 : -1;
+	$GLOBALS['zfsm_feed'][] = array(json_decode($message, true)['op'], $held);
+}
+
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 
 function check($condition, $message) {
@@ -160,19 +167,26 @@ $bclone = sys_get_temp_dir().'/zfsm-bclone-'.getmypid();
 file_put_contents($bclone, "1\n");
 $GLOBALS['zfsm_bclone_param'] = $bclone;
 putenv('ZFSM_TEST_BCLONE=active');
-check(zfsmBlockCloning('tank'), 'an active block_cloning feature must allow cloning');
-check(!zfsmBlockCloning('other'), 'another pool must be asked about its own feature');
+check(zfsmBlockCloning('tank/data'), 'an active block_cloning feature must allow cloning');
+check(!zfsmBlockCloning('other/data'), 'another pool must be asked about its own feature');
 putenv('ZFSM_TEST_BCLONE=enabled');
-check(zfsmBlockCloning('tank'), 'an enabled block_cloning feature must allow cloning');
+check(zfsmBlockCloning('tank/data'), 'an enabled block_cloning feature must allow cloning');
 putenv('ZFSM_TEST_BCLONE=disabled');
-check(!zfsmBlockCloning('tank'), 'a disabled block_cloning feature must not clone');
+check(!zfsmBlockCloning('tank/data'), 'a disabled block_cloning feature must not clone');
 putenv('ZFSM_TEST_BCLONE');
-check(!zfsmBlockCloning('tank'), 'a pool without the feature must not clone');
+check(!zfsmBlockCloning('tank/data'), 'a pool without the feature must not clone');
 putenv('ZFSM_TEST_BCLONE=active');
+// A new encrypted dataset gets its own key, so ZFS would copy every file in full.
+putenv('ZFSM_TEST_ENCRYPTION=aes-256-gcm');
+check(!zfsmBlockCloning('tank/data'), 'an encrypted dataset must not clone');
+putenv('ZFSM_TEST_ENCRYPTION');
+putenv('ZFSM_TEST_GET_FAIL=tank/data');
+check(!zfsmBlockCloning('tank/data'), 'an unreadable encryption setting must not clone');
+putenv('ZFSM_TEST_GET_FAIL');
 file_put_contents($bclone, "0\n");
-check(!zfsmBlockCloning('tank'), 'zfs_bclone_enabled=0 must not clone');
+check(!zfsmBlockCloning('tank/data'), 'zfs_bclone_enabled=0 must not clone');
 unlink($bclone);
-check(!zfsmBlockCloning('tank'), 'OpenZFS without zfs_bclone_enabled must not clone');
+check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must not clone');
 
 // With cloning off, cp never runs and rsync copies as before.
 $real_rsync = trim((string)shell_exec('command -v rsync'));
@@ -180,16 +194,21 @@ $cp_log = sys_get_temp_dir().'/zfsm-cp-log';
 @unlink($cp_log);
 reset_tree($target, $mount, $root);
 shim('echo ran >> '.escapeshellarg($cp_log).'; exit 1', 'cp');
+$GLOBALS['zfsm_feed'] = array();
 $result = convertDirectory($target, 'tank');
 check(!empty($result['succeeded']) && !file_exists($cp_log), 'cp ran without block cloning: '.json_encode($result));
+check(!in_array('clone_directory', array_column($GLOBALS['zfsm_feed'], 0), true), 'the row said cloning without block cloning: '.json_encode($GLOBALS['zfsm_feed']));
 
 // With cloning on, the clone alone must give a copy that verifies: this rsync copies nothing, it only checks.
 file_put_contents($bclone, "1\n");
 unlink('/tmp/zfsm-rsync-shim/cp');
 reset_tree($target, $mount, $root);
 shim('case "$*" in *--version*|*--dry-run*) exec '.escapeshellarg($real_rsync).' "$@";; esac; exit 0');
+$GLOBALS['zfsm_feed'] = array();
 $result = convertDirectory($target, 'tank');
 check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode($result));
+// The copy dialog and the row's "Cloning files" come before cp copies anything.
+check($GLOBALS['zfsm_feed'] === array(array('start_directory_copy', 0), array('clone_directory', 0), array('stop_directory_copy', 3)), 'progress came after the clone: '.json_encode($GLOBALS['zfsm_feed']));
 
 // A clone that fails partway leaves the rest to rsync.
 reset_tree($target, $mount, $root);
