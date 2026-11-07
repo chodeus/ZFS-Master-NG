@@ -78,6 +78,11 @@ foreach (array(ZFSM_DIFF_LIMIT - 1, ZFSM_DIFF_LIMIT, 5) as $lines) {
 }
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER='.(ZFSM_DIFF_LIMIT + 1));
 same(true, zfsmSnapshotDiff('tank/data@daily')['truncated'] ?? null, 'a change after the limit means there are more');
+// zfs already gone when the reader is past the limit: its error is the line after it, not "exit 1".
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER_FAST='.ZFSM_DIFF_LIMIT);
+same(array('error' => $failure), zfsmSnapshotDiff('tank/data@daily'), 'zfs that already failed right at the limit says why');
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER_FAST');
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
 putenv('ZFSM_TEST_DIFF_FAILED_EARLY=1');
 same(array('error' => 'Unable to compare the snapshot (exit 1)'), zfsmSnapshotDiff('tank/data@daily'), 'a zfs diff that already failed is not a cut-short success');
