@@ -123,15 +123,19 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 		fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
+	// A zfs stuck in the kernel ignores even KILL and holds its output open: past the limit and timeout's own grace, let it go.
+	$stop_at = $inventory_deadline === null ? null : $inventory_deadline + 3;
 	$lines = null;
-	if ($keep_bytes > 0) list($output, $next_line, $lines) = zfsmReadOutputHead($pipes[1], $keep_bytes);
-	else list($output, $next_line) = zfsmReadOutput($pipes[1], $max_lines);
-	$limit_code = $next_line === null ? null : zfsmStopAtLimit($process);
+	if ($keep_bytes > 0) list($output, $next_line, $lines, $ended) = zfsmReadOutputHead($pipes[1], $keep_bytes, $stop_at);
+	else list($output, $next_line, $ended) = zfsmReadOutput($pipes[1], $max_lines, $stop_at);
+	$limit_code = $ended && $next_line !== null ? zfsmStopAtLimit($process) : null;
 	fclose($pipes[1]);
-	$code = proc_close($process);
+	$code = $ended ? zfsmProcessExit($process, $stop_at) : null;
+	if ($code === null) proc_terminate($process, 9);
 	// proc_close can't report an exit that proc_get_status already collected.
 	if ($limit_code !== null) $code = $limit_code;
 	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
+	if ($code === null) throw new RuntimeException(basename($command).' timed out');
 	// A command that ignored TERM is killed with KILL and comes back as 9, so any failure past the limit is the limit.
 	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new RuntimeException(basename($command).' timed out');
 
@@ -142,17 +146,45 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	return $answer;
 }
 
-// Reads to the end, keeping the first $keep_bytes; also returns how many lines there were in all.
-function zfsmReadOutputHead($pipe, $keep_bytes) {
+// Hands the pipe's output to $take a chunk at a time, until it ends or $take returns false: true. With $stop_at, false once that passes.
+function zfsmReadChunks($pipe, $stop_at, $take) {
+	if ($stop_at !== null) stream_set_blocking($pipe, false);
+	while (true) {
+		if ($stop_at !== null) {
+			$wait = $stop_at - microtime(true);
+			if ($wait <= 0) return false;
+			$ready = array($pipe);
+			$none = null;
+			if (@stream_select($ready, $none, $none, (int)$wait, (int)(fmod($wait, 1) * 1000000)) === 0) continue;
+		}
+		$chunk = fread($pipe, 65536);
+		if ($chunk === false || ($chunk === '' && feof($pipe))) return true;
+		if ($chunk !== '' && $take($chunk) === false) return true;
+	}
+}
+
+// The exit code once the command has ended; null when it is still running at $stop_at.
+function zfsmProcessExit($process, $stop_at) {
+	if ($stop_at === null) return proc_close($process);
+	while (($status = proc_get_status($process))['running']) {
+		if (microtime(true) >= $stop_at) return null;
+		usleep(20000);
+	}
+	proc_close($process);
+	return $status['signaled'] ? (int)$status['termsig'] : (int)$status['exitcode'];
+}
+
+// Reads to the end, keeping the first $keep_bytes; also returns how many lines there were in all, and whether it ended.
+function zfsmReadOutputHead($pipe, $keep_bytes, $stop_at = null) {
 	$head = '';
 	$lines = 0;
 	$last = "\n";
-	while (($chunk = fread($pipe, 65536)) !== false && $chunk !== '') {
+	$ended = zfsmReadChunks($pipe, $stop_at, function($chunk) use (&$head, &$lines, &$last, $keep_bytes) {
 		if (strlen($head) < $keep_bytes) $head .= substr($chunk, 0, $keep_bytes - strlen($head));
 		$lines += substr_count($chunk, "\n");
 		$last = substr($chunk, -1);
-	}
-	return array($head, null, $lines + ($last === "\n" ? 0 : 1));
+	});
+	return array($head, null, $lines + ($last === "\n" ? 0 : 1), $ended);
 }
 
 // Past the line limit: stops a command still running and returns 0; one that already exited keeps its exit code.
@@ -164,12 +196,16 @@ function zfsmStopAtLimit($process) {
 }
 
 // The whole output, or its first $max_lines lines and the line after them; that line is null when none followed.
-function zfsmReadOutput($pipe, $max_lines) {
-	if ($max_lines <= 0) return array(stream_get_contents($pipe), null);
-	$output = '';
-	for ($count = 0; $count < $max_lines && ($line = fgets($pipe)) !== false; $count++) $output .= $line;
-	$next_line = $count === $max_lines ? fgets($pipe) : false;
-	return array($output, $next_line === false ? null : $next_line);
+function zfsmReadOutput($pipe, $max_lines, $stop_at = null) {
+	$buffer = '';
+	// With $max_lines, enough is that many lines and the one after them.
+	$ended = zfsmReadChunks($pipe, $stop_at, function($chunk) use (&$buffer, $max_lines) {
+		$buffer .= $chunk;
+		return $max_lines <= 0 || substr_count($buffer, "\n") <= $max_lines;
+	});
+	if ($max_lines <= 0) return array($buffer, null, $ended);
+	$lines = preg_split('/(?<=\n)/', $buffer, -1, PREG_SPLIT_NO_EMPTY);
+	return array(implode('', array_slice($lines, 0, $max_lines)), $lines[$max_lines] ?? null, $ended);
 }
 
 // Unraid 7.1 dropped default-popup.css; from then on a dialog styles itself like Unraid's own pages.
