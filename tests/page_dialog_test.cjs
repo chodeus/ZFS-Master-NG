@@ -172,6 +172,21 @@ async function confirm() {
   window.$(details()).trigger('focusout');
   assert.equal(tip(), null, 'moving focus away hides the details');
   assert.equal(details().getAttribute('aria-describedby'), null, 'and the icon no longer points at them');
+  // Hover and focus each keep the details up; they go once neither is left, and Escape dismisses them where they are.
+  details().focus();
+  assert.ok(tip(), 'a focused icon shows its details');
+  window.$(details()).trigger('mouseenter');
+  window.$(details()).trigger('mouseleave');
+  assert.ok(tip(), 'the pointer leaving a focused icon keeps its details');
+  window.$(details()).trigger('mouseenter');
+  details().blur();
+  assert.ok(tip(), 'focus leaving a hovered icon keeps its details');
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'once neither hover nor focus is left, they go');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.deepEqual([tip(), window.document.activeElement === details()], [null, true], 'Escape dismisses them without moving focus');
+  details().blur();
   // Details taller than the window go into columns, each count measured; the heights below are Chrome's for 40 pool devices (tests/tip_render_test.cjs checks the real layout).
   const fit = (heights, room) => { const applied = []; const result = {...window.zfsmTipFit(columns => { applied.push(columns); return heights[columns - 1]; }, room)}; return [result, applied.at(-1)]; };
   assert.deepEqual(fit([616], 649), [{columns: 1, scale: 1}, 1], 'it fits: one column');

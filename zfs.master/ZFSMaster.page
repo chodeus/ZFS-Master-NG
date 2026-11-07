@@ -233,8 +233,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   // Pointer and keyboard both: the details icons take focus (detailsLink in ZFSMFrontEnd.js).
-  $(document).on('mouseenter focusin', '#zfs_master a.info', function() { zfsmShowTip(this); });
-  $(document).on('mouseleave focusout', '#zfs_master a.info', zfsmHideTip);
+  // Hover and focus each keep an icon's details; they go once neither is left, or on Escape.
+  let zfsm_tip_hover = null;
+  $(document).on('mouseenter focusin', '#zfs_master a.info', function(event) {
+	if (event.type === 'mouseenter') zfsm_tip_hover = this;
+	zfsmShowTip(this);
+  });
+  $(document).on('mouseleave focusout', '#zfs_master a.info', function(event) {
+	if (event.type === 'mouseleave') zfsm_tip_hover = null;
+	if (event.type === 'mouseleave' ? this === document.activeElement : this === zfsm_tip_hover) return;
+	zfsmHideTip();
+  });
+  $(document).on('keydown', function(event) { if (event.key === 'Escape') zfsmHideTip(); });
   // A fixed copy would stay put while its row scrolls away, or keep the old window's size and place.
   window.addEventListener('scroll', zfsmHideTip, true);
   window.addEventListener('resize', zfsmHideTip);
