@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.07.1 (beta)
 
 - Snapshots Admin can filter and sort, and include child datasets' snapshots
 - Browse a snapshot's files, or see what changed since it
