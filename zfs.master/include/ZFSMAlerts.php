@@ -90,13 +90,10 @@ function zfsmStaleProblem($output, $now, $max_days, $exclusion) {
 
 // A read for the check, under a time limit so a hung pool can't stack up cron runs; a timeout is a failed read.
 function zfsmAlertRead($command, $args) {
-	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + ($GLOBALS['zfsm_alert_read_seconds'] ?? 120);
 	try {
-		return runProcess($command, $args);
+		return zfsmWithDeadline($GLOBALS['zfsm_alert_read_seconds'] ?? 120, function() use ($command, $args) { return runProcess($command, $args); });
 	} catch (RuntimeException $error) {
 		return array('code' => 1, 'output' => $error->getMessage());
-	} finally {
-		unset($GLOBALS['zfsm_inventory_deadline']);
 	}
 }
 

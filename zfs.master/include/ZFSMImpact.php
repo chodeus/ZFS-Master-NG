@@ -240,16 +240,11 @@ function zfsmContainerNames($ps_output) {
 }
 
 function zfsmReadContainerNames() {
-	$previous = $GLOBALS['zfsm_inventory_deadline'] ?? null;
-	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 3;
 	try {
-		$result = runProcess('docker', array('ps', '--no-trunc', '--format', '{{.ID}} {{.Names}}'));
+		$result = zfsmWithDeadline(3, function() { return runProcess('docker', array('ps', '--no-trunc', '--format', '{{.ID}} {{.Names}}')); });
 		return ($result['code'] ?? 1) === 0 ? zfsmContainerNames($result['output'] ?? '') : array();
 	} catch (RuntimeException $error) {
 		return array();
-	} finally {
-		if ($previous === null) unset($GLOBALS['zfsm_inventory_deadline']);
-		else $GLOBALS['zfsm_inventory_deadline'] = $previous;
 	}
 }
 

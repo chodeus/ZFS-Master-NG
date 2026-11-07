@@ -13,16 +13,24 @@ $zdataset = $_GET['zdataset'] ?? '';
 $config = loadConfig(parse_plugin_cfg($plugin, true));
 $exclusion = (string)($config['dataset_exclusion'] ?? '');
 $with_children = ($_GET['children'] ?? '') === '1';
-$snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset, $with_children, $exclusion);
+// A stuck zfs mustn't hold the popup open: its reads share one time limit, and a read that runs out counts as a failed read.
+list($snapshot_result, $children_found, $snapshot_access) = zfsmWithDeadline($GLOBALS['zfsm_popup_read_seconds'] ?? 45, function() use ($zpool, $zdataset, $with_children, $exclusion) {
+	$timed = function($read, $failed) { try { return $read(); } catch (RuntimeException $error) { return $failed; } };
+	$result = $timed(function() use ($zpool, $zdataset, $with_children, $exclusion) { return getDatasetSnapshotsResult($zpool, $zdataset, $with_children, $exclusion); },
+		array('ok' => false, 'snapshots' => array(), 'error' => 'Listing the snapshots took too long'));
+	$children = $with_children || $timed(function() use ($zdataset, $exclusion) { return zfsmHasChildDatasets($zdataset, $exclusion); }, false);
+	// Browse and changes for each dataset with a row: one read for a dataset and its children, else the dataset's own.
+	$access = !$result['snapshots'] ? array() : $timed(function() use ($zpool, $zdataset, $with_children) {
+		return $with_children ? zfsmSnapshotAccessTree($zdataset) : array($zdataset => zfsmSnapshotAccess($zpool, $zdataset));
+	}, null);
+	return array($result, $children, $access);
+});
 $snapshots = $snapshot_result['snapshots'];
 $snapshot_error = $snapshot_result['error'];
 $destructive_mode = (int)($config['destructive_mode'] ?? 0) === 1;
 // Shown while ticked even if the children are gone, so it can be unticked.
-$offer_children = $with_children || zfsmHasChildDatasets($zdataset, $exclusion);
-// Browse and changes for each dataset with a row: one read for a dataset and its children, else the dataset's own.
+$offer_children = $children_found;
 // A failed read leaves the icons off and says so (zfsm-access-unread), rather than hiding them without a word.
-$snapshot_access = array();
-if ($snapshots) $snapshot_access = $with_children ? zfsmSnapshotAccessTree($zdataset) : array($zdataset => zfsmSnapshotAccess($zpool, $zdataset));
 $access_unread = $snapshot_access === null || !empty($snapshot_access[$zdataset]['unread']);
 $snapshot_access = $snapshot_access ?? array();
 
