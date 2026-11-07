@@ -418,7 +418,7 @@ function datasetBadges(zdataset) {
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
+		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" role="button" tabindex="0" aria-expanded="true" aria-label="'+escapeHtml('Contents of '+zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {

@@ -80,7 +80,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		<a style="cursor:pointer" class="tooltip" title="ZFS Master NG Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="Refresh Information" role="button" tabindex="0" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
 <!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
@@ -250,12 +250,31 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   window.addEventListener('scroll', zfsmHideTip, true);
   window.addEventListener('resize', zfsmHideTip);
 
+  // A redraw replaces every row, so a keyboard user's focus goes back to the same control of the same row.
+  const zfsm_row_controls = 'a[href], button, [tabindex]';
+  function zfsmRowFocus() {
+	const active = document.activeElement;
+	const row = active ? active.closest('#zfs_master tr[id]') : null;
+	const index = row ? Array.prototype.indexOf.call(row.querySelectorAll(zfsm_row_controls), active) : -1;
+	return index >= 0 ? {row: row.id, index: index, details: active.getAttribute('aria-describedby') === 'zfsm-tip-text'} : null;
+  }
+  function zfsmRestoreRowFocus(focus) {
+	const row = focus ? document.getElementById(focus.row) : null;
+	const control = row ? row.querySelectorAll(zfsm_row_controls)[focus.index] : null;
+	if (!control) return;
+	control.focus();
+	// Focusing a details icon shows its details: keep them only if they were up, so dismissed ones stay dismissed.
+	if (!focus.details) zfsmHideTip();
+  }
+
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {
+	const focus = zfsmRowFocus();
 	zfsmHideTip();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();
+	zfsmRestoreRowFocus(focus);
   }
 
   $(function() {
@@ -323,6 +342,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	return true;
   }
 
+  // Icons that act as buttons (role=button): Enter presses on keydown and Space on keyup, as a button does.
+  // The bar's buttons sit in #zfs-master-title, or in Unraid's title line once zfsmMoveStatusIntoTitle has moved them.
+  $(document).on('keydown keyup', '#zfs-master-title [role="button"], .zfsm-title-status [role="button"], #zfs_master [role="button"]', function(event) {
+	if (event.key !== 'Enter' && event.key !== ' ') return;
+	event.preventDefault();
+	if ((event.key === 'Enter') === (event.type === 'keydown')) this.click();
+  });
+
   function processHiddenDatasets() {
 	var datasets = loadFromLocalStorage('zfsm-datasetsHidden');
 	
@@ -334,9 +361,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		
 		for (let row of myRows) {
 			$(row).hide(0);
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} 
 	}
+  }
+
+  // A folded dataset shows a plus, and says it is collapsed to a screen reader.
+  function zfsmFoldIcon(zdataset, folded) {
+	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' fa-append', 'aria-expanded': folded ? 'false' : 'true'});
   }
 
   function toggleDataset(zdataset) {
@@ -360,10 +392,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let row of myRows) {
 		if (index == -1) {
 			$(row).hide( 'fast');
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} else {
 			$(row).show( 'fast');
-			$('i[name=\''+zdataset+'\']') .attr('class', 'fa fa-minus-square fa-append');
+			zfsmFoldIcon(zdataset, false);
 		}
 	}
 
