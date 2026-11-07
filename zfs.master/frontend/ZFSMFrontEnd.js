@@ -404,7 +404,7 @@ function datasetBadges(zdataset) {
 	const znap_properties = getZnapProperties(zdataset);
 
 	if (Object.keys(znap_properties).length > 0) {
-		html += '<a class="info hand"><i class="fa fa-clock-o fa-append"></i>';
+		html += '<a class="info hand" tabindex="0"><i class="fa fa-clock-o fa-append"></i>';
 		html += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
 	}
 
@@ -446,7 +446,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>';
+	tr += '<a class="info hand" tabindex="0"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>';
 	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
 	tr += datasetBadges(zdataset);
 
@@ -508,10 +508,10 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	const status_msg = getPoolStatusMsg(zpool['Health']);
 
 	// Name and devices
-	var tr = '<td id="'+escapeHtml(zpool['Pool'])+'-attribute-pool"><a class="info hand"><i id="zpool-'+escapeHtml(zpool['Pool'])+'" class="fa fa-circle orb '+status_color+'-orb"></i><span>'+nl2br(escapeHtml(devices))+'</span></a> '+escapeHtml(zpool['Pool'])+'</td>';
+	var tr = '<td id="'+escapeHtml(zpool['Pool'])+'-attribute-pool"><a class="info hand" tabindex="0"><i id="zpool-'+escapeHtml(zpool['Pool'])+'" class="fa fa-circle orb '+status_color+'-orb"></i><span>'+nl2br(escapeHtml(devices))+'</span></a> '+escapeHtml(zpool['Pool'])+'</td>';
 
 	// Health
-	tr += '<td id="'+zpool['Pool']+'-attribute-health"><a class="info hand"><i class="fa fa-heartbeat" style="color:'+status_color+'"></i><span>'+status_msg+'</span></a> '+zpool['Health']+'</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-health"><a class="info hand" tabindex="0"><i class="fa fa-heartbeat" style="color:'+status_color+'"></i><span>'+status_msg+'</span></a> '+zpool['Health']+'</td>';
 
 	// Buttons
 	tr += '<td id="'+zpool['Pool']+'-attribute-name"><button type="button" id="show-zpool-'+zpool['Pool']+'" onclick="togglePoolTable(\'show-zpool-'+zpool['Pool']+'\', \'zdataset-'+zpool['Pool']+'\');">'+show_button_text+'</button>'; 

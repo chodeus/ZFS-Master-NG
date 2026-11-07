@@ -20,7 +20,7 @@ function launch({interval = 30, cache = null, storageThrows = false, missingSubs
       const element = {
         text(value) { if (value === undefined) return texts.get(selector); texts.set(selector, value); return this; },
         css() { return this; }, removeClass() { return this; }, addClass() { return this; },
-        click() { return this; }, on() { return this; }, remove() { return this; }, hide() { return this; }, attr() { return this; },
+        click() { return this; }, on() { return this; }, remove() { return this; }, removeAttr() { return this; }, hide() { return this; }, attr() { return this; },
         ajaxSuccess(callback) { ajaxSuccess = callback; return this; }
       };
       elements.set(selector, element);

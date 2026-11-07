@@ -194,23 +194,37 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	return {left: left, top: top};
   }
 
-  function zfsmHideTip() {
-	$('#zfsm-tip').remove();
+  // Details taller than the window flow into side-by-side columns, so every line shows without scrolling.
+  function zfsmTipColumns(height, viewHeight) {
+	return Math.max(1, Math.ceil(height / Math.max(1, viewHeight - 8)));
   }
 
-  // The copy sits in an a.info of its own, so it keeps Unraid's tooltip look.
+  function zfsmHideTip() {
+	$('#zfsm-tip').remove();
+	$('#zfs_master a.info[aria-describedby="zfsm-tip-text"]').removeAttr('aria-describedby');
+  }
+
+  // The copy sits in an a.info of its own, so it keeps Unraid's tooltip look; long lines wrap inside the window.
   function zfsmShowTip(link) {
 	zfsmHideTip();
 	const source = $(link).children('span').first();
 	if (!source.length) return;
+	const view = {width: window.innerWidth, height: window.innerHeight};
 	const host = $('<a class="info" id="zfsm-tip"></a>').css('font-size', $(link).css('font-size')).appendTo(document.body);
-	const tip = source.clone().css({display: 'block', position: 'fixed', visibility: 'hidden', zIndex: 1000, pointerEvents: 'none', margin: 0, left: 0, top: 0}).appendTo(host);
-	const place = zfsmTipPlace(link.getBoundingClientRect(), {width: tip.outerWidth(), height: tip.outerHeight()}, {width: window.innerWidth, height: window.innerHeight});
+	const tip = source.clone().attr({id: 'zfsm-tip-text', role: 'tooltip'}).css({display: 'block', position: 'fixed', visibility: 'hidden', zIndex: 1000, pointerEvents: 'none',
+		margin: 0, left: 0, top: 0, whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: (view.width - 8)+'px'}).appendTo(host);
+	const columns = zfsmTipColumns(tip.outerHeight(), view.height);
+	if (columns > 1) tip.css({columnCount: columns, columnGap: '1.5em'});
+	// Fixed at its measured width, so placing it can't make it wrap again.
+	tip.css({boxSizing: 'border-box', width: Math.ceil(tip[0].getBoundingClientRect().width)+'px'});
+	const place = zfsmTipPlace(link.getBoundingClientRect(), {width: tip.outerWidth(), height: tip.outerHeight()}, view);
 	tip.css({left: place.left, top: place.top, visibility: 'visible'});
+	$(link).attr('aria-describedby', 'zfsm-tip-text');
   }
 
-  $(document).on('mouseenter', '#zfs_master a.info', function() { zfsmShowTip(this); });
-  $(document).on('mouseleave', '#zfs_master a.info', zfsmHideTip);
+  // Pointer and keyboard both: the details icons take focus (tabindex in ZFSMFrontEnd.js).
+  $(document).on('mouseenter focusin', '#zfs_master a.info', function() { zfsmShowTip(this); });
+  $(document).on('mouseleave focusout', '#zfs_master a.info', zfsmHideTip);
   // A fixed copy would stay put while its row scrolls away.
   window.addEventListener('scroll', zfsmHideTip, true);
 

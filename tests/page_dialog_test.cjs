@@ -162,6 +162,18 @@ async function confirm() {
   assert.deepEqual([shownTip.style.position, shownTip.style.display, shownTip.style.visibility, shownTip.style.pointerEvents], ['fixed', 'block', 'visible', 'none']);
   window.$(details()).trigger('mouseleave');
   assert.equal(tip(), null, 'the details go when the pointer leaves');
+  // From the keyboard too: the icon takes focus, its details show on focus and go on blur, and the icon names them.
+  assert.equal(details().getAttribute('tabindex'), '0', 'the details icon must take keyboard focus');
+  window.$(details()).trigger('focusin');
+  assert.ok(tip(), 'focusing a row\'s icon must show its details');
+  assert.equal(tip().firstElementChild.getAttribute('role'), 'tooltip');
+  assert.equal(details().getAttribute('aria-describedby'), tip().firstElementChild.id, 'the icon must point a screen reader at its details');
+  assert.deepEqual([tip().firstElementChild.style.whiteSpace, tip().firstElementChild.style.maxWidth], ['normal', (window.innerWidth - 8)+'px'], 'long lines wrap inside the window');
+  window.$(details()).trigger('focusout');
+  assert.equal(tip(), null, 'moving focus away hides the details');
+  assert.equal(details().getAttribute('aria-describedby'), null, 'and the icon no longer points at them');
+  // Details taller than the window flow into columns side by side.
+  assert.deepEqual([window.zfsmTipColumns(500, 800), window.zfsmTipColumns(1000, 800), window.zfsmTipColumns(2000, 400)], [1, 2, 6], 'one column while it fits, more when taller than the window');
   window.$(details()).trigger('mouseenter');
   redraw();
   assert.equal(tip(), null, 'a redraw replaces the row, so its details go too');
