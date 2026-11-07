@@ -99,6 +99,17 @@ switch ($check) {
 		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
 		break;
 
+	case 'main_page_stuck_zfs':
+		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		putenv('ZFSM_TEST_REWRITE_HANG=1');
+		$began = microtime(true);
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+		$took = microtime(true) - $began;
+		if (strpos($html, 'zfs_master_body') === false || $took > 9) { fwrite(STDERR, sprintf("main page with a stuck zfs took %.1f s\n", $took)); exit(1); }
+		if (strpos($html, '"rewrite":false') === false) { fwrite(STDERR, "a stuck zfs still offered Rewrite Files\n"); exit(1); }
+		break;
+
 	case 'saved_settings':
 		// A settings file as older versions left it: CRLF list, Lua exclusion, the old misspelt key.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
@@ -328,6 +339,24 @@ switch ($check) {
 		$html = ob_get_clean();
 		if (strpos($html, 'data-snapshot="autosnap_2023-11-14_22:15:00_hourly" data-automatic="1"') === false) { fwrite(STDERR, "a Sanoid snapshot is not marked automatic\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-hide-auto"') === false) { fwrite(STDERR, "snapshot popup does not offer to hide its Sanoid snapshot\n"); exit(1); }
+		break;
+
+	case 'snapshot_popup_stuck_zfs':
+	case 'snapshot_popup_stubborn_zfs':
+		// A zfs that never answers must not hold the popup open: its reads share the limit, and running out reads as a failed read.
+		// The stubborn one also ignores TERM, so it ends by KILL.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		$GLOBALS['zfsm_popup_read_seconds'] = 2;
+		putenv('ZFSM_TEST_LIST_HANG='.($check === 'snapshot_popup_stubborn_zfs' ? 'stubborn' : '1'));
+		$began = microtime(true);
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		$took = microtime(true) - $began;
+		if ($took > 10) { fwrite(STDERR, sprintf("snapshot popup with a stuck zfs took %.1f s\n", $took)); exit(1); }
+		if (strpos($html, 'Listing the snapshots took too long') === false || strpos($html, 'Snapshots could not be listed') === false) { fwrite(STDERR, "snapshot popup with a stuck zfs did not say why nothing is listed\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-children"') !== false) { fwrite(STDERR, "snapshot popup offered children it could not read\n"); exit(1); }
 		break;
 
 	case 'snapshot_popup_failed':

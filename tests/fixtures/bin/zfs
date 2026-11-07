@@ -15,6 +15,26 @@ for arg in "$@"; do last_arg="$arg"; done
 # Every call, for a test that counts how many reads a page makes.
 if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
 
+# A zfs that never answers a list, as on a hung pool.
+if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = 1 ]; then sleep 30; fi
+# One that also ignores TERM, so only timeout's KILL stops it.
+if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = stubborn ]; then trap '' TERM; sleep 30; fi
+# zfs rewrite (OpenZFS 2.4+): usage with no file; with -v, one line per file it rewrote.
+if [ "$1" = "rewrite" ]; then
+	[ "${ZFSM_TEST_NO_REWRITE:-0}" = 1 ] && { printf "unrecognized command 'rewrite'\n" >&2; exit 2; }
+	[ "$#" -eq 1 ] && [ "${ZFSM_TEST_REWRITE_HANG:-0}" = 1 ] && sleep 30
+	[ "$#" -eq 1 ] && { printf 'usage:\n\trewrite [-Prvx] [-o <offset>] [-l <length>] <directory|file ...>\n' >&2; exit 2; }
+	[ -n "${ZFSM_TEST_REWRITE_LOG:-}" ] && printf '%s\n' "$*" >> "$ZFSM_TEST_REWRITE_LOG"
+	i=0
+	while [ "$i" -lt "${ZFSM_TEST_REWRITE_FILES:-3}" ]; do
+		printf '%s/file%s\n' "$last_arg" "$i"
+		i=$((i + 1))
+		[ "$i" = 1 ] && [ -n "${ZFSM_TEST_REWRITE_PAUSE:-}" ] && sleep "$ZFSM_TEST_REWRITE_PAUSE"
+	done
+	[ "${ZFSM_TEST_REWRITE_FAIL:-0}" = 1 ] && { printf "failed to rewrite '%s/locked': Device or resource busy\n" "$last_arg" >&2; exit 1; }
+	exit 0
+fi
+
 if [ "$1" = "destroy" ] && contains_arg '-n' "$@"; then
 	if [ "${ZFSM_TEST_DESTROY_REFUSED:-0}" = 1 ]; then
 		# Like ZFS, the refusal runs over several lines.
@@ -132,6 +152,12 @@ if [ "$1" = "list" ] && [ -n "${ZFSM_TEST_MISSING_DATASET:-}" ]; then
 	esac
 fi
 
+# tank/vol is the fixture's volume, so a list of filesystems alone doesn't have it.
+if [ "$1" = "list" ] && [ "$last_arg" = "tank/vol" ] && contains_arg 'filesystem' "$@"; then
+	printf "cannot open 'tank/vol': operation not applicable to datasets of this type\n" >&2
+	exit 1
+fi
+
 if [ "$1" = "list" ]; then
 	printf '%s\n' "$last_arg"
 	exit 0
@@ -150,6 +176,19 @@ fi
 
 if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
 	printf '%s\n' "${ZFSM_TEST_ENCRYPTION:-off}"
+	exit 0
+fi
+
+if [ "$1" = "get" ] && contains_arg 'usedbysnapshots' "$@"; then
+	[ "${ZFSM_TEST_USEDBYSNAPSHOTS:-0}" = fail ] && { printf "cannot open '%s': permission denied\n" "$last_arg" >&2; exit 1; }
+	printf '%s\n' "${ZFSM_TEST_USEDBYSNAPSHOTS:-0}"
+	exit 0
+fi
+
+# A dataset's guid: ZFSM_TEST_GUID for every dataset (as for a renamed one), else a number from its name.
+if [ "$1" = "get" ] && contains_arg 'guid' "$@"; then
+	[ "${ZFSM_TEST_GUID:-}" = fail ] && { printf "cannot open '%s': permission denied\n" "$last_arg" >&2; exit 1; }
+	if [ -n "${ZFSM_TEST_GUID:-}" ]; then printf '%s\n' "$ZFSM_TEST_GUID"; else printf '%s' "$last_arg" | cksum | cut -d' ' -f1; fi
 	exit 0
 fi
 

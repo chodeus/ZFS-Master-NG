@@ -32,9 +32,11 @@ window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
 const posts = [], replies = [];
 let properties = {};
 let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
+let rewritePreview = {};
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
   const reply = window.$.Deferred();
   replies.push(reply);
@@ -284,6 +286,78 @@ async function confirm() {
   snapshotsAdmin(0, 3).action({preventDefault() {}});
   snapshotsAdmin(2, 3).action({preventDefault() {}});
   assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+
+  // A rewrite reports on the same row: started, how many files are done, stopped.
+  send('rewrite_start');
+  assert.equal(progress(), 'Rewriting files…', 'the row says the files are being rewritten');
+  feed.message(JSON.stringify({op: 'rewrite_progress', data: {dataset: 'tank/new', files: 42}}));
+  assert.equal(progress(), 'Rewriting files… 42 done', 'the row counts the files done');
+  redraw();
+  assert.equal(progress(), 'Rewriting files… 42 done', 'a redraw keeps the count');
+  send('rewrite_stop');
+  assert.equal(progress(), '', 'the row clears when the rewrite stops');
+  // A rewrite whose stop message was lost goes quiet: 12 seconds without word clear its row.
+  const timers = [];
+  const realTimeout = window.setTimeout;
+  window.setTimeout = (callback, ms) => { timers.push({callback, ms}); return timers.length; };
+  send('rewrite_start');
+  window.setTimeout = realTimeout;
+  assert.deepEqual(timers.map(timer => timer.ms), [12000], 'each rewrite message gives the row 12 seconds');
+  timers[0].callback();
+  assert.equal(progress(), '', 'a rewrite silent for 12 seconds no longer shows as running');
+
+  // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
+  const rewriteItem = (type, available) => {
+    window.zfsm_config.rewrite = available;
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', type);
+    return menu.find(option => option.text === 'Rewrite Files');
+  };
+  assert.equal(rewriteItem('volume', true), undefined, 'a volume has no files to rewrite');
+  assert.equal(rewriteItem('filesystem', false), undefined, 'no zfs rewrite before OpenZFS 2.4');
+  const shown = id => { const node = window.document.getElementById(id); return node ? node.style.display !== 'none' : null; };
+  const box = () => window.document.getElementById('zfsm-rewrite-physical');
+  // The pool's feature is enabled: the box starts off, with the full-send warning; ticking it warns that it is for good.
+  rewritePreview = {can_proceed: true, physical_feature: 'enabled', snapshot_space: 1073741824};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
+  const review = window.document.querySelector('.swal2-html-container').textContent;
+  assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
+  assert.match(review, /snapshots hold 1\.00 GiB now/, 'the review shows the snapshot space');
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true, false], 'with the feature only enabled, -P starts off and the full-send warning shows');
+  box().checked = true;
+  box().dispatchEvent(new window.Event('change'));
+  assert.deepEqual([shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true], 'ticked, it warns that the feature turns on for good');
+  assert.match(window.document.getElementById('zfsm-rewrite-activate').textContent, /Unraid before 7\.3 \(OpenZFS before 2\.4\) could then import this pool read-only only/);
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 1}, 'confirming starts the rewrite with -P as ticked');
+  // Already active: nothing more to lose, so the box starts on.
+  rewritePreview = {can_proceed: true, physical_feature: 'active', snapshot_space: 0};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [true, false, null], 'with the feature already active, -P starts on');
+  box().checked = false;
+  box().dispatchEvent(new window.Event('change'));
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 0}, 'unticked, no -P');
+  // No feature: no box, and the full-send warning; a snapshot space that could not be read says so.
+  rewritePreview = {can_proceed: true, physical_feature: '', snapshot_space: null};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual([box(), shown('zfsm-rewrite-resend')], [null, true], 'without the feature there is no -P to choose');
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /hold an amount that could not be read now/, 'an unread snapshot space is not shown as 0 B');
+  window.Swal2.close();
+  rewritePreview = {can_proceed: false, error: 'A rewrite of this dataset is already running'};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /already running/, 'a refused review says why');
+  posts.length = 0;
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts, [], 'a refused review starts nothing');
+  window.Swal2.close();
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

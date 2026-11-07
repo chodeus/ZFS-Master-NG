@@ -8,6 +8,7 @@ require_once __ROOT__."/include/ZFSMHelpers.php";
 require_once __ROOT__."/include/ZFSMImpact.php";
 require_once __ROOT__."/include/ZFSMSnapshotFiles.php";
 require_once __ROOT__."/include/ZFSMAlerts.php";
+require_once __ROOT__."/include/ZFSMRewrite.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
@@ -430,14 +431,7 @@ function getZFSPools($strict = false) {
 // HTTP inventory must not depend on a running daemon or Unraid's publish flag.
 // The optional pool limits the second, progressive snapshot-loading phase.
 function zfsmReadInventory($config, $include_snapshots = true, $pool = '') {
-	$previous_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
-	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 45;
-	try {
-		return zfsmCollectInventory($config, $include_snapshots, $pool);
-	} finally {
-		if ($previous_deadline === null) unset($GLOBALS['zfsm_inventory_deadline']);
-		else $GLOBALS['zfsm_inventory_deadline'] = $previous_deadline;
-	}
+	return zfsmWithDeadline(45, function() use ($config, $include_snapshots, $pool) { return zfsmCollectInventory($config, $include_snapshots, $pool); });
 }
 
 function zfsmCollectInventory($config, $include_snapshots, $pool) {
