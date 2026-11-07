@@ -109,7 +109,7 @@ foreach (array('plain' => array(0, 0), 'line-limited' => array(5, 0), 'head-kept
 	}
 	same(array('sh timed out', true), array($held, microtime(true) - $began < 6), "held-open output gives up at the limit ($how)");
 }
-// Waiting for the exit stops at its time too, as timeout itself can be stuck waiting on such a zfs; an ended one gives its code.
+// Waiting for the exit stops at its time too, for a command that outlives its KILL; an ended one gives its code.
 $running = proc_open(array('sleep', '5'), array(), $no_pipes);
 $began = microtime(true);
 $exit = zfsmProcessExit($running, microtime(true) + 0.5);
