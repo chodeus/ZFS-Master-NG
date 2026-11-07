@@ -30,6 +30,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
   /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
   #zfs_master.zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
+  #zfs_master.zfs_table .fa-plus-square,#zfs_master.zfs_table .fa-minus-square{font-size:calc(1em + 1px);margin-right:4px}
+  /* A row's details show from the end of the page instead (zfsmShowTip), where nothing cuts them off. */
+  #zfs_master a.info:hover>span{display:none}
   
   .zfs_bar_button {
 	  padding-right: 8px;
@@ -182,23 +185,92 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Object.keys(zfsm_copy_progress).forEach(function(dataset) { zfsmShowCopyProgress(dataset, null); });
   }
 
+  // Inside the table a row's details get cut off at its edge on phones, so a copy shows from the end of the page.
+  // Below and right of the row as Unraid places them, but kept inside the window, above the row if there is no room below.
+  function zfsmTipPlace(anchor, size, view) {
+	const left = Math.max(4, Math.min(anchor.left + 16, view.width - size.width - 4));
+	const below = anchor.top + 16;
+	const top = below + size.height <= view.height - 4 ? below : Math.max(4, anchor.top - size.height - 4);
+	return {left: left, top: top};
+  }
+
+  // Details taller than the window go into side-by-side columns. Narrower columns re-wrap and the height can even grow,
+  // so each count is measured: the fewest that fit, else the shortest, scaled down to fit (tests/tip_render_test.cjs).
+  function zfsmTipFit(measure, room) {
+	let best = {columns: 1, height: measure(1)};
+	for (let columns = 2; best.height > room && columns <= 8; columns++) {
+		const height = measure(columns);
+		if (height < best.height) best = {columns: columns, height: height};
+	}
+	measure(best.columns);
+	return {columns: best.columns, scale: best.height > room ? room / best.height : 1};
+  }
+
+  function zfsmHideTip() {
+	$('#zfsm-tip').remove();
+	$('#zfs_master a.info[aria-describedby="zfsm-tip-text"]').removeAttr('aria-describedby');
+  }
+
+  // The copy sits in an a.info of its own, so it keeps Unraid's tooltip look; long lines wrap inside the window.
+  function zfsmShowTip(link) {
+	zfsmHideTip();
+	const source = $(link).children('span').first();
+	if (!source.length) return;
+	const view = {width: window.innerWidth, height: window.innerHeight};
+	const host = $('<a class="info" id="zfsm-tip"></a>').css('font-size', $(link).css('font-size')).appendTo(document.body);
+	const tip = source.clone().attr({id: 'zfsm-tip-text', role: 'tooltip'}).css({display: 'block', position: 'fixed', visibility: 'hidden', zIndex: 1000, pointerEvents: 'none',
+		margin: 0, left: 0, top: 0, whiteSpace: 'normal', overflowWrap: 'anywhere', maxWidth: (view.width - 8)+'px'}).appendTo(host);
+	const fit = zfsmTipFit(function(columns) {
+		tip.css({columnCount: columns > 1 ? columns : '', columnGap: columns > 1 ? '1.5em' : ''});
+		return tip.outerHeight();
+	}, view.height - 8);
+	// Fixed at its measured width, so placing it can't make it wrap again; any scale applies after, from its corner.
+	tip.css({boxSizing: 'border-box', width: Math.ceil(tip[0].getBoundingClientRect().width)+'px'});
+	if (fit.scale < 1) tip.css({transform: 'scale('+fit.scale+')', transformOrigin: '0 0'});
+	const place = zfsmTipPlace(link.getBoundingClientRect(), {width: tip.outerWidth() * fit.scale, height: tip.outerHeight() * fit.scale}, view);
+	tip.css({left: place.left, top: place.top, visibility: 'visible'});
+	$(link).attr('aria-describedby', 'zfsm-tip-text');
+  }
+
+  // Pointer and keyboard both: the details icons take focus (detailsLink in ZFSMFrontEnd.js).
+  // The details follow the icon last hovered or focused. When it loses that, they pass to the icon still hovered or focused, else go.
+  let zfsm_tip_hover = null;
+  $(document).on('mouseenter focusin', '#zfs_master a.info', function(event) {
+	if (event.type === 'mouseenter') zfsm_tip_hover = this;
+	zfsmShowTip(this);
+  });
+  $(document).on('mouseleave focusout', '#zfs_master a.info', function(event) {
+	if (event.type === 'mouseleave') zfsm_tip_hover = null;
+	if (this.getAttribute('aria-describedby') !== 'zfsm-tip-text') return;
+	const next = event.type === 'mouseleave' ? $(document.activeElement).filter('#zfs_master a.info')[0] : zfsm_tip_hover;
+	if (next) zfsmShowTip(next); else zfsmHideTip();
+  });
+  $(document).on('keydown', function(event) { if (event.key === 'Escape') zfsmHideTip(); });
+  // A fixed copy would stay put while its row scrolls away, or keep the old window's size and place.
+  window.addEventListener('scroll', zfsmHideTip, true);
+  window.addEventListener('resize', zfsmHideTip);
+
   // A redraw replaces every row, so a keyboard user's focus goes back to the same control of the same row.
   const zfsm_row_controls = 'a[href], button, [tabindex]';
   function zfsmRowFocus() {
 	const active = document.activeElement;
 	const row = active ? active.closest('#zfs_master tr[id]') : null;
 	const index = row ? Array.prototype.indexOf.call(row.querySelectorAll(zfsm_row_controls), active) : -1;
-	return index >= 0 ? {row: row.id, index: index} : null;
+	return index >= 0 ? {row: row.id, index: index, details: active.getAttribute('aria-describedby') === 'zfsm-tip-text'} : null;
   }
   function zfsmRestoreRowFocus(focus) {
 	const row = focus ? document.getElementById(focus.row) : null;
 	const control = row ? row.querySelectorAll(zfsm_row_controls)[focus.index] : null;
-	if (control) control.focus();
+	if (!control) return;
+	control.focus();
+	// Focusing a details icon shows its details: keep them only if they were up, so dismissed ones stay dismissed.
+	if (!focus.details) zfsmHideTip();
   }
 
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {
 	const focus = zfsmRowFocus();
+	zfsmHideTip();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();

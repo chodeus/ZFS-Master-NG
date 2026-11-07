@@ -131,6 +131,9 @@ jobs:
       - name: Dialogs in a real browser with this version's themes
         run: node tests/sweetalert_render_test.cjs .webgui
 
+      - name: Row details fit phone and desktop windows in a real browser
+        run: node tests/tip_render_test.cjs .webgui
+
       - name: Page dialogs on this version's jQuery
         working-directory: tests
         run: |
