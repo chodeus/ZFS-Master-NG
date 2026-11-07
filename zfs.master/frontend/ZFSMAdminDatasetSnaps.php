@@ -10,11 +10,21 @@ require_once $docroot."/plugins/".$plugin."/backend/ZFSMOperations.php";
 
 $zpool = $_GET['zpool'] ?? '';
 $zdataset = $_GET['zdataset'] ?? '';
-$snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset);
+$config = loadConfig(parse_plugin_cfg($plugin, true));
+$exclusion = (string)($config['dataset_exclusion'] ?? '');
+$with_children = ($_GET['children'] ?? '') === '1';
+$snapshot_result = getDatasetSnapshotsResult($zpool, $zdataset, $with_children, $exclusion);
 $snapshots = $snapshot_result['snapshots'];
 $snapshot_error = $snapshot_result['error'];
-$destructive_mode = (int)(loadConfig(parse_plugin_cfg($plugin, true))['destructive_mode'] ?? 0) === 1;
-$snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('diff' => false, 'browse' => '');
+$destructive_mode = (int)($config['destructive_mode'] ?? 0) === 1;
+// Shown while ticked even if the children are gone, so it can be unticked.
+$offer_children = $with_children || zfsmHasChildDatasets($zdataset, $exclusion);
+// Browse and changes for each dataset with a row: one read for a dataset and its children, else the dataset's own.
+// A failed read leaves the icons off and says so (zfsm-access-unread), rather than hiding them without a word.
+$snapshot_access = array();
+if ($snapshots) $snapshot_access = $with_children ? zfsmSnapshotAccessTree($zdataset) : array($zdataset => zfsmSnapshotAccess($zpool, $zdataset));
+$access_unread = $snapshot_access === null || !empty($snapshot_access[$zdataset]['unread']);
+$snapshot_access = $snapshot_access ?? array();
 
 ?>
 
@@ -49,6 +59,7 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
   .zfsm-actions .zfsm-rollback{color:#ff8c2f}
   .zfsm-message td{text-align:center;padding:18px 12px;opacity:.75}
   .zfsm-message.zfsm-error td{color:#e22828;opacity:1}
+  .zfsm-snap-tools .zfsm-error{color:#e22828;opacity:1}
   .zfsm-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px}
   .zfsm-status{opacity:.75}
   .zfsm-snap-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;padding:10px 12px}
@@ -78,17 +89,22 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 <body>
 	<?php
 	$total_used = array_sum(array_map(function($snap) { return (int)($snap['used'] ?? 0); }, $snapshots));
-	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').' · '.fromBytesToString($total_used).' used';
+	$dataset_count = count(array_unique(array_map(function($snap) { return explode('@', (string)($snap['name'] ?? ''), 2)[0]; }, $snapshots)));
+	$in_datasets = $with_children ? ' in '.$dataset_count.' dataset'.($dataset_count === 1 ? '' : 's') : '';
+	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').$in_datasets.' · '.fromBytesToString($total_used).' used';
 	$has_automatic = (bool)array_filter(array_column($snapshots, 'name'), 'zfsmIsAutomaticSnapshot');
+	$filter_hint = $with_children ? 'Filter by dataset or name' : 'Filter by name';
 	?>
 	<div class="zfsm-snaps">
 	<details class="zfsm-section" open>
 	<summary><?=htmlspecialchars($zdataset, ENT_QUOTES, 'UTF-8')?><span class="zfsm-count"><?=htmlspecialchars($count_text, ENT_QUOTES, 'UTF-8')?></span></summary>
-	<?php if ($snapshots): ?>
+	<?php if ($snapshots || $offer_children): ?>
 	<div class="zfsm-snap-tools">
-		<input type="text" id="zfsm-snap-filter" placeholder="Filter by name" aria-label="Filter snapshots by name" autocomplete="off" spellcheck="false">
+		<?php if ($snapshots): ?><input type="text" id="zfsm-snap-filter" placeholder="<?php echo $filter_hint; ?>" aria-label="<?php echo $filter_hint; ?>" autocomplete="off" spellcheck="false"><?php endif; ?>
+		<?php if ($offer_children): ?><label><input type="checkbox" id="zfsm-children"<?php echo $with_children ? ' checked' : ''; ?>> Include child datasets</label><?php endif; ?>
 		<?php if ($has_automatic): ?><label><input type="checkbox" id="zfsm-hide-auto"> Hide Sanoid and Syncoid snapshots</label><?php endif; ?>
 		<span id="zfsm-snap-shown" class="zfsm-status"></span>
+		<?php if ($access_unread): ?><span id="zfsm-access-unread" class="zfsm-status zfsm-error">Browse and changes are off: the mount details could not be read.</span><?php endif; ?>
 	</div>
 	<?php endif; ?>
 	<table class="zfsm-snap-table">
@@ -109,7 +125,7 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 		if ($snapshot_error !== ''):
 			echo '<tr class="zfsm-message zfsm-error"><td colspan="8">'.htmlspecialchars($snapshot_error, ENT_QUOTES, 'UTF-8').'</td></tr>';
 		elseif (!$snapshots):
-			echo '<tr class="zfsm-message"><td colspan="8">This dataset has no snapshots.</td></tr>';
+			echo '<tr class="zfsm-message"><td colspan="8">'.($with_children ? 'Neither this dataset nor its child datasets have snapshots.' : 'This dataset has no snapshots.').'</td></tr>';
 		endif;
 		?>
 	</tbody>
@@ -122,9 +138,13 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 			$snapshot_html = htmlspecialchars($snapshot_name, ENT_QUOTES, 'UTF-8');
 			$snapshot_js = htmlspecialchars(json_encode($snapshot_name), ENT_QUOTES, 'UTF-8');
 			$holds = (int)($snap['userrefs'] ?? 0);
-			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
+			// With child datasets the filter and sort go by the whole name, so a dataset's rows can be picked out.
+			$listed_name = $with_children ? $snapshot_name : $snapshot_short;
+			// A volume has no mount, so the read has no entry for it and its rows offer neither.
+			$access = $snapshot_access[$snapshot_dataset] ?? zfsmSnapshotAccessFrom('', null);
+			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($listed_name, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
 			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
-			echo '<td class="zfsm-snap-name"'.$sort_value($snapshot_short).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
+			echo '<td class="zfsm-snap-name"'.$sort_value($listed_name).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
 				if ($holds > 0) echo '<span class="zfsm-badge">held</span>';
 				if (($snap['defer_destroy'] ?? '') === 'on') echo '<span class="zfsm-badge">deferred</span>';
 			echo '</td>';
@@ -134,8 +154,8 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 			echo '<td class="num"'.$sort_value($holds).'>'.$holds.'</td>';
 			echo '<td'.$sort_value($snap['creation']).'>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
 			echo '<td><span class="zfsm-actions">';
-				if ($snapshot_access['browse'] !== '') echo '<a title="Browse files in this snapshot" href="/Main/Browse?dir='.htmlspecialchars(rawurlencode($snapshot_access['browse'].'/'.$snapshot_short), ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener"><i class="fa fa-folder-open-o"></i></a>';
-				if ($snapshot_access['diff']) echo '<a title="Show changes since this snapshot" onclick="diffSnapshot('.$snapshot_js.')"><i class="fa fa-history"></i></a>';
+				if ($access['browse'] !== '') echo '<a title="Browse files in this snapshot" href="/Main/Browse?dir='.htmlspecialchars(rawurlencode($access['browse'].'/'.$snapshot_short), ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener"><i class="fa fa-folder-open-o"></i></a>';
+				if ($access['diff']) echo '<a title="Show changes since this snapshot" onclick="diffSnapshot('.$snapshot_js.')"><i class="fa fa-history"></i></a>';
 				echo '<a class="zfsm-rollback" title="Roll back to this snapshot" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward"></i></a>';
 				echo '<a title="Rename" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a>';
 				echo '<a title="Hold, so it cannot be deleted" onclick="holdSnapshot('.$snapshot_js.')"><i class="fa fa-pause"></i></a>';
@@ -175,11 +195,12 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 	});
   }
 
-  $("#delete-snaps").click(function(){
+  // One reviewed request for the ticked snapshots, which must all be one dataset's: zfs gives them that dataset's name.
+  function deleteSnapshots() {
 	const checked = $('.snapl-check:checked').map(function() { return this.value; }).get();
-	if (!checked.length) return;
+	const dataset = zfsmTickedDataset();
+	if (!checked.length || dataset === null) return;
 
-	const dataset = checked[0].split('@')[0];
 	const target = dataset+'@'+checked.map(snapshot => snapshot.split('@')[1]).join(',');
 	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewdestroy', target: target, force: 0, 'csrf_token': zfsm_csrf_token}, function(preview) {
 		Swal2.fire({
@@ -195,8 +216,9 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 			showResult('Delete Result', $.post('<?=$urlzmadmin?>',{cmd: 'destroysnapshot', 'snapshot': target, 'recursive': 0, 'token': preview.token, 'csrf_token': zfsm_csrf_token}));
 		});
 	});
-  });
+  }
 
+  $("#delete-snaps").click(deleteSnapshots);
   zfsmInitSnapshotList();
 
   function rollbackSnapshot(snapshot) {
@@ -270,6 +292,8 @@ $snapshot_access = $snapshots ? zfsmSnapshotAccess($zpool, $zdataset) : array('d
 
   // Every action ends here, then reloads: a failed request or an unreadable answer still says so, since the change may have happened.
   function showResult(title, request) {
+	// The list must not reload under a running action, or its result and the Main tab's refresh would be lost.
+	$('#zfsm-children').prop('disabled', true);
 	const reload = () => window.location.reload();
 	const unknown = reason => Swal2.fire({title: title, icon: 'error', text: reason+' The page will reload to show what changed.'}).then(reload);
 	request.done(function(data) {

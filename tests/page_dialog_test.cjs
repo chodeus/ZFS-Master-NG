@@ -14,7 +14,7 @@ function handlers(from, to) {
   const start = page.indexOf(from);
   const end = page.indexOf(to, start);
   assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
-  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps');
   assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
   return code;
 }
@@ -104,7 +104,7 @@ async function confirm() {
     return request;
   };
   window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
-  window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
+  window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
@@ -153,6 +153,105 @@ async function confirm() {
   replies.at(-1).reject();
   assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
 
+  // A row's details show from the end of the page, out of the table that cuts them off on phones, and go when the pointer leaves.
+  assert.match(page, /#zfs_master a\.info:hover>span\{display:none\}/, 'the row\'s own details must stay hidden while the copy shows');
+  const details = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('a.info');
+  const tip = () => window.document.getElementById('zfsm-tip');
+  window.$(details()).trigger('mouseenter');
+  assert.ok(tip(), 'hovering a row must show its details');
+  assert.equal(tip().parentNode, window.document.body, 'the details must show from the end of the page, outside the table');
+  assert.equal(tip().textContent, details().querySelector('span').textContent, 'the copy shows the row\'s own details');
+  const shownTip = tip().firstElementChild;
+  assert.deepEqual([shownTip.style.position, shownTip.style.display, shownTip.style.visibility, shownTip.style.pointerEvents], ['fixed', 'block', 'visible', 'none']);
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'the details go when the pointer leaves');
+  // From the keyboard too: the icon takes focus, its details show on focus and go on blur, and the icon names them.
+  assert.equal(details().getAttribute('tabindex'), '0', 'the details icon must take keyboard focus');
+  window.$(details()).trigger('focusin');
+  assert.ok(tip(), 'focusing a row\'s icon must show its details');
+  assert.equal(tip().firstElementChild.getAttribute('role'), 'tooltip');
+  assert.equal(details().getAttribute('aria-describedby'), tip().firstElementChild.id, 'the icon must point a screen reader at its details');
+  assert.deepEqual([tip().firstElementChild.style.whiteSpace, tip().firstElementChild.style.maxWidth], ['normal', (window.innerWidth - 8)+'px'], 'long lines wrap inside the window');
+  window.$(details()).trigger('focusout');
+  assert.equal(tip(), null, 'moving focus away hides the details');
+  assert.equal(details().getAttribute('aria-describedby'), null, 'and the icon no longer points at them');
+  // Hover and focus each keep the details up; they go once neither is left, and Escape dismisses them where they are.
+  details().focus();
+  assert.ok(tip(), 'a focused icon shows its details');
+  window.$(details()).trigger('mouseenter');
+  window.$(details()).trigger('mouseleave');
+  assert.ok(tip(), 'the pointer leaving a focused icon keeps its details');
+  window.$(details()).trigger('mouseenter');
+  details().blur();
+  assert.ok(tip(), 'focus leaving a hovered icon keeps its details');
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'once neither hover nor focus is left, they go');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.deepEqual([tip(), window.document.activeElement === details()], [null, true], 'Escape dismisses them without moving focus');
+  details().blur();
+  // Two icons: leaving one only touches its own details, which pass to the icon still hovered or focused.
+  const other = () => window.document.getElementById(window.datasetRowId('tank')).querySelector('a.info');
+  const owner = () => [details(), other()].find(icon => icon.getAttribute('aria-describedby') === 'zfsm-tip-text') ?? null;
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  details().blur();
+  assert.deepEqual([Boolean(tip()), owner() === other()], [true, true], 'focus leaving one icon keeps the details of the icon hovered');
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'and they go when that pointer leaves too');
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  window.$(other()).trigger('mouseleave');
+  assert.deepEqual([Boolean(tip()), owner() === details()], [true, true], 'the pointer leaving one icon brings back the focused icon\'s details');
+  window.$(other()).trigger('mouseenter');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'details dismissed with Escape stay dismissed when the pointer leaves another icon');
+  details().blur();
+  assert.equal(tip(), null);
+  // Details taller than the window go into columns, each count measured; the heights below are Chrome's for 40 pool devices (tests/tip_render_test.cjs checks the real layout).
+  const fit = (heights, room) => { const applied = []; const result = {...window.zfsmTipFit(columns => { applied.push(columns); return heights[columns - 1]; }, room)}; return [result, applied.at(-1)]; };
+  assert.deepEqual(fit([616], 649), [{columns: 1, scale: 1}, 1], 'it fits: one column');
+  assert.deepEqual(fit([900, 500, 300, 200], 400), [{columns: 3, scale: 1}, 3], 'the fewest columns that fit');
+  assert.deepEqual(fit([616, 316, 421, 316, 376, 421, 451, 466], 239), [{columns: 2, scale: 239 / 316}, 2], 'none fits: the shortest, left applied and scaled to fit');
+  assert.deepEqual(fit([616, 616, 616, 766, 736, 616, 706, 766], 549), [{columns: 1, scale: 549 / 616}, 1], 'columns that do not make it shorter are not used');
+  window.$(details()).trigger('mouseenter');
+  redraw();
+  assert.equal(tip(), null, 'a redraw replaces the row, so its details go too');
+  window.$(details()).trigger('mouseenter');
+  window.document.dispatchEvent(new window.Event('scroll'));
+  assert.equal(tip(), null, 'scrolling moves the row away, so its details go');
+  window.$(details()).trigger('mouseenter');
+  window.dispatchEvent(new window.Event('resize'));
+  assert.equal(tip(), null, 'a resized or turned window would leave them the old size and place, so they go');
+  // Below and right of the row, but inside the window: above the row when there is no room below.
+  const view = {width: 400, height: 800};
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 100}, {width: 200, height: 300}, view)}, {left: 116, top: 116}, 'room below: under the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 600}, {width: 200, height: 300}, view)}, {left: 116, top: 296}, 'no room below: above the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 300, top: 100}, {width: 200, height: 300}, view)}, {left: 196, top: 116}, 'no room on the right: moved left');
+  assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
+  // The expand and collapse box is a pixel larger, with a gap before the name.
+  assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\);margin-right:4px\}/);
+  // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
+  window.eval(handlers('function addDatasetContext(', 'function removeContext('));
+  window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
+  window.zfsm_config = {directory_listing: []};
+  window._ = text => text;
+  let menu = [];
+  window.context = {attach: (id, options) => { menu = options; }};
+  const opened = [];
+  window.openBox = url => opened.push(url);
+  const snapshotsAdmin = (own, children) => {
+    window.addDatasetContext('tank', 'tank', own, 'menu', 0, 'none', '', 'filesystem', children);
+    return menu.find(option => option.text === 'Snapshots Admin');
+  };
+  assert.equal(snapshotsAdmin(0, 0), undefined, 'no snapshots anywhere: no Snapshots Admin');
+  assert.ok(snapshotsAdmin(0, 3), 'snapshots only under it: Snapshots Admin must be offered');
+  snapshotsAdmin(0, 3).action({preventDefault() {}});
+  snapshotsAdmin(2, 3).action({preventDefault() {}});
+  assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+
   // A rewrite reports on the same row: started, how many files are done, stopped.
   send('rewrite_start');
   assert.equal(progress(), 'Rewriting files…', 'the row says the files are being rewritten');
@@ -173,9 +272,6 @@ async function confirm() {
   assert.equal(progress(), '', 'a rewrite silent for 12 seconds no longer shows as running');
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
-  window._ = text => text;
-  let menu = [];
-  window.context = {attach: (id, options) => { menu = options; }};
   const rewriteItem = (type, available) => {
     window.zfsm_config.rewrite = available;
     window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', type);

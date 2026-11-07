@@ -12,6 +12,8 @@ contains_arg() {
 last_arg=''
 for arg in "$@"; do last_arg="$arg"; done
 
+# Every call, for a test that counts how many reads a page makes.
+if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
 # zfs rewrite (OpenZFS 2.4+): usage with no file; with -v, one line per file it rewrote.
 if [ "$1" = "rewrite" ]; then
 	[ "${ZFSM_TEST_NO_REWRITE:-0}" = 1 ] && { printf "unrecognized command 'rewrite'\n" >&2; exit 2; }
@@ -94,6 +96,7 @@ if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'fil
 fi
 
 if [ "$1" = "list" ] && contains_arg 'filesystem,volume' "$@" && contains_arg '-r' "$@"; then
+	[ "${ZFSM_TEST_CHILD_LIST_FAIL:-0}" = 1 ] && { printf 'simulated child list failure\n' >&2; exit 1; }
 	printf 'tank\tfilesystem\t100\t900\t80\toff\t-\t/mnt/tank\tlz4\t1.00x\t20\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000000\t-\t-\n'
 	printf 'tank/data\tfilesystem\t60\t900\t50\toff\t-\t/mnt/tank/data\tzstd\t1.25x\t10\tnone\t131072\ton\tsa\tall\toff\tsensitive\tstandard\t1700000100\t-\t-\n'
 	printf 'tank/vol\tvolume\t40\t900\t30\toff\t-\t-\tlz4\t1.10x\t10\t-\t-\t-\t-\tall\toff\t-\tstandard\t1700000200\t-\t16384\n'
@@ -105,8 +108,8 @@ if [ "$1" = "list" ] && contains_arg 'snapshot' "$@" && contains_arg '-r' "$@"; 
 		printf 'simulated snapshot query failure\n' >&2
 		exit 1
 	fi
-	printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
-	printf 'tank/data@daily\t2\t50\t2\toff\t0\t1700000400\n'
+	[ "$last_arg" = tank ] && printf 'tank@root\t1\t80\t1\toff\t0\t1700000300\n'
+	case "$last_arg" in tank|tank/data) printf 'tank/data@daily\t2\t50\t2\toff\t0\t1700000400\n' ;; esac
 	exit 0
 fi
 
@@ -183,6 +186,16 @@ if [ "$1" = "get" ] && contains_arg 'guid' "$@"; then
 	exit 0
 fi
 
+# The filesystems' mounted and mountpoint in one read: tank and tank/data, as far down as asked.
+if [ "$1" = "get" ] && contains_arg 'mounted,mountpoint' "$@"; then
+	for ds in tank tank/data; do
+		case "$ds" in "$last_arg"|"$last_arg"/*) ;; *) continue ;; esac
+		if [ -n "${ZFSM_TEST_MOUNT_ROOT:-}" ]; then mp="$ZFSM_TEST_MOUNT_ROOT/$ds"; else mp="${ZFSM_TEST_DATASET_MOUNT:-/mnt/tank/data}"; fi
+		printf '%s\tmounted\t%s\n%s\tmountpoint\t%s\n' "$ds" "${ZFSM_TEST_MOUNTED:-yes}" "$ds" "$mp"
+	done
+	exit 0
+fi
+
 if [ "$1" = "get" ] && contains_arg 'mounted' "$@"; then
 	printf '%s\n' "${ZFSM_TEST_MOUNTED:-yes}"
 	exit 0
@@ -212,9 +225,17 @@ if [ "$1" = "diff" ]; then
 		( sleep 0.3; i=0; while [ "$i" -lt 1500 ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done ) &
 		exit 1
 	fi
+	# All of it in one write and an exit at once: zfs is gone before the reader is past the limit.
+	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER_FAST:-}" ]; then
+		all=$(awk -v n="$ZFSM_TEST_DIFF_FAIL_AFTER_FAST" 'BEGIN { for (i = 0; i < n; i++) printf "M\tF\t/mnt/tank/data/file%d\n", i }')
+		printf '%s\nUnable to determine path or stats for object 99 in tank/data@daily: Invalid argument\n' "$all"
+		exit 1
+	fi
 	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER:-}" ]; then
 		i=0
 		while [ "$i" -lt "$ZFSM_TEST_DIFF_FAIL_AFTER" ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done
+		# Still running when the reader is past the limit: failing at once made that a race with the exit (ZFSM_TEST_DIFF_FAILED_EARLY is the other side).
+		sleep 0.5
 		printf 'Unable to determine path or stats for object 99 in tank/data@daily: Invalid argument\n' >&2
 		exit 1
 	fi

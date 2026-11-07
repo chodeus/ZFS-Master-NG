@@ -17,20 +17,21 @@ const tools = page.match(/<div class="zfsm-snap-tools">[\s\S]*?<\/div>/);
 assert.ok(footer && thead && tools, 'header, filter bar and footer found in the page');
 const bar = tools[0].replace(/<\?php[\s\S]*?\?>/g, '');
 
-// [name, used bytes, created epoch, used as shown], in the order zfs listed them.
-function load(snapshots) {
-  const rows = snapshots.map(([name, used, created, usedText = '']) => `<tr data-snapshot="${name}" data-automatic="${/^(autosnap_|syncoid_)/.test(name) ? 1 : 0}">`
-    + `<td><input class="snapl-check" type="checkbox" value="tank/data@${name}"></td><td data-text="${name}">${name}</td>`
+// [name, used bytes, created epoch, used as shown, dataset], in the order zfs listed them. With children the page lists whole names.
+function load(snapshots, {children = false} = {}) {
+  const rows = snapshots.map(([name, used, created, usedText = '', dataset = 'tank/data']) => [children ? dataset+'@'+name : name, name, used, created, usedText, dataset]).map(([listed, name, used, created, usedText, dataset]) => `<tr data-snapshot="${listed}" data-automatic="${/^(autosnap_|syncoid_)/.test(name) ? 1 : 0}">`
+    + `<td><input class="snapl-check" type="checkbox" value="${dataset}@${name}"></td><td data-text="${listed}">${listed}</td>`
     + `<td class="num" data-text="${used}">${usedText}</td><td class="num" data-text="0"></td><td class="num" data-text="0"></td><td class="num" data-text="0"></td>`
     + `<td data-text="${created}"></td><td></td></tr>`).join('');
   const {window} = new JSDOM(`<!doctype html><body>${snapshots.length ? bar : ''}<table class="zfsm-snap-table">${thead[0]}<tbody id="zpools">${rows}</tbody></table>${footer[0]}</body>`, {runScripts: 'outside-only'});
   window.eval(fs.readFileSync(jquery, 'utf8'));
   window.eval(list + '\nzfsmInitSnapshotList();');
   const $ = window.$;
-  const box = name => window.document.querySelector(`.snapl-check[value="tank/data@${name}"]`);
+  const box = name => window.document.querySelector(`.snapl-check[value="${name.includes('@') ? name : 'tank/data@'+name}"]`);
   return {
     window,
     tick: name => { box(name).checked = true; $(box(name)).trigger('change'); },
+    untick: name => { box(name).checked = false; $(box(name)).trigger('change'); },
     ticked: () => Array.from($('.snapl-check:checked').map(function() { return this.value.split('@')[1]; }).get()),
     shown: () => Array.from($('#zpools tr').not('.zfsm-hidden').map(function() { return this.getAttribute('data-snapshot'); }).get()),
     filter: text => $('#zfsm-snap-filter').val(text).trigger('input'),
@@ -100,12 +101,67 @@ await mixed.sortBy(2);
 mixed.hideAutomatic(false);
 assert.deepEqual(mixed.shown(), ['Weekly', 'syncoid_tower_2026-11-06:00:00:02-GMT08:00', 'autosnap_2026-11-06_00:00:01_hourly', 'daily'], 'and back, in the sorted order');
 
+// With child datasets: Delete works on one dataset's snapshots, and the filter matches the dataset too.
+const family = [['daily', 5, 1, '', 'tank/a'], ['daily', 6, 2, '', 'tank/b'], ['weekly', 7, 3, '', 'tank/b']];
+const kids = load(family, {children: true});
+kids.tick('tank/b@daily');
+kids.tick('tank/b@weekly');
+assert.deepEqual(kids.state(), {delete: 'Delete selected (2)', deleteOff: false, all: false, allOff: false, status: '2 selected', count: ''}, 'two of one dataset ticked');
+assert.equal(kids.window.zfsmTickedDataset(), 'tank/b');
+kids.tick('tank/a@daily');
+assert.deepEqual(kids.state(), {delete: 'Delete selected (3)', deleteOff: true, all: true, allOff: false, status: 'Delete works on one dataset at a time. Tick snapshots of one dataset, or filter by its name.', count: ''}, 'two datasets ticked: Delete waits for one');
+assert.equal(kids.window.zfsmTickedDataset(), null);
+kids.filter('tank/b@');
+assert.deepEqual(kids.shown(), ['tank/b@daily', 'tank/b@weekly'], 'the filter matches the dataset name');
+assert.equal(kids.state().deleteOff, false, 'the other dataset filtered out and unticked, Delete works again');
+// ZFS names differ by case, so a path in the filter matches case exactly; a plain word still matches any case.
+const cased = load([['daily', 1, 1, '', 'tank/Media'], ['daily', 2, 2, '', 'tank/media']], {children: true});
+cased.filter('tank/media@');
+assert.deepEqual(cased.shown(), ['tank/media@daily'], 'a dataset path picks out only that dataset');
+cased.filter('DAILY');
+assert.deepEqual(cased.shown(), ['tank/Media@daily', 'tank/media@daily'], 'a word still matches any case');
+const reloads = [];
+kids.window.zfsmShowChildren = children => reloads.push(children);
+kids.window.$('#zfsm-children').prop('checked', false).trigger('change');
+assert.deepEqual(reloads, [false], 'the Include child datasets box reloads the list');
+const admin = 'http://tower/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php?zpool=tank&zdataset=tank';
+assert.equal(kids.window.zfsmChildrenUrl(admin, true), admin+'&children=1');
+assert.equal(kids.window.zfsmChildrenUrl(admin+'&children=1', false), admin);
+
+// The page's own Delete handler: never one request for two datasets, whose snapshot names would land on the first.
+const pageFunction = from => {
+  const at = page.indexOf(from);
+  assert.ok(at > 0, from+' found in the page');
+  return page.slice(at, page.indexOf('\n  }\n', at)+4).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin');
+};
+const deleting = load(family, {children: true});
+const reviews = [];
+deleting.window.zfsmFetchReview = (url, data) => reviews.push(data.target);
+deleting.window.zfsm_csrf_token = 'token';
+deleting.window.eval(pageFunction('function deleteSnapshots('));
+deleting.tick('tank/a@daily');
+deleting.tick('tank/b@daily');
+deleting.window.deleteSnapshots();
+assert.deepEqual(reviews, [], 'snapshots of two datasets were sent as one dataset\'s');
+deleting.untick('tank/a@daily');
+deleting.tick('tank/b@weekly');
+deleting.window.deleteSnapshots();
+assert.deepEqual(reviews, ['tank/b@daily,weekly'], 'one dataset\'s snapshots go in one request under its name');
+
 // Every action's result goes through showResult: a good answer, an unreadable one, and a failed request each show a dialog.
 const helpers = ['function parseJSONResponse(', 'function escapeHtml(', 'function showResult(', 'function formatAnswer('].map(from => {
   const at = page.indexOf(from);
   assert.ok(at > 0, from+' found in the page');
   return page.slice(at, page.indexOf('\n  }\n', at)+4);
 }).join('\n');
+// A running action keeps the Include child datasets box off, so the list can't reload under it.
+const acting = load(family, {children: true});
+acting.window.Swal2 = {fire: () => new Promise(() => {})};
+acting.window.eval(['function parseJSONResponse(', 'function showResult(', 'function formatAnswer('].map(pageFunction).join('\n'));
+assert.equal(acting.window.$('#zfsm-children').prop('disabled'), false);
+acting.window.showResult('Hold Result', acting.window.$.Deferred().promise());
+assert.equal(acting.window.$('#zfsm-children').prop('disabled'), true, 'a running action must keep the box off');
+
 const results = load([]);
 const shown = [];
 results.window.Swal2 = {fire: options => { shown.push([options.icon, options.html ?? options.text]); return new Promise(() => {}); }};

@@ -10,7 +10,7 @@ const plugin = path.resolve(__dirname, '../zfs.master');
 const tree = path.resolve(process.argv[2]);
 const styles = [path.join(tree, 'emhttp/plugins/dynamix/styles'), path.join(tree, 'plugins/dynamix/styles')].find(fs.existsSync);
 assert.ok(styles, 'webGUI styles not found');
-const chrome = process.env.CHROME || ['google-chrome', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(bin => {
+const chrome = process.env.CHROME || ['google-chrome', 'chromium', 'chromium-browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(bin => {
   try { execFileSync(bin, ['--version'], {stdio: 'ignore'}); return true; } catch { return false; }
 });
 assert.ok(chrome, 'Chrome not found');
