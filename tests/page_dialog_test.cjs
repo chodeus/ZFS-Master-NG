@@ -172,8 +172,12 @@ async function confirm() {
   window.$(details()).trigger('focusout');
   assert.equal(tip(), null, 'moving focus away hides the details');
   assert.equal(details().getAttribute('aria-describedby'), null, 'and the icon no longer points at them');
-  // Details taller than the window flow into columns side by side.
-  assert.deepEqual([window.zfsmTipColumns(500, 800), window.zfsmTipColumns(1000, 800), window.zfsmTipColumns(2000, 400)], [1, 2, 6], 'one column while it fits, more when taller than the window');
+  // Details taller than the window go into columns, each count measured; the heights below are Chrome's for 40 pool devices (tests/tip_render_test.cjs checks the real layout).
+  const fit = (heights, room) => { const applied = []; const result = {...window.zfsmTipFit(columns => { applied.push(columns); return heights[columns - 1]; }, room)}; return [result, applied.at(-1)]; };
+  assert.deepEqual(fit([616], 649), [{columns: 1, scale: 1}, 1], 'it fits: one column');
+  assert.deepEqual(fit([900, 500, 300, 200], 400), [{columns: 3, scale: 1}, 3], 'the fewest columns that fit');
+  assert.deepEqual(fit([616, 316, 421, 316, 376, 421, 451, 466], 239), [{columns: 2, scale: 239 / 316}, 2], 'none fits: the shortest, left applied and scaled to fit');
+  assert.deepEqual(fit([616, 616, 616, 766, 736, 616, 706, 766], 549), [{columns: 1, scale: 549 / 616}, 1], 'columns that do not make it shorter are not used');
   window.$(details()).trigger('mouseenter');
   redraw();
   assert.equal(tip(), null, 'a redraw replaces the row, so its details go too');
