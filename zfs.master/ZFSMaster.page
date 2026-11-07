@@ -182,11 +182,27 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	Object.keys(zfsm_copy_progress).forEach(function(dataset) { zfsmShowCopyProgress(dataset, null); });
   }
 
+  // A redraw replaces every row, so a keyboard user's focus goes back to the same control of the same row.
+  const zfsm_row_controls = 'a[href], button, [tabindex]';
+  function zfsmRowFocus() {
+	const active = document.activeElement;
+	const row = active ? active.closest('#zfs_master tr[id]') : null;
+	const index = row ? Array.prototype.indexOf.call(row.querySelectorAll(zfsm_row_controls), active) : -1;
+	return index >= 0 ? {row: row.id, index: index} : null;
+  }
+  function zfsmRestoreRowFocus(focus) {
+	const row = focus ? document.getElementById(focus.row) : null;
+	const control = row ? row.querySelectorAll(zfsm_row_controls)[focus.index] : null;
+	if (control) control.focus();
+  }
+
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {
+	const focus = zfsmRowFocus();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();
+	zfsmRestoreRowFocus(focus);
   }
 
   $(function() {
@@ -254,11 +270,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	return true;
   }
 
-  // Icons that act as buttons (role=button) take Enter and Space, as a button does.
-  $(document).on('keydown', '#zfs-master-title [role="button"], #zfs_master [role="button"]', function(event) {
+  // Icons that act as buttons (role=button): Enter presses on keydown and Space on keyup, as a button does.
+  // The bar's buttons sit in #zfs-master-title, or in Unraid's title line once zfsmMoveStatusIntoTitle has moved them.
+  $(document).on('keydown keyup', '#zfs-master-title [role="button"], .zfsm-title-status [role="button"], #zfs_master [role="button"]', function(event) {
 	if (event.key !== 'Enter' && event.key !== ' ') return;
 	event.preventDefault();
-	this.click();
+	if ((event.key === 'Enter') === (event.type === 'keydown')) this.click();
   });
 
   function processHiddenDatasets() {

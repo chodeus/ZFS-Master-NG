@@ -173,7 +173,9 @@ async function confirm() {
   window.document.body.insertAdjacentHTML('afterbegin', page.match(/<div id="zfs-master-title"[\s\S]*?\n<\/div>/)[0]);
   // jsdom here runs no onclick attributes (runScripts outside-only); a browser runs the clicked one.
   window.document.addEventListener('click', event => { const run = event.target.getAttribute('onclick'); if (run) window.eval(run); });
-  const key = (element, name) => element.dispatchEvent(new window.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+  const keyEvent = (element, type, name) => element.dispatchEvent(new window.KeyboardEvent(type, {key: name, bubbles: true, cancelable: true}));
+  // A key press is a keydown then a keyup; says whether the keydown went through.
+  const key = (element, name) => { const passed = keyEvent(element, 'keydown', name); keyEvent(element, 'keyup', name); return passed; };
   const fold = () => window.document.querySelector('i[name="tank"]');
   assert.equal(key(fold(), 'a'), true, 'other keys pass through');
   assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
@@ -181,11 +183,34 @@ async function confirm() {
   assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square')], ['false', true], 'Enter folds the dataset');
   redraw();
   assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
-  assert.equal(key(fold(), ' '), false, 'Space is taken too, so the page does not scroll');
-  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-minus-square')], ['true', true], 'Space unfolds it');
-  const reads = requests.length;
-  key(window.document.getElementById('zfsm-refresh').parentNode, 'Enter');
+  assert.deepEqual([keyEvent(fold(), 'keydown', ' '), fold().getAttribute('aria-expanded')], [false, 'false'], 'Space down is taken, so the page does not scroll, and presses nothing yet');
+  keyEvent(fold(), 'keyup', ' ');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-minus-square')], ['true', true], 'Space unfolds it as the key comes up');
+  // A redraw replaces the rows, so keyboard focus goes back to the same control; focus elsewhere stays put.
+  fold().focus();
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'focus on a fold icon survives a redraw');
+  const actions = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('button');
+  actions().focus();
+  redraw();
+  assert.equal(window.document.activeElement, actions(), 'and on an Actions button');
+  const refresh = () => window.document.getElementById('zfsm-refresh').parentNode;
+  assert.deepEqual([refresh().getAttribute('role'), refresh().tabIndex], ['button', 0], 'Refresh takes keyboard focus as a button');
+  refresh().focus();
+  redraw();
+  assert.equal(window.document.activeElement, refresh(), 'focus outside the table stays where it is');
+  let reads = requests.length;
+  key(refresh(), 'Enter');
   assert.equal(requests.length, reads + 1, 'Enter on Refresh reads the inventory again');
+  answer();
+  // Unraid's non-tabbed view moves the bar into its title line, and the buttons must still take the keys there.
+  const bar = window.document.getElementById('zfs-master-title');
+  bar.insertAdjacentHTML('beforebegin', '<div class="title"><span class="left">Main</span></div>');
+  assert.equal(window.zfsmMoveStatusIntoTitle(bar), true, 'the bar moved into the title line');
+  reads = requests.length;
+  key(refresh(), ' ');
+  assert.equal(requests.length, reads + 1, 'Space on Refresh reads the inventory again from the title line');
+  answer();
   const outside = window.document.createElement('span');
   outside.setAttribute('role', 'button');
   let outsidePressed = 0;

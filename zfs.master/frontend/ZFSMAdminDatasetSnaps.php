@@ -219,11 +219,11 @@ $snapshot_access = $snapshot_access ?? array();
   }
 
   $("#delete-snaps").click(deleteSnapshots);
-  // The row's icons act as buttons (role=button), so they take Enter and Space too.
-  $(document).on('keydown', '.zfsm-snap-table [role="button"]', function(event) {
+  // The row's icons act as buttons (role=button): Enter presses on keydown and Space on keyup, as a button does.
+  $(document).on('keydown keyup', '.zfsm-snap-table [role="button"]', function(event) {
 	if (event.key !== 'Enter' && event.key !== ' ') return;
 	event.preventDefault();
-	this.click();
+	if ((event.key === 'Enter') === (event.type === 'keydown')) this.click();
   });
   zfsmInitSnapshotList();
 
