@@ -16,6 +16,13 @@ if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning" ] && [ "$6" = "tank" ]; 
 	exit 0
 fi
 
+# zfs rewrite -P needs this: ZFSM_TEST_PHYSICAL=enabled|active|disabled; unset fails as OpenZFS before 2.4 does.
+if [ "$1" = "get" ] && [ "$5" = "feature@physical_rewrite" ]; then
+	[ -n "${ZFSM_TEST_PHYSICAL:-}" ] || { printf "bad property list: invalid property 'feature@physical_rewrite'\n" >&2; exit 1; }
+	printf '%s\n' "$ZFSM_TEST_PHYSICAL"
+	exit 0
+fi
+
 if [ "$1" = "status" ]; then
 	[ "${ZFSM_TEST_ZPOOL_STATUS_FAIL:-0}" = 1 ] && { printf 'simulated zpool status failure\n' >&2; exit 1; }
 	[ "${ZFSM_TEST_ZPOOL_STATUS_SLOW:-0}" = 1 ] && { sleep 5; exit 0; }

@@ -16,7 +16,9 @@ $routes = array(
 	'rollbacksnapshot' => array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '0'),
 	'renamesnapshot' => array('cmd' => 'renamesnapshot', 'snapshot' => 'tank/data@daily', 'newname' => 'renamed'),
 	'destroysnapshot' => array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '0'),
-	'destroydataset' => array('cmd' => 'destroydataset', 'zdataset' => 'tank/data', 'force' => '1')
+	'destroydataset' => array('cmd' => 'destroydataset', 'zdataset' => 'tank/data', 'force' => '1'),
+	'previewrewrite' => array('cmd' => 'previewrewrite', 'zdataset' => 'tank/vol'),
+	'rewritedataset' => array('cmd' => 'rewritedataset', 'zdataset' => 'tank/vol')
 );
 
 $route = $argv[1] ?? '';
@@ -53,6 +55,16 @@ if ($route === 'snapshotdataset_utc') {
 		fwrite(STDERR, 'a snapshot taken with UTC names set was not named in UTC: '.$output."\n");
 		exit(1);
 	}
+}
+// The rewrite routes on the fixture's volume, which has no files: each answers why instead of starting anything.
+if ($route === 'previewrewrite' || $route === 'rewritedataset') {
+	$said = $route === 'previewrewrite' ? ($answer['error'] ?? '') : ($answer['failed']['tank/vol'] ?? '');
+	if ($said !== 'Only an existing filesystem dataset has files to rewrite') {
+		fwrite(STDERR, $route.' answered: '.$output."\n");
+		exit(1);
+	}
+	echo $route." route passed\n";
+	exit(0);
 }
 if (!is_array($answer) || !isset($answer['succeeded'], $answer['failed']) || count($answer['failed']) !== 0 || count($answer['succeeded']) === 0) {
 	fwrite(STDERR, $route.' failed: '.$output."\n");

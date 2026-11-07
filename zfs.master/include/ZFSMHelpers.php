@@ -65,19 +65,36 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
+// The command to run: a test's own copy from ZFSM_TEST_BIN_DIR when it has one. Null for a zfs or zpool
+// the test lacks, so a test never reaches the host's.
+function zfsmCommandPath($command) {
+	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
+	if ($test_bin_dir === false || $test_bin_dir === '') return $command;
+	$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
+	if (is_file($candidate)) return $candidate;
+	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
+}
+
+// Runs $read with every runProcess in it under one time limit; a sooner limit already set stays, and the old one comes back after.
+function zfsmWithDeadline($seconds, $read) {
+	$previous = $GLOBALS['zfsm_inventory_deadline'] ?? null;
+	$GLOBALS['zfsm_inventory_deadline'] = min($previous ?? INF, microtime(true) + $seconds);
+	try {
+		return $read();
+	} finally {
+		if ($previous === null) unset($GLOBALS['zfsm_inventory_deadline']);
+		else $GLOBALS['zfsm_inventory_deadline'] = $previous;
+	}
+}
+
 // How much a command that can print a line per file keeps of its output: enough for its first errors.
 define('ZFSM_KEEP_OUTPUT', 4096);
 
 // With $max_lines, stops the command after that many lines; when it had more, sets 'truncated' and the line after them, 'next_line'.
 // With $keep_bytes, lets the command run to its end but keeps only that much of its output, and counts its lines in 'lines'.
 function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
-	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
-	if ($test_bin_dir !== false && $test_bin_dir !== '') {
-		$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
-		if (is_file($candidate)) $command = $candidate;
-		// A test never reaches the host's zfs or zpool, even when its fake is missing.
-		elseif (in_array(basename($command), array('zfs', 'zpool'), true)) return array('code' => 127, 'output' => basename($command).' is not in ZFSM_TEST_BIN_DIR');
-	}
+	$command = zfsmCommandPath($command);
+	if ($command === null) return array('code' => 127, 'output' => 'zfs and zpool must come from ZFSM_TEST_BIN_DIR in a test');
 	$descriptor_spec = array(
 		0 => array('pipe', 'r'),
 		1 => array('pipe', 'w'),
