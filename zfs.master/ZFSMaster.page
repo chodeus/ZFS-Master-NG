@@ -428,7 +428,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
     context.attach('#' + id, opts);
   }
 
-  function addDatasetContext(zpool, zdataset, snapscount, id, destructive_mode, encryption, origin, datasetType) {
+  function addDatasetContext(zpool, zdataset, snapscount, id, destructive_mode, encryption, origin, datasetType, childSnapscount) {
 	var opts = [];
 	var edit_opts = [];
 
@@ -542,13 +542,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		});
 	}
 
-	if (snapscount >= 1) {
+	// With snapshots only under it, the list opens with its child datasets' snapshots.
+	if (snapscount >= 1 || childSnapscount >= 1) {
         opts.push({
 			text: _('Snapshots Admin'),
 			icon: 'fa-gears',
 			action: function(e) {
 				e.preventDefault();
-				adminDatasetSnaps(zpool, zdataset);
+				adminDatasetSnaps(zpool, zdataset, snapscount < 1);
 			},
 		});
     }
@@ -697,8 +698,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	});
   }
 
-  function adminDatasetSnaps(zpool, zdataset) {
-	openBox('<?=$urladmindatasetsnaps?>?zpool='+encodeURIComponent(zpool)+'&zdataset='+encodeURIComponent(zdataset), zdataset+' - Admin Snapshots',680,680,false);
+  function adminDatasetSnaps(zpool, zdataset, children = false) {
+	openBox('<?=$urladmindatasetsnaps?>?zpool='+encodeURIComponent(zpool)+'&zdataset='+encodeURIComponent(zdataset)+(children ? '&children=1' : ''), zdataset+' - Admin Snapshots',680,680,false);
   }
 
   function unlockDataset(zdataset) {

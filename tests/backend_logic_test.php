@@ -117,6 +117,20 @@ rmdir($nested_child);
 rmdir($nested_parent);
 assertSameValue(null, zfsmResolveDirectory($directory_test_root, true), 'A dataset mountpoint must never be accepted as a deletable directory');
 
+// A dataset's own snapshots, or its child datasets' too. The child check is only a read: a failed one offers no children.
+assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank')['snapshots'], 'name'), 'Without children only the dataset\'s own snapshots are listed');
+assertSameValue(array('tank@root', 'tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank', true)['snapshots'], 'name'), 'With children their snapshots are listed too, oldest first');
+assertSameValue(array(true, false, false), array(zfsmHasChildDatasets('tank'), zfsmHasChildDatasets('tank/data'), zfsmHasChildDatasets('../tank')), 'Only a dataset with a filesystem or volume under it has children');
+putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
+assertSameValue(false, zfsmHasChildDatasets('tank'), 'A failed child list offers no children');
+putenv('ZFSM_TEST_CHILD_LIST_FAIL');
+// The exclusion pattern hides a child's snapshots as it hides the child: a match on it or on a dataset above it.
+assertSameValue(array(true, true, false), array(zfsmDatasetExcluded('cache/docker', 'cache/docker$'), zfsmDatasetExcluded('cache/docker/layer1', 'cache/docker$'), zfsmDatasetExcluded('cache/dockerx', 'cache/docker$')), 'A dataset under an excluded one is excluded too');
+assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank', true, 'tank/data')['snapshots'], 'name'), 'An excluded child\'s snapshots are not listed');
+assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', false, 'tank/data')['snapshots'], 'name'), 'A dataset opened directly still lists its own');
+assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', true, 'tank/data')['snapshots'], 'name'), 'An excluded dataset opened with its children still lists its own');
+assertSameValue(array(true, false), array(zfsmHasChildDatasets('tank', 'tank/data'), zfsmHasChildDatasets('tank', 'tank/(data|vol)')), 'Children the pattern hides are not offered');
+
 // A command that prints a line per file runs to its end, keeping only the first of its output and counting its lines.
 $kept = runProcess('sh', array('-c', 'seq 300000; exit 3'), null, 0, 100);
 assertSameValue(array(3, true, 300000), array($kept['code'], strlen($kept['output']) <= 100, $kept['lines']), 'Kept output must be cut and counted, with the exit code');

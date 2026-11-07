@@ -14,7 +14,7 @@ function handlers(from, to) {
   const start = page.indexOf(from);
   const end = page.indexOf(to, start);
   assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
-  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps');
   assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
   return code;
 }
@@ -188,6 +188,24 @@ async function confirm() {
   assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
   // The expand and collapse box is a pixel larger, with a gap before the name.
   assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\);margin-right:4px\}/);
+  // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
+  window.eval(handlers('function addDatasetContext(', 'function removeContext('));
+  window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
+  window.zfsm_config = {directory_listing: []};
+  window._ = text => text;
+  let menu = [];
+  window.context = {attach: (id, options) => { menu = options; }};
+  const opened = [];
+  window.openBox = url => opened.push(url);
+  const snapshotsAdmin = (own, children) => {
+    window.addDatasetContext('tank', 'tank', own, 'menu', 0, 'none', '', 'filesystem', children);
+    return menu.find(option => option.text === 'Snapshots Admin');
+  };
+  assert.equal(snapshotsAdmin(0, 0), undefined, 'no snapshots anywhere: no Snapshots Admin');
+  assert.ok(snapshotsAdmin(0, 3), 'snapshots only under it: Snapshots Admin must be offered');
+  snapshotsAdmin(0, 3).action({preventDefault() {}});
+  snapshotsAdmin(2, 3).action({preventDefault() {}});
+  assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

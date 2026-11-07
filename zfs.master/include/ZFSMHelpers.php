@@ -119,6 +119,8 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 
 	$answer = array('code' => $code, 'output' => trim((string)$output));
 	if ($lines !== null) $answer['lines'] = $lines;
+	// Exited before the reader got past the limit: nothing more is coming, but the line after it may be the error.
+	if ($next_line !== null) $answer['next_line'] = rtrim($next_line, "\r\n");
 	return $answer;
 }
 

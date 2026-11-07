@@ -221,16 +221,21 @@ function zfsmAddTimeText(&$dataset) {
 	}
 }
 
-// The datasets of a zfs list, less any the exclusion pattern matches and everything under those.
+// Whether the exclusion pattern hides a dataset: it matches the dataset or one above it.
+function zfsmDatasetExcluded($name, $exclusion_pattern) {
+	$parts = explode('/', (string)$name);
+	for ($depth = 1; $depth <= count($parts); $depth++) {
+		if (zfsmMatchesExclusion(implode('/', array_slice($parts, 0, $depth)), $exclusion_pattern)) return true;
+	}
+	return false;
+}
+
+// The datasets of a zfs list, less any the exclusion pattern hides.
 function zfsmIncludedDatasets($rows, $exclusion_pattern) {
 	$datasets = array();
-	$excluded_roots = array();
 	foreach ($rows as $row) {
 		$name = $row['name'] ?? '';
-		if (zfsmMatchesExclusion($name, $exclusion_pattern) || zfsmUnderAny($name, $excluded_roots)) {
-			$excluded_roots[] = $name;
-			continue;
-		}
+		if (zfsmDatasetExcluded($name, $exclusion_pattern)) continue;
 		$row['child'] = array();
 		$row['directories'] = array();
 		$row['snapshots'] = array();
@@ -521,14 +526,32 @@ function getAllDatasetProperties($zdataset, $ext) {
 	return $properties;
 }
 
-function getDatasetSnapshotsResult($zpool, $zdataset) {
+// The dataset's snapshots, oldest first; with $children, those of every dataset under it that the exclusion pattern doesn't hide.
+function getDatasetSnapshotsResult($zpool, $zdataset, $children = false, $exclusion_pattern = '') {
 	if (!zfsmValidPoolName($zpool) || !zfsmValidDatasetName($zdataset) || explode('/', $zdataset, 2)[0] !== $zpool) return array('ok' => false, 'snapshots' => array(), 'error' => 'Invalid pool or dataset name');
 	$columns = zfsmSnapshotColumns();
-	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', implode(',', $columns), $zdataset));
+	$depth = $children ? array('-r') : array('-d', '1');
+	$result = runProcess('zfs', array_merge(array('list', '-H', '-p'), $depth, array('-t', 'snapshot', '-o', implode(',', $columns), $zdataset)));
 	if (($result['code'] ?? 1) !== 0) return array('ok' => false, 'snapshots' => array(), 'error' => zfsmCommandError($result, 'Unable to list snapshots'));
 	$snapshots = zfsmParseTable($result['output'], $columns);
+	if ($children) $snapshots = array_values(array_filter($snapshots, function($snap) use ($zdataset, $exclusion_pattern) {
+		$dataset = explode('@', (string)($snap['name'] ?? ''), 2)[0];
+		return $dataset === $zdataset || !zfsmDatasetExcluded($dataset, $exclusion_pattern);
+	}));
 	usort($snapshots, function($a, $b) { return ($a['creation'] ?? 0) <=> ($b['creation'] ?? 0); });
 	return array('ok' => true, 'snapshots' => $snapshots, 'error' => '');
+}
+
+// Whether a filesystem or volume the exclusion pattern doesn't hide sits under the dataset. A failed read says no, which only hides the option.
+function zfsmHasChildDatasets($zdataset, $exclusion_pattern = '') {
+	if (!zfsmValidDatasetName($zdataset)) return false;
+	$result = runProcess('zfs', array('list', '-H', '-r', '-d', '1', '-t', 'filesystem,volume', '-o', 'name', $zdataset));
+	if (($result['code'] ?? 1) !== 0) return false;
+	foreach (preg_split('/\R/', (string)($result['output'] ?? '')) ?: array() as $line) {
+		$child = explode("\t", $line, 2)[0];
+		if (zfsmStartsWith($child, $zdataset.'/') && !zfsmDatasetExcluded($child, $exclusion_pattern)) return true;
+	}
+	return false;
 }
 
 function zfsmAllowedDatasetProperties() {
