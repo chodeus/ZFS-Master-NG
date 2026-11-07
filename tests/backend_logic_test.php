@@ -128,6 +128,7 @@ putenv('ZFSM_TEST_CHILD_LIST_FAIL');
 assertSameValue(array(true, true, false), array(zfsmDatasetExcluded('cache/docker', 'cache/docker$'), zfsmDatasetExcluded('cache/docker/layer1', 'cache/docker$'), zfsmDatasetExcluded('cache/dockerx', 'cache/docker$')), 'A dataset under an excluded one is excluded too');
 assertSameValue(array('tank@root'), array_column(getDatasetSnapshotsResult('tank', 'tank', true, 'tank/data')['snapshots'], 'name'), 'An excluded child\'s snapshots are not listed');
 assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', false, 'tank/data')['snapshots'], 'name'), 'A dataset opened directly still lists its own');
+assertSameValue(array('tank/data@daily'), array_column(getDatasetSnapshotsResult('tank', 'tank/data', true, 'tank/data')['snapshots'], 'name'), 'An excluded dataset opened with its children still lists its own');
 assertSameValue(array(true, false), array(zfsmHasChildDatasets('tank', 'tank/data'), zfsmHasChildDatasets('tank', 'tank/(data|vol)')), 'Children the pattern hides are not offered');
 
 // A command that prints a line per file runs to its end, keeping only the first of its output and counting its lines.
