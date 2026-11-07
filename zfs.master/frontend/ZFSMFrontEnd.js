@@ -514,36 +514,37 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	const show_button_text = getPoolShowButtonText(show_status);
 	const status_color = getPoolStatusColor(zpool['Health']);
 	const status_msg = getPoolStatusMsg(zpool['Health']);
+	const pool = escapeHtml(zpool['Pool']);
 
 	// Name and devices
-	var tr = '<td id="'+escapeHtml(zpool['Pool'])+'-attribute-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+escapeHtml(zpool['Pool'])+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+escapeHtml(zpool['Pool'])+'</td>';
+	var tr = '<td id="'+pool+'-attribute-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+pool+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+pool+'</td>';
 
 	// Health
-	tr += '<td id="'+zpool['Pool']+'-attribute-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+zpool['Health']+'</td>';
+	tr += '<td id="'+pool+'-attribute-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+escapeHtml(zpool['Health'])+'</td>';
 
 	// Buttons
-	tr += '<td id="'+zpool['Pool']+'-attribute-name"><button type="button" id="show-zpool-'+zpool['Pool']+'" onclick="togglePoolTable(\'show-zpool-'+zpool['Pool']+'\', \'zdataset-'+zpool['Pool']+'\');">'+show_button_text+'</button>'; 
-	tr += '<button type="button" onclick="createDataset(\''+zpool['Pool']+'\')";">Create Dataset</button></td>';
+	tr += '<td id="'+pool+'-attribute-name"><button type="button" id="show-zpool-'+pool+'" onclick="togglePoolTable('+safeJsArg('show-zpool-'+zpool['Pool'])+', '+safeJsArg('zdataset-'+zpool['Pool'])+');">'+show_button_text+'</button>';
+	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button></td>';
 
 	// Size
-	tr += '<td id="'+zpool['Pool']+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
+	tr += '<td id="'+pool+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
 
 	// Mountpoint
-	tr += '<td id="'+zpool['Pool']+'-attribute-mountpoint">'+zpool['MountPoint']+'</td>'; 
+	tr += '<td id="'+pool+'-attribute-mountpoint">'+escapeHtml(zpool['MountPoint'])+'</td>';
 
 	// Refer
-	tr += '<td id="'+zpool['Pool']+'-attribute-refer">'+zpool['Refer']+'</td>'; 
+	tr += '<td id="'+pool+'-attribute-refer">'+escapeHtml(zpool['Refer'])+'</td>';
 
 	// Used
 	var percent = 100-Math.round(calculateFreePercent(zpool['Used'], zpool['Free']));
 
-	tr += '<td id="'+zpool['Pool']+'-attribute-used">'+usageCell(poolSizeText(zpool['Used']), percent, false, display)+'</td>';
+	tr += '<td id="'+pool+'-attribute-used">'+usageCell(poolSizeText(zpool['Used']), percent, false, display)+'</td>';
 
 	// Free
-	tr += '<td id="'+zpool['Pool']+'-attribute-free">'+usageCell(poolSizeText(zpool['Free']), 100-percent, true, display)+'</td>';
+	tr += '<td id="'+pool+'-attribute-free">'+usageCell(poolSizeText(zpool['Free']), 100-percent, true, display)+'</td>';
 
 	// Snapshots
-	tr += '<td id="'+zpool['Pool']+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
+	tr += '<td id="'+pool+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
 
 	return tr; 
 }

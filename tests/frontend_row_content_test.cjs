@@ -35,6 +35,12 @@ assert.match(nameCell(ds({'org.znapzend:enabled': 'on'})), /fa-clock-o[\s\S]*ena
 const labels = html => [...html.matchAll(/<a class="info hand" tabindex="0"( aria-label="([^"]*)")?>/g)].map(match => match[2]);
 assert.deepEqual(labels(nameCell(ds({'org.znapzend:enabled': 'on'}))), ['Details of tank/data', 'znapzend plan of tank/data'], 'the dataset and its znapzend plan are named');
 assert.deepEqual(labels(context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Used: '1', Free: '1', Snapshots: 0}, 'sda', true, {text: 0})), ['Devices of tank', 'Health of tank'], 'the pool\'s devices and health are named');
+// A pool's own text goes through escapeHtml, and its name reaches the buttons' handlers as safeJsArg.
+const marked = context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE<b>', MountPoint: '/mnt/<img src=x>', Refer: '1<2', Used: '1', Free: '1', Snapshots: 0}, 'sda', true, {text: 0});
+assert.deepEqual(['ONLINE&lt;b&gt;', '/mnt/&lt;img src=x&gt;', '1&lt;2'].map(text => marked.includes(text)), [true, true, true], 'health, mount point and refer are shown as text');
+assert.doesNotMatch(marked, /<img|<b>/, 'nothing in them becomes markup');
+assert.match(marked, /onclick="togglePoolTable\(decodeURIComponent\('show-zpool-tank'\), decodeURIComponent\('zdataset-tank'\)\);"/, 'the show and hide button gets the pool by safeJsArg');
+assert.match(marked, /<button type="button" onclick="createDataset\(decodeURIComponent\('tank'\)\);">Create Dataset<\/button>/, 'and Create Dataset, with no stray quote after it');
 
 // Used and Free: text or a bar, as the display setting says; the bars split the space between them.
 for (const [text, usedBar, freeBar] of [[0, false, false], [1, true, true], [10, false, true], [11, true, false]]) {
