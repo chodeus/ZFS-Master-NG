@@ -187,6 +187,26 @@ async function confirm() {
   window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
   assert.deepEqual([tip(), window.document.activeElement === details()], [null, true], 'Escape dismisses them without moving focus');
   details().blur();
+  // Two icons: leaving one only touches its own details, which pass to the icon still hovered or focused.
+  const other = () => window.document.getElementById(window.datasetRowId('tank')).querySelector('a.info');
+  const owner = () => [details(), other()].find(icon => icon.getAttribute('aria-describedby') === 'zfsm-tip-text') ?? null;
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  details().blur();
+  assert.deepEqual([Boolean(tip()), owner() === other()], [true, true], 'focus leaving one icon keeps the details of the icon hovered');
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'and they go when that pointer leaves too');
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  window.$(other()).trigger('mouseleave');
+  assert.deepEqual([Boolean(tip()), owner() === details()], [true, true], 'the pointer leaving one icon brings back the focused icon\'s details');
+  window.$(other()).trigger('mouseenter');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'details dismissed with Escape stay dismissed when the pointer leaves another icon');
+  details().blur();
+  assert.equal(tip(), null);
   // Details taller than the window go into columns, each count measured; the heights below are Chrome's for 40 pool devices (tests/tip_render_test.cjs checks the real layout).
   const fit = (heights, room) => { const applied = []; const result = {...window.zfsmTipFit(columns => { applied.push(columns); return heights[columns - 1]; }, room)}; return [result, applied.at(-1)]; };
   assert.deepEqual(fit([616], 649), [{columns: 1, scale: 1}, 1], 'it fits: one column');
