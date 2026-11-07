@@ -24,15 +24,18 @@ window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventLi
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
 window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
 
 const posts = [], replies = [];
 let properties = {};
+let convertPreview = {can_proceed: true, clones: true, turns_on: ''};
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
   const reply = window.$.Deferred();
   replies.push(reply);
   return reply.promise();
@@ -149,6 +152,31 @@ async function confirm() {
   assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
   replies.at(-1).reject();
   assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
+
+  // Convert reviews first: a pool's first clone names the first Unraid that still writes to it; a refused review starts nothing.
+  const convertShown = async preview => {
+    convertPreview = preview;
+    window.convertDirectory('/mnt/tank/new', 'tank');
+    await settle();
+    return window.document.querySelector('.swal2-html-container');
+  };
+  let convertDialog = await convertShown({can_proceed: true, clones: true, turns_on: '7.3'});
+  assert.deepEqual(posts.at(-1), {cmd: 'previewconvert', directory: '/mnt/tank/new', pool: 'tank'}, 'Convert asks for its review first');
+  assert.match(convertDialog.querySelector('#zfsm-convert-turns-on')?.textContent ?? '', /first block clone[\s\S]*Unraid before 7\.3 can import this pool read-only only/, 'a first clone says what it turns on');
+  window.Swal2.close();
+  convertDialog = await convertShown({can_proceed: true, clones: true, turns_on: ''});
+  assert.deepEqual([convertDialog.querySelector('#zfsm-convert-turns-on'), /The files are cloned/.test(convertDialog.textContent)], [null, true], 'a pool that has cloned before gets no note');
+  window.Swal2.close();
+  convertDialog = await convertShown({can_proceed: true, clones: false, turns_on: ''});
+  assert.match(convertDialog.textContent, /copied, not cloned/, 'files that can\'t be cloned are said to be copied');
+  window.Swal2.close();
+  convertDialog = await convertShown({can_proceed: false, error: 'Target dataset name is invalid or already exists'});
+  assert.match(convertDialog.textContent, /already exists/, 'a refused review says why');
+  posts.length = 0;
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts, [], 'and starts nothing');
+  convertPreview = {can_proceed: true, clones: true, turns_on: ''};
 
   // A row's details show from the end of the page, out of the table that cuts them off on phones, and go when the pointer leaves.
   assert.match(page, /#zfs_master a\.info:hover>span\{display:none\}/, 'the row\'s own details must stay hidden while the copy shows');

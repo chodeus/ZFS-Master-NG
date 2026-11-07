@@ -47,3 +47,15 @@ function zfsmImpactSize(bytes) {
 	while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
 	return (unit ? value.toFixed(2) : value)+' '+units[unit];
 }
+
+// The Convert dialog: what happens to the folder, whether the files are cloned, and what a first clone turns on (zfsmConvertPreview).
+function zfsmConvertHtml(preview) {
+	var html = 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> ';
+	html += preview.clones
+		? 'The files are cloned, which usually needs almost no extra space; a file that can\'t be cloned is copied, and needs free space for its copy.'
+		: 'The files are copied, not cloned, because the dataset will be encrypted or the pool has no block cloning, so the pool needs free space for a second copy while this runs.';
+	if (preview.turns_on) {
+		html += '<p id="zfsm-convert-turns-on">This is the pool\'s first block clone, so it turns on the pool\'s block cloning. While cloned blocks remain, for example while a snapshot holds the original files, Unraid before '+escapeHtml(preview.turns_on)+' can import this pool read-only only. Copying files within the pool, such as with cp, does the same.</p>';
+	}
+	return html;
+}

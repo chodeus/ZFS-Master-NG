@@ -198,6 +198,33 @@ check(!zfsmBlockCloning('tank/data'), 'zfs_bclone_enabled=0 must not clone');
 unlink($bclone);
 check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must not clone');
 
+// The review: whether the files are cloned, and the first Unraid that still writes to the pool after its first clone (module/zfs/brt.c).
+file_put_contents($bclone, "1\n");
+reset_tree($target, $mount, $root);
+$turns_on = function($bclone_state, $endian) {
+	putenv('ZFSM_TEST_BCLONE='.$bclone_state);
+	putenv($endian === null ? 'ZFSM_TEST_BCLONE_ENDIAN' : 'ZFSM_TEST_BCLONE_ENDIAN='.$endian);
+	return zfsmCloneTurnsOn('tank');
+};
+$states = array($turns_on('enabled', 'enabled'), $turns_on('enabled', null), $turns_on('enabled', 'disabled'), $turns_on('active', 'enabled'), $turns_on('disabled', 'enabled'));
+check($states === array('7.3', '7.0', '7.0', '', ''), 'a first clone needs Unraid 7.3 with the endian feature, 7.0 without; an active or missing feature turns nothing on: '.json_encode($states));
+putenv('ZFSM_TEST_BCLONE=enabled');
+putenv('ZFSM_TEST_BCLONE_ENDIAN=enabled');
+// The new dataset can't be read before it exists, as real zfs answers, so the review must ask its parent.
+putenv('ZFSM_TEST_GET_FAIL=tank/My Share');
+$preview = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_GET_FAIL');
+check($preview === array('can_proceed' => true, 'clones' => true, 'turns_on' => '7.3'), 'a pool cloning for the first time says what that turns on: '.json_encode($preview));
+putenv('ZFSM_TEST_ENCRYPTION=aes-256-gcm');
+$preview = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_ENCRYPTION');
+check($preview === array('can_proceed' => true, 'clones' => false, 'turns_on' => ''), 'under an encrypted parent the files are copied, and nothing turns on: '.json_encode($preview));
+$preview = zfsmConvertPreview($root.'/no such folder', 'tank');
+check(($preview['can_proceed'] ?? true) === false && ($preview['error'] ?? '') !== '', 'a folder that can\'t be converted is refused in the review: '.json_encode($preview));
+putenv('ZFSM_TEST_BCLONE_ENDIAN');
+putenv('ZFSM_TEST_BCLONE=active');
+unlink($bclone);
+
 // With cloning off, cp never runs and rsync copies as before.
 $real_rsync = trim((string)shell_exec('command -v rsync'));
 $real_cp = trim((string)shell_exec('command -v cp'));

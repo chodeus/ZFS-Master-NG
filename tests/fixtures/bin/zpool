@@ -16,6 +16,13 @@ if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning" ] && [ "$6" = "tank" ]; 
 	exit 0
 fi
 
+# block_cloning_endian (OpenZFS 2.4) for pool tank: ZFSM_TEST_BCLONE_ENDIAN=active|enabled|disabled; unset fails as 2.3 does.
+if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning_endian" ] && [ "$6" = "tank" ]; then
+	[ -n "${ZFSM_TEST_BCLONE_ENDIAN:-}" ] || { printf "bad property list: invalid property 'feature@block_cloning_endian'\n" >&2; exit 1; }
+	printf '%s\n' "$ZFSM_TEST_BCLONE_ENDIAN"
+	exit 0
+fi
+
 if [ "$1" = "status" ]; then
 	[ "${ZFSM_TEST_ZPOOL_STATUS_FAIL:-0}" = 1 ] && { printf 'simulated zpool status failure\n' >&2; exit 1; }
 	[ "${ZFSM_TEST_ZPOOL_STATUS_SLOW:-0}" = 1 ] && { sleep 5; exit 0; }

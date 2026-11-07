@@ -8,6 +8,7 @@ require_once __ROOT__."/include/ZFSMHelpers.php";
 require_once __ROOT__."/include/ZFSMImpact.php";
 require_once __ROOT__."/include/ZFSMSnapshotFiles.php";
 require_once __ROOT__."/include/ZFSMAlerts.php";
+require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
@@ -820,9 +821,17 @@ function zfsmConvertUndo($dataset_name, $temp, $path) {
 function zfsmBlockCloning($dataset) {
 	$pool = explode('/', $dataset, 2)[0];
 	if (trim((string)@file_get_contents($GLOBALS['zfsm_bclone_param'] ?? '/sys/module/zfs/parameters/zfs_bclone_enabled')) !== '1') return false;
-	$feature = runProcess('zpool', array('get', '-H', '-o', 'value', 'feature@block_cloning', $pool));
-	if (($feature['code'] ?? 1) !== 0 || !in_array($feature['output'], array('enabled', 'active'), true)) return false;
+	if (!in_array(zfsmPoolFeature($pool, 'block_cloning'), array('enabled', 'active'), true)) return false;
 	return getDatasetProperty($pool, $dataset, 'encryption') === 'off';
+}
+
+// What the Convert dialog says first: whether the files will be cloned, and the first Unraid that still imports the pool read-write after.
+function zfsmConvertPreview($directory, $pool) {
+	$target = zfsmConvertTarget($directory, $pool);
+	if (!is_array($target)) return array('can_proceed' => false, 'error' => $target);
+	// The dataset doesn't exist yet; it takes its parent's encryption, which decides whether its files can be cloned.
+	$clones = zfsmBlockCloning(substr($target[1], 0, strrpos($target[1], '/')));
+	return array('can_proceed' => true, 'clones' => $clones, 'turns_on' => $clones ? zfsmCloneTurnsOn($pool) : '');
 }
 
 // Clones the files into the dataset, sharing their blocks; rsync then copies whatever this missed, so a failure here only costs space.

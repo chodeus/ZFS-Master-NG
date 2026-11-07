@@ -96,6 +96,12 @@ try {
 			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
+		case 'previewconvert':
+			$directory = zfsmPostString('directory');
+			$pool = zfsmPostString('pool');
+			echo json_encode(zfsmWithReadLimit(function() use ($directory, $pool) { return zfsmConvertPreview($directory, $pool); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
 		case 'diffsnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmSnapshotDiff($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
