@@ -176,5 +176,18 @@ assert.deepEqual(shown, [
   ['error', 'The request failed. The page will reload to show what changed.'],
 ], 'every outcome shows a dialog');
 
+// The row's icons act as buttons: Enter and Space press them, other keys pass through.
+const keys = load([['a', 1, 1]]);
+const at = page.indexOf("  $(document).on('keydown'");
+assert.ok(at > 0, 'the key handler found in the page');
+keys.window.eval(page.slice(at, page.indexOf('\n  });\n', at)+6));
+let pressed = 0;
+const icon = keys.window.document.createElement('a');
+Object.assign(icon, {onclick: () => pressed++, tabIndex: 0});
+icon.setAttribute('role', 'button');
+keys.window.document.querySelector('#zpools td').append(icon);
+const press = name => icon.dispatchEvent(new keys.window.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+assert.deepEqual([press('Enter'), press(' '), press('Tab'), pressed], [false, false, true, 2], 'Enter and Space press the icon; Tab moves on');
+
 console.log('snapshot admin list, filter, sort and result tests passed');
 })().catch(error => { console.error(error); process.exit(1); });

@@ -101,7 +101,7 @@ async function confirm() {
     return request;
   };
   window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
-  window.document.body.insertAdjacentHTML('beforeend', '<table><tbody id="zfs_master_body"></tbody></table>');
+  window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
@@ -168,6 +168,30 @@ async function confirm() {
   snapshotsAdmin(0, 3).action({preventDefault() {}});
   snapshotsAdmin(2, 3).action({preventDefault() {}});
   assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+
+  // Icons that act as buttons take Enter and Space; the fold icon says whether its dataset is folded.
+  window.document.body.insertAdjacentHTML('afterbegin', page.match(/<div id="zfs-master-title"[\s\S]*?\n<\/div>/)[0]);
+  // jsdom here runs no onclick attributes (runScripts outside-only); a browser runs the clicked one.
+  window.document.addEventListener('click', event => { const run = event.target.getAttribute('onclick'); if (run) window.eval(run); });
+  const key = (element, name) => element.dispatchEvent(new window.KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+  const fold = () => window.document.querySelector('i[name="tank"]');
+  assert.equal(key(fold(), 'a'), true, 'other keys pass through');
+  assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
+  assert.equal(key(fold(), 'Enter'), false, 'Enter is taken by the icon');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square')], ['false', true], 'Enter folds the dataset');
+  redraw();
+  assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
+  assert.equal(key(fold(), ' '), false, 'Space is taken too, so the page does not scroll');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-minus-square')], ['true', true], 'Space unfolds it');
+  const reads = requests.length;
+  key(window.document.getElementById('zfsm-refresh').parentNode, 'Enter');
+  assert.equal(requests.length, reads + 1, 'Enter on Refresh reads the inventory again');
+  const outside = window.document.createElement('span');
+  outside.setAttribute('role', 'button');
+  let outsidePressed = 0;
+  outside.onclick = () => { outsidePressed++; };
+  window.document.body.append(outside);
+  assert.deepEqual([key(outside, 'Enter'), outsidePressed], [true, 0], 'a button outside the plugin is not ours to press');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();

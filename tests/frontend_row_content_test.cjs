@@ -26,7 +26,7 @@ assert.doesNotMatch(nameCell(ds()), /fa-minus-square/, 'nothing to fold, no togg
 assert.match(nameCell(ds({compressratio: 116})), /Compress Ratio: 1\.16x</, 'the ratio reads as ZFS prints it');
 assert.match(nameCell(ds({compressratio: 100})), /Compress Ratio: 1\.00x</, 'including an uncompressed one');
 const folding = nameCell(ds({child: {'tank/data/a': ds({name: 'tank/data/a'})}}));
-assert.match(folding, /<i class="fa fa-minus-square fa-append" name="tank\/data" style="cursor:pointer" onclick="toggleDataset\(/, 'the minus icon folds the dataset');
+assert.match(folding, /<i class="fa fa-minus-square fa-append" name="tank\/data" role="button" tabindex="0" aria-expanded="true" aria-label="Contents of tank\/data" style="cursor:pointer" onclick="toggleDataset\(/, 'the minus icon folds the dataset, from the keyboard too');
 assert.doesNotMatch(folding, /fa-hdd-o[^>]*onclick/, 'the drive icon only shows the details');
 assert.match(nameCell(ds({origin: 'tank/base@s'})), /fa-clone/, 'a clone is marked');
 assert.doesNotMatch(nameCell(ds()), /fa-clone/, 'a plain dataset is not marked as a clone');

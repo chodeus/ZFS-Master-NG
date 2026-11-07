@@ -77,7 +77,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		<a style="cursor:pointer" class="tooltip" title="ZFS Master NG Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="Refresh Information" role="button" tabindex="0" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
 <!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
@@ -254,6 +254,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	return true;
   }
 
+  // Icons that act as buttons (role=button) take Enter and Space, as a button does.
+  $(document).on('keydown', '#zfs-master-title [role="button"], #zfs_master [role="button"]', function(event) {
+	if (event.key !== 'Enter' && event.key !== ' ') return;
+	event.preventDefault();
+	this.click();
+  });
+
   function processHiddenDatasets() {
 	var datasets = loadFromLocalStorage('zfsm-datasetsHidden');
 	
@@ -265,9 +272,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		
 		for (let row of myRows) {
 			$(row).hide(0);
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} 
 	}
+  }
+
+  // A folded dataset shows a plus, and says it is collapsed to a screen reader.
+  function zfsmFoldIcon(zdataset, folded) {
+	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' fa-append', 'aria-expanded': folded ? 'false' : 'true'});
   }
 
   function toggleDataset(zdataset) {
@@ -291,10 +303,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let row of myRows) {
 		if (index == -1) {
 			$(row).hide( 'fast');
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} else {
 			$(row).show( 'fast');
-			$('i[name=\''+zdataset+'\']') .attr('class', 'fa fa-minus-square fa-append');
+			zfsmFoldIcon(zdataset, false);
 		}
 	}
 
