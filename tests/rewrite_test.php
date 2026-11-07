@@ -41,6 +41,22 @@ putenv('ZFSM_TEST_REWRITE_LOG='.$work.'/rewrite.log');
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'rewrite.log') as $name) @unlink($work.'/'.$name); $GLOBALS['zfsm_feed'] = array(); };
 
+// One time limit for every command in it: a sooner one already set stays, and nothing is left set afterwards.
+$left = function() { return $GLOBALS['zfsm_inventory_deadline'] - microtime(true); };
+$inner = zfsmWithDeadline(60, function() use ($left) { return zfsmWithDeadline(5, $left); });
+$outer = zfsmWithDeadline(1, function() use ($left) { return zfsmWithDeadline(60, $left); });
+same(array(true, true, false), array($inner > 4 && $inner <= 5, $outer <= 1, isset($GLOBALS['zfsm_inventory_deadline'])), 'the sooner limit wins, and none is left set');
+// A stuck zfs times out instead of holding up its caller; the Main page reads that as no Rewrite Files (unraid_compat_check).
+putenv('ZFSM_TEST_REWRITE_HANG=1');
+$began = microtime(true);
+try {
+	$probe = zfsmWithDeadline(1, 'zfsmRewriteAvailable') ? 'available' : 'unavailable';
+} catch (RuntimeException $error) {
+	$probe = $error->getMessage();
+}
+same(array('zfs timed out', true), array($probe, microtime(true) - $began < 4), 'a stuck probe gives up after its limit');
+putenv('ZFSM_TEST_REWRITE_HANG');
+
 // Only OpenZFS 2.4+ has the command; older ones answer "unrecognized command".
 same(true, zfsmRewriteAvailable(), 'OpenZFS 2.4 has zfs rewrite');
 putenv('ZFSM_TEST_NO_REWRITE=1');

@@ -75,6 +75,18 @@ function zfsmCommandPath($command) {
 	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
 }
 
+// Runs $read with every runProcess in it under one time limit; a sooner limit already set stays, and the old one comes back after.
+function zfsmWithDeadline($seconds, $read) {
+	$previous = $GLOBALS['zfsm_inventory_deadline'] ?? null;
+	$GLOBALS['zfsm_inventory_deadline'] = min($previous ?? INF, microtime(true) + $seconds);
+	try {
+		return $read();
+	} finally {
+		if ($previous === null) unset($GLOBALS['zfsm_inventory_deadline']);
+		else $GLOBALS['zfsm_inventory_deadline'] = $previous;
+	}
+}
+
 // How much a command that can print a line per file keeps of its output: enough for its first errors.
 define('ZFSM_KEEP_OUTPUT', 4096);
 

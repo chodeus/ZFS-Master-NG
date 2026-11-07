@@ -15,8 +15,12 @@ $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $unraid_ver_file = '/etc/unraid-version';
 $zfsm_cfg['version'] = file_exists($unraid_ver_file) ? (parse_ini_file($unraid_ver_file)['version'] ?? '7.0.0') : '7.0.0';
 require_once $docroot."/plugins/".$plugin."/include/ZFSMRewrite.php";
-// The dataset menu offers Rewrite Files only where zfs rewrite exists (OpenZFS 2.4+).
-$zfsm_cfg['rewrite'] = zfsmRewriteAvailable();
+// The dataset menu offers Rewrite Files only where zfs rewrite exists (OpenZFS 2.4+); a stuck zfs gets 5 seconds, then means no.
+try {
+	$zfsm_cfg['rewrite'] = zfsmWithDeadline(5, 'zfsmRewriteAvailable');
+} catch (RuntimeException $error) {
+	$zfsm_cfg['rewrite'] = false;
+}
 $var_ini = @parse_ini_file('/var/local/emhttp/var.ini');
 $csrf_token = $var_ini['csrf_token'] ?? '';
 $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');

@@ -37,12 +37,7 @@ function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_not
 
 // A dry run can still block on a slow pool, so it shares the inventory time limit.
 function zfsmWithReadLimit($read) {
-	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 45;
-	try {
-		return $read();
-	} finally {
-		unset($GLOBALS['zfsm_inventory_deadline']);
-	}
+	return zfsmWithDeadline(45, $read);
 }
 
 function zfsmRequireDestructiveMode($config, $subject) {
