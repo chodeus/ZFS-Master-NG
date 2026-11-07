@@ -2,35 +2,18 @@
 
 ## Unreleased
 
-- fix: stop a destroy or rollback review that cannot read the mount list
-- feat: filter and sort Snapshots Admin, and flag Sanoid and Syncoid snapshots and the boot pool in destroy, delete and rollback reviews
-- feat: option to date new snapshot names in UTC
-- fix: offer zfs diff only when the dataset has its .zfs folder
-- fix: keep a failed zfs diff's exit code at the limit, and check .zfs on disk
-- fix: show zfs diff failures past the limit, and check snapdir before browsing
-- feat: browse a snapshot's files and see what changed since it
-- fix: an unreadable disks.ini keeps known missing pools; alerts test runs alone
-- fix: alerts keep what a check could not see, and resend failed notices
-- feat: optional pool health and stale snapshot alerts
-- fix: cp, rm and the copy check keep only their first errors, so a huge tree can't exhaust PHP's memory
-- fix: a lost stop message can't leave copy progress behind; the test guard checks the fakes' contents
-- fix: every redraw keeps copy progress; tests drive the page and a real failed cp
-- fix: copy progress survives the row redraw; dialog says cloning usually saves space
-- fix: Convert shows progress before cloning, and never clones into an encrypted dataset
-- feat: Convert clones files where the pool has block cloning
-- fix: a zfs diff that failed right at the limit says why, however soon zfs exited
-- fix: a failed line split is a failed read, not a dataset without filesystems
-- fix: when the mount details can't be read, the popup says why browse and changes are off
-- fix: the child list reads every dataset's browse and changes access at once; no reload while an action runs
-- fix: child snapshots follow the exclusion setting; a path in the filter matches case exactly
-- feat: Snapshots Admin can list the child datasets' snapshots too
-- fix: leaving one icon only touches its own details, which pass to the icon still hovered or focused; the browser test checks every line and the drawn text size
-- fix: hover and focus each keep a row's details up until neither is left; Escape dismisses them
-- fix: a pool row escapes its own text and passes its name to the buttons as safeJsArg; the Chrome tests find Chromium too
-- fix: tall row details measure each column count and scale down when none fits, so they stay inside the window
-- fix: each details icon names whose details it shows; the details go when the window is resized
-- fix: row details from the keyboard too; long lines wrap and tall details form columns
-- fix: a row's details show in full on phones; the expand box is a pixel larger with a gap before the name
+- Snapshots Admin can filter and sort, and include child datasets' snapshots
+- Browse a snapshot's files, or see what changed since it
+- Destroy, delete and rollback reviews flag Sanoid/Syncoid snapshots and the boot pool
+- A destroy or rollback review stops if the mount list can't be read
+- New snapshot names can use UTC time
+- Optional alerts for pool health problems and stale snapshots
+- Convert clones files instead of copying where the pool supports block cloning
+- Convert progress stays on its row, and huge folders no longer exhaust memory
+- Row details show in full on phones and open from the keyboard
+- Very long row details fit the window, in columns or slightly smaller
+- The expand box is a pixel larger, with a gap before the name
+- Snapshot browse and changes say why when ZFS can't answer
 
 ## 2026.11.06.1 (beta)
 
