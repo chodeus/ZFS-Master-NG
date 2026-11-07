@@ -144,15 +144,37 @@ putenv('ZFSM_TEST_PHYSICAL=disabled');
 same(array('succeeded' => array(), 'failed' => array('tank/data' => "The pool's physical_rewrite feature is not enabled, so birth times can't be kept")), zfsmStartRewrite('tank/data', true), '-P can\'t be asked for where the pool lacks the feature');
 putenv('ZFSM_TEST_PHYSICAL=enabled');
 
-// A start runs scripts/rewrite.php in the background and answers at once; -P goes through when asked for.
+// A start runs scripts/rewrite.php in a session of its own and answers once it holds the lock, while the rewrite goes on; -P goes through when asked for.
 $reset();
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/rewrite.php')) {
 	$GLOBALS['docroot'] = $docroot;
 	$GLOBALS['zfsm_php'] = PHP_BINARY;
-	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data', true), 'a start answers at once');
-	for ($wait = 0; $wait < 100 && count($read('rewrite.log')) === 0; $wait++) usleep(50000);
+	putenv('ZFSM_TEST_REWRITE_PAUSE=2');
+	$began = microtime(true);
+	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data', true), 'a start says it started');
+	same(true, microtime(true) - $began < 1.5, 'and answers while the rewrite is still running');
+	// The script has no zfsm_rewrite_dir, so it locks in the default folder (this runs in a disposable container).
+	$test_dir = $GLOBALS['zfsm_rewrite_dir'];
+	unset($GLOBALS['zfsm_rewrite_dir']);
+	$background_lock = zfsmRewriteLockFile('tank/data');
+	$GLOBALS['zfsm_rewrite_dir'] = $test_dir;
+	same(true, zfsmRewriteRunning($background_lock), 'which holds the dataset\'s lock by then');
+	for ($wait = 0; $wait < 100 && zfsmRewriteRunning($background_lock); $wait++) usleep(50000);
+	putenv('ZFSM_TEST_REWRITE_PAUSE');
+	same(false, zfsmRewriteRunning($background_lock), 'and finishes, letting go of it');
 	same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'the background script ran the rewrite, with -P as asked');
+	// A start that never got going says so, with what it printed, instead of promising a notification.
+	$reset();
+	$GLOBALS['zfsm_php'] = $work.'/no-such-php';
+	$failed = zfsmStartRewrite('tank/data', false)['failed']['tank/data'] ?? '';
+	same(true, strpos($failed, 'The rewrite could not be started: ') === 0 && strpos($failed, 'no-such-php') !== false, 'a PHP that is not there fails the start: '.$failed);
+	$GLOBALS['zfsm_php'] = PHP_BINARY;
+	putenv('ZFSM_TEST_DOCROOT='.$work.'/missing');
+	$failed = zfsmStartRewrite('tank/data', false)['failed']['tank/data'] ?? '';
+	putenv('ZFSM_TEST_DOCROOT='.$docroot);
+	same(true, strpos($failed, 'The rewrite could not be started: ') === 0 && strpos($failed, 'Helpers.php') !== false, 'a script that dies as it loads fails the start, saying why: '.$failed);
+	same(array(), $read('rewrite.log'), 'and neither ran zfs rewrite');
 } else {
 	fwrite(STDERR, "FAILED: the background start needs ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");
 	exit(1);

@@ -10,4 +10,13 @@ if (($argv[1] ?? '') === '') {
 	fwrite(STDERR, "Usage: rewrite.php <dataset> [physical]\n");
 	exit(2);
 }
-exit(zfsmRunRewrite($argv[1], ($argv[2] ?? '') === 'physical'));
+// zfsmStartRewrite reads this pipe until it closes: say "started", then let go of it so the page is answered at once.
+exit(zfsmRunRewrite($argv[1], ($argv[2] ?? '') === 'physical', function() {
+	fwrite(STDOUT, "started\n");
+	fflush(STDOUT);
+	fclose(STDIN);
+	fclose(STDOUT);
+	fclose(STDERR);
+	// Reopened on /dev/null they take fds 0-2 again, so nothing opened later is written to as stdout or stderr.
+	$GLOBALS['zfsm_stdio'] = array(fopen('/dev/null', 'r'), fopen('/dev/null', 'w'), fopen('/dev/null', 'w'));
+}));
