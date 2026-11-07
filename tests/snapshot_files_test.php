@@ -98,6 +98,24 @@ try {
 }
 unset($GLOBALS['zfsm_inventory_deadline']);
 putenv('ZFSM_TEST_DIFF_SLOW');
+// Output held open after the command ends, as by a zfs stuck in the kernel that even KILL can't stop: the read gives up past the limit.
+foreach (array('plain' => array(0, 0), 'line-limited' => array(5, 0), 'head-kept' => array(0, 4096)) as $how => $read) {
+	$began = microtime(true);
+	try {
+		$held = zfsmWithDeadline(1, function() use ($read) { return runProcess('sh', array('-c', 'echo started; setsid sleep 30 &'), null, $read[0], $read[1]); });
+		$held = 'answered';
+	} catch (RuntimeException $error) {
+		$held = $error->getMessage();
+	}
+	same(array('sh timed out', true), array($held, microtime(true) - $began < 6), "held-open output gives up at the limit ($how)");
+}
+// Waiting for the exit stops at its time too, as timeout itself can be stuck waiting on such a zfs; an ended one gives its code.
+$running = proc_open(array('sleep', '5'), array(), $no_pipes);
+$began = microtime(true);
+$exit = zfsmProcessExit($running, microtime(true) + 0.5);
+if (is_resource($running)) proc_terminate($running, 9);
+$ended = proc_open(array('sh', '-c', 'exit 3'), array(), $no_pipes);
+same(array(null, true, 3), array($exit, microtime(true) - $began < 2, zfsmProcessExit($ended, microtime(true) + 5)), 'waiting for an exit gives up at its time, and an ended command gives its code');
 // A command that ignores TERM is killed with KILL, which proc_close reports as 9: still a timeout, not an ordinary failure.
 try {
 	$stubborn = zfsmWithDeadline(1, function() { return runProcess('sh', array('-c', "trap '' TERM; sleep 6")); });

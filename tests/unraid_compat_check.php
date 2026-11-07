@@ -343,12 +343,13 @@ switch ($check) {
 
 	case 'snapshot_popup_stuck_zfs':
 	case 'snapshot_popup_stubborn_zfs':
+	case 'snapshot_popup_held_zfs':
 		// A zfs that never answers must not hold the popup open: its reads share the limit, and running out reads as a failed read.
 		// The stubborn one also ignores TERM, so it ends by KILL.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
 		$GLOBALS['zfsm_popup_read_seconds'] = 2;
-		putenv('ZFSM_TEST_LIST_HANG='.($check === 'snapshot_popup_stubborn_zfs' ? 'stubborn' : '1'));
+		putenv('ZFSM_TEST_LIST_HANG='.(array('snapshot_popup_stubborn_zfs' => 'stubborn', 'snapshot_popup_held_zfs' => 'held')[$check] ?? '1'));
 		$began = microtime(true);
 		ob_start();
 		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
