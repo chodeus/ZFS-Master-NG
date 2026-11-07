@@ -180,6 +180,9 @@ async function confirm() {
   window.$(details()).trigger('mouseenter');
   window.document.dispatchEvent(new window.Event('scroll'));
   assert.equal(tip(), null, 'scrolling moves the row away, so its details go');
+  window.$(details()).trigger('mouseenter');
+  window.dispatchEvent(new window.Event('resize'));
+  assert.equal(tip(), null, 'a resized or turned window would leave them the old size and place, so they go');
   // Below and right of the row, but inside the window: above the row when there is no room below.
   const view = {width: 400, height: 800};
   assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 100}, {width: 200, height: 300}, view)}, {left: 116, top: 116}, 'room below: under the row');

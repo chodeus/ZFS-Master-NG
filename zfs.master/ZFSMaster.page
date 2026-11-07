@@ -222,11 +222,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	$(link).attr('aria-describedby', 'zfsm-tip-text');
   }
 
-  // Pointer and keyboard both: the details icons take focus (tabindex in ZFSMFrontEnd.js).
+  // Pointer and keyboard both: the details icons take focus (detailsLink in ZFSMFrontEnd.js).
   $(document).on('mouseenter focusin', '#zfs_master a.info', function() { zfsmShowTip(this); });
   $(document).on('mouseleave focusout', '#zfs_master a.info', zfsmHideTip);
-  // A fixed copy would stay put while its row scrolls away.
+  // A fixed copy would stay put while its row scrolls away, or keep the old window's size and place.
   window.addEventListener('scroll', zfsmHideTip, true);
+  window.addEventListener('resize', zfsmHideTip);
 
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {

@@ -403,14 +403,18 @@ function childSnapshotCount(zdataset) {
 	return Object.values(zdataset['child'] || {}).reduce((count, child) => count + (child['snapshots'] || []).length + childSnapshotCount(child), 0);
 }
 
+// An icon whose details show on hover or focus (ZFSMaster.page's zfsmShowTip); the label names what they describe.
+function detailsLink(label, icon, details) {
+	return '<a class="info hand" tabindex="0" aria-label="'+escapeHtml(label)+'">'+icon+'<span>'+details+'</span></a>';
+}
+
 // the icons after a dataset's name: znapzend plan, children, clone, encryption
 function datasetBadges(zdataset) {
 	var html = '';
 	const znap_properties = getZnapProperties(zdataset);
 
 	if (Object.keys(znap_properties).length > 0) {
-		html += '<a class="info hand" tabindex="0"><i class="fa fa-clock-o fa-append"></i>';
-		html += '<span>'+implodeWithKeys('<br>', znap_properties)+'</span></a>';
+		html += detailsLink('znapzend plan of '+zdataset['name'], '<i class="fa fa-clock-o fa-append"></i>', implodeWithKeys('<br>', znap_properties));
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
@@ -451,8 +455,7 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
     	tr += '&emsp;&emsp;';
 	}
 
-	tr += '<a class="info hand" tabindex="0"><i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>';
-	tr += '<span>'+implodeWithKeys('<br>', properties)+'</span></a>';
+	tr += detailsLink('Details of '+zdataset['name'], '<i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>', implodeWithKeys('<br>', properties));
 	tr += datasetBadges(zdataset);
 
 	tr += escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
@@ -513,10 +516,10 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 	const status_msg = getPoolStatusMsg(zpool['Health']);
 
 	// Name and devices
-	var tr = '<td id="'+escapeHtml(zpool['Pool'])+'-attribute-pool"><a class="info hand" tabindex="0"><i id="zpool-'+escapeHtml(zpool['Pool'])+'" class="fa fa-circle orb '+status_color+'-orb"></i><span>'+nl2br(escapeHtml(devices))+'</span></a> '+escapeHtml(zpool['Pool'])+'</td>';
+	var tr = '<td id="'+escapeHtml(zpool['Pool'])+'-attribute-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+escapeHtml(zpool['Pool'])+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+escapeHtml(zpool['Pool'])+'</td>';
 
 	// Health
-	tr += '<td id="'+zpool['Pool']+'-attribute-health"><a class="info hand" tabindex="0"><i class="fa fa-heartbeat" style="color:'+status_color+'"></i><span>'+status_msg+'</span></a> '+zpool['Health']+'</td>';
+	tr += '<td id="'+zpool['Pool']+'-attribute-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+zpool['Health']+'</td>';
 
 	// Buttons
 	tr += '<td id="'+zpool['Pool']+'-attribute-name"><button type="button" id="show-zpool-'+zpool['Pool']+'" onclick="togglePoolTable(\'show-zpool-'+zpool['Pool']+'\', \'zdataset-'+zpool['Pool']+'\');">'+show_button_text+'</button>'; 
