@@ -6,13 +6,27 @@
 <!ENTITY launch "Main">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.06.1">
-<!ENTITY md5 "637ec0373bfc65308e8594751353b1c9">
+<!ENTITY version "2026.11.07.1">
+<!ENTITY md5 "5ee6341639235bd0aa322b4d8cae4637">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.07.1
+- Snapshots Admin can filter and sort, and include child datasets' snapshots
+- Browse a snapshot's files, or see what changed since it
+- Destroy, delete and rollback reviews flag Sanoid/Syncoid snapshots and the boot pool
+- A destroy or rollback review stops if the mount list can't be read
+- New snapshot names can use UTC time
+- Optional alerts for pool health problems and stale snapshots
+- Convert clones files instead of copying where the pool supports block cloning
+- Convert progress stays on its row, and huge folders no longer exhaust memory
+- Row details show in full on phones and open from the keyboard
+- Very long row details fit the window, in columns or slightly smaller
+- The expand box is a pixel larger, with a gap before the name
+- Snapshot browse and changes say why when ZFS can't answer
 
 ###2026.11.06.1
 - Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes

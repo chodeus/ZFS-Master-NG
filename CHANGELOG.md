@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026.11.07.1 (beta)
+
+- Snapshots Admin can filter and sort, and include child datasets' snapshots
+- Browse a snapshot's files, or see what changed since it
+- Destroy, delete and rollback reviews flag Sanoid/Syncoid snapshots and the boot pool
+- A destroy or rollback review stops if the mount list can't be read
+- New snapshot names can use UTC time
+- Optional alerts for pool health problems and stale snapshots
+- Convert clones files instead of copying where the pool supports block cloning
+- Convert progress stays on its row, and huge folders no longer exhaust memory
+- Row details show in full on phones and open from the keyboard
+- Very long row details fit the window, in columns or slightly smaller
+- The expand box is a pixel larger, with a gap before the name
+- Snapshot browse and changes say why when ZFS can't answer
+
 ## 2026.11.06.1 (beta)
 
 - Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes

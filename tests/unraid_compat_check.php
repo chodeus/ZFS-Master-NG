@@ -99,6 +99,17 @@ switch ($check) {
 		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
 		break;
 
+	case 'main_page_stuck_zfs':
+		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		putenv('ZFSM_TEST_REWRITE_HANG=1');
+		$began = microtime(true);
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+		$took = microtime(true) - $began;
+		if (strpos($html, 'zfs_master_body') === false || $took > 9) { fwrite(STDERR, sprintf("main page with a stuck zfs took %.1f s\n", $took)); exit(1); }
+		if (strpos($html, '"rewrite":false') === false) { fwrite(STDERR, "a stuck zfs still offered Rewrite Files\n"); exit(1); }
+		break;
+
 	case 'saved_settings':
 		// A settings file as older versions left it: CRLF list, Lua exclusion, the old misspelt key.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
