@@ -44,7 +44,7 @@ $cases = array(
 	'no .zfs folder (snapdir=disabled, or mounted over): neither, since zfs diff stats .zfs/shares' => array(array('ZFSM_TEST_DATASET_MOUNT='.$without_zfs), array('diff' => false, 'browse' => '')),
 	'unmounted: neither, even with a folder there' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_MOUNTED=no'), array('diff' => false, 'browse' => '')),
 	'outside /mnt and /boot: no browse, even with a .zfs folder' => array(array('ZFSM_TEST_DATASET_MOUNT='.$outside), array('diff' => true, 'browse' => '')),
-	'a failed read: neither' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '')),
+	'a failed read: neither, and marked unread so the page says why' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '', 'unread' => true)),
 );
 foreach ($cases as $message => list($settings, $expected)) {
 	foreach ($settings as $setting) putenv($setting);
@@ -117,7 +117,8 @@ same(array('tank' => array('diff' => true, 'browse' => '/mnt/user/zfsm-tree/tank
 same(zfsmSnapshotAccess('tank', 'tank'), $tree['tank'], 'the same as reading the dataset alone');
 same(array_keys(zfsmSnapshotAccessTree('tank/data')), array('tank/data'), 'only the dataset asked for and those under it');
 putenv('ZFSM_TEST_GET_FAIL=tank');
-same(array(), zfsmSnapshotAccessTree('tank'), 'a failed read offers no access');
+same(null, zfsmSnapshotAccessTree('tank'), 'a failed read is not a list of datasets without access');
+same(array('diff' => false, 'browse' => '', 'unread' => true), zfsmSnapshotAccess('tank', 'tank'), 'a failed read of one dataset offers neither, and says it was not read');
 putenv('ZFSM_TEST_GET_FAIL');
 putenv('ZFSM_TEST_MOUNT_ROOT');
 

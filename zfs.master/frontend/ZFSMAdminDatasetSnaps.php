@@ -19,8 +19,12 @@ $snapshot_error = $snapshot_result['error'];
 $destructive_mode = (int)($config['destructive_mode'] ?? 0) === 1;
 // Shown while ticked even if the children are gone, so it can be unticked.
 $offer_children = $with_children || zfsmHasChildDatasets($zdataset, $exclusion);
-// Browse and changes for each dataset with a row: one read for a dataset and its children, else one per dataset.
-$snapshot_access = $with_children && $snapshots ? zfsmSnapshotAccessTree($zdataset) : array();
+// Browse and changes for each dataset with a row: one read for a dataset and its children, else the dataset's own.
+// A failed read leaves the icons off and says so (zfsm-access-unread), rather than hiding them without a word.
+$snapshot_access = array();
+if ($snapshots) $snapshot_access = $with_children ? zfsmSnapshotAccessTree($zdataset) : array($zdataset => zfsmSnapshotAccess($zpool, $zdataset));
+$access_unread = $snapshot_access === null || !empty($snapshot_access[$zdataset]['unread']);
+$snapshot_access = $snapshot_access ?? array();
 
 ?>
 
@@ -55,6 +59,7 @@ $snapshot_access = $with_children && $snapshots ? zfsmSnapshotAccessTree($zdatas
   .zfsm-actions .zfsm-rollback{color:#ff8c2f}
   .zfsm-message td{text-align:center;padding:18px 12px;opacity:.75}
   .zfsm-message.zfsm-error td{color:#e22828;opacity:1}
+  .zfsm-snap-tools .zfsm-error{color:#e22828;opacity:1}
   .zfsm-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px}
   .zfsm-status{opacity:.75}
   .zfsm-snap-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;padding:10px 12px}
@@ -99,6 +104,7 @@ $snapshot_access = $with_children && $snapshots ? zfsmSnapshotAccessTree($zdatas
 		<?php if ($offer_children): ?><label><input type="checkbox" id="zfsm-children"<?php echo $with_children ? ' checked' : ''; ?>> Include child datasets</label><?php endif; ?>
 		<?php if ($has_automatic): ?><label><input type="checkbox" id="zfsm-hide-auto"> Hide Sanoid and Syncoid snapshots</label><?php endif; ?>
 		<span id="zfsm-snap-shown" class="zfsm-status"></span>
+		<?php if ($access_unread): ?><span id="zfsm-access-unread" class="zfsm-status zfsm-error">Browse and changes are off: the mount details could not be read.</span><?php endif; ?>
 	</div>
 	<?php endif; ?>
 	<table class="zfsm-snap-table">
@@ -134,8 +140,8 @@ $snapshot_access = $with_children && $snapshots ? zfsmSnapshotAccessTree($zdatas
 			$holds = (int)($snap['userrefs'] ?? 0);
 			// With child datasets the filter and sort go by the whole name, so a dataset's rows can be picked out.
 			$listed_name = $with_children ? $snapshot_name : $snapshot_short;
-			if (!isset($snapshot_access[$snapshot_dataset])) $snapshot_access[$snapshot_dataset] = $with_children ? zfsmSnapshotAccessFrom('', null) : zfsmSnapshotAccess($zpool, $snapshot_dataset);
-			$access = $snapshot_access[$snapshot_dataset];
+			// A volume has no mount, so the read has no entry for it and its rows offer neither.
+			$access = $snapshot_access[$snapshot_dataset] ?? zfsmSnapshotAccessFrom('', null);
 			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($listed_name, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
 			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
 			echo '<td class="zfsm-snap-name"'.$sort_value($listed_name).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');

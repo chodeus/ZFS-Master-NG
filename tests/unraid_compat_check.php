@@ -285,6 +285,24 @@ switch ($check) {
 		if (substr_count($calls, 'mounted,mountpoint') !== 1 || preg_match('/^get .* (mounted|mountpoint) /m', $calls)) { fwrite(STDERR, "the child list read access per dataset:\n$calls\n"); exit(1); }
 		break;
 
+	// Mount details that could not be read: no icons, and a note saying why, alone or with the children.
+	case 'snapshot_popup_unread':
+	case 'snapshot_popup_children_unread':
+		$children = $check === 'snapshot_popup_children_unread';
+		@mkdir('/mnt/tank/.zfs/snapshot', 0755, true);
+		@mkdir('/mnt/tank/data/.zfs/snapshot', 0755, true);
+		putenv('ZFSM_TEST_MOUNT_ROOT=/mnt');
+		putenv('ZFSM_TEST_GET_FAIL='.($children ? 'tank' : 'tank/data'));
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = $children ? array('zpool' => 'tank', 'zdataset' => 'tank', 'children' => '1') : array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		if (strpos($html, 'tank/data@daily') === false) { fwrite(STDERR, "snapshot popup did not list the snapshot\n"); exit(1); }
+		if (strpos($html, 'Browse files in this snapshot') !== false || strpos($html, 'onclick="diffSnapshot(') !== false) { fwrite(STDERR, "unread mount details still offered browse or changes\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-access-unread"') === false) { fwrite(STDERR, "unread mount details hid the icons without saying why\n"); exit(1); }
+		break;
+
 	// Both icons need the dataset mounted with a .zfs folder; Unraid's file browser also needs /mnt or /boot.
 	case 'snapshot_popup_unmounted':
 	case 'snapshot_popup_elsewhere':

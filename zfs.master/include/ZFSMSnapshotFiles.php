@@ -15,16 +15,20 @@ function zfsmSnapshotAccessFrom($mounted, $mountpoint) {
 	return array('diff' => $has_zfs, 'browse' => $has_zfs ? zfsmSnapshotBrowseRoot($mountpoint) : '');
 }
 
+// A failed read also sets 'unread', so the page can say why the icons are missing.
 function zfsmSnapshotAccess($zpool, $zdataset) {
 	$mounted = getDatasetProperty($zpool, $zdataset, 'mounted');
-	return zfsmSnapshotAccessFrom($mounted, $mounted === 'yes' ? getDatasetProperty($zpool, $zdataset, 'mountpoint') : null);
+	$mountpoint = $mounted === 'yes' ? getDatasetProperty($zpool, $zdataset, 'mountpoint') : null;
+	$access = zfsmSnapshotAccessFrom($mounted, $mountpoint);
+	if ($mounted === null || ($mounted === 'yes' && $mountpoint === null)) $access['unread'] = true;
+	return $access;
 }
 
-// The same for the dataset and every filesystem under it, from one zfs get; one the read missed is not in the list.
+// The same for the dataset and every filesystem under it, from one zfs get; null when that read failed.
 function zfsmSnapshotAccessTree($zdataset) {
-	if (!zfsmValidDatasetName($zdataset)) return array();
+	if (!zfsmValidDatasetName($zdataset)) return null;
 	$result = runProcess('zfs', array('get', '-H', '-r', '-t', 'filesystem', '-o', 'name,property,value', 'mounted,mountpoint', $zdataset));
-	if (($result['code'] ?? 1) !== 0) return array();
+	if (($result['code'] ?? 1) !== 0) return null;
 	$values = array();
 	foreach (preg_split('/\R/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $line) {
 		$parts = explode("\t", $line, 3);
