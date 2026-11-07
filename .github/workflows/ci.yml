@@ -35,7 +35,7 @@ jobs:
         with:
           persist-credentials: false
           repository: chodeus/chodeus-ops
-          ref: c615a871ba4dfa791eac921b5b8e45652459b20b # main
+          ref: 65484add1113c1bbc00827af7237ebe7a1837bbb # main
           path: .ops
           sparse-checkout: scripts
 
@@ -178,7 +178,7 @@ jobs:
     needs: [validate, php, unraid]
     if: failure() && github.event_name != 'pull_request' && !inputs.base
     permissions: {}
-    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@c615a871ba4dfa791eac921b5b8e45652459b20b # main
+    uses: chodeus/chodeus-ops/.github/workflows/notify-discord.yml@65484add1113c1bbc00827af7237ebe7a1837bbb # main
     with:
       event_type: build
       status: failure
