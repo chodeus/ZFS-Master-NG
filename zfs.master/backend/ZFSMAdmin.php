@@ -148,7 +148,7 @@ try {
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
-			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool')), 'ZFS Directory Convert', 'Directory converted successfully', 'Unable to convert directory', true);
+			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool'), zfsmPostString('clone', '1') !== '0'), 'ZFS Directory Convert', 'Directory converted successfully', 'Unable to convert directory', true);
 			break;
 
 		case 'deletedirectory':

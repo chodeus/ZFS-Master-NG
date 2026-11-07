@@ -9,16 +9,18 @@ if [ "$1" = "list" ]; then
 	exit 0
 fi
 
-# Block cloning for pool tank: ZFSM_TEST_BCLONE=active|enabled|disabled; unset fails as OpenZFS 2.1 does.
+# Block cloning for pool tank: ZFSM_TEST_BCLONE=active|enabled|disabled|fail; unset fails as OpenZFS 2.1 does.
 if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning" ] && [ "$6" = "tank" ]; then
 	[ -n "${ZFSM_TEST_BCLONE:-}" ] || { printf "bad property list: invalid property 'feature@block_cloning'\n" >&2; exit 1; }
+	[ "$ZFSM_TEST_BCLONE" = fail ] && { printf "cannot get property: I/O error\n" >&2; exit 1; }
 	printf '%s\n' "$ZFSM_TEST_BCLONE"
 	exit 0
 fi
 
-# block_cloning_endian (OpenZFS 2.4) for pool tank: ZFSM_TEST_BCLONE_ENDIAN=active|enabled|disabled; unset fails as 2.3 does.
+# block_cloning_endian (OpenZFS 2.4) for pool tank: ZFSM_TEST_BCLONE_ENDIAN=active|enabled|disabled|fail; unset fails as 2.3 does.
 if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning_endian" ] && [ "$6" = "tank" ]; then
 	[ -n "${ZFSM_TEST_BCLONE_ENDIAN:-}" ] || { printf "bad property list: invalid property 'feature@block_cloning_endian'\n" >&2; exit 1; }
+	[ "$ZFSM_TEST_BCLONE_ENDIAN" = fail ] && { printf "cannot get property: I/O error\n" >&2; exit 1; }
 	printf '%s\n' "$ZFSM_TEST_BCLONE_ENDIAN"
 	exit 0
 fi

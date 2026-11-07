@@ -915,7 +915,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	  }).then((result) => {
 		  if (result.isConfirmed) {
 			  // The copy is over once this request returns, whether or not its stop message arrived.
-			  $.post('<?=$urlzmadmin?>',{cmd: 'convertdirectory', directory: directory, pool: pool}, function(data) {
+			  $.post('<?=$urlzmadmin?>',{cmd: 'convertdirectory', directory: directory, pool: pool, clone: preview.clones ? 1 : 0}, function(data) {
 				Swal2.fire({
 					title: 'Convert Result',
 					icon: 'info',
