@@ -178,6 +178,12 @@ if [ "$1" = "diff" ]; then
 		( sleep 0.3; i=0; while [ "$i" -lt 1500 ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done ) &
 		exit 1
 	fi
+	# All of it in one write and an exit at once: zfs is gone before the reader is past the limit.
+	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER_FAST:-}" ]; then
+		all=$(awk -v n="$ZFSM_TEST_DIFF_FAIL_AFTER_FAST" 'BEGIN { for (i = 0; i < n; i++) printf "M\tF\t/mnt/tank/data/file%d\n", i }')
+		printf '%s\nUnable to determine path or stats for object 99 in tank/data@daily: Invalid argument\n' "$all"
+		exit 1
+	fi
 	if [ -n "${ZFSM_TEST_DIFF_FAIL_AFTER:-}" ]; then
 		i=0
 		while [ "$i" -lt "$ZFSM_TEST_DIFF_FAIL_AFTER" ]; do printf 'M\tF\t/mnt/tank/data/file%s\n' "$i"; i=$((i + 1)); done

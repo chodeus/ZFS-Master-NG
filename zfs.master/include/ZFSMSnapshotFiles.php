@@ -34,7 +34,8 @@ function zfsmSnapshotDiff($snapshot) {
 	if (!zfsmValidSnapshotName($snapshot)) return array('error' => 'Invalid snapshot name');
 	$result = runProcess('zfs', array('diff', '-H', '-F', $snapshot), null, ZFSM_DIFF_LIMIT);
 	if (($result['code'] ?? 1) !== 0) {
-		$errors = array_filter(zfsmImpactRows($result['output']), function($line) { return zfsmDiffChange($line) === null; });
+		$lines = array_merge(zfsmImpactRows($result['output']), isset($result['next_line']) ? array($result['next_line']) : array());
+		$errors = array_filter($lines, function($line) { return zfsmDiffChange($line) === null; });
 		return array('error' => zfsmCommandError(array('code' => $result['code'], 'output' => implode("\n", $errors)), 'Unable to compare the snapshot'));
 	}
 	$truncated = !empty($result['truncated']);
