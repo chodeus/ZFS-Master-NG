@@ -29,8 +29,10 @@ function zfsmSnapshotAccessTree($zdataset) {
 	if (!zfsmValidDatasetName($zdataset)) return null;
 	$result = runProcess('zfs', array('get', '-H', '-r', '-t', 'filesystem', '-o', 'name,property,value', 'mounted,mountpoint', $zdataset));
 	if (($result['code'] ?? 1) !== 0) return null;
+	$lines = preg_split('/\R/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
+	if ($lines === false) return null;
 	$values = array();
-	foreach (preg_split('/\R/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) as $line) {
+	foreach ($lines as $line) {
 		$parts = explode("\t", $line, 3);
 		if (count($parts) === 3) $values[$parts[0]][$parts[1]] = $parts[2];
 	}

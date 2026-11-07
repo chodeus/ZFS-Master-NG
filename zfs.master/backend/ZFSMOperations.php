@@ -547,7 +547,7 @@ function zfsmHasChildDatasets($zdataset, $exclusion_pattern = '') {
 	if (!zfsmValidDatasetName($zdataset)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-r', '-d', '1', '-t', 'filesystem,volume', '-o', 'name', $zdataset));
 	if (($result['code'] ?? 1) !== 0) return false;
-	foreach (preg_split('/\R/', (string)($result['output'] ?? '')) as $line) {
+	foreach (preg_split('/\R/', (string)($result['output'] ?? '')) ?: array() as $line) {
 		$child = explode("\t", $line, 2)[0];
 		if (zfsmStartsWith($child, $zdataset.'/') && !zfsmDatasetExcluded($child, $exclusion_pattern)) return true;
 	}
