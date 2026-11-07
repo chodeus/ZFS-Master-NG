@@ -132,7 +132,8 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	// proc_close can't report an exit that proc_get_status already collected.
 	if ($limit_code !== null) $code = $limit_code;
 	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
-	if ($inventory_deadline !== null && in_array($code, array(124, 137), true)) throw new RuntimeException(basename($command).' timed out');
+	// A command that ignored TERM is killed with KILL and comes back as 9, so any failure past the limit is the limit.
+	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new RuntimeException(basename($command).' timed out');
 
 	$answer = array('code' => $code, 'output' => trim((string)$output));
 	if ($lines !== null) $answer['lines'] = $lines;

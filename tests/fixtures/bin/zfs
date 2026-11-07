@@ -14,6 +14,11 @@ for arg in "$@"; do last_arg="$arg"; done
 
 # Every call, for a test that counts how many reads a page makes.
 if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
+
+# A zfs that never answers a list, as on a hung pool.
+if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = 1 ]; then sleep 30; fi
+# One that also ignores TERM, so only timeout's KILL stops it.
+if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = stubborn ]; then trap '' TERM; sleep 30; fi
 # zfs rewrite (OpenZFS 2.4+): usage with no file; with -v, one line per file it rewrote.
 if [ "$1" = "rewrite" ]; then
 	[ "${ZFSM_TEST_NO_REWRITE:-0}" = 1 ] && { printf "unrecognized command 'rewrite'\n" >&2; exit 2; }
