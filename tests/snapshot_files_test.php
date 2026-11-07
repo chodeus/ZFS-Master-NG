@@ -98,6 +98,13 @@ try {
 }
 unset($GLOBALS['zfsm_inventory_deadline']);
 putenv('ZFSM_TEST_DIFF_SLOW');
+// A command that ignores TERM is killed with KILL, which proc_close reports as 9: still a timeout, not an ordinary failure.
+try {
+	$stubborn = zfsmWithDeadline(1, function() { return runProcess('sh', array('-c', "trap '' TERM; sleep 6")); });
+	same('timed out', $stubborn, 'a command that ignores TERM stops at the time limit');
+} catch (RuntimeException $error) {
+	same('sh timed out', $error->getMessage(), 'a command killed after ignoring TERM is reported as timed out');
+}
 
 // The fake writes 100000 lines and then this marker, unless it is stopped.
 $marker = sys_get_temp_dir().'/zfsm-diff-finished';
