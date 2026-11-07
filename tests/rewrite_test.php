@@ -59,66 +59,100 @@ putenv('ZFSM_TEST_DATASET_MOUNT='.$work.'/gone');
 same('The dataset has no mountpoint to reach its files', zfsmRewriteTarget('tank/data'), 'a mountpoint that is not there is refused');
 putenv('ZFSM_TEST_DATASET_MOUNT='.$work.'/data');
 
-// -P only where the pool has physical_rewrite; a failed read means without.
-foreach (array('enabled' => true, 'active' => true, 'disabled' => false, '' => false) as $feature => $physical) {
+// -P needs the pool's physical_rewrite feature; its state tells the dialog whether a first -P would turn it on for good.
+foreach (array('enabled' => 'enabled', 'active' => 'active', 'disabled' => '', '' => '') as $feature => $state) {
 	putenv('ZFSM_TEST_PHYSICAL'.($feature === '' ? '' : '='.$feature));
-	same($physical, zfsmRewritePhysical('tank'), 'physical_rewrite '.($feature === '' ? 'unknown' : $feature));
+	same($state, zfsmRewriteFeature('tank'), 'physical_rewrite '.($feature === '' ? 'unknown' : $feature));
 }
 putenv('ZFSM_TEST_USEDBYSNAPSHOTS=1073741824');
 putenv('ZFSM_TEST_PHYSICAL=enabled');
-same(array('can_proceed' => true, 'physical' => true, 'snapshot_space' => 1073741824), zfsmRewritePreview('tank/data'), 'the dialog shows the snapshot space and whether incremental sends stay small');
+same(array('can_proceed' => true, 'physical_feature' => 'enabled', 'snapshot_space' => 1073741824), zfsmRewritePreview('tank/data'), 'the dialog gets the snapshot space and the feature\'s state');
+putenv('ZFSM_TEST_USEDBYSNAPSHOTS=fail');
+same(null, zfsmRewritePreview('tank/data')['snapshot_space'], 'a snapshot space that could not be read is not shown as 0 B');
+putenv('ZFSM_TEST_USEDBYSNAPSHOTS=1073741824');
 
-// A run: the dataset's own files (-r -x), each counted (-v), -P where it can; progress on the row and a notification at the end.
+// A run: the dataset's own files (-r -x), each counted (-v), -P only when asked; progress on the row and a notification at the end.
 $reset();
 putenv('ZFSM_TEST_REWRITE_FILES=5');
-same(0, zfsmRunRewrite('tank/data'), 'a rewrite that worked returns 0');
-same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'zfs rewrite runs once, on the mountpoint, with -P');
+same(0, zfsmRunRewrite('tank/data', true), 'a rewrite that worked returns 0');
+same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'asked for, -P is used where the pool has the feature');
 same(array('rewrite_start', 'rewrite_stop'), $GLOBALS['zfsm_feed'], 'the row hears when it starts and stops');
 same(array('normal: Rewrite of tank/data finished: 5 files rewritten'), $read('notify-detail.log'), 'the notification says how many files');
-same(false, is_file(zfsmRewriteStateFile('tank/data')), 'a finished run leaves no lock behind');
+same(false, zfsmRewriteRunning(zfsmRewriteLockFile('tank/data')), 'a finished run releases its lock');
+same(true, is_file(zfsmRewriteLockFile('tank/data')), 'and keeps its lock file, so a later run locks the same one');
+$reset();
+zfsmRunRewrite('tank/data', false);
+same(array('rewrite -r -x -v '.$work.'/data'), $read('rewrite.log'), 'not asked for, no -P even where the pool has the feature');
+
 // A long run tells the row every 2 seconds how many files are done.
 $reset();
 putenv('ZFSM_TEST_REWRITE_PAUSE=3');
-zfsmRunRewrite('tank/data');
+zfsmRunRewrite('tank/data', false);
 putenv('ZFSM_TEST_REWRITE_PAUSE');
 same(array('rewrite_start', 'rewrite_progress 1', 'rewrite_stop'), $GLOBALS['zfsm_feed'], 'a run longer than 2 seconds reports the files done so far');
-putenv('ZFSM_TEST_PHYSICAL=disabled');
+
+// A run that can't start says why, as the start promised a notification.
 $reset();
-zfsmRunRewrite('tank/data');
-same(array('rewrite -r -x -v '.$work.'/data'), $read('rewrite.log'), 'without physical_rewrite, no -P');
+putenv('ZFSM_TEST_PHYSICAL=disabled');
+same(1, zfsmRunRewrite('tank/data', true), '-P on a pool without the feature does not run');
+same(array(), $read('rewrite.log'), 'and never runs zfs rewrite');
+same(array("warning: Rewrite of tank/data not started: the pool?s physical_rewrite feature is not enabled"), $read('notify-detail.log'), 'and says why');
+$reset();
+putenv('ZFSM_TEST_MOUNTED=no');
+same(1, zfsmRunRewrite('tank/data', false), 'a dataset unmounted since the start does not run');
+putenv('ZFSM_TEST_MOUNTED');
+same(array("warning: Rewrite of tank/data not started: The dataset is not mounted, so its files can?t be reached"), $read('notify-detail.log'), 'and says why');
+$reset();
+putenv('ZFSM_TEST_GUID=fail');
+same(array('can_proceed' => false, 'error' => "The dataset's guid could not be read"), zfsmRewritePreview('tank/data'), 'without a guid there is no lock, so no rewrite');
+same(1, zfsmRunRewrite('tank/data', false), 'nor a run');
+putenv('ZFSM_TEST_GUID');
 
 // A failure says how far it got and why, as a warning.
 $reset();
 putenv('ZFSM_TEST_REWRITE_FAIL=1');
-same(1, zfsmRunRewrite('tank/data'), 'a failed rewrite returns 1');
+same(1, zfsmRunRewrite('tank/data', false), 'a failed rewrite returns 1');
 putenv('ZFSM_TEST_REWRITE_FAIL');
 // zfsmSafeText turns quotes into ?, as for every name a notification carries.
 same(array('warning: Rewrite of tank/data failed after 5 files rewritten: failed to rewrite ?'.$work.'/data/locked?: Device or resource busy'), $read('notify-detail.log'), 'the warning names the failure');
 same(array('rewrite_start', 'rewrite_stop'), $GLOBALS['zfsm_feed'], 'a failed run still clears the row');
 
-// One run per dataset: while another holds the lock, a second neither runs nor starts.
+// A long name still runs: the lock file is named by the guid.
 $reset();
-@mkdir($GLOBALS['zfsm_rewrite_dir'], 0700, true);
-$held = fopen(zfsmRewriteStateFile('tank/data'), 'c');
+$long = 'tank/'.trim(str_repeat('long name ', 24));
+same(0, zfsmRunRewrite($long, false), 'a long dataset name still rewrites');
+same(1, count($read('rewrite.log')), 'and runs zfs rewrite once');
+
+// One run per dataset, whatever its name: while another holds the lock, a second neither runs nor starts.
+$reset();
+putenv('ZFSM_TEST_PHYSICAL=enabled');
+putenv('ZFSM_TEST_GUID=4711');
+$lock_file = zfsmRewriteLockFile('tank/data');
+@mkdir(dirname($lock_file), 0700, true);
+$held = fopen($lock_file, 'c');
 flock($held, LOCK_EX);
-same(true, zfsmRewriteRunning('tank/data'), 'a held lock is a running rewrite');
-same(0, zfsmRunRewrite('tank/data'), 'a second run steps aside');
+same(true, zfsmRewriteRunning($lock_file), 'a held lock is a running rewrite');
+same(0, zfsmRunRewrite('tank/data', false), 'a second run steps aside');
 same(array(), $read('rewrite.log'), 'and never runs zfs rewrite');
 same(array('can_proceed' => false, 'error' => 'A rewrite of this dataset is already running'), zfsmRewritePreview('tank/data'), 'the dialog says one is running');
-same(array('succeeded' => array(), 'failed' => array('tank/data' => 'A rewrite of this dataset is already running')), zfsmStartRewrite('tank/data'), 'and none starts');
+same(array('can_proceed' => false, 'error' => 'A rewrite of this dataset is already running'), zfsmRewritePreview('tank/renamed'), 'the same dataset under a new name is the same rewrite');
+same(array('succeeded' => array(), 'failed' => array('tank/data' => 'A rewrite of this dataset is already running')), zfsmStartRewrite('tank/data', false), 'and none starts');
 flock($held, LOCK_UN);
 fclose($held);
-same(false, zfsmRewriteRunning('tank/data'), 'a released lock is not a running rewrite');
+putenv('ZFSM_TEST_GUID');
+putenv('ZFSM_TEST_PHYSICAL=disabled');
+same(array('succeeded' => array(), 'failed' => array('tank/data' => "The pool's physical_rewrite feature is not enabled, so birth times can't be kept")), zfsmStartRewrite('tank/data', true), '-P can\'t be asked for where the pool lacks the feature');
+putenv('ZFSM_TEST_PHYSICAL=enabled');
 
-// A start runs scripts/rewrite.php in the background and answers at once.
+// A start runs scripts/rewrite.php in the background and answers at once; -P goes through when asked for.
 $reset();
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/rewrite.php')) {
 	$GLOBALS['docroot'] = $docroot;
 	$GLOBALS['zfsm_php'] = PHP_BINARY;
-	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data'), 'a start answers at once');
+	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data', true), 'a start answers at once');
 	for ($wait = 0; $wait < 100 && count($read('rewrite.log')) === 0; $wait++) usleep(50000);
-	same(array('rewrite -r -x -v '.$work.'/data'), $read('rewrite.log'), 'the background script ran the rewrite');
+	same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'the background script ran the rewrite, with -P as asked');
 } else {
 	fwrite(STDERR, "FAILED: the background start needs ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");
 	exit(1);

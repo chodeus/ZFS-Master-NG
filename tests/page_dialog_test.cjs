@@ -162,6 +162,15 @@ async function confirm() {
   assert.equal(progress(), 'Rewriting files… 42 done', 'a redraw keeps the count');
   send('rewrite_stop');
   assert.equal(progress(), '', 'the row clears when the rewrite stops');
+  // A rewrite whose stop message was lost goes quiet: 12 seconds without word clear its row.
+  const timers = [];
+  const realTimeout = window.setTimeout;
+  window.setTimeout = (callback, ms) => { timers.push({callback, ms}); return timers.length; };
+  send('rewrite_start');
+  window.setTimeout = realTimeout;
+  assert.deepEqual(timers.map(timer => timer.ms), [12000], 'each rewrite message gives the row 12 seconds');
+  timers[0].callback();
+  assert.equal(progress(), '', 'a rewrite silent for 12 seconds no longer shows as running');
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
   window._ = text => text;
@@ -174,21 +183,40 @@ async function confirm() {
   };
   assert.equal(rewriteItem('volume', true), undefined, 'a volume has no files to rewrite');
   assert.equal(rewriteItem('filesystem', false), undefined, 'no zfs rewrite before OpenZFS 2.4');
-  rewritePreview = {can_proceed: true, physical: true, snapshot_space: 1073741824};
+  const shown = id => { const node = window.document.getElementById(id); return node ? node.style.display !== 'none' : null; };
+  const box = () => window.document.getElementById('zfsm-rewrite-physical');
+  // The pool's feature is enabled: the box starts off, with the full-send warning; ticking it warns that it is for good.
+  rewritePreview = {can_proceed: true, physical_feature: 'enabled', snapshot_space: 1073741824};
   rewriteItem('filesystem', true).action({preventDefault() {}});
   await settle();
   assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
   const review = window.document.querySelector('.swal2-html-container').textContent;
   assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
   assert.match(review, /snapshots hold 1\.00 GiB now/, 'the review shows the snapshot space');
-  assert.match(review, /next incremental send stays small/, 'with physical_rewrite, incremental sends stay small');
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true, false], 'with the feature only enabled, -P starts off and the full-send warning shows');
+  box().checked = true;
+  box().dispatchEvent(new window.Event('change'));
+  assert.deepEqual([shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true], 'ticked, it warns that the feature turns on for good');
+  assert.match(window.document.getElementById('zfsm-rewrite-activate').textContent, /Unraid before 7\.3 \(OpenZFS before 2\.4\) could then import this pool read-only only/);
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new'}, 'confirming starts the rewrite');
-  rewritePreview = {can_proceed: true, physical: false, snapshot_space: 0};
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 1}, 'confirming starts the rewrite with -P as ticked');
+  // Already active: nothing more to lose, so the box starts on.
+  rewritePreview = {can_proceed: true, physical_feature: 'active', snapshot_space: 0};
   rewriteItem('filesystem', true).action({preventDefault() {}});
   await settle();
-  assert.match(window.document.querySelector('.swal2-html-container').textContent, /carries all of its data again/, 'without physical_rewrite, the review warns about the next incremental send');
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [true, false, null], 'with the feature already active, -P starts on');
+  box().checked = false;
+  box().dispatchEvent(new window.Event('change'));
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 0}, 'unticked, no -P');
+  // No feature: no box, and the full-send warning; a snapshot space that could not be read says so.
+  rewritePreview = {can_proceed: true, physical_feature: '', snapshot_space: null};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual([box(), shown('zfsm-rewrite-resend')], [null, true], 'without the feature there is no -P to choose');
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /hold an amount that could not be read now/, 'an unread snapshot space is not shown as 0 B');
   window.Swal2.close();
   rewritePreview = {can_proceed: false, error: 'A rewrite of this dataset is already running'};
   rewriteItem('filesystem', true).action({preventDefault() {}});

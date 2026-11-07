@@ -145,7 +145,7 @@ try {
 			break;
 
 		case 'rewritedataset':
-			zfsmReturnAnswer(zfsmStartRewrite(zfsmPostString('zdataset')), 'ZFS Dataset Rewrite', 'Rewrite started', 'Unable to start the rewrite');
+			zfsmReturnAnswer(zfsmStartRewrite(zfsmPostString('zdataset'), zfsmPostString('physical') === '1'), 'ZFS Dataset Rewrite', 'Rewrite started', 'Unable to start the rewrite');
 			break;
 
 		case 'convertdirectory':

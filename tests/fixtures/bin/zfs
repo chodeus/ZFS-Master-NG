@@ -171,7 +171,15 @@ if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
 fi
 
 if [ "$1" = "get" ] && contains_arg 'usedbysnapshots' "$@"; then
+	[ "${ZFSM_TEST_USEDBYSNAPSHOTS:-0}" = fail ] && { printf "cannot open '%s': permission denied\n" "$last_arg" >&2; exit 1; }
 	printf '%s\n' "${ZFSM_TEST_USEDBYSNAPSHOTS:-0}"
+	exit 0
+fi
+
+# A dataset's guid: ZFSM_TEST_GUID for every dataset (as for a renamed one), else a number from its name.
+if [ "$1" = "get" ] && contains_arg 'guid' "$@"; then
+	[ "${ZFSM_TEST_GUID:-}" = fail ] && { printf "cannot open '%s': permission denied\n" "$last_arg" >&2; exit 1; }
+	if [ -n "${ZFSM_TEST_GUID:-}" ]; then printf '%s\n' "$ZFSM_TEST_GUID"; else printf '%s' "$last_arg" | cksum | cut -d' ' -f1; fi
 	exit 0
 fi
 

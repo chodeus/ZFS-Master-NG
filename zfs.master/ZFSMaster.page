@@ -159,11 +159,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	} else if (msg.op == 'stop_directory_copy') {
 		zfsmShowCopyProgress(msg.data.dataset, null);
 	} else if (msg.op == 'rewrite_start') {
-		zfsmShowCopyProgress(msg.data.dataset, 'Rewriting files…');
+		zfsmRewriteProgress(msg.data.dataset, 'Rewriting files…');
 	} else if (msg.op == 'rewrite_progress') {
-		zfsmShowCopyProgress(msg.data.dataset, 'Rewriting files… '+Number(msg.data.files)+' done');
+		zfsmRewriteProgress(msg.data.dataset, 'Rewriting files… '+Number(msg.data.files)+' done');
 	} else if (msg.op == 'rewrite_stop') {
-		zfsmShowCopyProgress(msg.data.dataset, null);
+		zfsmRewriteProgress(msg.data.dataset, null);
 	}
 
 	processHiddenDatasets();
@@ -178,6 +178,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	if (html === null) delete zfsm_copy_progress[dataset];
 	else zfsm_copy_progress[dataset] = html;
 	$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(html ?? '');
+  }
+
+  // A running rewrite reports every 2 seconds; one silent for 12 has stopped, even if its stop message was lost.
+  var zfsm_rewrite_expiry = {};
+  function zfsmRewriteProgress(dataset, html) {
+	clearTimeout(zfsm_rewrite_expiry[dataset]);
+	if (html !== null) zfsm_rewrite_expiry[dataset] = setTimeout(function() { zfsmShowCopyProgress(dataset, null); }, 12000);
+	zfsmShowCopyProgress(dataset, html);
   }
 
   function zfsmRestoreCopyProgress() {
@@ -570,11 +578,17 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			html: zfsmRewriteHtml(preview),
 			showConfirmButton: preview.can_proceed === true,
 			confirmButtonText: 'Rewrite',
-			showCancelButton: true
+			showCancelButton: true,
+			didOpen: (popup) => {
+				zfsmRewriteSync(popup);
+				const box = popup.querySelector('#zfsm-rewrite-physical');
+				if (box) box.addEventListener('change', () => zfsmRewriteSync(popup));
+			},
+			preConfirm: () => ({physical: zfsmRewriteSync(Swal2.getPopup())})
 		}).then((result) => {
 			// A refused review hides Rewrite, and nothing may start one from it anyway.
 			if (!result.isConfirmed || preview.can_proceed !== true) return;
-			$.post('<?=$urlzmadmin?>', {cmd: 'rewritedataset', zdataset: zdataset}, function(data) {
+			$.post('<?=$urlzmadmin?>', {cmd: 'rewritedataset', zdataset: zdataset, physical: result.value.physical ? 1 : 0}, function(data) {
 				Swal2.fire({title: 'Rewrite Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
 			});
 		});

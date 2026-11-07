@@ -7,7 +7,7 @@ require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 
 if (($argv[1] ?? '') === '') {
-	fwrite(STDERR, "Usage: rewrite.php <dataset>\n");
+	fwrite(STDERR, "Usage: rewrite.php <dataset> [physical]\n");
 	exit(2);
 }
-exit(zfsmRunRewrite($argv[1]));
+exit(zfsmRunRewrite($argv[1], ($argv[2] ?? '') === 'physical'));
