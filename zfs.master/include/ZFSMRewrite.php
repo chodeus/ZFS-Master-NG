@@ -10,7 +10,9 @@ function zfsmRewriteAvailable() {
 // The file stays after a run, so two runs never lock different files for one dataset; a crashed run's lock goes with its process.
 function zfsmRewriteLockFile($zdataset) {
 	$guid = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid');
-	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? rtrim($GLOBALS['zfsm_rewrite_dir'] ?? '/var/run/zfs.master.rewrite', '/').'/'.$guid.'.lock' : null;
+	// Tests set the folder in the environment, so the background script they start uses it too.
+	$dir = getenv('ZFSM_TEST_REWRITE_DIR') ?: '/var/run/zfs.master.rewrite';
+	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? rtrim($dir, '/').'/'.$guid.'.lock' : null;
 }
 
 function zfsmRewriteRunning($lock_file) {

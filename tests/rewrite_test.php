@@ -29,7 +29,7 @@ mkdir($work, 0700);
 register_shutdown_function(function() use ($work) { exec('rm -rf '.escapeshellarg($work)); });
 mkdir($work.'/data');
 putenv('ZFSM_TEST_DATASET_MOUNT='.$work.'/data');
-$GLOBALS['zfsm_rewrite_dir'] = $work.'/state';
+putenv('ZFSM_TEST_REWRITE_DIR='.$work.'/state');
 // zfsnotify runs <docroot>/plugins/dynamix/scripts/notify: point it at the fake.
 mkdir($work.'/docroot/plugins/dynamix/scripts', 0755, true);
 copy(__DIR__.'/fixtures/unraid/notify', $work.'/docroot/plugins/dynamix/scripts/notify');
@@ -154,11 +154,9 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/rewrite
 	$began = microtime(true);
 	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data', true), 'a start says it started');
 	same(true, microtime(true) - $began < 1.5, 'and answers while the rewrite is still running');
-	// The script has no zfsm_rewrite_dir, so it locks in the default folder (this runs in a disposable container).
-	$test_dir = $GLOBALS['zfsm_rewrite_dir'];
-	unset($GLOBALS['zfsm_rewrite_dir']);
+	// The script inherits ZFSM_TEST_REWRITE_DIR, so it locks inside this test's folder.
 	$background_lock = zfsmRewriteLockFile('tank/data');
-	$GLOBALS['zfsm_rewrite_dir'] = $test_dir;
+	same(0, strpos($background_lock, $work.'/state/'), 'the lock stays in the test folder');
 	same(true, zfsmRewriteRunning($background_lock), 'which holds the dataset\'s lock by then');
 	for ($wait = 0; $wait < 100 && zfsmRewriteRunning($background_lock); $wait++) usleep(50000);
 	putenv('ZFSM_TEST_REWRITE_PAUSE');
