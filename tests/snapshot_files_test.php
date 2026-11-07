@@ -44,7 +44,7 @@ $cases = array(
 	'no .zfs folder (snapdir=disabled, or mounted over): neither, since zfs diff stats .zfs/shares' => array(array('ZFSM_TEST_DATASET_MOUNT='.$without_zfs), array('diff' => false, 'browse' => '')),
 	'unmounted: neither, even with a folder there' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_MOUNTED=no'), array('diff' => false, 'browse' => '')),
 	'outside /mnt and /boot: no browse, even with a .zfs folder' => array(array('ZFSM_TEST_DATASET_MOUNT='.$outside), array('diff' => true, 'browse' => '')),
-	'a failed read: neither' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '')),
+	'a failed read: neither, and marked unread so the page says why' => array(array('ZFSM_TEST_DATASET_MOUNT='.$with_zfs, 'ZFSM_TEST_GET_FAIL=tank/data'), array('diff' => false, 'browse' => '', 'unread' => true)),
 );
 foreach ($cases as $message => list($settings, $expected)) {
 	foreach ($settings as $setting) putenv($setting);
@@ -78,6 +78,11 @@ foreach (array(ZFSM_DIFF_LIMIT - 1, ZFSM_DIFF_LIMIT, 5) as $lines) {
 }
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER='.(ZFSM_DIFF_LIMIT + 1));
 same(true, zfsmSnapshotDiff('tank/data@daily')['truncated'] ?? null, 'a change after the limit means there are more');
+// zfs already gone when the reader is past the limit: its error is the line after it, not "exit 1".
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER_FAST='.ZFSM_DIFF_LIMIT);
+same(array('error' => $failure), zfsmSnapshotDiff('tank/data@daily'), 'zfs that already failed right at the limit says why');
+putenv('ZFSM_TEST_DIFF_FAIL_AFTER_FAST');
 putenv('ZFSM_TEST_DIFF_FAIL_AFTER');
 putenv('ZFSM_TEST_DIFF_FAILED_EARLY=1');
 same(array('error' => 'Unable to compare the snapshot (exit 1)'), zfsmSnapshotDiff('tank/data@daily'), 'a zfs diff that already failed is not a cut-short success');
@@ -107,5 +112,19 @@ foreach (array('plain' => null, 'under the read time limit' => microtime(true) +
 }
 unset($GLOBALS['zfsm_inventory_deadline']);
 putenv('ZFSM_TEST_DIFF_ENDLESS');
+
+// One read for a dataset and its children gives each the access reading it alone would; a failed read offers none.
+putenv('ZFSM_TEST_MOUNT_ROOT=/mnt/user/zfsm-tree');
+@mkdir('/mnt/user/zfsm-tree/tank/.zfs/snapshot', 0755, true);
+@mkdir('/mnt/user/zfsm-tree/tank/data', 0755, true);
+$tree = zfsmSnapshotAccessTree('tank');
+same(array('tank' => array('diff' => true, 'browse' => '/mnt/user/zfsm-tree/tank/.zfs/snapshot'), 'tank/data' => array('diff' => false, 'browse' => '')), $tree, 'each dataset in the read gets its own access');
+same(zfsmSnapshotAccess('tank', 'tank'), $tree['tank'], 'the same as reading the dataset alone');
+same(array_keys(zfsmSnapshotAccessTree('tank/data')), array('tank/data'), 'only the dataset asked for and those under it');
+putenv('ZFSM_TEST_GET_FAIL=tank');
+same(null, zfsmSnapshotAccessTree('tank'), 'a failed read is not a list of datasets without access');
+same(array('diff' => false, 'browse' => '', 'unread' => true), zfsmSnapshotAccess('tank', 'tank'), 'a failed read of one dataset offers neither, and says it was not read');
+putenv('ZFSM_TEST_GET_FAIL');
+putenv('ZFSM_TEST_MOUNT_ROOT');
 
 echo "snapshot files: browse paths and zfs diff passed\n";

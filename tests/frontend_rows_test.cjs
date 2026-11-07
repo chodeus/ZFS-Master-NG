@@ -139,4 +139,10 @@ const datedRows = context.generateDatasetArrayRows('tank', dated, '', true, 0, 3
 assert.match(datedRows, /Last Snap Date: 03-11-2026, 18:41/, 'the last snapshot shows its own server date text');
 assert.doesNotMatch(datedRows, /11\/3\/2026/, 'no forced American date');
 
+// Each row's menu learns how many snapshots its child datasets hold, so Snapshots Admin can list theirs.
+const snapped = name => ({...bare(name), snapshots: [{name: name+'@a', creation: 1}, {name: name+'@b', creation: 2}]});
+const tree = {...bare('tank'), child: {'tank/a': {...bare('tank/a'), child: {'tank/a/b': snapped('tank/a/b')}}, 'tank/c': snapped('tank/c')}};
+const childCounts = [...context.generateDatasetArrayRows('tank', tree, '', true, 0, 30, {}).matchAll(/addDatasetContext\(decodeURIComponent\('[^']+'\), decodeURIComponent\('([^']+)'\), (\d+),.*?, (\d+)\);"/g)].map(match => [decodeURIComponent(match[1]), Number(match[2]), Number(match[3])]);
+assert.deepEqual(childCounts, [['tank', 0, 4], ['tank/a', 0, 2], ['tank/a/b', 2, 0], ['tank/c', 2, 0]], 'own and child snapshot counts on each row');
+
 console.log('dataset row class tests passed');
