@@ -108,6 +108,7 @@ async function confirm() {
   window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
   window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
       : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
@@ -116,8 +117,10 @@ async function confirm() {
   assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
   const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
   const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
+  let znapzend = false;
   const inventory = () => {
     const tank = dataset('tank');
+    if (znapzend) tank['org.znapzend:enabled'] = 'on';
     tank.child['tank/new'] = dataset('tank/new');
     return {op: 'getAll', data: {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}}};
   };
@@ -384,6 +387,19 @@ async function confirm() {
   actions().focus();
   redraw();
   assert.equal(window.document.activeElement, actions(), 'and on an Actions button');
+  const createButton = () => window.document.querySelector('#zfs_master button[onclick^="createDataset"]');
+  createButton().focus();
+  redraw();
+  assert.equal(window.document.activeElement, createButton(), 'and on a pool row\'s button');
+  // The same control, not the same place: an icon new before it doesn't take the focus, and a control that's gone takes it nowhere.
+  fold().focus();
+  znapzend = true;
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'a znapzend icon added before the fold icon leaves focus on the fold icon');
+  window.document.getElementById(window.datasetRowId('tank')).querySelector('a[aria-label="znapzend plan of tank"]').focus();
+  znapzend = false;
+  redraw();
+  assert.equal(window.document.activeElement.closest('#zfs_master'), null, 'focus on an icon that is gone after a redraw goes nowhere in the table');
   details().focus();
   redraw();
   assert.deepEqual([window.document.activeElement === details(), Boolean(tip())], [true, true], 'and on a details icon, whose details come back with it');

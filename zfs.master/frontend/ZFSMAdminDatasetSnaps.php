@@ -187,6 +187,7 @@ $snapshot_access = $snapshot_access ?? array();
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMSnapshotList.js'); ?>"></script>
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMSnapshotDiff.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMKeys.js'); ?>"></script>
 <script>
   var zfsm_csrf_token = (window.parent && typeof window.parent.zfsm_csrf_token === 'string') ? window.parent.zfsm_csrf_token : ((typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '');
   installZFSMActionRefresh(function() {
@@ -227,12 +228,7 @@ $snapshot_access = $snapshot_access ?? array();
   }
 
   $("#delete-snaps").click(deleteSnapshots);
-  // The row's icons act as buttons (role=button): Enter presses on keydown and Space on keyup, as a button does.
-  $(document).on('keydown keyup', '.zfsm-snap-table [role="button"]', function(event) {
-	if (event.key !== 'Enter' && event.key !== ' ') return;
-	event.preventDefault();
-	if ((event.key === 'Enter') === (event.type === 'keydown')) this.click();
-  });
+  zfsmButtonKeys('.zfsm-snap-table [role="button"]');
   zfsmInitSnapshotList();
 
   function rollbackSnapshot(snapshot) {
