@@ -8,4 +8,5 @@
 	$urlzmadmin = "/plugins/".$plugin."/backend/ZFSMAdmin.php";
 	$urlcreatedataset = "/plugins/".$plugin."/frontend/ZFSMCreateDataset.php";
 	$urladmindatasetsnaps = "/plugins/".$plugin."/frontend/ZFSMAdminDatasetSnaps.php";
+	$urlpoolinfo = "/plugins/".$plugin."/frontend/ZFSMPoolInfo.php";
 ?>

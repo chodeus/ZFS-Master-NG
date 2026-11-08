@@ -524,7 +524,8 @@ function generatePoolTableRows(zpool, devices, show_status, display) {
 
 	// Buttons
 	tr += '<td id="'+pool+'-attribute-name"><button type="button" id="show-zpool-'+pool+'" onclick="togglePoolTable('+safeJsArg('show-zpool-'+zpool['Pool'])+', '+safeJsArg('zdataset-'+zpool['Pool'])+');">'+show_button_text+'</button>';
-	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button></td>';
+	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button>';
+	tr += '<button type="button" onclick="poolInfo('+safeJsArg(zpool['Pool'])+');">Pool Info</button></td>';
 
 	// Size
 	tr += '<td id="'+pool+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
