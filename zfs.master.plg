@@ -6,13 +6,23 @@
 <!ENTITY launch "Main">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.07.1">
-<!ENTITY md5 "5ee6341639235bd0aa322b4d8cae4637">
+<!ENTITY version "2026.11.08.1">
+<!ENTITY md5 "30e217f2d3aa4de1c30015c480f42e20">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.08.1
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- It runs in the background; a notification says when it finishes
+- Keeping birth times is optional, and warns before it changes the pool
+- A stuck ZFS can no longer hang the Main page or Snapshots Admin
+- Convert reviews first and says why files would be copied, not cloned
+- Convert warns when a first clone limits older Unraid to read-only
+- Row icons, the fold box and Refresh work from the keyboard
+- Keyboard focus stays on the same control when the page refreshes
 
 ###2026.11.07.1
 - Snapshots Admin can filter and sort, and include child datasets' snapshots

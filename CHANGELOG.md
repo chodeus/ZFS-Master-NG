@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.08.1 (beta)
 
 - Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
 - It runs in the background; a notification says when it finishes
