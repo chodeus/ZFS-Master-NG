@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- fix: the Main page's zfs rewrite probe gets 5 seconds, so a stuck zfs can't hold the page; one zfsmWithDeadline owns the time limit
+- fix: Rewrite Files starts its script through runProcess and setsid, and says started only once the script holds the lock
+- fix: Rewrite Files uses -P only when ticked, locks by guid, and says when a run can't start
+- feat: Rewrite Files runs zfs rewrite on a dataset in the background
+- fix: a command that ignores TERM and is killed at the time limit is reported as timed out, not exit 9
+- fix: the Snapshots Admin popup's reads share a time limit, so a stuck zfs can't hold it open; every time limit goes through zfsmWithDeadline
+- fix: a zfs stuck in the kernel can't hold a read past its limit: the read stops waiting and lets the process go
+- fix: Convert's review refuses when it can't tell, names why files are copied, and the convert keeps the review's answer
+- feat: Convert reviews first, and says when the pool's first block clone turns on features older Unraid can only read
+- fix(keys): pool row ids can't match another pool's cell id
+- fix(keys): a held Space or Enter repeating on another control presses nothing
+- fix(keys): Space presses only its own control, held Enter presses once, and focus survives a redraw on pool rows and by control
+- fix: Refresh takes the keys in Unraid's title line too; focus stays on its control across a redraw; Space presses on keyup
+- fix: the click-only icons work from the keyboard: Snapshots Admin's row actions, the fold box and Refresh
+
 ## 2026.11.07.1 (beta)
 
 - Snapshots Admin can filter and sort, and include child datasets' snapshots
