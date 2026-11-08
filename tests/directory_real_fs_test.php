@@ -198,6 +198,49 @@ check(!zfsmBlockCloning('tank/data'), 'zfs_bclone_enabled=0 must not clone');
 unlink($bclone);
 check(!zfsmBlockCloning('tank/data'), 'OpenZFS without zfs_bclone_enabled must not clone');
 
+// The review: whether the files are cloned, and the first Unraid that still writes to the pool after its first clone (module/zfs/brt.c).
+file_put_contents($bclone, "1\n");
+reset_tree($target, $mount, $root);
+$turns_on = function($bclone_state, $endian) {
+	putenv('ZFSM_TEST_BCLONE='.$bclone_state);
+	putenv($endian === null ? 'ZFSM_TEST_BCLONE_ENDIAN' : 'ZFSM_TEST_BCLONE_ENDIAN='.$endian);
+	return zfsmCloneTurnsOn('tank');
+};
+$states = array($turns_on('enabled', 'enabled'), $turns_on('enabled', null), $turns_on('enabled', 'disabled'), $turns_on('enabled', 'fail'), $turns_on('active', 'enabled'), $turns_on('disabled', 'enabled'), $turns_on('fail', 'enabled'));
+check($states === array('7.3', '7.0', '7.0', '7.3', '', '', null), 'a first clone needs 7.3 with the endian feature or when it can\'t be read, 7.0 without; active or missing turns nothing on; an unread feature is unknown: '.json_encode($states));
+putenv('ZFSM_TEST_BCLONE=enabled');
+putenv('ZFSM_TEST_BCLONE_ENDIAN=enabled');
+// The new dataset can't be read before it exists, as real zfs answers, so the review must ask its parent.
+putenv('ZFSM_TEST_GET_FAIL=tank/My Share');
+$preview = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_GET_FAIL');
+check($preview === array('can_proceed' => true, 'clones' => true, 'blocker' => '', 'turns_on' => '7.3'), 'a pool cloning for the first time says what that turns on: '.json_encode($preview));
+// Each reason the files are copied instead: encrypted, switched off, or no block cloning at all.
+$blockers = array();
+putenv('ZFSM_TEST_ENCRYPTION=aes-256-gcm');
+$blockers[] = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_ENCRYPTION');
+file_put_contents($bclone, "0\n");
+$blockers[] = zfsmConvertPreview($target, 'tank');
+unlink($bclone);
+$blockers[] = zfsmConvertPreview($target, 'tank');
+file_put_contents($bclone, "1\n");
+check(array_map(function($answer) { return array($answer['clones'] ?? null, $answer['blocker'] ?? null, $answer['turns_on'] ?? null); }, $blockers) === array(array(false, 'encrypted', ''), array(false, 'switched off', ''), array(false, 'no feature', '')), 'each copy says why: '.json_encode($blockers));
+// A review that can't tell refuses, rather than saying "copied" while the convert would clone.
+$unread = array();
+putenv('ZFSM_TEST_GET_FAIL=tank');
+$unread[] = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_GET_FAIL');
+putenv('ZFSM_TEST_BCLONE=fail');
+$unread[] = zfsmConvertPreview($target, 'tank');
+putenv('ZFSM_TEST_BCLONE=enabled');
+check(array_column($unread, 'can_proceed') === array(false, false) && array_column($unread, 'error') === array('Whether the files can be cloned could not be read', 'Whether the files can be cloned could not be read'), 'an unread encryption or feature refuses the review: '.json_encode($unread));
+$preview = zfsmConvertPreview($root.'/no such folder', 'tank');
+check(($preview['can_proceed'] ?? true) === false && ($preview['error'] ?? '') !== '', 'a folder that can\'t be converted is refused in the review: '.json_encode($preview));
+putenv('ZFSM_TEST_BCLONE_ENDIAN');
+putenv('ZFSM_TEST_BCLONE=active');
+unlink($bclone);
+
 // With cloning off, cp never runs and rsync copies as before.
 $real_rsync = trim((string)shell_exec('command -v rsync'));
 $real_cp = trim((string)shell_exec('command -v cp'));
@@ -220,6 +263,13 @@ $result = convertDirectory($target, 'tank');
 check(!empty($result['succeeded']), 'a cloned copy did not verify: '.json_encode($result));
 // The copy dialog and the row's "Cloning files" come before cp copies anything.
 check($GLOBALS['zfsm_feed'] === array(array('start_directory_copy', 0), array('clone_directory', 0), array('stop_directory_copy', 3)), 'progress came after the clone: '.json_encode($GLOBALS['zfsm_feed']));
+
+// A convert its review said would copy never clones, even where it now could.
+reset_tree($target, $mount, $root);
+shim('exec '.escapeshellarg($real_rsync).' "$@"');
+$GLOBALS['zfsm_feed'] = array();
+$result = convertDirectory($target, 'tank', false);
+check(!empty($result['succeeded']) && !in_array('clone_directory', array_column($GLOBALS['zfsm_feed'], 0), true), 'a convert reviewed as a copy still cloned: '.json_encode(array($result, $GLOBALS['zfsm_feed'])));
 
 // cp prints a line for each file it can't copy: 150 MB of them must not stop rsync from finishing the job.
 reset_tree($target, $mount, $root);

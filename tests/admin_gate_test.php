@@ -26,6 +26,7 @@ $cases = array(
 	'preview_destroy' => array(array('cmd' => 'previewdestroy', 'target' => 'tank/data', 'force' => '0'), '0', '', 'previewed'),
 	'preview_rollback' => array(array('cmd' => 'previewrollback', 'snapshot' => 'tank/data@daily'), '0', '', 'previewed'),
 	'diff_snapshot' => array(array('cmd' => 'diffsnapshot', 'snapshot' => 'tank/data@daily'), '0', '', 'diffed'),
+	'preview_convert' => array(array('cmd' => 'previewconvert', 'directory' => '/mnt/tank/no such folder', 'pool' => 'tank'), '0', '', 'review_refused'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -52,6 +53,7 @@ $passed = false;
 if ($expected === 'blocked') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Destructive Mode') !== false;
 if ($expected === 'refused') $passed = empty($answer['succeeded']) && preg_match('/passphrase|Yes or No/', implode(' ', $answer['failed'] ?? array())) === 1;
 if ($expected === 'previewed') $passed = !empty($answer['can_proceed']) && !empty($answer['token']);
+if ($expected === 'review_refused') $passed = ($answer['can_proceed'] ?? null) === false && ($answer['error'] ?? '') !== '';
 if ($expected === 'diffed') $passed = count($answer['changes'] ?? array()) === 5 && ($answer['truncated'] ?? null) === false && ($answer['changes'][1]['path'] ?? '') === '/mnt/tank/data/café';
 if ($expected === 'not_snapshot') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Snapshot does not exist') !== false;
 if ($expected === 'unreviewed') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'please review') !== false;

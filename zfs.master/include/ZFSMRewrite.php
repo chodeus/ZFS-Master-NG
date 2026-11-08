@@ -37,8 +37,8 @@ function zfsmRewriteTarget($zdataset) {
 // The pool's physical_rewrite feature, which -P needs: 'active' once a -P rewrite has run, 'enabled' before, '' where -P can't be used.
 // A first -P makes it active for good, and OpenZFS before 2.4 (Unraid before 7.3) can then import the pool read-only only.
 function zfsmRewriteFeature($pool) {
-	$feature = runProcess('zpool', array('get', '-H', '-o', 'value', 'feature@physical_rewrite', $pool));
-	return ($feature['code'] ?? 1) === 0 && in_array($feature['output'], array('enabled', 'active'), true) ? $feature['output'] : '';
+	$state = zfsmPoolFeature($pool, 'physical_rewrite');
+	return in_array($state, array('enabled', 'active'), true) ? $state : '';
 }
 
 // What the confirm dialog says before a rewrite starts.
