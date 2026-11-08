@@ -208,6 +208,14 @@ assert.deepEqual(presses, [3, 0], 'Space released after focus moved presses neit
 send('keydown', ' ');
 send('keyup', ' ', icons[1]);
 assert.deepEqual(presses, [3, 0], 'nor does a Space that comes up on another control');
+icons[0].focus();
+send('keydown', ' ');
+icons[1].focus();
+send('keydown', ' ', icons[1], true);
+send('keyup', ' ', icons[1]);
+assert.deepEqual(presses, [3, 0], 'a held Space repeating on the control focus moved to presses nothing');
+const scrolls = send('keydown', ' ', icons[1], true);
+assert.equal(scrolls, false, 'a repeated Space is still taken, so the page does not scroll');
 
 console.log('snapshot admin list, filter, sort and result tests passed');
 })().catch(error => { console.error(error); process.exit(1); });
