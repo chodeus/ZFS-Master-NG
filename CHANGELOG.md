@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- It runs in the background; a notification says when it finishes
+- Keeping birth times is optional, and warns before it changes the pool
+- A stuck ZFS can no longer hang the Main page or Snapshots Admin
+- Convert reviews first and says why files would be copied, not cloned
+- Convert warns when a first clone limits older Unraid to read-only
+- Row icons, the fold box and Refresh work from the keyboard
+- Keyboard focus stays on the same control when the page refreshes
+
 ## 2026.11.07.1 (beta)
 
 - Snapshots Admin can filter and sort, and include child datasets' snapshots
