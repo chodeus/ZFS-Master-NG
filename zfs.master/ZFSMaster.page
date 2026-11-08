@@ -87,7 +87,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		<a style="cursor:pointer" class="tooltip" title="ZFS Master NG Settings" href="/Settings/ZFSMasterSettings"><i id="zfsm-settings" class="fa fa-gear fa-solid"></i></a>
 	</span>
 	<span class="zfs_bar_button">
-		<a style="cursor:pointer" class="tooltip" title="Refresh Information" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
+		<a style="cursor:pointer" class="tooltip" title="Refresh Information" role="button" tabindex="0" onclick="requestRefresh()"><i id="zfsm-refresh" class="fa fa-refresh fa-solid fa-arrows-rotate"></i></a>
 	</span>
 </div>
 <!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
@@ -121,6 +121,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMKeys.js'); ?>"></script>
 
 <script>
   var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '<?=htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8')?>';
@@ -271,12 +272,35 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   window.addEventListener('scroll', zfsmHideTip, true);
   window.addEventListener('resize', zfsmHideTip);
 
+  // A redraw replaces every row, so a keyboard user's focus goes back to the same control of the same row.
+  const zfsm_row_controls = 'a[href], button, [tabindex]';
+  // A control's identity across a redraw, which a new icon earlier in the row doesn't shift.
+  function zfsmControlKey(control) {
+	return control.id || control.getAttribute('aria-label') || control.getAttribute('onclick') || control.getAttribute('href') || control.textContent;
+  }
+  function zfsmRowFocus() {
+	const active = document.activeElement;
+	const row = active ? active.closest('#zfs_master tr[id]') : null;
+	if (!row || !active.matches(zfsm_row_controls)) return null;
+	return {row: row.id, key: zfsmControlKey(active), details: active.getAttribute('aria-describedby') === 'zfsm-tip-text'};
+  }
+  function zfsmRestoreRowFocus(focus) {
+	const row = focus ? document.getElementById(focus.row) : null;
+	const control = row ? Array.prototype.find.call(row.querySelectorAll(zfsm_row_controls), each => zfsmControlKey(each) === focus.key) : null;
+	if (!control) return;
+	control.focus();
+	// Focusing a details icon shows its details: keep them only if they were up, so dismissed ones stay dismissed.
+	if (!focus.details) zfsmHideTip();
+  }
+
   // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
   function zfsmRender(data) {
+	const focus = zfsmRowFocus();
 	zfsmHideTip();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();
+	zfsmRestoreRowFocus(focus);
   }
 
   $(function() {
@@ -344,6 +368,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	return true;
   }
 
+  // The bar's buttons sit in #zfs-master-title, or in Unraid's title line once zfsmMoveStatusIntoTitle has moved them.
+  zfsmButtonKeys('#zfs-master-title [role="button"], .zfsm-title-status [role="button"], #zfs_master [role="button"]');
+
   function processHiddenDatasets() {
 	var datasets = loadFromLocalStorage('zfsm-datasetsHidden');
 	
@@ -355,9 +382,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		
 		for (let row of myRows) {
 			$(row).hide(0);
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} 
 	}
+  }
+
+  // A folded dataset shows a plus, and says it is collapsed to a screen reader.
+  function zfsmFoldIcon(zdataset, folded) {
+	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' fa-append', 'aria-expanded': folded ? 'false' : 'true'});
   }
 
   function toggleDataset(zdataset) {
@@ -381,10 +413,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	for (let row of myRows) {
 		if (index == -1) {
 			$(row).hide( 'fast');
-			$('i[name=\''+zdataset+'\']').attr('class', 'fa fa-plus-square fa-append');
+			zfsmFoldIcon(zdataset, true);
 		} else {
 			$(row).show( 'fast');
-			$('i[name=\''+zdataset+'\']') .attr('class', 'fa fa-minus-square fa-append');
+			zfsmFoldIcon(zdataset, false);
 		}
 	}
 

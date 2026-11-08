@@ -19,6 +19,11 @@ function datasetRowId(name) {
 	return 'tr-'+encodeURIComponent(String(name ?? ''));
 }
 
+// No other id holds '/': pool names can't, and dataset ids encode it. So a pool row keeps keyboard focus across a redraw.
+function poolRowId(name) {
+	return 'pool/'+encodeURIComponent(String(name ?? ''));
+}
+
 // Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
 function snapshotCell(color, count, browsePath) {
 	const style = color ? ' style="color:'+escapeHtml(color)+'"' : '';
@@ -418,7 +423,7 @@ function datasetBadges(zdataset) {
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
+		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" role="button" tabindex="0" aria-expanded="true" aria-label="'+escapeHtml('Contents of '+zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {
@@ -566,7 +571,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 	Object.values(data.pools).forEach((zpool) => {
 		const show_status = getPoolShowStatus(zpool['Pool']);
 
-		html_pools += '<tr>';
+		html_pools += '<tr id="'+poolRowId(zpool['Pool'])+'">';
 		html_pools += generatePoolTableRows( zpool, data['devices'][zpool['Pool']], show_status, display);
 		html_pools += '</tr>';
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {

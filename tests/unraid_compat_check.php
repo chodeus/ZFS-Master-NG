@@ -254,6 +254,10 @@ switch ($check) {
 		if (strpos($html, 'id="zfsm-hide-auto"') !== false) { fwrite(STDERR, "snapshot popup offers to hide automatic snapshots it does not have\n"); exit(1); }
 		if (strpos($html, '<a title="Browse files in this snapshot" href="/Main/Browse?dir=%2Fmnt%2Ftank%2Fdata%2F.zfs%2Fsnapshot%2Fdaily" target="_blank" rel="noopener">') === false) { fwrite(STDERR, "snapshot row does not open the snapshot in the file browser\n"); exit(1); }
 		if (strpos($html, 'onclick="diffSnapshot(') === false || strpos($html, 'ZFSMSnapshotDiff.js') === false) { fwrite(STDERR, "snapshot row does not offer its changes\n"); exit(1); }
+		// An <a> without href never takes keyboard focus, so each click-only icon is a button.
+		preg_match_all('#<a [^>]*onclick=[^>]*>#', $html, $icons);
+		if (count($icons[0]) !== 6) { fwrite(STDERR, 'the snapshot row has '.count($icons[0])." click-only icons, not the fixture's 6\n"); exit(1); }
+		if (count(preg_grep('#role="button" tabindex="0"#', $icons[0])) !== 6) { fwrite(STDERR, "a snapshot row icon cannot take keyboard focus\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-children"') !== false) { fwrite(STDERR, "snapshot popup offers child datasets the dataset does not have\n"); exit(1); }
 		popup_styles($html, $docroot);
 		break;

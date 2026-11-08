@@ -176,5 +176,46 @@ assert.deepEqual(shown, [
   ['error', 'The request failed. The page will reload to show what changed.'],
 ], 'every outcome shows a dialog');
 
+// The row's icons act as buttons: Enter and Space press them, other keys pass through.
+const keys = load([['a', 1, 1]]);
+keys.window.eval(fs.readFileSync(path.join(frontend, 'ZFSMKeys.js'), 'utf8'));
+const wiring = "  zfsmButtonKeys('.zfsm-snap-table [role=\"button\"]');";
+assert.ok(page.includes(wiring), 'the popup gives its icons the button keys');
+keys.window.eval(wiring);
+const presses = [0, 0];
+const icons = presses.map((_, i) => {
+  const icon = keys.window.document.createElement('a');
+  Object.assign(icon, {onclick: () => presses[i]++, tabIndex: 0});
+  icon.setAttribute('role', 'button');
+  keys.window.document.querySelector('#zpools td').append(icon);
+  return icon;
+});
+const send = (type, name, icon = icons[0], repeat = false) => icon.dispatchEvent(new keys.window.KeyboardEvent(type, {key: name, repeat, bubbles: true, cancelable: true}));
+assert.deepEqual([send('keydown', 'Enter'), presses[0], send('keyup', 'Enter'), presses[0]], [false, 1, false, 1], 'Enter presses the icon as the key goes down');
+assert.deepEqual([send('keydown', ' '), presses[0], send('keyup', ' '), presses[0]], [false, 1, false, 2], 'Space presses it as the key comes up');
+assert.deepEqual([send('keydown', 'Tab'), send('keyup', 'Tab'), presses[0]], [true, true, 2], 'Tab moves on');
+// A held Enter presses once; Space presses only the control it went down on, so Space held across a Tab presses nothing.
+send('keydown', 'Enter');
+send('keydown', 'Enter', icons[0], true);
+assert.equal(presses[0], 3, 'a held Enter presses once');
+icons[0].focus();
+send('keydown', ' ');
+icons[1].focus();
+send('keyup', ' ', icons[1]);
+icons[0].focus();
+send('keyup', ' ');
+assert.deepEqual(presses, [3, 0], 'Space released after focus moved presses neither control');
+send('keydown', ' ');
+send('keyup', ' ', icons[1]);
+assert.deepEqual(presses, [3, 0], 'nor does a Space that comes up on another control');
+icons[0].focus();
+send('keydown', ' ');
+icons[1].focus();
+send('keydown', ' ', icons[1], true);
+send('keyup', ' ', icons[1]);
+assert.deepEqual(presses, [3, 0], 'a held Space repeating on the control focus moved to presses nothing');
+const scrolls = send('keydown', ' ', icons[1], true);
+assert.equal(scrolls, false, 'a repeated Space is still taken, so the page does not scroll');
+
 console.log('snapshot admin list, filter, sort and result tests passed');
 })().catch(error => { console.error(error); process.exit(1); });
