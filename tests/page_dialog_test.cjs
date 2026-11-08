@@ -117,12 +117,14 @@ async function confirm() {
   assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
   const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
   const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
-  let znapzend = false;
+  let znapzend = false, pools = [];
   const inventory = () => {
     const tank = dataset('tank');
     if (znapzend) tank['org.znapzend:enabled'] = 'on';
     tank.child['tank/new'] = dataset('tank/new');
-    return {op: 'getAll', data: {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}}};
+    const data = {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}};
+    for (const name of pools) Object.assign(data.pools, {[name]: {Pool: name, Health: 'ONLINE', Snapshots: 0}}), data.devices[name] = '', data.datasets[name] = dataset(name);
+    return {op: 'getAll', data};
   };
   const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
   const redraw = () => { window.requestRefresh(); answer(); };
@@ -391,6 +393,15 @@ async function confirm() {
   createButton().focus();
   redraw();
   assert.equal(window.document.activeElement, createButton(), 'and on a pool row\'s button');
+  // A pool row's id is never another pool's cell id, whatever the names: here a cell comes first that would end like the row.
+  pools = ['pool-row-tank', 'tank-attribute-pool'];
+  redraw();
+  const lastCreate = () => window.document.querySelector('#zfs_master button[onclick="createDataset(decodeURIComponent(\'tank-attribute-pool\'));"]');
+  lastCreate().focus();
+  redraw();
+  assert.equal(window.document.activeElement, lastCreate(), 'a pool row keeps focus when its name would end another pool\'s cell id');
+  pools = [];
+  redraw();
   // The same control, not the same place: an icon new before it doesn't take the focus, and a control that's gone takes it nowhere.
   fold().focus();
   znapzend = true;

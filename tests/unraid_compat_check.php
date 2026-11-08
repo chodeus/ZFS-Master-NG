@@ -256,7 +256,8 @@ switch ($check) {
 		if (strpos($html, 'onclick="diffSnapshot(') === false || strpos($html, 'ZFSMSnapshotDiff.js') === false) { fwrite(STDERR, "snapshot row does not offer its changes\n"); exit(1); }
 		// An <a> without href never takes keyboard focus, so each click-only icon is a button.
 		preg_match_all('#<a [^>]*onclick=[^>]*>#', $html, $icons);
-		if (count($icons[0]) !== 6 || count(preg_grep('#role="button" tabindex="0"#', $icons[0])) !== 6) { fwrite(STDERR, "a snapshot row icon cannot take keyboard focus\n"); exit(1); }
+		if (count($icons[0]) !== 6) { fwrite(STDERR, 'the snapshot row has '.count($icons[0])." click-only icons, not the fixture's 6\n"); exit(1); }
+		if (count(preg_grep('#role="button" tabindex="0"#', $icons[0])) !== 6) { fwrite(STDERR, "a snapshot row icon cannot take keyboard focus\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-children"') !== false) { fwrite(STDERR, "snapshot popup offers child datasets the dataset does not have\n"); exit(1); }
 		popup_styles($html, $docroot);
 		break;

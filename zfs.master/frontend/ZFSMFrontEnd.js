@@ -19,9 +19,9 @@ function datasetRowId(name) {
 	return 'tr-'+encodeURIComponent(String(name ?? ''));
 }
 
-// Unlike tr- (datasets) and zpool- (the pool's status icon), so a pool row keeps keyboard focus across a redraw.
+// No other id holds '/': pool names can't, and dataset ids encode it. So a pool row keeps keyboard focus across a redraw.
 function poolRowId(name) {
-	return 'pool-row-'+encodeURIComponent(String(name ?? ''));
+	return 'pool/'+encodeURIComponent(String(name ?? ''));
 }
 
 // Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
