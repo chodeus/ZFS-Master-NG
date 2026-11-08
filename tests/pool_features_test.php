@@ -63,7 +63,7 @@ same(array('7.0', '6.12', array('7.0', '7.0'), array(), array('zilsaxattr'), arr
 same(array(null, null, null, array('future_feature'), array('future_feature', 'zilsaxattr'), array(), array('head_errlog')), $compat('zilsaxattr=active future_feature=active head_errlog=disabled'), 'an in use feature the plugin doesn\'t know, now or after Upgrade Pool');
 same(array('7.0', '6.12', null, array(), array('zilsaxattr'), array('future_feature'), array()), $compat('zilsaxattr=active future_feature=enabled future_off=disabled'), 'an enabled or off feature the plugin doesn\'t know');
 $row = with_features('future_feature=enabled', null, function() { return zfsmPoolCompatibility('tank')['enabled'][0]; });
-same(array('name' => 'future_feature', 'unraid' => null, 'readable' => null, 'turned_on_by' => null, 'on_upgrade' => null), $row, 'an unknown feature\'s row says nothing it can\'t know');
+same(array('name' => 'future_feature', 'state' => 'enabled', 'unraid' => null, 'readable' => null, 'turned_on_by' => null, 'on_upgrade' => null), $row, 'an unknown feature\'s row says nothing it can\'t know');
 // On older Unraid: a feature it lacks still counts, in use (the pool open read-only) or enabled.
 same(array('7.3', '6.12', null, array(), array('physical_rewrite'), array('blake3'), array()), $compat('unsupported@com.truenas:physical_rewrite=readonly unsupported@org.openzfs:blake3=inactive'), 'a 7.3 pool on older Unraid needs 7.3 to write');
 same(array(null, null, null, array('newer_feature'), array('newer_feature'), array(), array()), $compat('unsupported@com.example:newer_feature=readonly'), 'an unsupported feature the plugin doesn\'t know');
