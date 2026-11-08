@@ -10,13 +10,13 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 - **Pools** — health, size, used and free space, snapshot counts
 - **Datasets** — create, rename, promote, destroy, and edit properties
-- **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when they get old
+- **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when the newest gets old
 - **Snapshots Admin** — filter, sort, browse a snapshot's files, or see what changed since it
-- **Reviews** — destroy, rollback and bulk delete show everything they remove first
+- **Reviews** — destroy, rollback and bulk delete show what they'll remove first
 - **Encryption** — create encrypted datasets, lock and unlock them
-- **Directories** — list, move or delete folders, or convert one to a dataset (cloned, not copied, where the pool supports it)
+- **Directories** — list, move or delete folders, or convert one to a dataset (cloned instead of copied where it can)
 - **Rewrite Files** — apply new compression or checksum settings to existing data (Unraid 7.3+)
-- **Alerts** — optional notifications for pool problems and old snapshots
+- **Alerts** — optional notifications for pool problems and datasets with no recent snapshot
 - **ZnapZend** — optionally show each dataset's backup plans
 - **Light** — no background daemon; reads ZFS only while the Main tab is open, or for alerts you turn on
 - **Your view** — collapse datasets, or hide some with an exclusion pattern
@@ -41,7 +41,7 @@ The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
 ```
 
-Removing datasets and directories, and rollbacks or deletes that take other snapshots with them, need **Destructive Mode** in the plugin settings.
+Renaming, editing, destroying, converting and deleting folders need **Destructive Mode** in the plugin settings, as do rollbacks and deletes that take other snapshots with them.
 
 ## Credits
 
