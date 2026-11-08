@@ -1,19 +1,59 @@
 <?php
 // Pool features: their state, the Unraid each needs, and what turns it on (zpool-features(7)).
 
+// Every pool property as name => value, from one zpool get all; null when the read failed.
+function zfsmPoolProperties($pool) {
+	$result = runProcess('zpool', array('get', '-H', '-o', 'property,value', 'all', $pool));
+	if (($result['code'] ?? 1) !== 0) return null;
+	$properties = array();
+	foreach (explode("\n", (string)($result['output'] ?? '')) as $line) {
+		$field = explode("\t", trim($line));
+		if (count($field) === 2) $properties[$field[0]] = $field[1];
+	}
+	return $properties;
+}
+
 // Every feature on the pool as name => 'active', 'enabled' or 'disabled'; one this OpenZFS lacks is unsupported@guid,
 // 'readonly' when in use (the pool is open read-only) or 'inactive' when enabled (zpool-features(7)). null when unread.
 function zfsmPoolFeatures($pool) {
-	$result = runProcess('zpool', array('get', '-H', '-o', 'property,value', 'all', $pool));
-	if (($result['code'] ?? 1) !== 0) return null;
+	$properties = zfsmPoolProperties($pool);
+	return $properties === null ? null : zfsmFeaturesOf($properties);
+}
+
+function zfsmFeaturesOf($properties) {
 	$features = array();
-	foreach (explode("\n", (string)($result['output'] ?? '')) as $line) {
-		$field = explode("\t", trim($line));
-		if (count($field) !== 2) continue;
-		if (strpos($field[0], 'feature@') === 0) $features[substr($field[0], 8)] = $field[1];
-		elseif (strpos($field[0], 'unsupported@') === 0) $features[preg_replace('/^unsupported@(.*:)?/', '', $field[0])] = $field[1];
+	foreach ($properties as $name => $value) {
+		if (strpos($name, 'feature@') === 0) $features[substr($name, 8)] = $value;
+		elseif (strpos($name, 'unsupported@') === 0) $features[preg_replace('/^unsupported@(.*:)?/', '', $name)] = $value;
 	}
 	return $features;
+}
+
+// What Upgrade Pool may enable under the pool's compatibility property: null for anything (off), else the features in every
+// listed set, none for legacy (zpool-features(7), Compatibility feature sets); false when a set can't be read.
+function zfsmUpgradeAllows($compatibility) {
+	if ($compatibility === null || $compatibility === 'off') return null;
+	if ($compatibility === 'legacy') return array();
+	$allowed = null;
+	foreach (explode(',', $compatibility) as $set) {
+		$text = zfsmCompatibilitySet(trim($set));
+		if ($text === null) return false;
+		$names = preg_split('/[\s,]+/', preg_replace('/#.*$/m', '', $text), -1, PREG_SPLIT_NO_EMPTY);
+		$allowed = $allowed === null ? $names : array_values(array_intersect($allowed, $names));
+	}
+	return $allowed;
+}
+
+// A compatibility set's text: an absolute path, or a name found first in /etc/zfs/compatibility.d; null when unread.
+function zfsmCompatibilitySet($set) {
+	$dirs = $GLOBALS['zfsm_compatibility_dirs'] ?? array('/etc/zfs/compatibility.d', '/usr/share/zfs/compatibility.d');
+	$paths = $set !== '' && $set[0] === '/' ? array($set) : array_map(function($dir) use ($set) { return $dir.'/'.$set; }, $dirs);
+	foreach ($paths as $path) {
+		if ($set === '' || !is_file($path)) continue;
+		$text = @file_get_contents($path);
+		return $text === false ? null : $text;
+	}
+	return null;
 }
 
 // One feature's state; '' where this OpenZFS lacks it, null when the read failed.
@@ -64,8 +104,15 @@ function zfsmFeatureCatalog() {
 // The oldest Unraid that imports the pool read-write and read-only, now and after Upgrade Pool, from the features in use, and
 // what would raise it; null when one in use is newer than the catalog. Rows grouped in use, enabled, off (those Upgrade Pool enables).
 function zfsmPoolCompatibility($pool) {
-	$features = zfsmPoolFeatures($pool);
-	if ($features === null) return null;
+	$properties = zfsmPoolProperties($pool);
+	if ($properties === null) return null;
+	$features = zfsmFeaturesOf($properties);
+	$compatibility = in_array($properties['compatibility'] ?? 'off', array('off', '-'), true) ? null : $properties['compatibility'];
+	$allows = zfsmUpgradeAllows($compatibility);
+	// Upgrade Pool enables only what the catalog says it does, and only what the pool's compatibility sets allow.
+	$upgrade_enables = function($name, $entry) use ($allows) {
+		return ($entry[3] ?? '') !== '' && ($allows === null || (is_array($allows) && in_array($name, $allows, true)));
+	};
 	$catalog = zfsmFeatureCatalog();
 	$groups = array('in_use' => array(), 'enabled' => array(), 'off' => array());
 	$now = $after = array('6.12', '6.12');
@@ -73,7 +120,7 @@ function zfsmPoolCompatibility($pool) {
 	foreach ($features as $name => $state) {
 		$group = array('active' => 'in_use', 'readonly' => 'in_use', 'enabled' => 'enabled', 'inactive' => 'enabled', 'disabled' => 'off')[$state] ?? null;
 		$entry = $catalog[$name] ?? null;
-		if ($group === null || in_array($name, zfsmBaseFeatures(), true) || ($group === 'off' && ($entry[3] ?? '') === '')) continue;
+		if ($group === null || in_array($name, zfsmBaseFeatures(), true) || ($group === 'off' && !$upgrade_enables($name, $entry))) continue;
 		$groups[$group][] = array('name' => $name, 'unraid' => $entry[0] ?? null, 'readable' => $entry[1] ?? null, 'turned_on_by' => $entry[2] ?? null, 'on_upgrade' => $entry[3] ?? null);
 		if ($entry === null) {
 			if ($group === 'in_use') $unknown[] = $name;
@@ -98,7 +145,8 @@ function zfsmPoolCompatibility($pool) {
 	}
 	$known = !$unknown;
 	return array('read_write' => $known ? $now[0] : null, 'read_only' => $known ? $now[1] : null,
-		'after_upgrade' => $known && $after !== $now ? $after : null, 'would_raise' => $known ? $would_raise : array(), 'unknown' => $unknown) + $groups;
+		'after_upgrade' => $known && $after !== $now ? $after : null, 'would_raise' => $known ? $would_raise : array(), 'unknown' => $unknown,
+		'compatibility' => $compatibility, 'upgrade_unread' => $allows === false) + $groups;
 }
 
 // A read-write and read-only floor, raised by one feature in use.

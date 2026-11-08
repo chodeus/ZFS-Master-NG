@@ -11,7 +11,7 @@ fi
 
 # zpool get all: a few of OpenZFS 2.1's features, then ZFSM_TEST_BCLONE and ZFSM_TEST_BCLONE_ENDIAN (pool tank) and ZFSM_TEST_PHYSICAL
 # (any pool) as states, left out when unset as older OpenZFS does; fail in any is an I/O error. ZFSM_TEST_FEATURES adds name=state
-# pairs, and unsupported@guid=state ones as OpenZFS reports a feature it lacks.
+# pairs, unsupported@guid=state ones as OpenZFS reports a feature it lacks, and compatibility=<sets> as the pool property.
 if [ "$1" = "get" ] && [ "$5" = "all" ]; then
 	[ "${ZFSM_TEST_FEATURES:-}" = hang ] && sleep 30
 	case " ${ZFSM_TEST_BCLONE:-} ${ZFSM_TEST_BCLONE_ENDIAN:-} ${ZFSM_TEST_PHYSICAL:-} " in *" fail "*) printf 'cannot get property: I/O error\n' >&2; exit 1;; esac
@@ -23,7 +23,7 @@ if [ "$1" = "get" ] && [ "$5" = "all" ]; then
 	fi
 	[ -n "${ZFSM_TEST_PHYSICAL:-}" ] && printf 'feature@physical_rewrite\t%s\n' "$ZFSM_TEST_PHYSICAL"
 	for pair in ${ZFSM_TEST_FEATURES:-}; do
-		case $pair in unsupported@*) printf '%s\t%s\n' "${pair%%=*}" "${pair#*=}";; *) printf 'feature@%s\t%s\n' "${pair%%=*}" "${pair#*=}";; esac
+		case $pair in unsupported@*|compatibility=*) printf '%s\t%s\n' "${pair%%=*}" "${pair#*=}";; *) printf 'feature@%s\t%s\n' "${pair%%=*}" "${pair#*=}";; esac
 	done
 	exit 0
 fi

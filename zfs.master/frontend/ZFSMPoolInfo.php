@@ -36,6 +36,9 @@ if ($compatibility !== null && $compatibility['read_write'] === null) {
 		$in_use_after = array_column(array_filter($compatibility['off'], function($row) { return $row['on_upgrade'] !== 'enabled'; }), 'name');
 		$after = 'Unraid '.$upgraded[0].' and later'.($older_text($upgraded) === '' ? '' : '. Older Unraid: '.$older_text($upgraded)).'. Upgrade Pool puts '.implode(' and ', $in_use_after).' in use';
 	}
+	$set = $compatibility['compatibility'];
+	if ($compatibility['upgrade_unread']) $after = 'Unknown: the pool\'s compatibility set ('.$set.') could not be read';
+	elseif ($upgraded === null && $set !== null) $after = 'No change: the pool\'s compatibility setting ('.$set.') limits what it turns on';
 }
 $groups = array('in_use' => 'In use: these set the answer above', 'enabled' => 'Enabled, not in use: turning one on can raise the answer', 'off' => 'Off: Unraid\'s Upgrade Pool would turn these on');
 $on_upgrade = array('at once' => 'In use as soon as Upgrade Pool runs', 'next import' => 'In use from the first import after Upgrade Pool', 'enabled' => 'Enabled only');

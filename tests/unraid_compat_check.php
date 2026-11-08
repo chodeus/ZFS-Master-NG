@@ -402,6 +402,26 @@ switch ($check) {
 		popup_styles($html, $docroot);
 		break;
 
+	// The pool's compatibility setting limits what Upgrade Pool turns on, and a set that can't be read is said so.
+	case 'pool_info_popup_compat':
+	case 'pool_info_popup_compat_unread':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		$sets = sys_get_temp_dir().'/zfsm-compat-sets';
+		@mkdir($sets, 0700, true);
+		file_put_contents($sets.'/grub2', "block_cloning zilsaxattr\n");
+		$GLOBALS['zfsm_compatibility_dirs'] = array($sets);
+		$set = $check === 'pool_info_popup_compat' ? 'grub2' : 'nosuchset';
+		putenv('ZFSM_TEST_FEATURES=compatibility='.$set.' zilsaxattr=active head_errlog=disabled');
+		putenv('ZFSM_TEST_BCLONE=enabled');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		$said = $check === 'pool_info_popup_compat' ? 'No change: the pool&#039;s compatibility setting (grub2) limits what it turns on' : 'Unknown: the pool&#039;s compatibility set (nosuchset) could not be read';
+		if (strpos($html, '<dd id="zfsm-after-upgrade">'.$said.'</dd>') === false) { fwrite(STDERR, "pool info popup misread the pool's compatibility setting\n"); exit(1); }
+		if (strpos($html, 'data-group="off"') !== false) { fwrite(STDERR, "pool info popup lists features Upgrade Pool won't turn on\n"); exit(1); }
+		break;
+
 	case 'pool_info_popup_failed':
 	case 'pool_info_popup_bad_name':
 		$_SERVER['REQUEST_METHOD'] = 'GET';

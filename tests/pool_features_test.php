@@ -79,6 +79,29 @@ same(array(array('blake3', false)), $raise('zilsaxattr=active blake3=enabled'), 
 same(array(), $raise('zilsaxattr=active unsupported@org.openzfs:blake3=inactive'), 'not a feature this Unraid lacks, as it can\'t turn it on');
 same(array(), $raise('future_feature=active fast_dedup=enabled'), 'nothing when the answer is unknown');
 
+// Upgrade Pool enables only features in every set the compatibility property lists, /etc/zfs/compatibility.d first (zpool-features(7)).
+$sets = sys_get_temp_dir().'/zfsm-compat-'.getmypid();
+mkdir($sets.'/etc', 0700, true);
+mkdir($sets.'/usr', 0700, true);
+register_shutdown_function(function() use ($sets) { exec('rm -rf '.escapeshellarg($sets)); });
+file_put_contents($sets.'/usr/grub2', "# head_errlog vdev_zaps_v2: not for GRUB\nasync_destroy block_cloning\nzilsaxattr\n");
+file_put_contents($sets.'/usr/narrow', "head_errlog\n");
+file_put_contents($sets.'/usr/wide', "head_errlog,vdev_zaps_v2 blake3\n");
+file_put_contents($sets.'/etc/wide', "blake3\n");
+$GLOBALS['zfsm_compatibility_dirs'] = array($sets.'/etc', $sets.'/usr');
+$upgrade = function($compatibility) {
+	$answer = with_features('compatibility='.$compatibility.' zilsaxattr=active head_errlog=disabled vdev_zaps_v2=disabled blake3=disabled', null, function() { return zfsmPoolCompatibility('tank'); });
+	return array($answer['compatibility'], $answer['after_upgrade'], array_column($answer['off'], 'name'), $answer['upgrade_unread']);
+};
+same(array(null, array('7.0', '7.0'), array('head_errlog', 'vdev_zaps_v2', 'blake3'), false), $upgrade('off'), 'compatibility off: Upgrade Pool enables any feature');
+same(array('grub2', null, array(), false), $upgrade('grub2'), 'a grub2 pool: Upgrade Pool turns on none of the newer features grub2 leaves out');
+same(array('legacy', null, array(), false), $upgrade('legacy'), 'legacy: Upgrade Pool turns on nothing');
+same(array('narrow', array('7.0', '7.0'), array('head_errlog'), false), $upgrade('narrow'), 'a set with head_errlog: Upgrade Pool puts it in use');
+same(array('wide', null, array('blake3'), false), $upgrade('wide'), 'a set in /etc/zfs/compatibility.d wins over the same name in /usr/share');
+same(array('narrow,'.$sets.'/usr/wide', array('7.0', '7.0'), array('head_errlog'), false), $upgrade('narrow,'.$sets.'/usr/wide'), 'two sets, one by path: only the features in both');
+same(array('missing', null, array(), true), $upgrade('missing'), 'a set that can\'t be read: no claim about Upgrade Pool, and it says so');
+unset($GLOBALS['zfsm_compatibility_dirs']);
+
 // The catalog: every entry is newer than 2.1, on an Unraid that shipped its OpenZFS, with a reason it turns on.
 foreach (zfsmFeatureCatalog() as $name => $entry) {
 	same(false, in_array($name, zfsmBaseFeatures(), true), "$name is both a 2.1 feature and a newer one");
