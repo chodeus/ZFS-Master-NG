@@ -6,6 +6,7 @@ const root = path.resolve(process.argv[2] || path.join(__dirname, '../zfs.master
 const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
 const frontend = fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8');
 const inventory = fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8');
+const keys = fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8');
 const mainScript = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]
   .map(match => match[1]).find(script => script.includes('var zfsm_csrf_token'));
 
@@ -53,6 +54,7 @@ function launch({interval = 30, cache = null, storageThrows = false, missingSubs
   };
   vm.runInContext(frontend, context);
   vm.runInContext(inventory, context);
+  vm.runInContext(keys, context);
   const script = mainScript.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php => {
     if (php.includes('json_encode($zfsm_cfg')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
       destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []});

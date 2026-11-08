@@ -108,6 +108,7 @@ async function confirm() {
   window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
   window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
   window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8'));
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
       : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
@@ -116,10 +117,14 @@ async function confirm() {
   assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
   const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
   const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
+  let znapzend = false, pools = [];
   const inventory = () => {
     const tank = dataset('tank');
+    if (znapzend) tank['org.znapzend:enabled'] = 'on';
     tank.child['tank/new'] = dataset('tank/new');
-    return {op: 'getAll', data: {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}}};
+    const data = {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}};
+    for (const name of pools) Object.assign(data.pools, {[name]: {Pool: name, Health: 'ONLINE', Snapshots: 0}}), data.devices[name] = '', data.datasets[name] = dataset(name);
+    return {op: 'getAll', data};
   };
   const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
   const redraw = () => { window.requestRefresh(); answer(); };
@@ -358,6 +363,84 @@ async function confirm() {
   await settle();
   assert.deepEqual(posts, [], 'a refused review starts nothing');
   window.Swal2.close();
+
+  // Icons that act as buttons take Enter and Space; the fold icon says whether its dataset is folded.
+  window.document.body.insertAdjacentHTML('afterbegin', page.match(/<div id="zfs-master-title"[\s\S]*?\n<\/div>/)[0]);
+  // jsdom here runs no onclick attributes (runScripts outside-only); a browser runs the clicked one.
+  window.document.addEventListener('click', event => { const run = event.target.getAttribute('onclick'); if (run) window.eval(run); });
+  const keyEvent = (element, type, name) => element.dispatchEvent(new window.KeyboardEvent(type, {key: name, bubbles: true, cancelable: true}));
+  // A key press is a keydown then a keyup; says whether the keydown went through.
+  const key = (element, name) => { const passed = keyEvent(element, 'keydown', name); keyEvent(element, 'keyup', name); return passed; };
+  const fold = () => window.document.querySelector('i[name="tank"]');
+  assert.equal(key(fold(), 'a'), true, 'other keys pass through');
+  assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
+  assert.equal(key(fold(), 'Enter'), false, 'Enter is taken by the icon');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square')], ['false', true], 'Enter folds the dataset');
+  redraw();
+  assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
+  assert.deepEqual([keyEvent(fold(), 'keydown', ' '), fold().getAttribute('aria-expanded')], [false, 'false'], 'Space down is taken, so the page does not scroll, and presses nothing yet');
+  keyEvent(fold(), 'keyup', ' ');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-minus-square')], ['true', true], 'Space unfolds it as the key comes up');
+  // A redraw replaces the rows, so keyboard focus goes back to the same control; focus elsewhere stays put.
+  fold().focus();
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'focus on a fold icon survives a redraw');
+  const actions = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('button');
+  actions().focus();
+  redraw();
+  assert.equal(window.document.activeElement, actions(), 'and on an Actions button');
+  const createButton = () => window.document.querySelector('#zfs_master button[onclick^="createDataset"]');
+  createButton().focus();
+  redraw();
+  assert.equal(window.document.activeElement, createButton(), 'and on a pool row\'s button');
+  // A pool row's id is never another pool's cell id, whatever the names: here a cell comes first that would end like the row.
+  pools = ['pool-row-tank', 'tank-attribute-pool'];
+  redraw();
+  const lastCreate = () => window.document.querySelector('#zfs_master button[onclick="createDataset(decodeURIComponent(\'tank-attribute-pool\'));"]');
+  lastCreate().focus();
+  redraw();
+  assert.equal(window.document.activeElement, lastCreate(), 'a pool row keeps focus when its name would end another pool\'s cell id');
+  pools = [];
+  redraw();
+  // The same control, not the same place: an icon new before it doesn't take the focus, and a control that's gone takes it nowhere.
+  fold().focus();
+  znapzend = true;
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'a znapzend icon added before the fold icon leaves focus on the fold icon');
+  window.document.getElementById(window.datasetRowId('tank')).querySelector('a[aria-label="znapzend plan of tank"]').focus();
+  znapzend = false;
+  redraw();
+  assert.equal(window.document.activeElement.closest('#zfs_master'), null, 'focus on an icon that is gone after a redraw goes nowhere in the table');
+  details().focus();
+  redraw();
+  assert.deepEqual([window.document.activeElement === details(), Boolean(tip())], [true, true], 'and on a details icon, whose details come back with it');
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  redraw();
+  assert.deepEqual([window.document.activeElement === details(), tip()], [true, null], 'details dismissed with Escape stay dismissed across a redraw');
+  details().blur();
+  const refresh = () => window.document.getElementById('zfsm-refresh').parentNode;
+  assert.deepEqual([refresh().getAttribute('role'), refresh().tabIndex], ['button', 0], 'Refresh takes keyboard focus as a button');
+  refresh().focus();
+  redraw();
+  assert.equal(window.document.activeElement, refresh(), 'focus outside the table stays where it is');
+  let reads = requests.length;
+  key(refresh(), 'Enter');
+  assert.equal(requests.length, reads + 1, 'Enter on Refresh reads the inventory again');
+  answer();
+  // Unraid's non-tabbed view moves the bar into its title line, and the buttons must still take the keys there.
+  const bar = window.document.getElementById('zfs-master-title');
+  bar.insertAdjacentHTML('beforebegin', '<div class="title"><span class="left">Main</span></div>');
+  assert.equal(window.zfsmMoveStatusIntoTitle(bar), true, 'the bar moved into the title line');
+  reads = requests.length;
+  key(refresh(), ' ');
+  assert.equal(requests.length, reads + 1, 'Space on Refresh reads the inventory again from the title line');
+  answer();
+  const outside = window.document.createElement('span');
+  outside.setAttribute('role', 'button');
+  let outsidePressed = 0;
+  outside.onclick = () => { outsidePressed++; };
+  window.document.body.append(outside);
+  assert.deepEqual([key(outside, 'Enter'), outsidePressed], [true, 0], 'a button outside the plugin is not ours to press');
 
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();
