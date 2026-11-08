@@ -344,6 +344,25 @@ switch ($check) {
 		if (strpos($html, 'id="zfsm-hide-auto"') === false) { fwrite(STDERR, "snapshot popup does not offer to hide its Sanoid snapshot\n"); exit(1); }
 		break;
 
+	case 'snapshot_popup_stuck_zfs':
+	case 'snapshot_popup_stubborn_zfs':
+	case 'snapshot_popup_held_zfs':
+		// A zfs that never answers must not hold the popup open: its reads share the limit, and running out reads as a failed read.
+		// The stubborn one also ignores TERM, so it ends by KILL.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');
+		$GLOBALS['zfsm_popup_read_seconds'] = 2;
+		putenv('ZFSM_TEST_LIST_HANG='.(array('snapshot_popup_stubborn_zfs' => 'stubborn', 'snapshot_popup_held_zfs' => 'held')[$check] ?? '1'));
+		$began = microtime(true);
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMAdminDatasetSnaps.php';
+		$html = ob_get_clean();
+		$took = microtime(true) - $began;
+		if ($took > 10) { fwrite(STDERR, sprintf("snapshot popup with a stuck zfs took %.1f s\n", $took)); exit(1); }
+		if (strpos($html, 'Listing the snapshots took too long') === false || strpos($html, 'Snapshots could not be listed') === false) { fwrite(STDERR, "snapshot popup with a stuck zfs did not say why nothing is listed\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-children"') !== false) { fwrite(STDERR, "snapshot popup offered children it could not read\n"); exit(1); }
+		break;
+
 	case 'snapshot_popup_failed':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank', 'zdataset' => 'tank/data');

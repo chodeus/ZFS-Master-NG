@@ -91,6 +91,12 @@ try {
 			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
+		case 'previewconvert':
+			$directory = zfsmPostString('directory');
+			$pool = zfsmPostString('pool');
+			echo json_encode(zfsmWithReadLimit(function() use ($directory, $pool) { return zfsmConvertPreview($directory, $pool); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
 		case 'diffsnapshot':
 			$snapshot = zfsmPostString('snapshot');
 			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmSnapshotDiff($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -146,7 +152,7 @@ try {
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
-			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool')), 'ZFS Directory Convert', 'Directory converted successfully', 'Unable to convert directory', true);
+			zfsmReturnAnswer($blocked ?? convertDirectory($directory, zfsmPostString('pool'), zfsmPostString('clone', '1') !== '0'), 'ZFS Directory Convert', 'Directory converted successfully', 'Unable to convert directory', true);
 			break;
 
 		case 'deletedirectory':

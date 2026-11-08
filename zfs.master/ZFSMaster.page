@@ -989,17 +989,24 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   function convertDirectory(directory, pool) {
-	Swal2.fire({
-		  title: '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>',
+	const title = '<strong> Convert '+escapeHtml(directory)+' to Dataset</strong>';
+	// The review says first whether the files are cloned, and what a first clone turns on (zfsmConvertPreview).
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewconvert', directory: directory, pool: pool}, function(preview) {
+	  if (preview.can_proceed !== true) {
+		  Swal2.fire({title: title, icon: 'error', html: escapeHtml(preview.error || 'The convert cannot start.')});
+		  return;
+	  }
+	  Swal2.fire({
+		  title: title,
 		  icon: 'warning',
-		  html: 'The folder is renamed to &lt;name&gt;_zfsm_tmp_&lt;date&gt;, a dataset is created in its place, and the files are copied into it. <b>The renamed folder is removed only after the copy is checked, so no data is lost.</b> On an unencrypted dataset in a pool with block cloning (OpenZFS 2.2 and later), the files are cloned, which usually needs almost no extra space. Otherwise, and for any file that cannot be cloned, the pool needs free space for a second copy while this runs.',
+		  html: zfsmConvertHtml(preview),
 		  showConfirmButton: true,
 		  confirmButtonText: 'Convert',
 		  showCancelButton: true
 	  }).then((result) => {
 		  if (result.isConfirmed) {
 			  // The copy is over once this request returns, whether or not its stop message arrived.
-			  $.post('<?=$urlzmadmin?>',{cmd: 'convertdirectory', directory: directory, pool: pool}, function(data) {
+			  $.post('<?=$urlzmadmin?>',{cmd: 'convertdirectory', directory: directory, pool: pool, clone: preview.clones ? 1 : 0}, function(data) {
 				Swal2.fire({
 					title: 'Convert Result',
 					icon: 'info',
@@ -1008,6 +1015,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			  }).always(zfsmClearCopyProgress);
 		  }
 	  });
+	});
   }
 
   function deleteDirectory(directory) {

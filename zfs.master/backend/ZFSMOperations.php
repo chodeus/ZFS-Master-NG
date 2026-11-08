@@ -9,6 +9,7 @@ require_once __ROOT__."/include/ZFSMImpact.php";
 require_once __ROOT__."/include/ZFSMSnapshotFiles.php";
 require_once __ROOT__."/include/ZFSMAlerts.php";
 require_once __ROOT__."/include/ZFSMRewrite.php";
+require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
@@ -430,14 +431,7 @@ function getZFSPools($strict = false) {
 // HTTP inventory must not depend on a running daemon or Unraid's publish flag.
 // The optional pool limits the second, progressive snapshot-loading phase.
 function zfsmReadInventory($config, $include_snapshots = true, $pool = '') {
-	$previous_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
-	$GLOBALS['zfsm_inventory_deadline'] = microtime(true) + 45;
-	try {
-		return zfsmCollectInventory($config, $include_snapshots, $pool);
-	} finally {
-		if ($previous_deadline === null) unset($GLOBALS['zfsm_inventory_deadline']);
-		else $GLOBALS['zfsm_inventory_deadline'] = $previous_deadline;
-	}
+	return zfsmWithDeadline(45, function() use ($config, $include_snapshots, $pool) { return zfsmCollectInventory($config, $include_snapshots, $pool); });
 }
 
 function zfsmCollectInventory($config, $include_snapshots, $pool) {
@@ -816,14 +810,36 @@ function zfsmConvertUndo($dataset_name, $temp, $path) {
 	return 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required';
 }
 
-// Whether files can be cloned into $dataset: OpenZFS 2.2+ with cloning switched on and the pool's feature enabled.
-// Never when encrypted: each encrypted dataset has its own key, and ZFS refuses to clone between keys.
-function zfsmBlockCloning($dataset) {
+// Why files can't be cloned into $dataset: '' when they can, null when that can't be read. OpenZFS 2.2+ with cloning
+// switched on and the pool's feature enabled; never encrypted, as each encrypted dataset has its own key and ZFS won't clone between keys.
+function zfsmCloneBlocker($dataset) {
 	$pool = explode('/', $dataset, 2)[0];
-	if (trim((string)@file_get_contents($GLOBALS['zfsm_bclone_param'] ?? '/sys/module/zfs/parameters/zfs_bclone_enabled')) !== '1') return false;
-	$feature = runProcess('zpool', array('get', '-H', '-o', 'value', 'feature@block_cloning', $pool));
-	if (($feature['code'] ?? 1) !== 0 || !in_array($feature['output'], array('enabled', 'active'), true)) return false;
-	return getDatasetProperty($pool, $dataset, 'encryption') === 'off';
+	$switch = @file_get_contents($GLOBALS['zfsm_bclone_param'] ?? '/sys/module/zfs/parameters/zfs_bclone_enabled');
+	if ($switch === false) return 'no feature';
+	if (trim($switch) !== '1') return 'switched off';
+	$feature = zfsmPoolFeature($pool, 'block_cloning');
+	if ($feature === null) return null;
+	if (!in_array($feature, array('enabled', 'active'), true)) return 'no feature';
+	$encryption = getDatasetProperty($pool, $dataset, 'encryption');
+	if ($encryption === null) return null;
+	return $encryption === 'off' ? '' : 'encrypted';
+}
+
+function zfsmBlockCloning($dataset) {
+	return zfsmCloneBlocker($dataset) === '';
+}
+
+// What the Convert dialog says first: whether the files will be cloned, and the first Unraid that still imports the pool read-write after.
+function zfsmConvertPreview($directory, $pool) {
+	$target = zfsmConvertTarget($directory, $pool);
+	if (!is_array($target)) return array('can_proceed' => false, 'error' => $target);
+	$unread = array('can_proceed' => false, 'error' => 'Whether the files can be cloned could not be read');
+	// The dataset doesn't exist yet; it takes its parent's encryption, which decides whether its files can be cloned.
+	$blocker = zfsmCloneBlocker(substr($target[1], 0, strrpos($target[1], '/')));
+	if ($blocker === null) return $unread;
+	$turns_on = $blocker === '' ? zfsmCloneTurnsOn($pool) : '';
+	if ($turns_on === null) return $unread;
+	return array('can_proceed' => true, 'clones' => $blocker === '', 'blocker' => $blocker, 'turns_on' => $turns_on);
 }
 
 // Clones the files into the dataset, sharing their blocks; rsync then copies whatever this missed, so a failure here only costs space.
@@ -834,12 +850,13 @@ function zfsmCloneTree($from, $to, $dataset_name) {
 }
 
 // Copies the moved-aside directory into the dataset, verifies the copy, then removes the original; '' when all of it worked.
-function zfsmConvertCopy($temp, $mountpoint, $dataset_name) {
+// $clone is the review's answer: the convert never clones where its review said the files would be copied.
+function zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone = true) {
 	$retained = 'original data remains at '.$temp.' and the partial dataset was retained for inspection';
 	$rsync_args = zfsmRsyncArgs();
 	if ($rsync_args === null) return 'Unable to run rsync; '.$retained;
 	zfsmCopyProgress('start_directory_copy', array('dataset' => $dataset_name));
-	if (zfsmBlockCloning($dataset_name)) zfsmCloneTree($temp, $mountpoint, $dataset_name);
+	if ($clone && zfsmBlockCloning($dataset_name)) zfsmCloneTree($temp, $mountpoint, $dataset_name);
 	$exit_code = zfsmCopyWithProgress($rsync_args, $temp, $mountpoint, $dataset_name);
 	zfsmCopyProgress('stop_directory_copy', array('dataset' => $dataset_name));
 	if ($exit_code !== 0) return 'rsync failed with exit code '.$exit_code.'; '.$retained;
@@ -850,7 +867,7 @@ function zfsmConvertCopy($temp, $mountpoint, $dataset_name) {
 	return '';
 }
 
-function convertDirectory($directory, $pool) {
+function convertDirectory($directory, $pool, $clone = true) {
 	$target = zfsmConvertTarget($directory, $pool);
 	if (is_string($target)) return zfsmFailure($directory, $target);
 	list($path, $dataset_name) = $target;
@@ -864,7 +881,7 @@ function convertDirectory($directory, $pool) {
 	}
 	$mountpoint = getDatasetProperty($pool, $dataset_name, 'mountpoint');
 	if (!is_string($mountpoint) || !is_dir($mountpoint)) return zfsmFailure($directory, zfsmConvertUndo($dataset_name, $temp, $path));
-	$copy = zfsmConvertCopy($temp, $mountpoint, $dataset_name);
+	$copy = zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone);
 	if ($copy !== '') return zfsmFailure($directory, $copy);
 	$ret = buildArrayRet();
 	$ret['succeeded'][$directory] = 0;
