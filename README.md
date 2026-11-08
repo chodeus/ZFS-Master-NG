@@ -16,7 +16,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Encryption** — create encrypted datasets, lock and unlock them
 - **Directories** — list, move or delete folders, or convert one to a dataset (cloned instead of copied where it can)
 - **Rewrite Files** — apply new compression or checksum settings to existing data (Unraid 7.3+)
-- **Alerts** — optional notifications for pool problems and datasets with no recent snapshot
+- **Alerts** — optional notifications for pool problems and datasets whose newest snapshot is too old
 - **ZnapZend** — optionally show each dataset's backup plans
 - **Light** — no background daemon; reads ZFS only while the Main tab is open, or for alerts you turn on
 - **Your view** — collapse datasets, or hide some with an exclusion pattern
