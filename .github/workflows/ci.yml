@@ -134,6 +134,9 @@ jobs:
       - name: Row details fit phone and desktop windows in a real browser
         run: node tests/tip_render_test.cjs .webgui
 
+      - name: Row icons sit level with their names in a real browser
+        run: node tests/row_icon_render_test.cjs .webgui
+
       - name: Page dialogs on this version's jQuery
         working-directory: tests
         run: |
