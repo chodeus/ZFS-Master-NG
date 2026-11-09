@@ -92,7 +92,7 @@ document.fonts.ready.then(() => {
       checked++;
     }
     // Every badge took the fold box's 4 px except the fold box itself, so clone, lock and the name touched.
-    for (const [between, gap] of row.gaps) assert.ok(gap >= 2, `${row.name}: ${between} are ${gap.toFixed(2)} px apart`);
+    for (const [between, gap] of row.gaps) assert.ok(gap >= 3.5, `${row.name}: ${between} are ${gap.toFixed(2)} px apart`);
   }
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
