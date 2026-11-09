@@ -28,6 +28,7 @@ function loadConfig($config) {
 		'snap_utc' => zfsmSettingInt($general, 'snap_utc', 0),
 		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
 		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
+		'size_units' => ($general['size_units'] ?? '') === 'decimal' ? 'decimal' : 'binary',
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }
@@ -53,7 +54,36 @@ function fromBytesToString($bytes) {
 
    	$bytes /= pow(1024, $pow);
 
-   return round($bytes, 2) . ' ' . $units[$pow]; 
+   return round($bytes, 2) . ' ' . $units[$pow];
+}
+
+// Sizes in the units Settings picked: ZFS's (as zpool prints them) or Unraid's my_scale at base 1000; frontend/ZFSMSize.js mirrors it.
+function zfsmSize($bytes, $units, $display = array(), $decimals = null) {
+	if ($units !== 'decimal') return fromBytesToString($bytes);
+	$prefixes = array('', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y');
+	$scale = (int)($display['scale'] ?? -1);
+	$number = (string)($display['number'] ?? '.,');
+	$value = is_numeric($bytes) ? max((float)$bytes, 0) : 0;
+	if ($scale == 0 && ($decimals === null || $decimals < 0)) return zfsmNumberFormat($value, 0, $number);
+	$base = $value ? (int)floor(log($value, 1000)) : 0;
+	if ($scale > 0 && $base > $scale) $base = $scale;
+	$base = min($base, count($prefixes) - 1);
+	$value /= pow(1000, $base);
+	$places = zfsmUnraidDecimals($value, $decimals);
+	if ($scale < 0 && round($value, -1) == 1000) { $value = 1; $base++; }
+	return zfsmNumberFormat($value, $places, $number).' '.$prefixes[$base].'B';
+}
+
+// my_scale's decimals: none from 100 up, one from 10, else two unless whole; a negative count means at most that many.
+function zfsmUnraidDecimals($value, $decimals) {
+	if ($decimals === null) return $value >= 100 ? 0 : ($value >= 10 ? 1 : ((int)round($value * 100) % 100 === 0 ? 0 : 2));
+	if ($decimals < 0) return $value >= 100 || (int)round($value * 10) % 10 === 0 ? 0 : -$decimals;
+	return $decimals;
+}
+
+// number_format with Unraid's separators: the thousands one only from 10,000 up, as my_scale passes it.
+function zfsmNumberFormat($value, $decimals, $number) {
+	return number_format($value, $decimals, substr($number, 0, 1), $value > 9999 ? substr($number, 1, 1) : '');
 }
 	  
 function implodeWithKeys($glue, $array, $symbol = ': ') {

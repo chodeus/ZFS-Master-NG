@@ -28,15 +28,21 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 <style type="text/css">	
   /* Every rule is scoped to this plugin's own elements; the id outranks Unraid's table and button rules without !important. */
-  #zfs_master.zfs_table td span{margin-left:10px}
-  #zfs_master.zfs_table tr>td{width:auto}
-  #zfs_master.zfs_table tr>td+td+td{text-align:left}
-  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td{text-align:left}
-  #zfs_master.zfs_table tr>td+td+td+td+td+td+td+td+td{text-align:center}
-  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
-  #zfs_master.zfs_table .zfsm-snap-browse{display:inline-block;width:1.25em;margin-left:0;vertical-align:middle}
-  /* zfs_bar_button floats as a block elsewhere; here it would push the camera and count down */
-  #zfs_master.zfs_table .zfsm-snap-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
+  /* Size, Used and Free keep Unraid's own disk_status cells (7% each, right-aligned), so they line up with its pool tables. */
+  #zfs_master.zfs_table{table-layout:fixed}
+  #zfs_master.zfs_table thead td:nth-child(1){width:8%}
+  #zfs_master.zfs_table thead td:nth-child(2),#zfs_master.zfs_table thead td:nth-child(6){width:7%}
+  #zfs_master.zfs_table thead td:nth-child(3){width:29%}
+  #zfs_master.zfs_table thead td:nth-child(4){width:20%}
+  #zfs_master.zfs_table thead td:nth-child(5){width:8%}
+  /* Dataset rows join the first two cells, so alignment goes by class, not by position. */
+  #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
+  #zfs_master.zfs_table thead td:nth-child(n+5),#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{text-align:right}
+  #zfs_master.zfs_table .zfsm-name .zfs_compact{float:right}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;margin-left:10px;text-align:left}
+  /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */
+  #zfs_master.zfs_table .zfsm-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
+  #zfs_master.zfs_table .zfsm-row-progress{display:inline-block;width:calc(100% - 2em);vertical-align:middle}
   #zfs_master.zfs_table .fa-plus-square,#zfs_master.zfs_table .fa-minus-square{font-size:calc(1em + 1px);margin-right:4px}
   /* A row's details show from the end of the page instead (zfsmShowTip), where nothing cuts them off. */
   #zfs_master a.info:hover>span{display:none}
@@ -92,18 +98,18 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 </div>
 <!-- Unraid 7.2+ scrolls a TableContainer sideways on phones; older versions ignore the class. -->
 <div id="zfs_master_div" class="TableContainer">
-	<table id="zfs_master" class='unraid zfs_table disk_status legacy wide'>
+	<table id="zfs_master" class='unraid zfs_table disk_status wide'>
 	<thead>
 		<tr>
 		<td>Pool</td>
 		<td>Health</td>
 		<td>Option/Dataset Name</td>
-		<td>Size</td>
 		<td>Mount Point</td>
 		<td>Refer</td>
+		<td>Snapshots</td>
+		<td>Size</td>
 		<td>Used</td>
 		<td>Free</td>
-		<td>Snapshots</td>
 		</tr>
 	</thead>
 	<tbody id="zfs_master_body">
@@ -118,6 +124,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 > ZPool Information Tool.
 :end
 
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMSize.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
@@ -136,10 +143,6 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function zfsmStatus(message, error = false) {
 	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
 	$('#zfsm-loading td').text(message);
-  }
-
-  if (zfsm_config['version'].localeCompare('6.12.13', undefined, { numeric: true, sensitivity: 'base' }) == 1) {
-	$('#zfs_master').removeClass('disk_status legacy');
   }
 
   function zfsmHandleMessage(data) {
@@ -185,7 +188,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function zfsmShowCopyProgress(dataset, html) {
 	if (html === null) delete zfsm_copy_progress[dataset];
 	else zfsm_copy_progress[dataset] = html;
-	$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(html ?? '');
+	$(document.getElementById(datasetRowId(dataset))).find('.zfsm-row-progress').html(html ?? '');
   }
 
   // A running rewrite reports every 2 seconds; one silent for 12 has stopped, even if its stop message was lost.
@@ -198,7 +201,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   function zfsmRestoreCopyProgress() {
 	Object.keys(zfsm_copy_progress).forEach(function(dataset) {
-		$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(zfsm_copy_progress[dataset]);
+		$(document.getElementById(datasetRowId(dataset))).find('.zfsm-row-progress').html(zfsm_copy_progress[dataset]);
 	});
   }
 

@@ -4,7 +4,8 @@ const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(process.argv[2] || path.join(__dirname, '../zfs.master'));
 const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
-const frontend = fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8');
+// ZFSMSize.js first, as ZFSMaster.page loads it: the rows format their sizes with it.
+const frontend = ['ZFSMSize.js', 'ZFSMFrontEnd.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
 const inventory = fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8');
 const keys = fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8');
 const mainScript = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]

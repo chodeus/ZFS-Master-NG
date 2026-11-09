@@ -39,7 +39,7 @@ function zfsmRewriteHtml(preview) {
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	const warn = (text, id) => '<p'+(id ? ' id="'+id+'"' : '')+' style="color:#e22828;margin:.5em 0">'+text+'</p>';
 	if (preview.error) return warn(String(preview.error).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char])));
-	const held = preview.snapshot_space === null || preview.snapshot_space === undefined ? 'an amount that could not be read' : zfsmImpactSize(preview.snapshot_space);
+	const held = preview.snapshot_space === null || preview.snapshot_space === undefined ? 'an amount that could not be read' : zfsmSize(preview.snapshot_space);
 	let html = say('This writes every file in the dataset again, in place, so a changed compression, checksum, dedup or copies setting applies to the data already there. A changed record size is not applied.');
 	html += warn('Snapshots and clones keep the old blocks, so the pool can use up to the size of these files again until those snapshots are deleted. This dataset\'s snapshots hold '+held+' now.');
 	// -P is the user's choice: its first use turns the pool's feature on for good (zfsmRewriteFeature).
@@ -64,16 +64,8 @@ function zfsmRewriteSync(root) {
 
 function zfsmImpactSummary(preview, verb) {
 	if (!preview.objects || !preview.objects.length) return '';
-	const frees = preview.reclaim === null || preview.reclaim === undefined ? '' : ' and frees about '+zfsmImpactSize(preview.reclaim);
+	const frees = preview.reclaim === null || preview.reclaim === undefined ? '' : ' and frees about '+zfsmSize(preview.reclaim);
 	return 'This permanently '+verb+' '+preview.objects.length+' item(s)'+frees+':';
-}
-
-function zfsmImpactSize(bytes) {
-	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
-	let value = Number(bytes) || 0;
-	let unit = 0;
-	while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit++; }
-	return (unit ? value.toFixed(2) : value)+' '+units[unit];
 }
 
 // The Convert dialog: what happens to the folder, whether the files are cloned, and what a first clone turns on (zfsmConvertPreview).

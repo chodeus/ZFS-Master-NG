@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const context = vm.createContext({});
+vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMSize.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMImpact.js'), 'utf8'), context);
 const html = (preview, heading) => context.zfsmImpactHtml(preview, heading);
 
@@ -26,12 +27,12 @@ const many = html({objects: Array.from({length: 60}, (_, n) => `tank@${n}`), clo
 assert.equal((many.match(/<li/g) || []).length, 51, 'a long list is capped');
 assert.match(many, /and 10 more/);
 
-assert.equal(context.zfsmImpactSize(512), '512 B');
-assert.equal(context.zfsmImpactSize(2048), '2.00 KiB');
-assert.equal(context.zfsmImpactSize(0), '0 B');
-assert.equal(context.zfsmImpactSize(1024 ** 5 * 3), '3.00 PiB');
-
-assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroys'), /destroys 1 item\(s\) and frees about 2\.00 KiB:/);
+// Review sizes follow the Size Units setting: ZFS's by default, Unraid's when picked.
+assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroys'), /destroys 1 item\(s\) and frees about 2 KiB:/);
+context.zfsm_config = {size_units: 'decimal'};
+context.zfsm_display = {number: '.,', scale: -1};
+assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroys'), /frees about 2\.05 KB:/, 'in Unraid\'s units when Settings picks them');
+delete context.zfsm_config;
 assert.doesNotMatch(context.zfsmImpactSummary({objects: ['a'], reclaim: null}, 'destroys'), /frees/, 'an unknown size is left out, not shown as 0');
 assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 0}, 'destroys'), /frees about 0 B/, 'a real zero is shown');
 assert.equal(context.zfsmImpactSummary({objects: [], reclaim: 0}, 'destroys'), '');

@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const frontend = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMFrontEnd.js'), 'utf8');
+// ZFSMSize.js first, as ZFSMaster.page loads it: the rows format their sizes with it.
+const frontend = ['ZFSMSize.js', 'ZFSMFrontEnd.js'].map(file => fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend', file), 'utf8')).join('\n');
 
 const context = vm.createContext({console, localStorage: {getItem: () => null, setItem() {}, removeItem() {}}, document: {}, window: {}, Date, encodeURIComponent, decodeURIComponent});
 vm.runInContext(frontend, context);
@@ -13,7 +14,8 @@ const day = 86400;
 const ds = extra => Object.assign({name: 'tank/data', type: 'filesystem', creation: now, used: 1024, available: 3072, referenced: 512, mountpoint: '/mnt/tank/data', keystatus: 'none', child: {}, snapshots: [], directories: []}, extra);
 const row = (dataset, display = {text: 1}) => context.generateDatasetRow('tank', dataset, 'zdataset-tank', true, 0, 30, display);
 const cells = html => [...html.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map(match => match[1]);
-const nameCell = dataset => cells(row(dataset))[2];
+// A dataset row: lead (browse and progress, two columns wide), name with Actions, mount, refer, snapshots, size, used, free.
+const nameCell = dataset => cells(row(dataset))[1];
 
 // Badges after the name.
 assert.match(nameCell(ds({keystatus: 'available'})), /fa-unlock/, 'an unlocked key shows an open lock');
@@ -53,10 +55,10 @@ for (const [text, usedBar, freeBar] of [[0, false, false], [1, true, true], [10,
 }
 // Pool sizes come from zpool's short form and read like dataset sizes.
 const poolCells = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '2.78T', Used: '1.12T', Free: '1.5P', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>');
-assert.deepEqual([poolCells[3], poolCells[6], poolCells[7]], ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'pool Size, Used and Free');
-assert.equal(cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1E', Used: '1', Free: '1', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>')[3], '1 EiB', 'an exabyte pool');
+assert.deepEqual([poolCells[6], poolCells[7], poolCells[8]], ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'pool Size, Used and Free, last in the row');
+assert.equal(cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1E', Used: '1', Free: '1', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>')[6], '1 EiB', 'an exabyte pool');
 const faulted = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'UNAVAIL', Size: '-', Used: '-', Free: '-', Snapshots: 0}, 'sda', true, {text: 0})+'</tr>');
-assert.deepEqual([faulted[3], faulted[6], faulted[7]], ['-', '-', '-'], 'a faulted pool keeps the - zpool prints');
+assert.deepEqual([faulted[6], faulted[7], faulted[8]], ['-', '-', '-'], 'a faulted pool keeps the - zpool prints');
 const [usedBar, freeBar] = cells(row(ds(), {text: 1})).slice(6, 8);
 assert.match(usedBar, /width:25%/, 'Used is a quarter of the space');
 assert.match(freeBar, /width:75%/, 'Free is the rest');
@@ -78,5 +80,27 @@ const progress = context.parseDirectoryCopy('  1,234,567  45%   12.3MB/s    0:01
 assert.match(progress, /width:45%/, 'the copy bar follows the percentage');
 assert.match(progress, / - 12\.3MB\/s - 0:01:02</, 'speed and time are shown');
 assert.equal(context.parseDirectoryCopy('sending incremental file list'), '', 'a line without progress shows nothing');
+
+// Actions sits at the end of the name cell, on dataset and folder rows alike.
+assert.match(nameCell(ds()), /data<button type="button" id="[^"]+" onclick="addDatasetContext\([^"]+\);" class="zfs_compact">Actions<\/button>$/, 'a dataset\'s Actions ends its name cell');
+const folder = cells(context.generateDatasetDirectoryRows('tank', ds({directories: ['/mnt/tank/data/x']}), 'zdataset-tank', true, 0));
+assert.equal(folder.length, 8, 'a folder row has the same cells as a dataset row');
+assert.match(folder[1], /x<button type="button" id="[^"]+" onclick="addDirectoryContext\([^"]+\);" class="zfs_compact">Actions<\/button>$/, 'a folder\'s Actions ends its name cell');
+// Used and Free carry Unraid's own markup (nchan/device_list), so its theme draws them exactly as in its pool tables.
+assert.match(cells(row(ds(), {text: 1}))[6], /^<div class="usage-disk"><span style="width:25%" class="[a-z-]*"><\/span><span>1 KiB<\/span><\/div>$/, 'Used is Unraid\'s usage-disk markup');
+
+// A pool shows its usable space, as Unraid does: the root dataset's used and available; zpool's raw figures only if that is unread.
+const pool = {Pool: 'tank', Health: 'ONLINE', Size: '2.78T', Used: '1.12T', Free: '1.5P', Snapshots: 0};
+const space = root => cells('<tr>'+context.generatePoolTableRows(pool, 'sda', true, {text: 0}, root)+'</tr>').slice(6, 9);
+assert.deepEqual(space({used: 3 * 1024 ** 3, available: 9 * 1024 ** 3}), ['12 GiB', '3 GiB', '9 GiB'], 'usable size is used plus available');
+assert.deepEqual(space({_error: 'zfs failed'}), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'an unread root dataset falls back to zpool');
+assert.deepEqual(space(undefined), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'and so does a missing one');
+// Settings' Size Units: Unraid's units on the Main tab, with its decimals and number format (tests/size_format_test.cjs).
+context.zfsm_config = {size_units: 'decimal'};
+context.zfsm_display = {number: ',.', scale: -1};
+assert.deepEqual(space({used: 3027000000, available: 9970000000}), ['13 GB', '3,03 GB', '9,97 GB'], 'a pool in Unraid\'s units, as its Boot Pool table shows the same space');
+assert.deepEqual([cells(row(ds({referenced: 225000000000, used: 225000000000, available: 616000000000}), {text: 0}))[3], cells(row(ds({used: 225000000000, available: 616000000000}), {text: 0}))[6]], ['225 GB', '225 GB'], 'a dataset\'s Refer and Used too');
+delete context.zfsm_config;
+delete context.zfsm_display;
 
 console.log('dataset and pool row content tests passed');

@@ -31,6 +31,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/impact_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/snapshot_files_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/size_format_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
 for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset; do

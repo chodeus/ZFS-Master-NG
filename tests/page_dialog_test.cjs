@@ -23,6 +23,7 @@ const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localho
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMSize.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
@@ -328,7 +329,7 @@ async function confirm() {
   assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
   const review = window.document.querySelector('.swal2-html-container').textContent;
   assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
-  assert.match(review, /snapshots hold 1\.00 GiB now/, 'the review shows the snapshot space');
+  assert.match(review, /snapshots hold 1 GiB now/, 'the review shows the snapshot space');
   assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true, false], 'with the feature only enabled, -P starts off and the full-send warning shows');
   box().checked = true;
   box().dispatchEvent(new window.Event('change'));

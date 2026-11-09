@@ -62,6 +62,17 @@ _(Load ZnapZend Data)_:
 > Leave it on **No** if you don't use ZnapZend.
 :end
 
+_(Size Units)_:
+: <select name="size_units">
+	<?=mk_option($zfsm_cfg['size_units'], "binary", _('ZFS (GiB, as zpool shows)'))?>
+	<?=mk_option($zfsm_cfg['size_units'], "decimal", _('Unraid (GB)'))?>
+  </select>
+
+:zc_settings_size_units_plug:
+> **ZFS** shows sizes as zpool and zfs print them, in powers of 1024 (GiB, TiB).
+> **Unraid** shows them as Unraid's Main page does, in powers of 1000 (GB, TB), so the same pool reads the same in both tables.
+:end
+
 
 _(Destructive Mode)_:
 : <select name="destructive_mode">
@@ -174,6 +185,7 @@ var zfsm_tips = <?=json_encode(array(
 	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
 	'lazy_load' => _('Show datasets first, then load snapshots one pool at a time.'),
 	'znapzend_data' => _('Show ZnapZend backup plans on each dataset.'),
+	'size_units' => _('Show sizes as ZFS prints them (GiB) or as Unraid does (GB).'),
 	'destructive_mode' => _('Show rename, edit and destroy, and allow deletes of folders and newer snapshots.'),
 	'exclusion' => _('Hide datasets and listed folders whose names match this pattern.'),
 	'directory_listing' => _('Datasets whose folders are listed on the Main tab, one per line.'),
