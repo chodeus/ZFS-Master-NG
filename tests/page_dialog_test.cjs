@@ -273,7 +273,8 @@ async function confirm() {
   assert.deepEqual({...window.zfsmTipPlace({left: 300, top: 100}, {width: 200, height: 300}, view)}, {left: 196, top: 116}, 'no room on the right: moved left');
   assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
   // The expand and collapse box is a pixel larger, with a gap before the name.
-  assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\);margin-right:4px\}/);
+  assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\)\}/);
+  assert.match(page, /#zfs_master\.zfs_table \.fa-append\{vertical-align:middle;margin-right:4px\}/, 'the box and every badge keep a gap before what follows');
   // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
   window.eval(handlers('function addDatasetContext(', 'function removeContext('));
   window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
