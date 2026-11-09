@@ -480,9 +480,9 @@ function generatePoolTableRows(zpool, devices, show_status, display, root) {
 // Size, Used and Free as Unraid shows a pool: its usable space, from the root dataset; zpool's raw figures when that couldn't be read.
 function poolSpaceCells(zpool, root, display) {
 	const pool = escapeHtml(zpool['Pool']);
-	const usable = !!root && !root['_error'] && Number.isFinite(Number(root['used'])) && Number.isFinite(Number(root['available']));
-	const used = usable ? Number(root['used']) : zpool['Used'];
-	const free = usable ? Number(root['available']) : zpool['Free'];
+	const usable = !!root && !root['_error'] && Number.isFinite(root['used']) && Number.isFinite(root['available']);
+	const used = usable ? root['used'] : zpool['Used'];
+	const free = usable ? root['available'] : zpool['Free'];
 	const text = (bytes, raw, decimals) => usable ? zfsmSize(bytes, decimals) : poolSizeText(raw, decimals);
 	const percent = 100-Math.round(calculateFreePercent(used, free));
 	return '<td id="'+pool+'-attribute-size">'+text(used + free, zpool['Size'], -1)+'</td>'

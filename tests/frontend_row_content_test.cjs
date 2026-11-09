@@ -95,6 +95,7 @@ const space = root => cells('<tr>'+context.generatePoolTableRows(pool, 'sda', tr
 assert.deepEqual(space({used: 3 * 1024 ** 3, available: 9 * 1024 ** 3}), ['12 GiB', '3 GiB', '9 GiB'], 'usable size is used plus available');
 assert.deepEqual(space({_error: 'zfs failed'}), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'an unread root dataset falls back to zpool');
 assert.deepEqual(space(undefined), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'and so does a missing one');
+assert.deepEqual(space({used: null, available: 9 * 1024 ** 3}), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'and one without a used figure, not 0 B');
 // Settings' Size Units: Unraid's units on the Main tab, with its decimals and number format (tests/size_format_test.cjs).
 context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: ',.', scale: -1};
