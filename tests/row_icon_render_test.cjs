@@ -8,7 +8,7 @@ const vm = require('node:vm');
 const {execFileSync} = require('node:child_process');
 const plugin = path.resolve(__dirname, '../zfs.master');
 const tree = path.resolve(process.argv[2]);
-const styles = [path.join(tree, 'emhttp/plugins/dynamix/styles'), path.join(tree, 'plugins/dynamix/styles')].find(fs.existsSync);
+const styles = [path.join(tree, 'emhttp/plugins/dynamix/styles'), path.join(tree, 'plugins/dynamix/styles')].find(dir => fs.existsSync(dir));
 assert.ok(styles, 'webGUI styles not found under ' + tree);
 const chrome = process.env.CHROME || ['google-chrome', 'chromium', 'chromium-browser', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(bin => {
   try { execFileSync(bin, ['--version'], {stdio: 'ignore'}); return true; } catch { return false; }
@@ -24,8 +24,16 @@ const rows = context.generateDatasetRow('cache', ds('cache', {child: {'cache/app
   + context.generateDatasetRow('cache', ds('cache/isos'), 'zdataset-cache', true, 0, 30, {text: 1})
   + context.generateDatasetDirectoryRows('cache', ds('cache/isos', {directories: ['/mnt/cache/isos/dir']}), 'zdataset-cache', true, 0);
 const pageCss = fs.readFileSync(path.join(plugin, 'ZFSMaster.page'), 'utf8').match(/<style type="text\/css">([\s\S]*?)<\/style>/)[1];
-// Unraid's sheets load their fonts from /webGui/styles, which a file:// page can't reach.
-const sheet = name => fs.readFileSync(path.join(styles, name), 'utf8').replace(/url\(['"]?\/webGui\/styles\/([^'")?]+)[^)]*\)/g, (m, file) => `url('file://${styles}/${file}')`);
+// Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
+const sheet = name => {
+  const file = path.join(styles, name);
+  return fs.readFileSync(file, 'utf8').replace(/url\((['"]?)([^'")]+)\1\)/g, (match, quote, ref) => {
+    if (/^(data|https?|file):/.test(ref)) return match;
+    const bare = ref.split(/[?#]/)[0];
+    const target = bare.startsWith('/webGui/styles/') ? path.join(styles, bare.slice('/webGui/styles/'.length)) : path.resolve(path.dirname(file), bare);
+    return `url('file://${target}')`;
+  });
+};
 const sheets = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.css', 'default-base.css', 'default-black.css', 'themes/black.css'].filter(name => fs.existsSync(path.join(styles, name))).map(sheet).join('\n');
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-icons-'));
@@ -65,18 +73,22 @@ document.fonts.ready.then(() => {
     const gaps = boxes.slice(1).map(([what, box], i) => [boxes[i][0]+' to '+what, box.left - boxes[i][1].right]);
     return {name: name.textContent.trim(), icons, gaps};
   });
-  const out = document.createElement('pre'); out.id = 'zfsm-result'; out.textContent = JSON.stringify(rows); document.documentElement.appendChild(out);
+  const out = document.createElement('pre'); out.id = 'zfsm-result'; out.textContent = JSON.stringify({fontAwesome: document.fonts.check('16px FontAwesome'), rows}); document.documentElement.appendChild(out);
 });
 </script></body></html>`);
   const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
     '--window-size=1280,800', '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
   const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
   assert.ok(match, 'the rows did not render');
-  for (const row of JSON.parse(match[1].replace(/&quot;/g, '"'))) {
+  const result = JSON.parse(match[1].replace(/&quot;/g, '"'));
+  // Without its font every icon is a fallback glyph, and the offsets measure that instead.
+  assert.ok(result.fontAwesome, 'FontAwesome did not load, so the icons could not be measured');
+  if (process.env.ZFSM_ICON_REPORT) for (const row of result.rows) console.log(row.name, row.icons.map(([icon, off]) => icon+' '+off.toFixed(2)).join(' '), '| gaps', row.gaps.map(([, gap]) => gap.toFixed(1)).join(' '));
+  for (const row of result.rows) {
     assert.ok(row.icons.length > 0, `${row.name}: no icons drawn`);
     for (const [icon, off] of row.icons) {
-      // Measured before the badges had Unraid's middle alignment: 1.0 to 1.8 px high; with it, 0.65 px at most.
-      assert.ok(Math.abs(off) <= 0.75, `${row.name}: ${icon} sits ${off.toFixed(2)} px off the name's middle`);
+      // The open lock draws its ink high even when centred (0.61 px macOS, 0.83 px Linux); without the fix badges sit 1.3 to 2.0 px off.
+      assert.ok(Math.abs(off) <= 1, `${row.name}: ${icon} sits ${off.toFixed(2)} px off the name's middle`);
       checked++;
     }
     // Every badge took the fold box's 4 px except the fold box itself, so clone, lock and the name touched.
