@@ -28,12 +28,14 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 <style type="text/css">	
   /* Every rule is scoped to this plugin's own elements; the id outranks Unraid's table and button rules without !important. */
-  /* Size, Used and Free keep Unraid's own disk_status cells (7% each, right-aligned), so they line up with its pool tables. */
-  #zfs_master.zfs_table{table-layout:fixed}
+  /* Size, Used and Free keep Unraid's own disk_status widths and layout, so they line up with its pool tables (tests/size_column_render_test.cjs). */
   #zfs_master.zfs_table thead td:nth-child(1){width:8%}
   #zfs_master.zfs_table thead td:nth-child(2),#zfs_master.zfs_table thead td:nth-child(6){width:7%}
-  #zfs_master.zfs_table thead td:nth-child(3){width:29%}
-  #zfs_master.zfs_table thead td:nth-child(4){width:20%}
+  /* 6.x lays the table out by every row: only the header sizes columns, and Name takes the slack, as Unraid's Identification does. */
+  #zfs_master.zfs_table thead td:nth-child(3){width:<?=$is_unraid7 ? '29%' : 'auto'?>}
+  #zfs_master.zfs_table tbody td{width:auto}
+  /* 7.x scales columns by header padding; this cell carries the 9px of Unraid's tenth cell. */
+  #zfs_master.zfs_table thead td:nth-child(4){width:20%;padding-right:10px}
   #zfs_master.zfs_table thead td:nth-child(5){width:8%}
   /* Dataset rows join the first two cells, so alignment goes by class, not by position. */
   #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
