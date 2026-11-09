@@ -129,7 +129,12 @@ async function confirm() {
   };
   const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
   const redraw = () => { window.requestRefresh(); answer(); };
-  const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
+  // Progress goes in its own slot, after the browse link that leads the row.
+  const progress = () => {
+    const lead = window.document.getElementById(window.datasetRowId('tank/new')).children[0];
+    assert.ok(lead.querySelector('a.zfsm-browse'), 'progress must not replace the row\'s browse link');
+    return lead.querySelector('.zfsm-row-progress').textContent;
+  };
   send('start_directory_copy');
   assert.equal(requests.length, 1, 'a copy must refresh the page so the new dataset gets its row');
   send('clone_directory');
