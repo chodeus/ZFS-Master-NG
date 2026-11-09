@@ -10,6 +10,13 @@ const manifest = fs.readFileSync(path.join(root, 'zfs.master.plg'), 'utf8');
 assert.doesNotMatch(manifest, /rc\.nginx/, 'Plugin install/remove must not restart Unraid services');
 const removepkg = manifest.split('<FILE').filter(block => /removepkg/.test(block));
 assert.ok(removepkg.length > 0 && removepkg.every(block => /Method="remove"/.test(block)), 'removepkg belongs only in the remove block');
+// The plugin icon on Unraid's Plugins page opens launch: our Settings page, which Unraid lists under Settings > Utilities.
+const launch = manifest.match(/<!ENTITY launch "([^"]+)">/)[1];
+const [section, pageName] = launch.split('/');
+assert.equal(section, 'Settings', 'the plugin icon opens a Settings page');
+const settingsPage = path.join(root, 'zfs.master', pageName+'.page');
+assert.ok(fs.existsSync(settingsPage), `launch names ${pageName}.page, which the plugin ships`);
+assert.match(fs.readFileSync(settingsPage, 'utf8'), /^Menu="Utilities"$/m, 'and that page sits in Settings > Utilities');
 
 // Builds in a copy: pkg_build.sh rewrites the manifest it runs beside.
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-package-'));
