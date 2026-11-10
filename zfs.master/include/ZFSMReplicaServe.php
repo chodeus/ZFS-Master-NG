@@ -94,10 +94,8 @@ function zfsmReplicaAreaHolds($area, $again = true) {
 
 // One of four receive slots per area, held until the receive ends; null when all are taken or none can be opened.
 function zfsmReplicaReceiveSlot($area) {
-	$test_dir = getenv('ZFSM_TEST_JOB_DIR');
-	$dir = $test_dir ? rtrim($test_dir, '/').'/replica-serve' : '/var/run/zfs.master.replica-serve';
 	for ($slot = 0; $slot < 4; $slot++) {
-		$lock = zfsmJobLock($dir.'/'.hash('sha256', $area).'.'.$slot.'.lock');
+		$lock = zfsmJobLock(zfsmJobDir('replica-serve').'/'.hash('sha256', $area).'.'.$slot.'.lock');
 		if ($lock) return $lock;
 	}
 	return null;

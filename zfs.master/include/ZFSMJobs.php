@@ -5,10 +5,13 @@
 // The file stays after a run, so two runs never lock different files for one dataset; a crashed run's lock goes with its process.
 function zfsmJobLockFile($zdataset, $job) {
 	$guid = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid');
-	// Tests set the folder in the environment, so the background script they start uses it too.
+	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? zfsmJobDir($job).'/'.$guid.'.lock' : null;
+}
+
+// The folder of a job's locks. Tests set it in the environment, so the background script they start uses it too.
+function zfsmJobDir($job) {
 	$test_dir = getenv('ZFSM_TEST_JOB_DIR');
-	$dir = $test_dir ? rtrim($test_dir, '/').'/'.$job : '/var/run/zfs.master.'.$job;
-	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? $dir.'/'.$guid.'.lock' : null;
+	return $test_dir ? rtrim($test_dir, '/').'/'.$job : '/var/run/zfs.master.'.$job;
 }
 
 function zfsmJobRunning($lock_file) {
