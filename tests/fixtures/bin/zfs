@@ -96,6 +96,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
 		exit 0 ;;
 	snapshot)
+		[ -n "$(mark "$last_arg" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
 		t=$(next_txg); printf '%s\t%s\t%s\n' "$last_arg" "$((t * 7919))" "$t" >> "$R/marks"
 		exit 0 ;;
 	destroy)

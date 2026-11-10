@@ -169,8 +169,8 @@ same(null, zfsmReplicatePlan('tank/data', 'b', 'backup/data', array('estimate' =
 same(array(), array_values(array_filter($read('calls.log'), function($line) { return strpos($line, 'send ') === 0; })), 'runs no zfs send at all');
 
 // A snapshot taken now is named before the run, so the bookmark it needs is checked as well; and only the plugin's own bookmarks name a destination.
-// tank/data#zfsm_ plus the hex of this name (2 x 127) plus _repl-<14 digits> is past ZFS's 255.
-$long = 'backup/'.str_repeat('x', 120);
+// tank/data#zfsm_ plus the hex of this name (2 x 117) plus _ is 250, which fits; the new snapshot's repl-<14 digits> takes it past ZFS's 255.
+$long = 'backup/'.str_repeat('x', 110);
 same('The names are too long for the bookmark that keeps the next replication incremental', zfsmReplicatePreview('tank/data', '', $long, $cfg)['error'], 'a new snapshot whose bookmark would be too long');
 same('', zfsmReplicaLastDestination(array(array('name' => 'tank/data#zfsm_ab_daily', 'guid' => '1', 'txg' => 1))), 'another tool\'s zfsm_ bookmark names no destination');
 
@@ -204,9 +204,10 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	$answer = zfsmStartReplicate('tank/data', 'a', 'backup/data', $cfg);
 	same(array('tank/data' => 'Replication of tank/data@b to backup/data carries on from where it stopped; replicate again afterwards for newer snapshots; a notification says when it is done'), $answer['succeeded'], 'a resumed start says what it carries on');
 	for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
-	// The run's reason not to start reaches the page, not only the notification.
-	$failed = zfsmStartReplicate('tank/data', '', $long.'y', $cfg)['failed']['tank/data'] ?? '';
-	same('The names are too long for the bookmark that keeps the next replication incremental', $failed, 'a start refused before the job says why');
+	// The job's reason not to start reaches the page too: here its new snapshot's name is taken already.
+	runProcess('zfs', array('snapshot', 'tank/data@repl-fixed'));
+	$failed = zfsmStartReplicate('tank/data', '', 'backup/fresh', array('snap_prefix' => 'repl-', 'snap_pattern' => '\\f\\i\\x\\e\\d'))['failed']['tank/data'] ?? '';
+	same("The replication could not be started: cannot create snapshot 'tank/data@repl-fixed': dataset already exists", $failed, 'a run refused in the job says why on the page');
 	$GLOBALS['docroot'] = $work.'/docroot';
 }
 
