@@ -62,6 +62,24 @@ reviews:
     - path: ".github/workflows/**"
       instructions: |
         Pin third-party actions by commit SHA. Least-privilege permissions. Untrusted PR data must not reach `run:` via `${{ }}` interpolation.
+    - path: "pkg_build.sh"
+      instructions: |
+        Packaging script. The release workflow owns version numbering and passes --version. Its guards must stay: at least 10 files copied, a package of at least 1000 bytes, a branch name checked before it goes into pluginURL, and the re-read that fails when version, md5 or pluginURL was not written to the manifest. Files ship 0644 and scripts/ 0755, owned by root. It writes only to its temp directory, the output directory and zfs.master.plg.
+    - path: ".github/scripts/**"
+      instructions: |
+        CI helpers. check-plugin-functions.php fails the build when a plugin function is called but never defined: flag a change that lets an unreadable file pass as clean. vendor.py compares the bundled libraries with the sources vendor.json names, or copies them in: a failed or partial download must never replace a bundled file or read as "up to date".
+    - path: "zfs.master/styles/*.css"
+      instructions: |
+        Loaded on Unraid's shared Main tab and in dialogs. Every selector starts from a `zfsm-` class, so nothing leaks into Unraid's own pages or other plugins. Colours stay neutral (rgba greys, inherited text colour) so every Unraid theme works: flag a hard-coded light or dark colour, and a rule that sets colours or fonts on Unraid's own buttons or inputs.
+    - path: "{ZFS.Master.xml,ca_profile.xml}"
+      instructions: |
+        Community Applications template and maintainer profile. PluginURL names the stable branch (main), never beta. MinVer matches the oldest Unraid the code supports (6.9.2). Support and Icon URLs point at this repo.
+    - path: "**"
+      instructions: |
+        Applies to every file:
+        - Comments are navigational or gotcha only, 1-2 lines. Flag narrative or history comments the change adds, and never ask for a docstring.
+        - A comment, help text, log message or UI label that disagrees with what the code does is a correctness finding: report it and say which side is wrong.
+        - Do not flag stylistic preferences that are consistent across the file, or code the change did not touch unless the change makes it wrong.
   tools:
     phpmd:
       enabled: false
