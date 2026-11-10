@@ -45,11 +45,11 @@ $zpool_datasets = getZFSPoolDatasets($zpool, $zfsm_cfg['dataset_exclusion'], $zf
 
 <body>
 	<form id="dataset-form" name="dataset-form" class="zfsm-form" method="POST">
-		<input type="hidden" id="zpool" name="zpool" value="<?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?>">
+		<input type="hidden" id="zpool" name="zpool" value="<?php echo zfsmHtml($zpool); ?>">
 		<details class="zfsm-section" open>
 			<summary>Basic</summary>
 			<div>
-				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Where the dataset goes in the pool, for example appdata/plex.">Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo htmlspecialchars($zpool, ENT_QUOTES, 'UTF-8'); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
+				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Where the dataset goes in the pool, for example appdata/plex.">Name:</dt><dd><span class="zfsm-pool" id="pool"><?php echo zfsmHtml($zpool); ?></span>/<input type="text" id="name" class="zfsm-wide" name="name" maxlength="768" pattern="[A-Za-z0-9_.: \/\-]+" placeholder="Path inside the pool" list="zpool-datasets" required></dd></dl>
 				<dl><dt class="zfsm-tip" tabindex="0" data-tip="No leaves the dataset unmounted.">Mount:</dt><dd><select id="mount" name="mount"><option value="yes" selected>Yes</option><option value="no">No</option></select></dd></dl>
 				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Leave empty to mount it under its parent, or enter a full path.">Mount point:</dt><dd><input type="text" id="mountpoint" class="zfsm-wide" name="mountpoint" placeholder="Default"></dd></dl>
 				<dl><dt class="zfsm-tip" tabindex="0" data-tip="Record when files are read. Off saves disk writes.">Access time:</dt><dd><select id="atime" name="atime"><option value="inherit" selected>Inherit</option><option value="off">Off</option><option value="on">On</option></select></dd></dl>

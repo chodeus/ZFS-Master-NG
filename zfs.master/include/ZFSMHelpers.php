@@ -217,6 +217,16 @@ function zfsmPopupStylesheets($docroot) {
 	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
 }
 
+// Every HTML escape and JSON encode goes through these (tests/encoding_test.php): a byte that isn't UTF-8 becomes U+FFFD,
+// where htmlspecialchars would give '' and json_encode false for the whole value.
+function zfsmHtml($text) {
+	return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function zfsmJson($value, $flags = 0) {
+	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE);
+}
+
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
 function zfsmSafeText($text) {
 	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
@@ -327,7 +337,7 @@ function generatePoolDatasetOptions($dataset_array) {
 	
 	foreach ($dataset_array['child'] as $zdataset):
 		$option = ltrim(stristr($zdataset['name'], '/'), '/')."/";
-		echo '<option value="'.htmlspecialchars($option, ENT_QUOTES, 'UTF-8').'">';
+		echo '<option value="'.zfsmHtml($option).'">';
 
 		if (count($zdataset['child']) > 0):
 			generatePoolDatasetOptions($zdataset);

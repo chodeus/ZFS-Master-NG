@@ -32,7 +32,7 @@ function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_not
 	$answer = zfsmResolveAnswerCodes($ret);
 	foreach (zfsmActionLogLines($title, $answer) as $line) zfsmLog($line, LOG_NOTICE);
 	if ($unraid_notify) zfsmNotifyAnswer($title, $answer, $success_text, $failed_text);
-	echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+	echo zfsmJson($answer, JSON_UNESCAPED_SLASHES);
 }
 
 // A dry run can still block on a slow pool, so it shares the inventory time limit.
@@ -55,7 +55,7 @@ try {
 			$answer = zfsmReadInventory($zfsm_cfg, $command === 'inventorysnapshots' || !$zfsm_cfg['lazy_load'], $pool);
 			$answer['config'] = $zfsm_cfg;
 			$answer['publishing_paused'] = is_file('/tmp/publishPaused');
-			echo json_encode($answer, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE | JSON_THROW_ON_ERROR);
+			echo zfsmJson($answer, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 			break;
 
 		case 'refresh':
@@ -78,32 +78,32 @@ try {
 			break;
 
 		case 'getdatasetproperties':
-			echo json_encode(getAllDatasetProperties(zfsmPostString('zdataset'), $zfsm_cfg['znapzend_data'] ?? 0), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(getAllDatasetProperties(zfsmPostString('zdataset'), $zfsm_cfg['znapzend_data'] ?? 0), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'previewdestroy':
 			$target = zfsmPostString('target');
-			echo json_encode(zfsmWithReadLimit(function() use ($target) { return zfsmDestroyPreview($target, zfsmPostString('force')); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($target) { return zfsmDestroyPreview($target, zfsmPostString('force')); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'previewrollback':
 			$snapshot = zfsmPostString('snapshot');
-			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($snapshot) { return zfsmRollbackPreview($snapshot); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'previewconvert':
 			$directory = zfsmPostString('directory');
 			$pool = zfsmPostString('pool');
-			echo json_encode(zfsmWithReadLimit(function() use ($directory, $pool) { return zfsmConvertPreview($directory, $pool); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($directory, $pool) { return zfsmConvertPreview($directory, $pool); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'diffsnapshot':
 			$snapshot = zfsmPostString('snapshot');
-			echo json_encode(zfsmWithReadLimit(function() use ($snapshot) { return zfsmSnapshotDiff($snapshot); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($snapshot) { return zfsmSnapshotDiff($snapshot); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'validateexclusion':
-			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
+			echo zfsmJson(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;
 
 		case 'adddirectortlisting':
@@ -142,7 +142,7 @@ try {
 
 		case 'previewrewrite':
 			$zdataset = zfsmPostString('zdataset');
-			echo json_encode(zfsmWithReadLimit(function() use ($zdataset) { return zfsmRewritePreview($zdataset); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset) { return zfsmRewritePreview($zdataset); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'rewritedataset':
@@ -153,7 +153,7 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$snapshot = zfsmPostString('snapshot');
 			$zdest = zfsmPostString('destination');
-			echo json_encode(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'replicatedataset':

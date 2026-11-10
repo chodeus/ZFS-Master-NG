@@ -757,7 +757,7 @@ function zfsmRsyncArgs() {
 
 // Progress is optional: a missing feed must not abort a copy already under way.
 function zfsmCopyProgress($op, $data) {
-	if (function_exists('publish')) publish('zfs_master', json_encode(array('op' => $op, 'data' => $data)));
+	if (function_exists('publish')) publish('zfs_master', zfsmJson(array('op' => $op, 'data' => $data)));
 }
 
 function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {

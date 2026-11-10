@@ -105,7 +105,7 @@ $snapshot_access = $snapshot_access ?? array();
 	?>
 	<div class="zfsm-snaps">
 	<details class="zfsm-section" open>
-	<summary><?=htmlspecialchars($zdataset, ENT_QUOTES, 'UTF-8')?><span class="zfsm-count"><?=htmlspecialchars($count_text, ENT_QUOTES, 'UTF-8')?></span></summary>
+	<summary><?=zfsmHtml($zdataset)?><span class="zfsm-count"><?=zfsmHtml($count_text)?></span></summary>
 	<?php if ($snapshots || $offer_children): ?>
 	<div class="zfsm-snap-tools">
 		<?php if ($snapshots): ?><input type="text" id="zfsm-snap-filter" placeholder="<?php echo $filter_hint; ?>" aria-label="<?php echo $filter_hint; ?>" autocomplete="off" spellcheck="false"><?php endif; ?>
@@ -131,7 +131,7 @@ $snapshot_access = $snapshot_access ?? array();
 	<tbody class="tablesorter-infoOnly">
 		<?php
 		if ($snapshot_error !== ''):
-			echo '<tr class="zfsm-message zfsm-error"><td colspan="8">'.htmlspecialchars($snapshot_error, ENT_QUOTES, 'UTF-8').'</td></tr>';
+			echo '<tr class="zfsm-message zfsm-error"><td colspan="8">'.zfsmHtml($snapshot_error).'</td></tr>';
 		elseif (!$snapshots):
 			echo '<tr class="zfsm-message"><td colspan="8">'.($with_children ? 'Neither this dataset nor its child datasets have snapshots.' : 'This dataset has no snapshots.').'</td></tr>';
 		endif;
@@ -139,20 +139,20 @@ $snapshot_access = $snapshot_access ?? array();
 	</tbody>
 	<tbody id="zpools">
 		<?php
-		$sort_value = function($value) { return ' data-text="'.htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8').'"'; };
+		$sort_value = function($value) { return ' data-text="'.zfsmHtml((string)$value).'"'; };
 		foreach ($snapshots as $snap):
 			$snapshot_name = (string)($snap['name'] ?? '');
 			list($snapshot_dataset, $snapshot_short) = array_pad(explode('@', $snapshot_name, 2), 2, '');
-			$snapshot_html = htmlspecialchars($snapshot_name, ENT_QUOTES, 'UTF-8');
-			$snapshot_js = htmlspecialchars(json_encode($snapshot_name), ENT_QUOTES, 'UTF-8');
+			$snapshot_html = zfsmHtml($snapshot_name);
+			$snapshot_js = zfsmHtml(zfsmJson($snapshot_name));
 			$holds = (int)($snap['userrefs'] ?? 0);
 			// With child datasets the filter and sort go by the whole name, so a dataset's rows can be picked out.
 			$listed_name = $with_children ? $snapshot_name : $snapshot_short;
 			// A volume has no mount, so the read has no entry for it and its rows offer neither.
 			$access = $snapshot_access[$snapshot_dataset] ?? zfsmSnapshotAccessFrom('', null);
-			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.htmlspecialchars($listed_name, ENT_QUOTES, 'UTF-8').'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
+			echo '<tr id="snap-'.sha1($snapshot_name).'" data-snapshot="'.zfsmHtml($listed_name).'" data-automatic="'.(zfsmIsAutomaticSnapshot($snapshot_name) ? '1' : '0').'">';
 			echo '<td><input class="snapl-check" type="checkbox" value="'.$snapshot_html.'"></td>';
-			echo '<td class="zfsm-snap-name"'.$sort_value($listed_name).'><span class="zfsm-ds">'.htmlspecialchars($snapshot_dataset, ENT_QUOTES, 'UTF-8').'@</span>'.htmlspecialchars($snapshot_short, ENT_QUOTES, 'UTF-8');
+			echo '<td class="zfsm-snap-name"'.$sort_value($listed_name).'><span class="zfsm-ds">'.zfsmHtml($snapshot_dataset).'@</span>'.zfsmHtml($snapshot_short);
 				if ($holds > 0) echo '<span class="zfsm-badge">held</span>';
 				if (($snap['defer_destroy'] ?? '') === 'on') echo '<span class="zfsm-badge">deferred</span>';
 			echo '</td>';
@@ -160,9 +160,9 @@ $snapshot_access = $snapshot_access ?? array();
 			echo '<td class="num"'.$sort_value($snap['referenced']).'>'.fromBytesToString($snap['referenced']).'</td>';
 			echo '<td class="num"'.$sort_value($snap['written']).'>'.fromBytesToString($snap['written']).'</td>';
 			echo '<td class="num"'.$sort_value($holds).'>'.$holds.'</td>';
-			echo '<td'.$sort_value($snap['creation']).'>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
+			echo '<td'.$sort_value($snap['creation']).'>'.zfsmHtml(zfsmTime($snap['creation'])).'</td>';
 			echo '<td><span class="zfsm-actions">';
-				if ($access['browse'] !== '') echo '<a title="Browse files in this snapshot" href="/Main/Browse?dir='.htmlspecialchars(rawurlencode($access['browse'].'/'.$snapshot_short), ENT_QUOTES, 'UTF-8').'" target="_blank" rel="noopener"><i class="fa fa-folder-open-o"></i></a>';
+				if ($access['browse'] !== '') echo '<a title="Browse files in this snapshot" href="/Main/Browse?dir='.zfsmHtml(rawurlencode($access['browse'].'/'.$snapshot_short)).'" target="_blank" rel="noopener"><i class="fa fa-folder-open-o"></i></a>';
 				if ($access['diff']) echo '<a title="Show changes since this snapshot" role="button" tabindex="0" onclick="diffSnapshot('.$snapshot_js.')"><i class="fa fa-history"></i></a>';
 				echo '<a class="zfsm-rollback" title="Roll back to this snapshot" role="button" tabindex="0" onclick="rollbackSnapshot('.$snapshot_js.')"><i class="fa fa-backward"></i></a>';
 				echo '<a title="Rename" role="button" tabindex="0" onclick="renameSnapshot('.$snapshot_js.')"><i class="fa fa-font"></i></a>';
