@@ -54,10 +54,10 @@ function fromBytesToString($bytes) {
 
    	$bytes /= pow(1024, $pow);
 
-   return round($bytes, 2) . ' ' . $units[$pow];
+   return round($bytes, 1) . ' ' . $units[$pow];
 }
 
-// Sizes in the units Settings picked: ZFS's (as zpool prints them) or Unraid's my_scale at base 1000; frontend/ZFSMSize.js mirrors it.
+// Sizes in the units Settings picked: ZFS's (powers of 1024) or Unraid's my_scale at base 1000; frontend/ZFSMSize.js mirrors it.
 function zfsmSize($bytes, $units, $display = array(), $decimals = null) {
 	if ($units !== 'decimal') return fromBytesToString($bytes);
 	$prefixes = array('', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y');

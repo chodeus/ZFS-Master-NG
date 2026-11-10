@@ -1,5 +1,5 @@
 <?php
-// zfsmSize (include/ZFSMHelpers.php): Unraid's own my_scale answers in Unraid's units, the setting's default, and the binary form kept as it was.
+// zfsmSize (include/ZFSMHelpers.php): Unraid's own my_scale answers in Unraid's units, the setting's default, and ZFS units as the browser prints them.
 
 error_reporting(E_ALL);
 set_error_handler(function($severity, $message, $file, $line) {
@@ -22,9 +22,11 @@ foreach ($answers as $c) {
 	same($c['text'], zfsmSize($c['bytes'], 'decimal', array('scale' => $c['scale'], 'number' => $c['number']), $c['decimals']), "{$c['bytes']} B, decimals ".var_export($c['decimals'], true).", scale {$c['scale']}, number \"{$c['number']}\"");
 }
 
-// ZFS's units unless Settings picks Unraid's; Snapshots Admin's binary form stays as it was (two decimals).
-same('2.82 GiB', zfsmSize(3027000000, 'binary'), 'ZFS units, as Snapshots Admin always showed them');
-same('2.82 GiB', zfsmSize(3027000000, 'GB'), 'an unknown value keeps ZFS units');
+// ZFS units match the browser's (frontend_size_format_test.cjs), so a popup's rows and its dialogs agree.
+foreach (json_decode(file_get_contents(__DIR__.'/fixtures/zfs_sizes.json'), true) as list($bytes, $text)) {
+	same($text, zfsmSize($bytes, 'binary'), var_export($bytes, true).' B in ZFS units');
+}
+same('2.8 GiB', zfsmSize(3027000000, 'GB'), 'an unknown value keeps ZFS units');
 same('3.03 GB', zfsmSize(3027000000, 'decimal', array('scale' => '-1', 'number' => '.,')), 'Unraid units, with the display settings as Unraid stores them (strings)');
 same('3.03 GB', zfsmSize(3027000000, 'decimal'), 'and with none stored, Unraid\'s defaults');
 same('binary', loadConfig(array())['size_units'], 'a fresh install keeps ZFS units');

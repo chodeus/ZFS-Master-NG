@@ -410,7 +410,9 @@ function usageCell(text, percent, free, display) {
 	if (plain)
 		return text;
 
-	return '<div class="usage-disk"><span style="width:'+percent+'%" class="'+usage_color(percent, free, display)+'"></span><span>'+text+'</span></div>';
+	// A share that can't be worked out (an empty or faulted pool) draws an empty bar.
+	const width = Number.isFinite(percent) ? percent : 0;
+	return '<div class="usage-disk"><span style="width:'+width+'%" class="'+usage_color(width, free, display)+'"></span><span>'+text+'</span></div>';
 }
 
 function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {

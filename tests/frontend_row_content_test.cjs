@@ -96,6 +96,12 @@ assert.deepEqual(space({used: 3 * 1024 ** 3, available: 9 * 1024 ** 3}), ['12 Gi
 assert.deepEqual(space({_error: 'zfs failed'}), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'an unread root dataset falls back to zpool');
 assert.deepEqual(space(undefined), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'and so does a missing one');
 assert.deepEqual(space({used: null, available: 9 * 1024 ** 3}), ['2.8 TiB', '1.1 TiB', '1.5 PiB'], 'and one without a used figure, not 0 B');
+// A share that can't be worked out draws an empty bar, not width:NaN%.
+for (const [label, root, zpool] of [['an empty pool', {used: 0, available: 0}, {}], ['a faulted pool', undefined, {Size: '-', Used: '-', Free: '-'}]]) {
+  const row = context.generatePoolTableRows({...pool, ...zpool}, 'sda', true, {text: 1}, root);
+  assert.doesNotMatch(row, /NaN/, label+': no NaN in the markup');
+  assert.equal((row.match(/<span style="width:0%"/g) || []).length, 2, label+': both bars empty');
+}
 // Settings' Size Units: Unraid's units on the Main tab, with its decimals and number format (tests/size_format_test.cjs).
 context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: ',.', scale: -1};

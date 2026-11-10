@@ -1,5 +1,5 @@
 // Sizes in the units Settings picked: ZFS's (GiB, as zpool prints them) or Unraid's (GB, as its Main page prints them).
-// Mirrors zfsmSize in include/ZFSMHelpers.php, except that PHP's ZFS units keep two decimals (Snapshots Admin, as before).
+// Mirrors zfsmSize in include/ZFSMHelpers.php: tests/fixtures/zfs_sizes.json and unraid_sizes.json check both.
 function zfsmSize(bytes, decimals) {
 	const config = typeof zfsm_config === 'object' && zfsm_config ? zfsm_config : {};
 	const display = typeof zfsm_display === 'object' && zfsm_display ? zfsm_display : {};

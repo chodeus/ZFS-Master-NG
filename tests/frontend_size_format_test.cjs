@@ -25,8 +25,8 @@ assert.equal(size({size_units: 'decimal'}, 3027000000), '3.03 GB');
 assert.equal(size({size_units: 'decimal'}, 13000000000, -1), '13 GB', 'Size passes -1 decimals, as Unraid\'s Size column does');
 assert.equal(size({size_units: 'GB'}, 3027000000), '2.8 GiB', 'an unknown value keeps ZFS units');
 
-// ZFS units print as the Main tab always has: powers of 1024, one decimal.
-for (const [bytes, text] of [[0, '0 B'], [512, '512 B'], [1536, '1.5 KiB'], [1024 ** 4 * 2.78, '2.8 TiB'], [1024 ** 6, '1 EiB']]) {
+// ZFS units print as the Main tab always has: powers of 1024, one decimal; size_format_test.php checks PHP against the same answers.
+for (const [bytes, text] of JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/zfs_sizes.json'), 'utf8'))) {
   assert.equal(context.fromBytesToString(bytes), text, `${bytes} B in ZFS units`);
 }
 
