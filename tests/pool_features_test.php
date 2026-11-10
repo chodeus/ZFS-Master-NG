@@ -59,9 +59,13 @@ same(array('6.12', '6.12', null, array(), array(), array('block_cloning_endian',
 same(array('6.12', '6.12', array('7.0', '7.0'), array(), array(), array(), array('vdev_zaps_v2')), $compat('vdev_zaps_v2=disabled'), 'a feature in use from the next import counts after Upgrade Pool');
 same(array('7.0', '6.12', array('7.0', '7.0'), array(), array('zilsaxattr'), array(), array('head_errlog', 'vdev_zaps_v2', 'blake3')),
 	$compat('zilsaxattr=active head_errlog=disabled vdev_zaps_v2=disabled blake3=disabled dynamic_gang_header=disabled'), 'Upgrade Pool on a pool 6.12 reads read-only locks 6.12 out');
-// A feature newer than the catalog can't be placed: in use, the answer is unknown; enabled, it is only listed; off, it is left out.
+// A feature newer than the catalog can't be placed: in use, the answer is unknown; enabled, it is only listed; off, the answer after Upgrade Pool is.
 same(array(null, null, null, array('future_feature'), array('future_feature', 'zilsaxattr'), array(), array('head_errlog')), $compat('zilsaxattr=active future_feature=active head_errlog=disabled'), 'an in use feature the plugin doesn\'t know, now or after Upgrade Pool');
-same(array('7.0', '6.12', null, array(), array('zilsaxattr'), array('future_feature'), array()), $compat('zilsaxattr=active future_feature=enabled future_off=disabled'), 'an enabled or off feature the plugin doesn\'t know');
+same(array('7.0', '6.12', null, array(), array('zilsaxattr'), array('future_feature'), array('future_off')), $compat('zilsaxattr=active future_feature=enabled future_off=disabled'), 'an enabled or off feature the plugin doesn\'t know');
+same(array(null, array('future_off'), array('head_errlog')), with_features('zilsaxattr=active head_errlog=disabled future_off=disabled', null, function() {
+	$answer = zfsmPoolCompatibility('tank');
+	return array($answer['after_upgrade'], $answer['upgrade_unknown'], $answer['upgrade_in_use']);
+}), 'Upgrade Pool turning on a feature the plugin doesn\'t know: no claim about after it, though head_errlog is known');
 $row = with_features('future_feature=enabled', null, function() { return zfsmPoolCompatibility('tank')['enabled'][0]; });
 same(array('name' => 'future_feature', 'state' => 'enabled', 'unraid' => null, 'readable' => null, 'turned_on_by' => null, 'on_upgrade' => null), $row, 'an unknown feature\'s row says nothing it can\'t know');
 // On older Unraid: a feature it lacks still counts, in use (the pool open read-only) or enabled.
@@ -78,6 +82,9 @@ same(array(array('block_cloning_endian', true), array('fast_dedup', true)), $rai
 same(array(array('blake3', false)), $raise('zilsaxattr=active blake3=enabled'), 'a feature that would stop older Unraid reading the pool, though the same Unraid still writes it');
 same(array(), $raise('zilsaxattr=active unsupported@org.openzfs:blake3=inactive'), 'not a feature this Unraid lacks, as it can\'t turn it on');
 same(array(), $raise('future_feature=active fast_dedup=enabled'), 'nothing when the answer is unknown');
+// Once block_cloning is in use, no clone turns block_cloning_endian on (module/zfs/brt.c), so it raises nothing and says so.
+same(array(), $raise('block_cloning_endian=enabled', 'active'), 'block_cloning_endian can\'t turn on after block_cloning is in use');
+same('Nothing now: block_cloning was in use first', with_features('block_cloning_endian=enabled', 'active', function() { return zfsmPoolCompatibility('tank')['enabled'][0]['turned_on_by']; }), 'and its row says nothing turns it on');
 
 // Upgrade Pool enables only features in every set the compatibility property lists, /etc/zfs/compatibility.d first (zpool-features(7)).
 $sets = sys_get_temp_dir().'/zfsm-compat-'.getmypid();
@@ -91,15 +98,18 @@ file_put_contents($sets.'/etc/wide', "blake3\n");
 $GLOBALS['zfsm_compatibility_dirs'] = array($sets.'/etc', $sets.'/usr');
 $upgrade = function($compatibility) {
 	$answer = with_features('compatibility='.$compatibility.' zilsaxattr=active head_errlog=disabled vdev_zaps_v2=disabled blake3=disabled', null, function() { return zfsmPoolCompatibility('tank'); });
-	return array($answer['compatibility'], $answer['after_upgrade'], array_column($answer['off'], 'name'), $answer['upgrade_unread']);
+	return array($answer['compatibility'], $answer['after_upgrade'], array_column($answer['off'], 'name'), $answer['upgrade_unread'], $answer['upgrade_limited']);
 };
-same(array(null, array('7.0', '7.0'), array('head_errlog', 'vdev_zaps_v2', 'blake3'), false), $upgrade('off'), 'compatibility off: Upgrade Pool enables any feature');
-same(array('grub2', null, array(), false), $upgrade('grub2'), 'a grub2 pool: Upgrade Pool turns on none of the newer features grub2 leaves out');
-same(array('legacy', null, array(), false), $upgrade('legacy'), 'legacy: Upgrade Pool turns on nothing');
-same(array('narrow', array('7.0', '7.0'), array('head_errlog'), false), $upgrade('narrow'), 'a set with head_errlog: Upgrade Pool puts it in use');
-same(array('wide', null, array('blake3'), false), $upgrade('wide'), 'a set in /etc/zfs/compatibility.d wins over the same name in /usr/share');
-same(array('narrow,'.$sets.'/usr/wide', array('7.0', '7.0'), array('head_errlog'), false), $upgrade('narrow,'.$sets.'/usr/wide'), 'two sets, one by path: only the features in both');
-same(array('missing', null, array(), true), $upgrade('missing'), 'a set that can\'t be read: no claim about Upgrade Pool, and it says so');
+same(array(null, array('7.0', '7.0'), array('head_errlog', 'vdev_zaps_v2', 'blake3'), false, false), $upgrade('off'), 'compatibility off: Upgrade Pool enables any feature');
+same(array('grub2', null, array(), false, true), $upgrade('grub2'), 'a grub2 pool: Upgrade Pool turns on none of the newer features grub2 leaves out');
+same(array('legacy', null, array(), false, true), $upgrade('legacy'), 'legacy: Upgrade Pool turns on nothing');
+same(array('narrow', array('7.0', '7.0'), array('head_errlog'), false, true), $upgrade('narrow'), 'a set with head_errlog: Upgrade Pool puts it in use');
+same(array('wide', null, array('blake3'), false, true), $upgrade('wide'), 'a set in /etc/zfs/compatibility.d wins over the same name in /usr/share');
+same(array('narrow,'.$sets.'/usr/wide', array('7.0', '7.0'), array('head_errlog'), false, true), $upgrade('narrow,'.$sets.'/usr/wide'), 'two sets, one by path: only the features in both');
+same(array('missing', null, array(), true, false), $upgrade('missing'), 'a set that can\'t be read: no claim about Upgrade Pool, and it says so');
+// A set that allows everything Upgrade Pool would turn on limits nothing, though the answer doesn't change.
+file_put_contents($sets.'/usr/all', "head_errlog vdev_zaps_v2 blake3\n");
+same(false, with_features('compatibility=all zilsaxattr=active head_errlog=disabled', null, function() { return zfsmPoolCompatibility('tank')['upgrade_limited']; }), 'a set that keeps nothing off limits nothing');
 unset($GLOBALS['zfsm_compatibility_dirs']);
 
 // The catalog: every entry is newer than 2.1, on an Unraid that shipped its OpenZFS, with a reason it turns on.

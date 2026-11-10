@@ -9,9 +9,8 @@ if [ "$1" = "list" ]; then
 	exit 0
 fi
 
-# zpool get all: a few of OpenZFS 2.1's features, then ZFSM_TEST_BCLONE and ZFSM_TEST_BCLONE_ENDIAN (pool tank) and ZFSM_TEST_PHYSICAL
-# (any pool) as states, left out when unset as older OpenZFS does; fail in any is an I/O error. ZFSM_TEST_FEATURES adds name=state
-# pairs, unsupported@guid=state ones as OpenZFS reports a feature it lacks, and compatibility=<sets> as the pool property.
+# zpool get all: some 2.1 features, ZFSM_TEST_BCLONE/_ENDIAN (tank), ZFSM_TEST_PHYSICAL (any), unset left out; fail = I/O error.
+# ZFSM_TEST_FEATURES adds name=state, unsupported@guid=state (a feature OpenZFS lacks) and compatibility=<sets> pairs.
 if [ "$1" = "get" ] && [ "$5" = "all" ]; then
 	[ "${ZFSM_TEST_FEATURES:-}" = hang ] && sleep 30
 	case " ${ZFSM_TEST_BCLONE:-} ${ZFSM_TEST_BCLONE_ENDIAN:-} ${ZFSM_TEST_PHYSICAL:-} " in *" fail "*) printf 'cannot get property: I/O error\n' >&2; exit 1;; esac

@@ -426,6 +426,18 @@ switch ($check) {
 		if (strpos($html, 'data-group="off"') !== false) { fwrite(STDERR, "pool info popup lists features Upgrade Pool won't turn on\n"); exit(1); }
 		break;
 
+	// Upgrade Pool would turn on a feature newer than the plugin's list: no claim about after it, and the feature is listed.
+	case 'pool_info_popup_unknown_upgrade':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		putenv('ZFSM_TEST_FEATURES=zilsaxattr=active future_off=disabled');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		if (strpos($html, '<dd id="zfsm-after-upgrade">Unknown: Upgrade Pool would turn on future_off, which this plugin&#039;s list doesn&#039;t know</dd>') === false) { fwrite(STDERR, "pool info popup claimed to know what Upgrade Pool does with an unknown feature\n"); exit(1); }
+		if (strpos($html, '<tr data-feature="future_off"><td class="zfsm-feature">future_off</td><td class="zfsm-needs">Not in this plugin&#039;s list</td><td>Unknown</td></tr>') === false) { fwrite(STDERR, "pool info popup left out the unknown feature Upgrade Pool turns on\n"); exit(1); }
+		break;
+
 	case 'pool_info_popup_failed':
 	case 'pool_info_popup_bad_name':
 		$_SERVER['REQUEST_METHOD'] = 'GET';

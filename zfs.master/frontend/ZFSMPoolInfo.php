@@ -33,15 +33,15 @@ if ($compatibility !== null && $compatibility['read_write'] === null) {
 	$older = $older_text(array($compatibility['read_write'], $compatibility['read_only']));
 	$upgraded = $compatibility['after_upgrade'];
 	if ($upgraded !== null) {
-		$in_use_after = array_column(array_filter($compatibility['off'], function($row) { return $row['on_upgrade'] !== 'enabled'; }), 'name');
-		$after = 'Unraid '.$upgraded[0].' and later'.($older_text($upgraded) === '' ? '' : '. Older Unraid: '.$older_text($upgraded)).'. Upgrade Pool puts '.implode(' and ', $in_use_after).' in use';
+		$after = 'Unraid '.$upgraded[0].' and later'.($older_text($upgraded) === '' ? '' : '. Older Unraid: '.$older_text($upgraded)).'. Upgrade Pool puts '.implode(' and ', $compatibility['upgrade_in_use']).' in use';
 	}
 	$set = $compatibility['compatibility'];
 	if ($compatibility['upgrade_unread']) $after = 'Unknown: the pool\'s compatibility set ('.$set.') could not be read';
-	elseif ($upgraded === null && $set !== null) $after = 'No change: the pool\'s compatibility setting ('.$set.') limits what it turns on';
+	elseif ($compatibility['upgrade_unknown']) $after = 'Unknown: Upgrade Pool would turn on '.implode(', ', $compatibility['upgrade_unknown']).', which this plugin\'s list doesn\'t know';
+	elseif ($upgraded === null && $compatibility['upgrade_limited']) $after = 'No change: the pool\'s compatibility setting ('.$set.') limits what it turns on';
 }
 $groups = array('in_use' => 'In use: these set the answer above', 'enabled' => 'Enabled, not in use: turning one on can raise the answer', 'off' => 'Off: Unraid\'s Upgrade Pool would turn these on');
-$on_upgrade = array('at once' => 'In use as soon as Upgrade Pool runs', 'next import' => 'In use from the first import after Upgrade Pool', 'enabled' => 'Enabled only');
+$on_upgrade = array('at once' => 'In use as soon as Upgrade Pool runs', 'next import' => 'In use from the first import after Upgrade Pool', 'enabled' => 'Enabled only', '' => 'Unknown');
 $html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8'); };
 ?>
 
@@ -114,7 +114,7 @@ $html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UT
 	<?php foreach ($groups as $group => $heading): if (!$compatibility[$group]) continue; ?>
 	<tbody data-group="<?=$group?>"><tr class="zfsm-group"><th colspan="3"><?=$html($heading)?></th></tr>
 	<?php foreach ($compatibility[$group] as $feature): ?>
-		<tr data-feature="<?=$html($feature['name'])?>"><td class="zfsm-feature"><?=$html($feature['name'])?></td><td class="zfsm-needs"><?=$html($feature['unraid'] === null ? 'Not in this plugin\'s list' : 'Unraid '.$feature['unraid'].', older '.($feature['readable'] ? 'read-only' : 'can\'t import'))?></td><td><?=$html($group === 'off' ? $on_upgrade[$feature['on_upgrade']] : ($feature['turned_on_by'] ?? ''))?></td></tr>
+		<tr data-feature="<?=$html($feature['name'])?>"><td class="zfsm-feature"><?=$html($feature['name'])?></td><td class="zfsm-needs"><?=$html($feature['unraid'] === null ? 'Not in this plugin\'s list' : 'Unraid '.$feature['unraid'].', older '.($feature['readable'] ? 'read-only' : 'can\'t import'))?></td><td><?=$html($group === 'off' ? $on_upgrade[(string)$feature['on_upgrade']] : ($feature['turned_on_by'] ?? ''))?></td></tr>
 	<?php endforeach; ?>
 	</tbody>
 	<?php endforeach; ?>
@@ -122,7 +122,7 @@ $html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UT
 	<p class="zfsm-note">Rewrite Files and Convert warn before they turn on an Enabled feature.</p>
 	</details>
 	<?php else: ?>
-	<p class="zfsm-note" id="zfsm-no-features">This pool has none of the features added since OpenZFS 2.1, and this Unraid's Upgrade Pool adds none.</p>
+	<p class="zfsm-note" id="zfsm-no-features">This pool has none of the features added since OpenZFS 2.1<?=$compatibility['upgrade_unread'] ? '.' : ', and this Unraid\'s Upgrade Pool adds none.'?></p>
 	<?php endif; ?>
 	<?php endif; ?>
 	</details>

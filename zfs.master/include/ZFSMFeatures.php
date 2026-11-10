@@ -56,7 +56,7 @@ function zfsmCompatibilitySet($set) {
 	return null;
 }
 
-// One feature's state; '' where this OpenZFS lacks it, null when the read failed.
+// One feature's state, also one this OpenZFS lacks (zfsmFeaturesOf); '' where neither knows it, null when the read failed.
 function zfsmPoolFeature($pool, $feature) {
 	$features = zfsmPoolFeatures($pool);
 	return $features === null ? null : ($features[$feature] ?? '');
@@ -80,9 +80,8 @@ function zfsmBaseFeatures() {
 		'userobj_accounting', 'zpool_checkpoint', 'zstd_compress');
 }
 
-// Newer features: the first Unraid that writes to a pool with it in use, whether older Unraid can still read it, what turns it on,
-// and what Upgrade Pool does to it: 'at once' in use, in use at the 'next import', 'enabled', or '' when it never enables it.
-// Unraid 7.0 ships OpenZFS 2.2, 7.1 and 7.2 ship 2.3, 7.3 ships 2.4; each release's zpool-features(7) and zfeature_common.c give the rest.
+// Newer features: first Unraid to write a pool with it in use, older Unraid read-only, what turns it on, and Upgrade Pool's effect
+// ('at once', 'next import', 'enabled', '' never). Unraid 7.0 = OpenZFS 2.2, 7.1/7.2 = 2.3, 7.3 = 2.4 (zpool-features(7), zfeature_common.c).
 function zfsmFeatureCatalog() {
 	return array(
 		'blake3' => array('7.0', false, 'Setting a dataset\'s checksum to blake3', 'enabled'),
@@ -108,13 +107,26 @@ function zfsmPoolCompatibility($pool) {
 	if ($properties === null) return null;
 	$compatibility = in_array($properties['compatibility'] ?? 'off', array('off', '-'), true) ? null : $properties['compatibility'];
 	$allows = zfsmUpgradeAllows($compatibility);
-	$groups = zfsmSortGroups(zfsmGroupFeatures(zfsmFeaturesOf($properties), $allows));
+	$features = zfsmFeaturesOf($properties);
+	$groups = zfsmSortGroups(zfsmGroupFeatures($features, $allows));
+	// block_cloning_endian turns on only with a clone while block_cloning is not yet in use (module/zfs/brt.c).
+	$cloned = in_array($features['block_cloning'] ?? '', array('active', 'readonly'), true);
+	foreach ($groups['enabled'] as $i => $row) {
+		if ($cloned && $row['name'] === 'block_cloning_endian') $groups['enabled'][$i] = array_merge($row, array('turned_on_by' => 'Nothing now: block_cloning was in use first', 'stays_off' => true));
+	}
 	$now = zfsmFloorOf($groups['in_use'], array('6.12', '6.12'));
-	$in_use_after = array_filter($groups['off'], function($row) { return $row['on_upgrade'] !== 'enabled'; });
-	$after = $now === null ? null : zfsmFloorOf($in_use_after, $now);
-	return array('read_write' => $now[0] ?? null, 'read_only' => $now[1] ?? null, 'after_upgrade' => $after !== $now ? $after : null,
+	$in_use_after = array_filter($groups['off'], function($row) { return $row['unraid'] !== null && $row['on_upgrade'] !== 'enabled'; });
+	// An off feature the catalog doesn't know may be in use once Upgrade Pool runs: the answer after it is unknown then.
+	$upgrade_unknown = array_column(array_filter($groups['off'], function($row) { return $row['unraid'] === null; }), 'name');
+	$after = $now === null || $upgrade_unknown ? null : zfsmFloorOf($in_use_after, $now);
+	$catalog = zfsmFeatureCatalog();
+	$limited = is_array($allows) && (bool)array_filter(array_keys($features, 'disabled', true), function($name) use ($catalog, $allows) {
+		return ($catalog[$name][3] ?? '') !== '' && !in_array($name, $allows, true);
+	});
+	return array('read_write' => $now[0] ?? null, 'read_only' => $now[1] ?? null, 'after_upgrade' => $after !== null && $after !== $now ? $after : null,
 		'would_raise' => $now === null ? array() : zfsmWouldRaise($groups['enabled'], $now),
 		'unknown' => array_column(array_filter($groups['in_use'], function($row) { return $row['unraid'] === null; }), 'name'),
+		'upgrade_in_use' => array_column($in_use_after, 'name'), 'upgrade_unknown' => $upgrade_unknown, 'upgrade_limited' => $limited,
 		'compatibility' => $compatibility, 'upgrade_unread' => $allows === false) + $groups;
 }
 
@@ -138,9 +150,9 @@ function zfsmFeatureGroup($name, $state, $entry, $allows) {
 	return zfsmUpgradeEnables($name, $entry, $allows) ? 'off' : '';
 }
 
-// Upgrade Pool enables only what the catalog says it does, and only what the pool's compatibility sets allow.
+// Upgrade Pool enables what the catalog says it does, and may enable a feature the catalog doesn't know; only what the compatibility sets allow.
 function zfsmUpgradeEnables($name, $entry, $allows) {
-	return ($entry[3] ?? '') !== '' && ($allows === null || (is_array($allows) && in_array($name, $allows, true)));
+	return ($entry === null || $entry[3] !== '') && ($allows === null || (is_array($allows) && in_array($name, $allows, true)));
 }
 
 // Off: what Upgrade Pool puts in use comes first, as only that changes the answer.
@@ -167,7 +179,7 @@ function zfsmFloorOf($rows, $floor) {
 function zfsmWouldRaise($enabled, $now) {
 	$would_raise = array();
 	foreach ($enabled as $row) {
-		$raised = $row['state'] === 'enabled' && $row['unraid'] !== null ? zfsmRaiseFloor($now, array($row['unraid'], $row['readable'])) : $now;
+		$raised = $row['state'] === 'enabled' && $row['unraid'] !== null && empty($row['stays_off']) ? zfsmRaiseFloor($now, array($row['unraid'], $row['readable'])) : $now;
 		if ($raised !== $now) $would_raise[] = $row + array('raises_read_write' => $raised[0] !== $now[0]);
 	}
 	return $would_raise;
