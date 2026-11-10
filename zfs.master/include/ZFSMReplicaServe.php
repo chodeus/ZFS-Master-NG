@@ -191,14 +191,14 @@ function zfsmReplicaKeyFrom($from) {
 	return true;
 }
 
-// The settings' list of those keys, a key its line doesn't hold in red. ENT_SUBSTITUTE: the sender wrote the comment, valid UTF-8 or not.
+// The settings' list of those keys, a key its line doesn't hold in red. The sender wrote the comment, valid UTF-8 or not.
 function zfsmReplicaKeysHtml($keys) {
 	if (!$keys) return 'None yet';
 	$html = '';
 	foreach ($keys as $key) {
 		$held = $key['restrict'] && $key['from'] && zfsmReplicaSenderName($key['sender']);
 		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict with no limit turned back on after it, a from= of exact IP addresses, and command= exactly replica-serve.php and a name');
-		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</span>';
+		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.zfsmHtml($text).'</span>';
 	}
 	return $html;
 }
