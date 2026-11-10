@@ -14,7 +14,8 @@ for (const c of answers) {
 }
 
 // A null display setting is Unraid's default, as a missing one is, in PHP too (size_format_test.php).
-assert.equal(context.zfsmUnraidSize(3027000000, {scale: null, number: null}), '3.03 GB');
+// 999.96 GB rounds up to 1 TB only under the default scale.
+assert.equal(context.zfsmUnraidSize(999960000000, {scale: null, number: null}), '1 TB');
 
 // The setting: ZFS's units unless Settings picks Unraid's; anything else keeps ZFS's.
 const size = (config, bytes, decimals) => {

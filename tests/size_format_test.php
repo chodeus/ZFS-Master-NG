@@ -29,7 +29,7 @@ foreach (json_decode(file_get_contents(__DIR__.'/fixtures/zfs_sizes.json'), true
 same('2.8 GiB', zfsmSize(3027000000, 'GB'), 'an unknown value keeps ZFS units');
 same('3.03 GB', zfsmSize(3027000000, 'decimal', array('scale' => '-1', 'number' => '.,')), 'Unraid units, with the display settings as Unraid stores them (strings)');
 same('3.03 GB', zfsmSize(3027000000, 'decimal'), 'and with none stored, Unraid\'s defaults');
-same('3.03 GB', zfsmSize(3027000000, 'decimal', array('scale' => null, 'number' => null)), 'a null setting is the default too, as in the browser');
+same('1 TB', zfsmSize(999960000000, 'decimal', array('scale' => null, 'number' => null)), 'a null setting is the default too, as in the browser: 999.96 GB rounds up');
 same('binary', loadConfig(array())['size_units'], 'a fresh install keeps ZFS units');
 same('decimal', loadConfig(array('general' => array('size_units' => 'decimal')))['size_units'], 'Unraid units when picked');
 same('binary', loadConfig(array('general' => array('size_units' => 'GB')))['size_units'], 'a hand-edited value keeps ZFS units');
