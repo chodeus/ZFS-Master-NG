@@ -103,6 +103,12 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ -n "$(mark "$3" 1)" ] && { printf "cannot create bookmark '%s': bookmark exists\n" "$3" >&2; exit 1; }
 		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
 		exit 0 ;;
+	create)
+		exists "$last_arg" && { printf "cannot create '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
+		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }
+		printf '%s\tfilesystem\n' "$last_arg" >> "$R/datasets"
+		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
+		exit 0 ;;
 	snapshot)
 		[ -n "$(mark "$last_arg" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
 		t=$(next_txg); printf '%s\t%s\t%s\n' "$last_arg" "$((t * 7919))" "$t" >> "$R/marks"
