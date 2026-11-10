@@ -182,7 +182,7 @@ _(Sender Keys)_:
 : <span id="zfsm-replica-keys"><?=zfsmReplicaKeysHtml(zfsmReplicaKeys())?></span>
 
 :zc_settings_replica_keys_plug:
-> The keys in root's authorized_keys that run replica-serve.php. Each one's line must hold restrict (with no limit turned back on after it) and a from= without wildcards, and name its sender after the script; one in red does not.
+> The keys in root's authorized_keys that run replica-serve.php. Each one's line must hold restrict (with no limit turned back on after it), a from= of exact IP addresses, and command= exactly the script and its sender's name; one in red does not.
 :end
 
 </details>

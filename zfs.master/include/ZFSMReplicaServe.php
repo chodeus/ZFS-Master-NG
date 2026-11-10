@@ -62,23 +62,34 @@ function zfsmReplicaServeCheck($request, $area) {
 
 // '' once the area is ready for copies: hello makes it when missing; any request is refused once one of its properties changed.
 function zfsmReplicaAreaReady($area, $create) {
-	$props = zfsmReplicaAreaProps();
-	$read = runProcess('zfs', array('get', '-H', '-p', '-o', 'property,value', implode(',', array_keys($props)), $area));
-	if (($read['code'] ?? 1) === 0) {
-		$found = array();
-		foreach (preg_split('/\R/', trim((string)$read['output'])) as $line) {
-			$field = explode("\t", $line);
-			if (count($field) === 2) $found[$field[0]] = $field[1];
-		}
-		$wanted = implode(', ', array_map(function($property) use ($props) { return $property.'='.$props[$property]; }, array_keys($props)));
-		return array_diff_assoc($props, $found) === array() ? '' : $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
-	}
-	if (zfsmDatasetMissing($area) !== true) return 'The copies\' dataset '.$area.' could not be read';
+	$why = zfsmReplicaAreaHolds($area);
+	if ($why !== null) return $why;
 	if (!$create) return $area.' doesn\'t exist yet';
 	$args = array('create', '-o', 'canmount=off');
-	foreach ($props as $property => $value) array_push($args, '-o', $property.'='.$value);
+	foreach (zfsmReplicaAreaProps() as $property => $value) array_push($args, '-o', $property.'='.$value);
 	$made = runProcess('zfs', array_merge($args, array($area)));
-	return ($made['code'] ?? 1) === 0 ? '' : zfsmCommandError($made, 'The copies\' dataset '.$area.' could not be made');
+	if (($made['code'] ?? 1) === 0) return '';
+	// Another hello may have made it in between.
+	return zfsmReplicaAreaHolds($area) ?? zfsmCommandError($made, 'The copies\' dataset '.$area.' could not be made');
+}
+
+// '' when the area holds every property it must, why not when it doesn't or can't be read, null when it doesn't exist.
+function zfsmReplicaAreaHolds($area, $again = true) {
+	$props = zfsmReplicaAreaProps();
+	$read = runProcess('zfs', array('get', '-H', '-p', '-o', 'property,value', implode(',', array_keys($props)), $area));
+	if (($read['code'] ?? 1) !== 0) {
+		$missing = zfsmDatasetMissing($area);
+		if ($missing === true) return null;
+		// Made by another hello after this read failed: read it once more.
+		return $missing === false && $again ? zfsmReplicaAreaHolds($area, false) : 'The copies\' dataset '.$area.' could not be read';
+	}
+	$found = array();
+	foreach (preg_split('/\R/', trim((string)$read['output'])) as $line) {
+		$field = explode("\t", $line);
+		if (count($field) === 2) $found[$field[0]] = $field[1];
+	}
+	$wanted = implode(', ', array_map(function($property) use ($props) { return $property.'='.$props[$property]; }, array_keys($props)));
+	return array_diff_assoc($props, $found) === array() ? '' : $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
 }
 
 // One of four receive slots per area, held until the receive ends; null when all are taken or none can be opened.
@@ -150,22 +161,32 @@ function zfsmServeReplica($request, $area, $io = null) {
 	return $code;
 }
 
-// The keys in root's authorized_keys that run the checker: each one's sender, key comment, and whether restrict and from= hold it.
-// sshd reads options left to right, so a pty or forwarding option after restrict turns that limit back on; from= holds without wildcards or !.
+// The keys in root's authorized_keys whose command names the checker: each one's sender (when the command is exactly the installed
+// checker and a name), key comment, and whether restrict and from= hold it. sshd matches option names whatever their case.
 function zfsmReplicaKeys($file = '/boot/config/ssh/root/authorized_keys') {
 	$keys = array();
 	foreach (preg_split('/\R/', (string)@file_get_contents($file)) as $line) {
 		if (!preg_match('/^((?:[^\s"]|"[^"]*")+)\s+(?:ssh-|ecdsa-|sk-)\S*\s+\S+\s*(.*)$/', trim($line), $match)) continue;
 		preg_match_all('/(?:^|,)([A-Za-z0-9-]+)(?:="([^"]*)")?/', $match[1], $options, PREG_SET_ORDER);
 		$named = array();
-		foreach ($options as $option) $named[$option[1]] = $option[2] ?? '';
-		if (!preg_match('#/plugins/zfs\.master/scripts/replica-serve\.php(?:\s+(\S+))?\s*$#', $named['command'] ?? '', $command)) continue;
-		$opened = array_intersect(array_keys($named), array('pty', 'port-forwarding', 'agent-forwarding', 'x11-forwarding', 'user-rc'));
-		$from = $named['from'] ?? '';
-		$keys[] = array('sender' => $command[1] ?? '', 'comment' => $match[2], 'restrict' => array_key_exists('restrict', $named) && !$opened,
-			'from' => $from !== '' && !preg_match('/[*?!]|^,|,,|,$/', $from));
+		foreach ($options as $option) $named[strtolower($option[1])] = $option[2] ?? '';
+		$command = $named['command'] ?? '';
+		if (strpos($command, 'replica-serve.php') === false) continue;
+		$exact = preg_match('#^/usr/local/emhttp/plugins/zfs\.master/scripts/replica-serve\.php (\S+)$#D', $command, $sender) === 1;
+		$keys[] = array('sender' => $exact ? $sender[1] : '', 'comment' => $match[2], 'restrict' => zfsmReplicaKeyRestricted($named), 'from' => zfsmReplicaKeyFrom($named['from'] ?? ''));
 	}
 	return $keys;
+}
+
+// sshd reads options left to right, so a pty or forwarding option anywhere after restrict turns that limit back on.
+function zfsmReplicaKeyRestricted($named) {
+	return array_key_exists('restrict', $named) && !array_intersect(array_keys($named), array('pty', 'port-forwarding', 'agent-forwarding', 'x11-forwarding', 'user-rc'));
+}
+
+// This plugin's policy: a replication key's from= lists exact IP addresses, never a range, wildcard, ! or host name.
+function zfsmReplicaKeyFrom($from) {
+	foreach (explode(',', $from) as $address) if (filter_var($address, FILTER_VALIDATE_IP) === false) return false;
+	return true;
 }
 
 // The settings' list of those keys, a key its line doesn't hold in red. ENT_SUBSTITUTE: the sender wrote the comment, valid UTF-8 or not.
@@ -174,7 +195,7 @@ function zfsmReplicaKeysHtml($keys) {
 	$html = '';
 	foreach ($keys as $key) {
 		$held = $key['restrict'] && $key['from'] && zfsmReplicaSenderName($key['sender']);
-		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict with no limit turned back on after it, a from= without wildcards, and a name after replica-serve.php');
+		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict with no limit turned back on after it, a from= of exact IP addresses, and command= exactly replica-serve.php and a name');
 		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</span>';
 	}
 	return $html;

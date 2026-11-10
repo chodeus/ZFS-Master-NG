@@ -91,6 +91,20 @@ same(array(0, "zfsm-replica 1\narea backup/replicas/tower\n", ''), $serve('zfsm-
 same(array('create -o canmount=off -o mountpoint=none -o volmode=none -o setuid=off -o devices=off -o exec=off backup/replicas/tower'), $calls('create'), 'having made it never to mount, show as a block device or run anything');
 same(array(0, "zfsm-replica 1\narea backup/replicas/tower\n", ''), $serve('zfsm-replica 1 hello'), 'a second hello finds it ready');
 same(1, count($calls('create')), 'and makes nothing more');
+// Two hellos at once: the one whose create loses still finds the area the other made.
+$fake_zfs = zfsmCommandPath('zfs');
+mkdir($work.'/racebin');
+file_put_contents($work.'/racebin/zfs', "#!/bin/sh\nif [ \"\$1\" = create ]; then ".escapeshellarg($fake_zfs)." \"\$@\" >/dev/null 2>&1; fi\nexec ".escapeshellarg($fake_zfs)." \"\$@\"\n");
+chmod($work.'/racebin/zfs', 0755);
+putenv('ZFSM_TEST_BIN_DIR='.$work.'/racebin');
+same(array(0, "zfsm-replica 1\narea backup/replicas/raced\n", ''), $serve('zfsm-replica 1 hello', '/dev/null', 'backup/replicas/raced'), 'a hello whose create loses to another one\'s still answers');
+// And the other order: the other hello's create lands between this one's failed read and its check that the area is missing.
+mkdir($work.'/racebin2');
+file_put_contents($work.'/racebin2/zfs', "#!/bin/sh\nif [ \"\$1\" = get ] && [ ! -e ".escapeshellarg($work.'/raced')." ]; then touch ".escapeshellarg($work.'/raced')."; ".escapeshellarg($fake_zfs)." \"\$@\"; s=\$?; ".escapeshellarg($fake_zfs)." create -o canmount=off -o mountpoint=none -o volmode=none -o setuid=off -o devices=off -o exec=off backup/replicas/raced2 >/dev/null 2>&1; exit \$s; fi\nexec ".escapeshellarg($fake_zfs)." \"\$@\"\n");
+chmod($work.'/racebin2/zfs', 0755);
+putenv('ZFSM_TEST_BIN_DIR='.$work.'/racebin2');
+same(array(0, "zfsm-replica 1\narea backup/replicas/raced2\n", ''), $serve('zfsm-replica 1 hello', '/dev/null', 'backup/replicas/raced2'), 'and one whose read misses an area made just after it');
+putenv('ZFSM_TEST_BIN_DIR='.dirname($fake_zfs));
 same(array(0, "backup/replicas/tower\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'exists answers with the name and type');
 same(1, $serve($req('exists', 'backup/replicas/tower/data'))[0], 'and fails for a copy not there yet');
 same(array(0, '', ''), $serve($req('receive', 'backup/replicas/tower/data'), $work.'/stream'), 'a stream is received');
@@ -145,6 +159,12 @@ file_put_contents($work.'/authorized_keys', implode("\n", array(
 	'restrict,pty,port-forwarding,from="10.0.20.13",command="'.$checker.' reopened" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF zfs.master@reopened',
 	'restrict,from="*",command="'.$checker.' anywhere" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG zfs.master@anywhere',
 	'restrict,from="!10.0.20.14",command="'.$checker.' negated" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH zfs.master@negated',
+	'restrict,PTY,from="10.0.20.15",command="'.$checker.' upper" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII zfs.master@upper',
+	'restrict,Port-Forwarding,from="10.0.20.16",command="'.$checker.' upper2" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ zfs.master@upper2',
+	'restrict,from="0.0.0.0/0,::/0",command="'.$checker.' range" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK zfs.master@range',
+	'restrict,from="10.0.20.17",command="/bin/sh -c id; '.$checker.' first" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIL zfs.master@first',
+	'restrict,from="10.0.20.18",command="/tmp/x/plugins/zfs.master/scripts/replica-serve.php copy" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIM zfs.master@copy',
+	'restrict,from="10.0.20.19,fd7a:115c:a1e0::e501:c277",command="'.$checker.' six" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN zfs.master@six',
 )));
 same(array(
 	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
@@ -153,7 +173,13 @@ same(array(
 	array('sender' => 'reopened', 'comment' => 'zfs.master@reopened', 'restrict' => false, 'from' => true),
 	array('sender' => 'anywhere', 'comment' => 'zfs.master@anywhere', 'restrict' => true, 'from' => false),
 	array('sender' => 'negated', 'comment' => 'zfs.master@negated', 'restrict' => true, 'from' => false),
-), zfsmReplicaKeys($work.'/authorized_keys'), 'only the checker\'s keys are listed, with what holds each one: a limit turned back on after restrict, or a from= with a wildcard or !, doesn\'t hold');
+	array('sender' => 'upper', 'comment' => 'zfs.master@upper', 'restrict' => false, 'from' => true),
+	array('sender' => 'upper2', 'comment' => 'zfs.master@upper2', 'restrict' => false, 'from' => true),
+	array('sender' => 'range', 'comment' => 'zfs.master@range', 'restrict' => true, 'from' => false),
+	array('sender' => '', 'comment' => 'zfs.master@first', 'restrict' => true, 'from' => true),
+	array('sender' => '', 'comment' => 'zfs.master@copy', 'restrict' => true, 'from' => true),
+	array('sender' => 'six', 'comment' => 'zfs.master@six', 'restrict' => true, 'from' => true),
+), zfsmReplicaKeys($work.'/authorized_keys'), 'every key naming the checker is listed with what holds it: a limit turned back on after restrict (in any case), a from= that isn\'t exact IP addresses, or a command that isn\'t exactly the installed checker and a name, doesn\'t hold');
 $listed = zfsmReplicaKeysHtml(array(
 	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
 	array('sender' => 'odd', 'comment' => "zfs.master@\xff<b>", 'restrict' => false, 'from' => true),
