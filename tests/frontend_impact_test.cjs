@@ -68,4 +68,15 @@ assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': pr
 const diff = popup.slice(popup.indexOf('function diffSnapshot('), popup.indexOf('function renameSnapshot('));
 assert.match(diff, /zfsmFetchReview\('[^']*', \{cmd: 'diffsnapshot'[\s\S]*\n\t\}, ''\);\n/, 'the changes dialog is read-only, so its failures do not say "Nothing was changed"');
 
+// The Replicate dialog (include/ZFSMReplicate.php's preview): names and plans are escaped; no destination yet shows no plan.
+const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_destination: 'backup/"data'});
+assert.doesNotMatch(replicate, /new<b>/, 'a snapshot name cannot inject markup');
+assert.match(replicate, /<option value="new&lt;b&gt;">[\s\S]*<option value="old">[\s\S]*<option value="">Take one now<\/option>/, 'newest snapshot first, Take one now last');
+assert.match(replicate, /id="zfsm-replicate-dest"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
+assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2\.00 KiB\./);
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset goes raw');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
+
 console.log('destroy and rollback dialog tests passed');

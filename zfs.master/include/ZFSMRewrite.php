@@ -6,24 +6,6 @@ function zfsmRewriteAvailable() {
 	return strpos(runProcess('zfs', array('rewrite'))['output'] ?? '', 'rewrite [') !== false;
 }
 
-// One lock file per dataset, named by its guid: the lock follows a renamed dataset, and a long name can't make the file name too long.
-// The file stays after a run, so two runs never lock different files for one dataset; a crashed run's lock goes with its process.
-function zfsmRewriteLockFile($zdataset) {
-	$guid = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid');
-	// Tests set the folder in the environment, so the background script they start uses it too.
-	$dir = getenv('ZFSM_TEST_REWRITE_DIR') ?: '/var/run/zfs.master.rewrite';
-	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? rtrim($dir, '/').'/'.$guid.'.lock' : null;
-}
-
-function zfsmRewriteRunning($lock_file) {
-	$handle = @fopen($lock_file, 'r');
-	if ($handle === false) return false;
-	$free = flock($handle, LOCK_SH | LOCK_NB);
-	if ($free) flock($handle, LOCK_UN);
-	fclose($handle);
-	return !$free;
-}
-
 // The mountpoint whose files are rewritten, or a string saying why this dataset can't be.
 function zfsmRewriteTarget($zdataset) {
 	if (!zfsmDatasetExists($zdataset, 'filesystem')) return 'Only an existing filesystem dataset has files to rewrite';
@@ -46,30 +28,22 @@ function zfsmRewritePreview($zdataset) {
 	$target = zfsmRewriteTarget($zdataset);
 	if (!is_array($target)) return array('can_proceed' => false, 'error' => $target);
 	if (!zfsmRewriteAvailable()) return array('can_proceed' => false, 'error' => 'zfs rewrite needs OpenZFS 2.4 or later');
-	$lock_file = zfsmRewriteLockFile($zdataset);
+	$lock_file = zfsmJobLockFile($zdataset, 'rewrite');
 	if ($lock_file === null) return array('can_proceed' => false, 'error' => 'The dataset\'s guid could not be read');
-	if (zfsmRewriteRunning($lock_file)) return array('can_proceed' => false, 'error' => 'A rewrite of this dataset is already running');
+	if (zfsmJobRunning($lock_file)) return array('can_proceed' => false, 'error' => 'A rewrite of this dataset is already running');
 	$pool = explode('/', $zdataset, 2)[0];
 	$held = getDatasetProperty($pool, $zdataset, 'usedbysnapshots');
 	return array('can_proceed' => true, 'physical_feature' => zfsmRewriteFeature($pool), 'snapshot_space' => is_numeric($held) ? (int)$held : null);
 }
 
-// Starts scripts/rewrite.php in a session of its own, so the rewrite outlives the page that asked for it; -P only when asked.
+// Starts scripts/rewrite.php in the background (zfsmStartJob); -P only when asked.
 function zfsmStartRewrite($zdataset, $physical) {
 	$preview = zfsmRewritePreview($zdataset);
 	if (!$preview['can_proceed']) return zfsmFailure($zdataset, $preview['error']);
 	if ($physical && $preview['physical_feature'] === '') return zfsmFailure($zdataset, 'The pool\'s physical_rewrite feature is not enabled, so birth times can\'t be kept');
-	$script = ($GLOBALS['docroot'] ?? '/usr/local/emhttp').'/plugins/zfs.master/scripts/rewrite.php';
-	$php = $GLOBALS['zfsm_php'] ?? '/usr/bin/php';
-	// The script prints "started" once it holds the dataset's lock, then lets go of the pipe (scripts/rewrite.php).
-	$launch = runProcess('setsid', array_merge(array('-f', $php, '-q', $script, $zdataset), $physical ? array('physical') : array()));
-	if (in_array('started', preg_split('/\R/', (string)($launch['output'] ?? '')), true)) {
-		return array('succeeded' => array($zdataset => 'Rewrite started; a notification says when it is done'), 'failed' => array());
-	}
-	$lock_file = zfsmRewriteLockFile($zdataset);
-	if ($lock_file !== null && zfsmRewriteRunning($lock_file)) return zfsmFailure($zdataset, 'A rewrite of this dataset is already running');
-	$why = substr(zfsmOneLine($launch['output'] ?? ''), 0, 300);
-	return zfsmFailure($zdataset, 'The rewrite could not be started'.($why !== '' ? ': '.$why : ''));
+	list($state, $why) = zfsmStartJob('rewrite.php', array_merge(array($zdataset), $physical ? array('physical') : array()), zfsmJobLockFile($zdataset, 'rewrite'));
+	if ($state === 'started') return array('succeeded' => array($zdataset => 'Rewrite started; a notification says when it is done'), 'failed' => array());
+	return zfsmFailure($zdataset, $state === 'running' ? 'A rewrite of this dataset is already running' : 'The rewrite could not be started'.($why !== '' ? ': '.$why : ''));
 }
 
 // Runs zfs rewrite -v: each line on stdout is a file done, so the row can count them; keeps the first of its errors.
@@ -117,16 +91,12 @@ function zfsmRunRewrite($zdataset, $physical, $started = null) {
 	if (!is_array($target)) return $not_started($target);
 	$pool = explode('/', $zdataset, 2)[0];
 	if ($physical && zfsmRewriteFeature($pool) === '') return $not_started('the pool\'s physical_rewrite feature is not enabled');
-	$lock_file = zfsmRewriteLockFile($zdataset);
+	$lock_file = zfsmJobLockFile($zdataset, 'rewrite');
 	if ($lock_file === null) return $not_started('its guid could not be read');
-	if (!is_dir(dirname($lock_file))) @mkdir(dirname($lock_file), 0700, true);
-	$lock = @fopen($lock_file, 'c');
-	if ($lock === false) return $not_started('its lock file could not be opened');
+	$lock = zfsmJobLock($lock_file);
+	if ($lock === null) return $not_started('its lock file could not be opened');
 	// Another run holds it: two starts at once leave one rewrite, and that one sends the notification.
-	if (!flock($lock, LOCK_EX | LOCK_NB)) {
-		fclose($lock);
-		return 0;
-	}
+	if ($lock === false) return 0;
 	$args = array_merge(array('rewrite', '-r', '-x', '-v'), $physical ? array('-P') : array(), array($target[0]));
 	if ($started !== null) $started();
 	zfsmLog('Rewrite of '.$zdataset.' started: zfs '.implode(' ', $args), LOG_NOTICE);
@@ -135,8 +105,7 @@ function zfsmRunRewrite($zdataset, $physical, $started = null) {
 		$result = zfsmRewriteFiles($args, $zdataset);
 	} finally {
 		zfsmCopyProgress('rewrite_stop', array('dataset' => $zdataset));
-		flock($lock, LOCK_UN);
-		fclose($lock);
+		zfsmJobUnlock($lock);
 	}
 	$done = $result['files'].' file'.($result['files'] === 1 ? '' : 's').' rewritten';
 	if ($result['code'] === 0) {

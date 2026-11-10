@@ -169,11 +169,17 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	} else if (msg.op == 'stop_directory_copy') {
 		zfsmShowCopyProgress(msg.data.dataset, null);
 	} else if (msg.op == 'rewrite_start') {
-		zfsmRewriteProgress(msg.data.dataset, 'Rewriting files…');
+		zfsmJobProgress(msg.data.dataset, 'rewrite', 'Rewriting files…');
 	} else if (msg.op == 'rewrite_progress') {
-		zfsmRewriteProgress(msg.data.dataset, 'Rewriting files… '+Number(msg.data.files)+' done');
+		zfsmJobProgress(msg.data.dataset, 'rewrite', 'Rewriting files… '+Number(msg.data.files)+' done');
 	} else if (msg.op == 'rewrite_stop') {
-		zfsmRewriteProgress(msg.data.dataset, null);
+		zfsmJobProgress(msg.data.dataset, 'rewrite', null);
+	} else if (msg.op == 'replicate_start') {
+		zfsmJobProgress(msg.data.dataset, 'replicate', 'Replicating…');
+	} else if (msg.op == 'replicate_progress') {
+		zfsmJobProgress(msg.data.dataset, 'replicate', 'Replicating… '+fromBytesToString(msg.data.bytes)+(msg.data.total ? ' of '+fromBytesToString(msg.data.total) : ''));
+	} else if (msg.op == 'replicate_stop') {
+		zfsmJobProgress(msg.data.dataset, 'replicate', null);
 	}
 
 	processHiddenDatasets();
@@ -190,12 +196,21 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	$(document.getElementById(datasetRowId(dataset))).children('td:nth-child(1)').html(html ?? '');
   }
 
-  // A running rewrite reports every 2 seconds; one silent for 12 has stopped, even if its stop message was lost.
-  var zfsm_rewrite_expiry = {};
-  function zfsmRewriteProgress(dataset, html) {
-	clearTimeout(zfsm_rewrite_expiry[dataset]);
-	if (html !== null) zfsm_rewrite_expiry[dataset] = setTimeout(function() { zfsmShowCopyProgress(dataset, null); }, 12000);
-	zfsmShowCopyProgress(dataset, html);
+  // A running rewrite or replication reports every 2 seconds; one silent for 12 has stopped, even if its stop message was lost.
+  // Per dataset and job, as a rewrite and a replication can run on one dataset at once and share its row.
+  var zfsm_job_expiry = {};
+  var zfsm_job_text = {};
+  function zfsmJobProgress(dataset, job, html) {
+	const key = dataset+'\n'+job;
+	clearTimeout(zfsm_job_expiry[key]);
+	const jobs = zfsm_job_text[dataset] = zfsm_job_text[dataset] || {};
+	if (html === null) delete jobs[job];
+	else {
+		jobs[job] = html;
+		zfsm_job_expiry[key] = setTimeout(function() { zfsmJobProgress(dataset, job, null); }, 12000);
+	}
+	const shown = Object.values(jobs).join(' · ');
+	zfsmShowCopyProgress(dataset, shown === '' ? null : shown);
   }
 
   function zfsmRestoreCopyProgress() {
@@ -604,6 +619,15 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		});
 	}
     
+	opts.push({
+		text: _('Replicate'),
+		icon: 'fa-clone',
+		action: function(e) {
+			e.preventDefault();
+			replicateDataset(zdataset);
+		},
+	});
+
 	if (encryption == 'available') {
 		opts.push({
 			text: _('Lock Dataset'),
@@ -702,6 +726,48 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			if (!result.isConfirmed || preview.can_proceed !== true) return;
 			$.post('<?=$urlzmadmin?>', {cmd: 'rewritedataset', zdataset: zdataset, physical: result.value.physical ? 1 : 0}, function(data) {
 				Swal2.fire({title: 'Rewrite Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
+			});
+		});
+	});
+  }
+
+  // Each change asks for a new plan; Replicate waits for the plan of what is on screen, and the server plans again before it starts.
+  function replicateDataset(zdataset) {
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: '', destination: ''}, function(options) {
+		if (!Array.isArray(options.snapshots)) {
+			Swal2.fire({title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>', icon: 'error', html: zfsmReplicatePlanHtml(options)});
+			return;
+		}
+		let asked = 0;
+		let timer = null;
+		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim()});
+		Swal2.fire({
+			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
+			html: zfsmReplicateHtml(options),
+			showCancelButton: true,
+			confirmButtonText: 'Replicate',
+			didOpen: (popup) => {
+				const confirm = Swal2.getConfirmButton();
+				const plan = () => {
+					const ask = ++asked;
+					const chosen = choices(popup);
+					confirm.disabled = true;
+					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination}, function(answer) {
+						if (ask !== asked) return;
+						popup.querySelector('#zfsm-replicate-plan').innerHTML = zfsmReplicatePlanHtml(answer);
+						confirm.disabled = answer.can_proceed !== true;
+					});
+				};
+				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
+				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				plan();
+			},
+			preConfirm: () => choices(Swal2.getPopup())
+		}).then((result) => {
+			clearTimeout(timer);
+			if (!result.isConfirmed) return;
+			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, destination: result.value.destination}, function(data) {
+				Swal2.fire({title: 'Replication Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
 			});
 		});
 	});
