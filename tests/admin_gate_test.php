@@ -29,6 +29,7 @@ $cases = array(
 	'preview_convert' => array(array('cmd' => 'previewconvert', 'directory' => '/mnt/tank/no such folder', 'pool' => 'tank'), '0', '', 'review_refused'),
 	'accept_inside_pool' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup/replicas'), '0', '', 'accept_valid'),
 	'accept_pool_top' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup'), '0', '', 'accept_invalid'),
+	'accept_padded' => array(array('cmd' => 'validateaccept', 'dataset' => " backup/replicas \n"), '0', '', 'accept_valid'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.

@@ -107,7 +107,8 @@ try {
 			break;
 
 		case 'validateaccept':
-			echo json_encode(array('valid' => zfsmReplicaAcceptValid(zfsmPostString('dataset'))));
+			// Trimmed as loadConfig trims the saved setting.
+			echo json_encode(array('valid' => zfsmReplicaAcceptValid(trim(zfsmPostString('dataset')))));
 			break;
 
 		case 'adddirectortlisting':
