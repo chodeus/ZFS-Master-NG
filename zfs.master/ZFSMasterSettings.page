@@ -207,7 +207,7 @@ _(Servers)_:
 : <span id="zfsm-send-servers"><?=zfsmReplicaRemotesHtml(zfsmReplicaRemotes())?></span> <span id="zfsm-send-servers-status" style="color:#e22828"></span>
 
 :zc_settings_send_servers_plug:
-> The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test asks it which dataset its copies go into.
+> The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test makes this server's dataset there if it is missing, and shows its name.
 :end
 
 _(Add A Server)_:
@@ -266,9 +266,11 @@ function zfsmSendPost(data, done) {
 	}, 'json').fail(function() { done({error: 'No answer from this server'}); });
 }
 function zfsmSendKey() {
+	// Off while it runs: a second click would answer "already has its key" beside the new key.
+	var button = $('#zfsm-send-key input[type=button]').prop('disabled', true);
 	zfsmSendPost({cmd: 'replicakey'}, function(answer) {
 		$('#zfsm-send-key-status').text(answer.error || '');
-		if (answer.error) return;
+		if (answer.error) return button.prop('disabled', false);
 		$('#zfsm-send-key').html(answer.key_html);
 		$('#zfsm-send-servers').html(answer.servers_html);
 	});
@@ -292,12 +294,15 @@ function zfsmSendScan() {
 $('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_asked++; zfsm_send_found = null; $('#zfsm-send-found').empty(); });
 function zfsmSendAdd() {
 	if (!zfsm_send_found) return;
+	var ask = zfsm_send_asked;
 	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
+		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+		// A host key read since keeps its fields and its Add.
+		if (ask !== zfsm_send_asked) return;
 		if (answer.error) return $('#zfsm-send-found').css('color', '#e22828').text(answer.error);
 		zfsm_send_found = null;
 		$('#zfsm-send-found').empty();
 		$('#zfsm-send-name, #zfsm-send-host').val('');
-		$('#zfsm-send-servers').html(answer.servers_html);
 	});
 }
 function zfsmSendRemove(name) {

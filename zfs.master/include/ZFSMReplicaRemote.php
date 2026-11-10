@@ -31,15 +31,23 @@ function zfsmReplicaSender() {
 	return $public === null || $name === null ? null : array('public' => $public, 'name' => $name);
 }
 
+// The lock every change to these settings holds, or why there is none.
+function zfsmReplicaSettingsLock() {
+	$dir = zfsmJobDir('replica-send');
+	$lock = zfsmJobLock($dir.'/settings.lock');
+	if ($lock === null) return 'Could not open the settings lock in '.$dir;
+	return $lock === false ? 'Another change to these settings is being saved; try again' : $lock;
+}
+
 // Made once and never replaced here: a new key would leave every server's line naming the old one. The private half stays on this server.
 function zfsmReplicaKeyMake() {
 	$name = zfsmReplicaThisName();
 	if ($name === null) return array('error' => 'This server\'s name must be 1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
-	$lock = zfsmJobLock(zfsmJobDir('replica-send').'/settings.lock');
-	if (!$lock) return array('error' => 'Another change to these settings is being saved; try again');
+	$lock = zfsmReplicaSettingsLock();
+	if (is_string($lock)) return array('error' => $lock);
 	try {
 		$dir = zfsmReplicaSshDir();
-		if (is_file($dir.'/id_ed25519')) return array('error' => 'This server already has its key');
+		if (is_file($dir.'/id_ed25519')) return zfsmReplicaPublicKey() !== null ? array('error' => 'This server already has its key') : zfsmReplicaPublicRestore($name);
 		if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return array('error' => 'Could not make '.$dir);
 		$new = $dir.'/new-'.bin2hex(random_bytes(4));
 		$made = runProcess('ssh-keygen', array('-q', '-t', 'ed25519', '-N', '', '-C', 'zfs.master@'.$name, '-f', $new));
@@ -52,6 +60,22 @@ function zfsmReplicaKeyMake() {
 	} finally {
 		zfsmJobUnlock($lock);
 	}
+}
+
+// A lost or broken public half, read back from the private key: the key stays the one every server's line names.
+function zfsmReplicaPublicRestore($name) {
+	$files = zfsmReplicaKeyCopy();
+	if ($files === null) return array('error' => 'The private key could not be copied to read its public half');
+	try {
+		$read = runProcess('ssh-keygen', array('-y', '-f', $files['key']));
+	} finally {
+		zfsmReplicaSshCleanup($files);
+	}
+	$fields = preg_split('/\s+/', trim((string)($read['output'] ?? '')));
+	$public = count($fields) >= 2 ? $fields[0].' '.$fields[1] : '';
+	if (($read['code'] ?? 1) !== 0 || zfsmKeyFingerprint($public) === null) return array('error' => zfsmCommandError($read, 'The public half could not be read back'));
+	if (!zfsmWriteFileAtomic(zfsmReplicaSshDir().'/id_ed25519.pub', $public.' zfs.master@'.$name."\n")) return array('error' => 'The public half could not be saved');
+	return array('key' => zfsmReplicaPublicKey());
 }
 
 // An IP address only: the from= in that server's key line must be an exact address (zfsmReplicaKeyFrom), so the route to it decides it.
@@ -85,8 +109,8 @@ function zfsmReplicaRemotes() {
 
 // $change gets the servers and returns them changed, or a string saying why not; under the settings lock, written whole.
 function zfsmReplicaRemotesChange($change) {
-	$lock = zfsmJobLock(zfsmJobDir('replica-send').'/settings.lock');
-	if (!$lock) return 'Another change to these settings is being saved; try again';
+	$lock = zfsmReplicaSettingsLock();
+	if (is_string($lock)) return $lock;
 	try {
 		$remotes = $change(zfsmReplicaRemotes());
 		if (is_string($remotes)) return $remotes;
@@ -146,16 +170,24 @@ function zfsmReplicaKeyLine($remote, $sender) {
 	return 'restrict,from="'.$from.'",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php '.$sender['name'].'" '.$sender['public'];
 }
 
-// RAM copies at 0600 of the key and a known_hosts holding only this server's pinned key: ssh refuses a key on the flash drive's modes.
-function zfsmReplicaSshFiles($remote) {
+// A RAM copy at 0600 of the private key, in a folder of its own: ssh and ssh-keygen refuse a key on the flash drive's modes.
+function zfsmReplicaKeyCopy() {
 	$private = @file_get_contents(zfsmReplicaSshDir().'/id_ed25519');
 	if (!is_string($private) || $private === '') return null;
 	$dir = zfsmJobDir('replica-send').'/ssh-'.bin2hex(random_bytes(6));
 	if (!@mkdir($dir, 0700, true)) return null;
 	$files = array('dir' => $dir, 'key' => $dir.'/id_ed25519', 'known_hosts' => $dir.'/known_hosts');
+	if (@file_put_contents($files['key'], $private) !== false && @chmod($files['key'], 0600)) return $files;
+	zfsmReplicaSshCleanup($files);
+	return null;
+}
+
+// The key copy and a known_hosts holding only this server's pinned key.
+function zfsmReplicaSshFiles($remote) {
+	$files = zfsmReplicaKeyCopy();
+	if ($files === null) return null;
 	$host = $remote['port'] === 22 ? $remote['host'] : '['.$remote['host'].']:'.$remote['port'];
-	$written = @file_put_contents($files['key'], $private) !== false && @chmod($files['key'], 0600) && @file_put_contents($files['known_hosts'], $host.' '.$remote['key']."\n") !== false;
-	if ($written) return $files;
+	if (@file_put_contents($files['known_hosts'], $host.' '.$remote['key']."\n") !== false) return $files;
 	zfsmReplicaSshCleanup($files);
 	return null;
 }

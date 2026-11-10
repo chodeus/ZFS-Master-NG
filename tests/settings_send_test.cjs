@@ -28,6 +28,13 @@ window.eval(code);
 const $ = window.$;
 const text = id => window.document.getElementById(id).textContent;
 
+// Make is off while it runs, and back on after a failure.
+$('#zfsm-send-key').html('<input type="button" value="Make">');
+window.zfsmSendKey();
+assert.equal($('#zfsm-send-key input').prop('disabled'), true, 'Make is off while it runs');
+posts.pop().done({error: 'Could not make the key folder'});
+assert.deepEqual([$('#zfsm-send-key input').prop('disabled'), text('zfsm-send-key-status')], [false, 'Could not make the key folder'], 'and back on after a failure, saying why');
+
 // ZFSMAdmin.php's catch-all answers {succeeded: {}, failed: {request: why}}, with no error field.
 window.zfsmSendTest('nas', 'zfsm-send-6e6173');
 assert.equal(text('zfsm-send-6e6173'), 'Asking…');
@@ -64,5 +71,19 @@ assert.equal(posts.length, 0, 'and nothing to send');
 window.zfsmSendScan();
 posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
 assert.equal(text('zfsm-send-found'), 'Unknown or missing command', 'a failed scan says why, with nothing to add');
+
+// An Add answer that arrives after a newer read leaves that read, its Add and its address alone; the list still updates.
+$('#zfsm-send-name').val('nas');
+$('#zfsm-send-host').val('10.0.20.11').trigger('input');
+window.zfsmSendScan();
+posts.pop().done({key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
+$('#zfsm-send-found input[type=checkbox]').prop('checked', true).trigger('change');
+$('#zfsm-send-found input[type=button]').trigger('click');
+const late = posts.pop();
+$('#zfsm-send-host').val('10.0.20.12').trigger('input');
+window.zfsmSendScan();
+posts.pop().done({key: 'ssh-ed25519 BBBB', fingerprint: 'SHA256:def'});
+late.done({servers_html: '<span>nas</span>'});
+assert.deepEqual([$('#zfsm-send-found input[type=button]').length, $('#zfsm-send-host').val(), text('zfsm-send-servers')], [1, '10.0.20.12', 'nas'], 'the newer read keeps its Add and address');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

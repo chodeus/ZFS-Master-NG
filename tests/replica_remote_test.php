@@ -84,6 +84,14 @@ $private = file_get_contents($work.'/flash/ssh/id_ed25519');
 same(array('error' => 'This server already has its key'), zfsmReplicaKeyMake(), 'a second make is refused');
 same($private, file_get_contents($work.'/flash/ssh/id_ed25519'), 'and the key stays the same');
 same(true, strpos(zfsmReplicaKeyHtml(), 'value="'.zfsmHtml($public).'"') !== false, 'Settings shows the public half');
+// A lost or emptied public half is read back from the private key by the real ssh-keygen -y, never replaced by a new key.
+foreach (array('lost' => null, 'emptied' => '') as $how => $content) {
+	if ($content === null) unlink($work.'/flash/ssh/id_ed25519.pub');
+	else file_put_contents($work.'/flash/ssh/id_ed25519.pub', $content);
+	same(array(null, true), array(zfsmReplicaPublicKey(), strpos(zfsmReplicaKeyHtml(), 'onclick="zfsmSendKey()"') !== false), 'a '.$how.' public half offers Make again');
+	same(array('key' => $public), zfsmReplicaKeyMake(), 'which reads the same key back');
+	same($private, file_get_contents($work.'/flash/ssh/id_ed25519'), 'and leaves the private half as it was');
+}
 
 // A failed ssh-keygen leaves no key and says why.
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash2/ssh';
@@ -188,6 +196,12 @@ $GLOBALS['zfsm_ssh_dir'] = $work.'/flash3/ssh';
 same(array('error' => 'This server has no key yet, or its RAM copy could not be made'), zfsmReplicaHello($nas), 'no key, no ssh');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
 $log();
+
+// A settings lock that can't be opened says so, rather than that another save is running.
+file_put_contents($work.'/not-a-folder', '');
+putenv('ZFSM_TEST_JOB_DIR='.$work.'/not-a-folder');
+same('Could not open the settings lock in '.$work.'/not-a-folder/replica-send', zfsmReplicaRemoteRemove('nas'), 'an unusable lock folder is named');
+putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 
 // Removing forgets the server and its pinned key.
 same('No server here is named other', zfsmReplicaRemoteRemove('other'), 'only a listed server can be removed');
