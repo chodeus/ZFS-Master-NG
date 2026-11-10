@@ -8,20 +8,30 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 ## Features
 
-- **Pools at a glance** — health, size, used and free space, and snapshot counts
-- **Datasets** — create, rename, promote and destroy, and edit properties such as compression, quota, record size and access time
-- **Snapshots** — take them singly or recursively, then roll back, rename, clone, hold, release or delete them, with an icon that warns when the newest one is getting old
-- **Snapshots Admin** — filter and sort the list, open a snapshot's files in Unraid's file browser, or see which files changed since it was taken
-- **Encryption** — create encrypted datasets, and lock or unlock them
-- **Directories** — list the folders inside a dataset, move or delete them, or convert one to its own dataset
-- **ZnapZend** — optionally show the backup plans set on each dataset
-- **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open (or on your alert schedule, if you turn alerts on), pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
-- **Alerts** — optional Unraid notifications when a pool is degraded, has errors or isn't imported, or snapshots get old; off until you turn them on in settings
-- **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
+- **Pools** — health, size, used and free space, snapshot counts
+- **Datasets** — create, rename, promote, destroy, and edit properties
+- **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when the newest gets old
+- **Snapshots Admin** — filter, sort, browse a snapshot's files, or see what changed since it
+- **Reviews** — destroy, rollback and bulk delete show what they'll remove first
+- **Encryption** — create encrypted datasets, lock and unlock them
+- **Directories** — list, move or delete folders, or convert one to a dataset (cloned instead of copied where it can)
+- **Rewrite Files** — apply new compression or checksum settings to existing data (Unraid 7.3+)
+- **Alerts** — optional notifications for pool problems and datasets whose newest snapshot is too old
+- **ZnapZend** — optionally show each dataset's backup plans
+- **Light** — no background daemon; reads ZFS only while the Main tab is open, or for alerts you turn on
+- **Your view** — collapse datasets, or hide some with an exclusion pattern
+
+## Coming next
+
+- **Pool Info** — which Unraid can import a pool, and what would change that
+- **Replication** — send datasets to another pool or server, incrementally
+- **Pool history and scrubs** — recent pool commands; scrub only known errors or a date range
+- **Disk latency** — slow disks in each pool, with an optional alert
+- **Later** — Sanoid snapshot schedules, and changing encryption keys
 
 ## Requirements
 
-Unraid 6.9.2 or later. ZFS is built into Unraid from 6.12; older versions need a ZFS plugin.
+Unraid 6.9.2 or later. ZFS is built in from 6.12; older versions need a ZFS plugin.
 
 ## Install
 
@@ -31,7 +41,7 @@ The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
 ```
 
-Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Plain snapshot rollback and delete don't need it, so check their warnings before confirming; the options that also remove other snapshots do.
+Renaming, editing, destroying, converting and deleting folders need **Destructive Mode** in the plugin settings, as do rollbacks and deletes that take other snapshots with them.
 
 ## Credits
 
