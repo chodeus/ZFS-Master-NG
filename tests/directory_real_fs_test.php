@@ -207,7 +207,7 @@ $turns_on = function($bclone_state, $endian) {
 	return zfsmCloneTurnsOn('tank');
 };
 $states = array($turns_on('enabled', 'enabled'), $turns_on('enabled', null), $turns_on('enabled', 'disabled'), $turns_on('enabled', 'fail'), $turns_on('active', 'enabled'), $turns_on('disabled', 'enabled'), $turns_on('fail', 'enabled'));
-check($states === array('7.3', '7.0', '7.0', '7.3', '', '', null), 'a first clone needs 7.3 with the endian feature or when it can\'t be read, 7.0 without; active or missing turns nothing on; an unread feature is unknown: '.json_encode($states));
+check($states === array('7.3', '7.0', '7.0', null, '', '', null), 'a first clone needs 7.3 with the endian feature, 7.0 without; active or missing turns nothing on; an unread pool is unknown: '.json_encode($states));
 putenv('ZFSM_TEST_BCLONE=enabled');
 putenv('ZFSM_TEST_BCLONE_ENDIAN=enabled');
 // The new dataset can't be read before it exists, as real zfs answers, so the review must ask its parent.

@@ -33,6 +33,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/pool_features_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
 for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset; do
     "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"

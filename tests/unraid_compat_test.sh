@@ -124,7 +124,7 @@ cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && 
 rm -f /usr/sbin/zpool
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" menu_order "$version" || fail 'menu without ZFS'
 mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
-for check in menu_order body_token no_token wrong_token main_page main_page_stuck_zfs settings_page create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere time_format settings_roundtrip; do
+for check in menu_order body_token no_token wrong_token main_page main_page_stuck_zfs settings_page create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool time_format settings_roundtrip; do
 	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
 done
 # Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.

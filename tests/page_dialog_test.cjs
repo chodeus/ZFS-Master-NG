@@ -14,7 +14,7 @@ function handlers(from, to) {
   const start = page.indexOf(from);
   const end = page.indexOf(to, start);
   assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
-  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps').replaceAll('<?=$urlpoolinfo?>', '/zfsm-pool');
   assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
   return code;
 }
@@ -297,6 +297,12 @@ async function confirm() {
   snapshotsAdmin(0, 3).action({preventDefault() {}});
   snapshotsAdmin(2, 3).action({preventDefault() {}});
   assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+  // Pool Info opens the pool it was asked for, its name encoded in the address.
+  window.eval(handlers('function poolInfo(', 'function addDirectoryContext('));
+  const boxes = [];
+  window.openBox = (url, title) => boxes.push([url, title]);
+  window.poolInfo('tank:2');
+  assert.deepEqual(boxes, [['/zfsm-pool?zpool=tank%3A2', 'tank:2 - Pool Info']], 'Pool Info opens with the pool in its address and title');
 
   // A rewrite reports on the same row: started, how many files are done, stopped.
   send('rewrite_start');

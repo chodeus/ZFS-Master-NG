@@ -9,26 +9,21 @@ if [ "$1" = "list" ]; then
 	exit 0
 fi
 
-# Block cloning for pool tank: ZFSM_TEST_BCLONE=active|enabled|disabled|fail; unset fails as OpenZFS 2.1 does.
-if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning" ] && [ "$6" = "tank" ]; then
-	[ -n "${ZFSM_TEST_BCLONE:-}" ] || { printf "bad property list: invalid property 'feature@block_cloning'\n" >&2; exit 1; }
-	[ "$ZFSM_TEST_BCLONE" = fail ] && { printf "cannot get property: I/O error\n" >&2; exit 1; }
-	printf '%s\n' "$ZFSM_TEST_BCLONE"
-	exit 0
-fi
-
-# block_cloning_endian (OpenZFS 2.4) for pool tank: ZFSM_TEST_BCLONE_ENDIAN=active|enabled|disabled|fail; unset fails as 2.3 does.
-if [ "$1" = "get" ] && [ "$5" = "feature@block_cloning_endian" ] && [ "$6" = "tank" ]; then
-	[ -n "${ZFSM_TEST_BCLONE_ENDIAN:-}" ] || { printf "bad property list: invalid property 'feature@block_cloning_endian'\n" >&2; exit 1; }
-	[ "$ZFSM_TEST_BCLONE_ENDIAN" = fail ] && { printf "cannot get property: I/O error\n" >&2; exit 1; }
-	printf '%s\n' "$ZFSM_TEST_BCLONE_ENDIAN"
-	exit 0
-fi
-
-# zfs rewrite -P needs this: ZFSM_TEST_PHYSICAL=enabled|active|disabled; unset fails as OpenZFS before 2.4 does.
-if [ "$1" = "get" ] && [ "$5" = "feature@physical_rewrite" ]; then
-	[ -n "${ZFSM_TEST_PHYSICAL:-}" ] || { printf "bad property list: invalid property 'feature@physical_rewrite'\n" >&2; exit 1; }
-	printf '%s\n' "$ZFSM_TEST_PHYSICAL"
+# zpool get all: some 2.1 features, ZFSM_TEST_BCLONE/_ENDIAN (tank), ZFSM_TEST_PHYSICAL (any), unset left out; fail = I/O error.
+# ZFSM_TEST_FEATURES adds name=state, unsupported@guid=state (a feature OpenZFS lacks) and compatibility=<sets> pairs.
+if [ "$1" = "get" ] && [ "$5" = "all" ]; then
+	[ "${ZFSM_TEST_FEATURES:-}" = hang ] && sleep 30
+	case " ${ZFSM_TEST_BCLONE:-} ${ZFSM_TEST_BCLONE_ENDIAN:-} ${ZFSM_TEST_PHYSICAL:-} " in *" fail "*) printf 'cannot get property: I/O error\n' >&2; exit 1;; esac
+	printf 'size\t1.00T\ncapacity\t10%%\nhealth\tONLINE\n'
+	printf 'feature@async_destroy\tenabled\nfeature@empty_bpobj\tactive\nfeature@lz4_compress\tactive\nfeature@draid\tdisabled\n'
+	if [ "$6" = tank ]; then
+		[ -n "${ZFSM_TEST_BCLONE:-}" ] && printf 'feature@block_cloning\t%s\n' "$ZFSM_TEST_BCLONE"
+		[ -n "${ZFSM_TEST_BCLONE_ENDIAN:-}" ] && printf 'feature@block_cloning_endian\t%s\n' "$ZFSM_TEST_BCLONE_ENDIAN"
+	fi
+	[ -n "${ZFSM_TEST_PHYSICAL:-}" ] && printf 'feature@physical_rewrite\t%s\n' "$ZFSM_TEST_PHYSICAL"
+	for pair in ${ZFSM_TEST_FEATURES:-}; do
+		case $pair in unsupported@*|compatibility=*) printf '%s\t%s\n' "${pair%%=*}" "${pair#*=}";; *) printf 'feature@%s\t%s\n' "${pair%%=*}" "${pair#*=}";; esac
+	done
 	exit 0
 fi
 
