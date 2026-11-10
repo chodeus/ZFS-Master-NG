@@ -126,7 +126,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMKeys.js'); ?>"></script>
 
 <script>
-  var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : '<?=zfsmHtml($csrf_token)?>';
+  var zfsm_csrf_token = (typeof csrf_token !== 'undefined' && csrf_token) ? csrf_token : <?=zfsmJson((string)$csrf_token, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT)?>;
 
   zfsmMoveStatusIntoTitle(document.getElementById('zfs-master-title'));
 

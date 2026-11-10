@@ -218,13 +218,14 @@ function zfsmPopupStylesheets($docroot) {
 }
 
 // Every HTML escape and JSON encode goes through these (tests/encoding_test.php): a byte that isn't UTF-8 becomes U+FFFD,
-// where htmlspecialchars would give '' and json_encode false for the whole value.
+// where htmlspecialchars would give '' and json_encode false for the whole value. A value JSON can't hold (NAN) becomes 0 or null,
+// unless the caller asks for JSON_THROW_ON_ERROR.
 function zfsmHtml($text) {
 	return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
 function zfsmJson($value, $flags = 0) {
-	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE);
+	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE | ($flags & JSON_THROW_ON_ERROR ? 0 : JSON_PARTIAL_OUTPUT_ON_ERROR));
 }
 
 // File and process names are anyone's to choose, and these strings reach notifications and the log.

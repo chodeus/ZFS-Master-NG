@@ -701,8 +701,9 @@ function zfsmFilesystemMounts() {
 	return $mounts;
 }
 
+// U+FFFD stands in for a byte that isn't UTF-8 in every name the page shows (zfsmJson), so a path holding one may name another folder.
 function zfsmResolveDirectory($path, $must_exist = true) {
-	if (!is_string($path) || $path === '' || $path[0] !== '/' || preg_match('/[\x00-\x1F\x7F]/', $path)) return null;
+	if (!is_string($path) || $path === '' || $path[0] !== '/' || preg_match('/[\x00-\x1F\x7F]|\xEF\xBF\xBD/', $path)) return null;
 	$resolved = $must_exist ? realpath($path) : realpath(dirname($path));
 	if ($resolved === false) return null;
 	if (!$must_exist) $resolved = rtrim($resolved, '/').'/'.basename($path);

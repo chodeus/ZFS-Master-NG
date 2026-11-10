@@ -22,6 +22,7 @@ same("auto-\u{FFFD}&lt;b&gt; &quot;x&quot; &#039;y&#039;", zfsmHtml("auto-\xff<b
 same('', zfsmHtml(null), 'nothing escapes to nothing');
 same(array('prefix' => "auto-\u{FFFD}"), json_decode(zfsmJson(array('prefix' => "auto-\xff")), true), 'an encode keeps the rest of the value');
 same(false, strpos(zfsmJson(array('tag' => '</script>'), JSON_HEX_TAG), '<'), 'and the caller\'s flags');
+same('{"x":0,"y":"kept"}', zfsmJson(array('x' => NAN, 'y' => 'kept')), 'a value JSON can\'t hold doesn\'t empty the rest');
 // Names that differ only in bytes that aren't UTF-8 must not share a confirmation.
 same(false, zfsmImpactToken('tank/a', 'plain', array("tank/a@\xff"), array()) === zfsmImpactToken('tank/a', 'plain', array("tank/a@\xfe"), array()), 'a token tells those names apart');
 
@@ -30,6 +31,8 @@ function zfsmHelperLine($name) {
 	return (new ReflectionFunction($name))->getStartLine();
 }
 $found = array();
+$callable = array(T_CONSTANT_ENCAPSED_STRING);
+$names = array_merge(array(T_STRING), defined('T_NAME_FULLY_QUALIFIED') ? array(T_NAME_FULLY_QUALIFIED) : array());
 $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(__DIR__.'/../zfs.master', FilesystemIterator::SKIP_DOTS));
 foreach ($files as $file) {
 	if (!preg_match('/\.(php|page)$/', $file->getFilename())) continue;
@@ -37,9 +40,12 @@ foreach ($files as $file) {
 		return !is_array($token) || !in_array($token[0], array(T_WHITESPACE, T_COMMENT, T_DOC_COMMENT), true);
 	}));
 	foreach ($tokens as $i => $token) {
-		if (!is_array($token) || $token[0] !== T_STRING || !in_array(strtolower($token[1]), array('htmlspecialchars', 'json_encode'), true)) continue;
-		if (($tokens[$i + 1] ?? null) !== '(') continue;
-		$found[] = basename($file->getPathname()).':'.$token[2].' '.strtolower($token[1]);
+		// A call by name (\json_encode is one token from PHP 8 on), or the name as a string callable.
+		if (!is_array($token) || !in_array($token[0], array_merge($names, $callable), true)) continue;
+		$name = strtolower(ltrim(in_array($token[0], $callable, true) ? trim($token[1], '\'"') : $token[1], '\\'));
+		if (!in_array($name, array('htmlspecialchars', 'htmlentities', 'json_encode'), true)) continue;
+		if ($token[0] !== T_CONSTANT_ENCAPSED_STRING && ($tokens[$i + 1] ?? null) !== '(') continue;
+		$found[] = basename($file->getPathname()).':'.$token[2].' '.$name;
 	}
 }
 sort($found);
