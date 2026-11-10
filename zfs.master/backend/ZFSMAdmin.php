@@ -149,6 +149,17 @@ try {
 			zfsmReturnAnswer(zfsmStartRewrite(zfsmPostString('zdataset'), zfsmPostString('physical') === '1'), 'ZFS Dataset Rewrite', 'Rewrite started', 'Unable to start the rewrite');
 			break;
 
+		case 'previewreplicate':
+			$zdataset = zfsmPostString('zdataset');
+			$snapshot = zfsmPostString('snapshot');
+			$zdest = zfsmPostString('destination');
+			echo json_encode(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
+		case 'replicatedataset':
+			zfsmReturnAnswer(zfsmStartReplicate(zfsmPostString('zdataset'), zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg), 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			break;
+
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);
