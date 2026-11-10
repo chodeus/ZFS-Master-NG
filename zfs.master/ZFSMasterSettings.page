@@ -8,6 +8,7 @@ $plugin = "zfs.master";
 
 require_once "$docroot/plugins/$plugin/include/ZFSMHelpers.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
+require_once "$docroot/plugins/$plugin/include/ZFSMReplicaRemote.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true), false);
 
@@ -192,6 +193,32 @@ _(Sender Keys)_:
 : <input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()">
 </form>
 
+<details class="zfsm-section" open markdown="1">
+<summary>_(Replicate To Other Servers)_</summary>
+
+_(This Server's Key)_:
+: <span id="zfsm-send-key"><?=zfsmReplicaKeyHtml()?></span> <span id="zfsm-send-key-status" style="color:#e22828"></span>
+
+:zc_settings_send_key_plug:
+> This server's own SSH key for sending copies, made here once; its private half never leaves this server. A server added below accepts copies from it once its root adds the line shown under it to SSH authorized keys (Users, root).
+:end
+
+_(Servers)_:
+: <span id="zfsm-send-servers"><?=zfsmReplicaRemotesHtml(zfsmReplicaRemotes())?></span> <span id="zfsm-send-servers-status" style="color:#e22828"></span>
+
+:zc_settings_send_servers_plug:
+> The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test asks it which dataset its copies go into.
+:end
+
+_(Add A Server)_:
+: <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address or DNS name" aria-label="Address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
+
+:zc_settings_send_add_plug:
+> The name is how this list shows the server. Compare the host key read here with the one that server's ZFS Master NG Settings show under Accept Replicas Into; tick that they match, then Add.
+:end
+
+</details>
+
 <script>
 var zfsm_tips = <?=zfsmJson(array(
 	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
@@ -226,4 +253,55 @@ function zfsmCheckAccept(value) {
 }
 $('input[name="replica_accept"]').on('change', function() { zfsmCheckAccept($(this).val()); });
 zfsmCheckAccept($('input[name="replica_accept"]').val());
+
+// Replicate To Other Servers: each answer carries the refreshed HTML (include/ZFSMReplicaRemote.php) or why not.
+var zfsm_send_found = null;
+function zfsmSendPost(data, done) {
+	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', data, function(answer) { done(answer || {}); }, 'json').fail(function() { done({error: 'No answer from this server'}); });
+}
+function zfsmSendKey() {
+	zfsmSendPost({cmd: 'replicakey'}, function(answer) {
+		$('#zfsm-send-key-status').text(answer.error || '');
+		if (answer.error) return;
+		$('#zfsm-send-key').html(answer.key_html);
+		$('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmSendScan() {
+	var asked = {host: $('#zfsm-send-host').val(), port: $('#zfsm-send-port').val()};
+	var found = $('#zfsm-send-found').css('color', '').text('Reading…');
+	zfsm_send_found = null;
+	zfsmSendPost($.extend({cmd: 'replicascan'}, asked), function(answer) {
+		if (answer.error) return found.css('color', '#e22828').text(answer.error);
+		zfsm_send_found = $.extend(asked, {key: answer.key, fingerprint: answer.fingerprint});
+		var add = $('<input type="button" value="Add" disabled>').on('click', zfsmSendAdd);
+		var match = $('<input type="checkbox">').on('change', function() { add.prop('disabled', !this.checked); });
+		found.empty().append(document.createTextNode('Host key '+answer.fingerprint+' '), $('<label>').append(match, ' matches that server\'s Settings'), ' ', add);
+	});
+}
+// A changed address or port needs its own host key read again.
+$('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_found = null; $('#zfsm-send-found').empty(); });
+function zfsmSendAdd() {
+	if (!zfsm_send_found) return;
+	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
+		if (answer.error) return $('#zfsm-send-found').css('color', '#e22828').text(answer.error);
+		zfsm_send_found = null;
+		$('#zfsm-send-found').empty();
+		$('#zfsm-send-name, #zfsm-send-host').val('');
+		$('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmSendRemove(name) {
+	zfsmSendPost({cmd: 'replicaremove', name: name}, function(answer) {
+		$('#zfsm-send-servers-status').text(answer.error || '');
+		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmSendTest(name, id) {
+	var status = $(document.getElementById(id)).css('color', '').text('Asking…');
+	zfsmSendPost({cmd: 'replicatest', name: name}, function(answer) {
+		if (answer.error) return status.css('color', '#e22828').text(answer.error);
+		status.text('Ready: copies go into '+answer.area);
+	});
+}
 </script>

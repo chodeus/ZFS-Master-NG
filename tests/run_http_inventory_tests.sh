@@ -40,6 +40,7 @@ cp "$zfsm_repo/tests/fixtures/fixed_path/zfs" /usr/local/sbin/zfs
 chmod +x /usr/local/sbin/zfs
 "$zfsm_php" -n "$zfsm_repo/tests/replica_serve_test.php"
 umount /usr/local/sbin
+"$zfsm_php" -n "$zfsm_repo/tests/replica_remote_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/pool_features_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
 for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset; do
