@@ -46,7 +46,7 @@ reviews:
         - Each request runs one fixed zfs command, with no shell and no option taken from the request. Every name must be inside the sender's own area, `<accepting dataset>/<sender>/`; only `exists` may name the area itself.
         - zfs receive must not see a stream until its first record is checked: one dataset's stream only. Refuse a clone stream (DRR_FLAG_CLONE) and a -R or -p package. ZFS finds a clone's origin by guid anywhere in the pool, so a name check alone can't confine it.
         - Copies inherit the area's mountpoint=none, volmode=none and setuid, devices and exec off. The receive excludes those and the share properties with `-x`, and every request is refused once the area's properties change.
-        - authorized_keys options apply left to right: a later `pty` or `*-forwarding` undoes `restrict`. This plugin's policy is that a replication key's `from=` lists exact addresses or CIDR ranges only, so a line whose `from=` holds `*`, `?` or `!` is reported as not limited.
+        - authorized_keys options apply left to right: a later `pty` or `*-forwarding` undoes `restrict`. This plugin's policy is that a replication key's `from=` lists exact IP addresses only, so a line whose `from=` holds a range, a wildcard, `!` or a host name is reported as not limited. Option names match whatever their case, and `command=` must be exactly the installed checker and a sender name.
     - path: "zfs.master/frontend/**/*.js"
       instructions: |
         Runs on Unraid's shared Main tab next to other plugins.
