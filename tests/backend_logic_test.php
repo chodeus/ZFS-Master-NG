@@ -138,6 +138,9 @@ $kept = runProcess('printf', array('a\nb'), null, 0, 100);
 assertSameValue(array("a\nb", 2), array($kept['output'], $kept['lines']), 'A last line without a newline still counts');
 $kept = runProcess('true', array(), null, 0, 100);
 assertSameValue(array('', 0), array($kept['output'], $kept['lines']), 'No output is no lines');
+// More input than a pipe holds, to a command that ends without reading it: the write always meets a closed pipe.
+$early = runProcess('sh', array('-c', 'echo refused >&2; exit 4'), str_repeat("secret\n", 300000));
+assertSameValue(array(4, 'refused'), array($early['code'], trim($early['output'])), 'A command that ends before reading its input fails by its own exit code and output');
 
 $tree = zfsmLoadPoolTree('tank', true, '', 1);
 assertSameValue('tank', $tree['name'], 'Pool root dataset was not returned');
