@@ -191,18 +191,23 @@ same('None yet', zfsmReplicaKeysHtml(array()), 'no keys yet');
 same(array(), zfsmReplicaKeys($work.'/missing'), 'no file, no keys');
 
 // scripts/replica-serve.php keeps only the request and the client's address from the environment and fixes PATH before it reads anything,
-// so neither the fake zfs nor a zfs first on the caller's PATH runs; the accepting dataset comes from a file the Helpers fixture reads.
+// so the zfs it runs is the first on that PATH; the accepting dataset comes from a file the Helpers fixture reads.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica-serve.php')) {
 	$script = $docroot.'/plugins/zfs.master/scripts/replica-serve.php';
 	same(true, is_executable($script), 'the script can run as an authorized_keys command');
+	$fixed_path = '/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin';
+	$fixed_zfs = null;
+	foreach (explode(':', $fixed_path) as $dir) if ($fixed_zfs === null && is_file($dir.'/zfs') && is_executable($dir.'/zfs')) $fixed_zfs = $dir.'/zfs';
+	same(true, $fixed_zfs !== null && hash_file('sha256', $fixed_zfs) === hash_file('sha256', __DIR__.'/fixtures/fixed_path/zfs'), 'the fixed PATH finds tests/fixtures/fixed_path/zfs first (run_http_inventory_tests.sh puts it there), so no real zfs runs: '.var_export($fixed_zfs, true));
+	$fixed_log = '/tmp/zfsm-fixed-path-zfs.log';
+	@unlink($fixed_log);
 	mkdir($work.'/decoy');
 	file_put_contents($work.'/decoy/zfs', "#!/bin/sh\ntouch ".escapeshellarg($work.'/decoy-ran')."\necho none\n");
 	chmod($work.'/decoy/zfs', 0755);
 	@unlink($work.'/calls.log');
 	// The environment the script's own commands would get, read as it exits.
 	file_put_contents($work.'/env-dump.php', '<?php register_shutdown_function(function() { file_put_contents('.var_export($work.'/env.json', true).', json_encode(getenv())); });');
-	// In a pool that can't exist: a host zfs the fixed PATH finds can't make anything.
 	$accept_file = $docroot.'/zfsm-replica-accept';
 	file_put_contents($accept_file, 'zfsm-no-such-pool/replicas');
 	$run = function($request, $args) use ($script, $work) {
@@ -215,10 +220,11 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 		return array(proc_close($process), $out, $err);
 	};
 	$hello = $run('zfsm-replica 1 hello', array('tower'));
-	same(array(false, array(), true), array(is_file($work.'/decoy-ran'), $calls('get'), $hello[0] !== 0), 'it runs neither a zfs first on the caller\'s PATH nor the test one: '.var_export($hello, true));
+	$fixed_calls = is_file($fixed_log) ? file($fixed_log, FILE_IGNORE_NEW_LINES) : array();
+	same(array('get', false, array(), true), array(strtok($fixed_calls[0] ?? '', ' '), is_file($work.'/decoy-ran'), $calls('get'), $hello[0] !== 0), 'it runs the zfs the fixed PATH finds, not one first on the caller\'s PATH nor the test one: '.var_export(array($hello, $fixed_calls), true));
 	$kept = json_decode((string)@file_get_contents($work.'/env.json'), true) ?: array();
 	ksort($kept);
-	same(array('PATH' => '/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin', 'SSH_CLIENT' => '192.0.2.7 50000 22', 'SSH_ORIGINAL_COMMAND' => 'zfsm-replica 1 hello'), $kept, 'and its commands get only the request, the client\'s address and the fixed PATH');
+	same(array('PATH' => $fixed_path, 'SSH_CLIENT' => '192.0.2.7 50000 22', 'SSH_ORIGINAL_COMMAND' => 'zfsm-replica 1 hello'), $kept, 'and its commands get only the request, the client\'s address and the fixed PATH');
 	same(array(1, '', "Not a replication request\n"), $run('zfs list', array('tower')), 'a plain zfs command is refused');
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array()), 'a key line naming no sender is refused');
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array('tower', 'extra')), 'and one naming more than one');
