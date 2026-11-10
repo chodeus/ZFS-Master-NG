@@ -464,6 +464,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	openBox('<?=$urlcreatedataset?>?zpool='+encodeURIComponent(zpool),'Create Dataset',550,680,false);
   }
 
+  function poolInfo(zpool) {
+	openBox('<?=$urlpoolinfo?>?zpool='+encodeURIComponent(zpool),zpool+' - Pool Info',680,900,false);
+  }
+
   function addDirectoryContext(directory, pool, id, destructive_mode) {
 	var opts = [];
 
