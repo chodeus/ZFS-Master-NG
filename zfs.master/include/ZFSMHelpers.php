@@ -121,7 +121,8 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	}
 
 	if ($stdin !== null && $stdin !== '') {
-		fwrite($pipes[0], $stdin);
+		// A command that ends without reading it closes its end: the write fails, and its exit code and output say why.
+		@fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
 	// A zfs stuck in the kernel ignores even KILL and holds its output open: past the limit and timeout's own grace, let it go.
