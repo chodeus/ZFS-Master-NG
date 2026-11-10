@@ -14,7 +14,7 @@ function handlers(from, to) {
   const start = page.indexOf(from);
   const end = page.indexOf(to, start);
   assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
-  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps').replaceAll('<?=$urlpoolinfo?>', '/zfsm-pool');
   assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
   return code;
 }
@@ -34,10 +34,15 @@ const posts = [], replies = [];
 let properties = {};
 let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
 let rewritePreview = {};
+let replicateAnswer = () => ({});
+// Answers held back to arrive late, as a slow plan would.
+const lateAnswers = [];
+let holdReplicate = false;
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
   if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
+  if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
   const reply = window.$.Deferred();
   replies.push(reply);
@@ -298,6 +303,12 @@ async function confirm() {
   snapshotsAdmin(0, 3).action({preventDefault() {}});
   snapshotsAdmin(2, 3).action({preventDefault() {}});
   assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+  // Pool Info opens the pool it was asked for, its name encoded in the address.
+  window.eval(handlers('function poolInfo(', 'function addDirectoryContext('));
+  const boxes = [];
+  window.openBox = (url, title) => boxes.push([url, title]);
+  window.poolInfo('tank:2');
+  assert.deepEqual(boxes, [['/zfsm-pool?zpool=tank%3A2', 'tank:2 - Pool Info']], 'Pool Info opens with the pool in its address and title');
 
   // A rewrite reports on the same row: started, how many files are done, stopped.
   send('rewrite_start');
@@ -317,6 +328,84 @@ async function confirm() {
   assert.deepEqual(timers.map(timer => timer.ms), [12000], 'each rewrite message gives the row 12 seconds');
   timers[0].callback();
   assert.equal(progress(), '', 'a rewrite silent for 12 seconds no longer shows as running');
+
+  // A replication reports on the same row, in bytes.
+  send('replicate_start');
+  assert.equal(progress(), 'Replicating…', 'the row says it is replicating');
+  feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
+  assert.equal(progress(), 'Replicating… 1.5 KiB of 4 KiB', 'the row shows how much of it is sent');
+  window.zfsm_config.size_units = 'decimal';
+  feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
+  assert.equal(progress(), 'Replicating… 1.54 KB of 4.10 KB', 'in Unraid\'s units when Settings picks them');
+  delete window.zfsm_config.size_units;
+  send('replicate_stop');
+  assert.equal(progress(), '', 'the row clears when it stops');
+  // A rewrite and a replication of one dataset share its row; one stopping leaves the other's progress.
+  send('rewrite_start');
+  send('replicate_start');
+  assert.equal(progress(), 'Rewriting files… · Replicating…', 'both show while both run');
+  send('rewrite_stop');
+  assert.equal(progress(), 'Replicating…', 'the rewrite stopping leaves the replication on the row');
+  send('replicate_stop');
+
+  // Replicate: the plan follows the choices, and Replicate waits for the plan of what is on screen.
+  const options = {snapshots: ['b', 'a'], last_destination: 'backup/data'};
+  replicateAnswer = data => data.destination === '' ? {...options, can_proceed: false, error: ''}
+    : data.destination === 'backup/data' ? {...options, can_proceed: true, mode: 'incremental', since: data.snapshot || 'b', size: 2048, raw: false}
+    : {...options, can_proceed: false, error: "The copy goes inside nowhere, which doesn't exist"};
+  window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  const dest = () => window.document.getElementById('zfsm-replicate-dest');
+  const snap = () => window.document.getElementById('zfsm-replicate-snapshot');
+  const planText = () => window.document.getElementById('zfsm-replicate-plan').textContent;
+  const held = () => window.Swal2.getConfirmButton().disabled;
+  assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
+  assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
+  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data'}], 'it asks for the choices, then the plan for them');
+  assert.match(planText(), /changes since b, about 2 KiB/, 'the plan says what it sends');
+  assert.equal(held(), false, 'a plan that can go enables Replicate');
+  dest().value = 'nowhere/copy';
+  dest().dispatchEvent(new window.Event('input'));
+  assert.equal(held(), true, 'typing holds Replicate until the new plan comes');
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([/which doesn't exist/.test(planText()), held()], [true, true], 'a refused plan says why and keeps Replicate off');
+  // An older plan that answers after a newer one is dropped.
+  holdReplicate = true;
+  snap().value = 'a';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, false], 'a late answer for an older choice does not replace the plan on screen');
+  // A plan asked for before the destination changed answers while the new one is still being typed.
+  holdReplicate = true;
+  snap().value = 'b';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'nowhere/copy';
+  dest().dispatchEvent(new window.Event('input'));
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, true], 'it does not enable Replicate for a destination it was not planned for');
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([/changes since b/.test(planText()), held()], [true, false], 'the plan for the destination on screen enables it');
+  snap().value = '';
+  snap().dispatchEvent(new window.Event('change'));
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data'}, 'Take one now is planned too');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data'}, 'Replicate starts with what is on screen');
+  window.Swal2.close();
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
   const rewriteItem = (type, available) => {

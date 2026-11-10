@@ -390,6 +390,95 @@ switch ($check) {
 		}
 		break;
 
+	// Which Unraid imports the pool, from the features zpool get all reports: block_cloning first, then ZFSM_TEST_FEATURES.
+	case 'pool_info_popup':
+	case 'pool_info_popup_read_only':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		$read_only = $check === 'pool_info_popup_read_only';
+		putenv('ZFSM_TEST_FEATURES='.($read_only ? 'zilsaxattr=active fast_dedup=enabled head_errlog=disabled' : 'head_errlog=active zilsaxattr=active fast_dedup=enabled'));
+		putenv('ZFSM_TEST_BCLONE=active');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		$older = $read_only ? 'Can import it read-only only (zpool import -o readonly=on)' : 'Can&#039;t import it';
+		if (strpos($html, '<dd id="zfsm-read-write">Unraid 7.0 and later</dd>') === false || strpos($html, '<dd id="zfsm-older">'.$older.'</dd>') === false) { fwrite(STDERR, "pool info popup gave the wrong Unraid\n"); exit(1); }
+		// Grouped in use, enabled, then off; in each, those older Unraid can't import first.
+		preg_match_all('#<tr data-feature="([a-z_]+)"><td class="zfsm-feature">\1</td><td class="zfsm-needs">#', $html, $rows);
+		$expected = $read_only ? array('block_cloning', 'zilsaxattr', 'fast_dedup', 'head_errlog') : array('head_errlog', 'block_cloning', 'zilsaxattr', 'fast_dedup');
+		if ($rows[1] !== $expected) { fwrite(STDERR, 'pool info popup listed '.implode(' ', $rows[1])."\n"); exit(1); }
+		if (strpos($html, '<td class="zfsm-feature">fast_dedup</td><td class="zfsm-needs">Unraid 7.1, older read-only</td><td>Deduplicated writes to a new dedup table</td>') === false) { fwrite(STDERR, "pool info popup lost a feature's Unraid or reason\n"); exit(1); }
+		$upgrade = '<dd id="zfsm-after-upgrade">Unraid 7.0 and later. Older Unraid: Can&#039;t import it. Upgrade Pool puts head_errlog in use</dd>';
+		$off = '<tbody data-group="off"><tr class="zfsm-group"><th colspan="3">Off: Unraid&#039;s Upgrade Pool would turn these on</th></tr>';
+		$at_once = '<td class="zfsm-feature">head_errlog</td><td class="zfsm-needs">Unraid 7.0, older can&#039;t import</td><td>In use as soon as Upgrade Pool runs</td>';
+		if ($read_only !== (strpos($html, $upgrade) !== false && strpos($html, $off) !== false && strpos($html, $at_once) !== false)) { fwrite(STDERR, "pool info popup got what Upgrade Pool would do wrong\n"); exit(1); }
+		if (!$read_only && strpos($html, 'id="zfsm-after-upgrade"') !== false) { fwrite(STDERR, "pool info popup warns about an Upgrade Pool that changes nothing\n"); exit(1); }
+		// Answer first: what would raise it, then every feature folded away.
+		preg_match_all('#<tr data-raise="([a-z_]+)">#', $html, $raise);
+		if ($raise[1] !== array('fast_dedup') || strpos($html, '<tr data-raise="fast_dedup"><td class="zfsm-needs">Unraid 7.1</td><td>Deduplicated writes to a new dedup table</td></tr>') === false) { fwrite(STDERR, 'pool info popup said '.implode(' ', $raise[1])." would raise the answer\n"); exit(1); }
+		if (strpos($html, '<details class="zfsm-all"><summary>All 4 features</summary>') === false) { fwrite(STDERR, "pool info popup lost its folded feature list\n"); exit(1); }
+		popup_styles($html, $docroot);
+		break;
+
+	// The pool's compatibility setting limits what Upgrade Pool turns on, and a set that can't be read is said so.
+	case 'pool_info_popup_compat':
+	case 'pool_info_popup_compat_unread':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		$sets = sys_get_temp_dir().'/zfsm-compat-sets';
+		@mkdir($sets, 0700, true);
+		file_put_contents($sets.'/grub2', "block_cloning zilsaxattr\n");
+		$GLOBALS['zfsm_compatibility_dirs'] = array($sets);
+		$set = $check === 'pool_info_popup_compat' ? 'grub2' : 'nosuchset';
+		putenv('ZFSM_TEST_FEATURES=compatibility='.$set.' zilsaxattr=active head_errlog=disabled');
+		putenv('ZFSM_TEST_BCLONE=enabled');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		$said = $check === 'pool_info_popup_compat' ? 'No change: the pool&#039;s compatibility setting (grub2) limits what it turns on' : 'Unknown: the pool&#039;s compatibility set (nosuchset) could not be read';
+		if (strpos($html, '<dd id="zfsm-after-upgrade">'.$said.'</dd>') === false) { fwrite(STDERR, "pool info popup misread the pool's compatibility setting\n"); exit(1); }
+		if (strpos($html, 'data-group="off"') !== false) { fwrite(STDERR, "pool info popup lists features Upgrade Pool won't turn on\n"); exit(1); }
+		break;
+
+	// Upgrade Pool would turn on a feature newer than the plugin's list: no claim about after it, and the feature is listed.
+	case 'pool_info_popup_unknown_upgrade':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		putenv('ZFSM_TEST_FEATURES=zilsaxattr=active future_off=disabled');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		if (strpos($html, '<dd id="zfsm-after-upgrade">Unknown: Upgrade Pool would turn on future_off, which this plugin&#039;s list doesn&#039;t know</dd>') === false) { fwrite(STDERR, "pool info popup claimed to know what Upgrade Pool does with an unknown feature\n"); exit(1); }
+		if (strpos($html, '<tr data-feature="future_off"><td class="zfsm-feature">future_off</td><td class="zfsm-needs">Not in this plugin&#039;s list</td><td>Unknown</td></tr>') === false) { fwrite(STDERR, "pool info popup left out the unknown feature Upgrade Pool turns on\n"); exit(1); }
+		break;
+
+	case 'pool_info_popup_failed':
+	case 'pool_info_popup_bad_name':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => $check === 'pool_info_popup_bad_name' ? '-H' : 'tank');
+		putenv('ZFSM_TEST_BCLONE=fail');
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		$said = $check === 'pool_info_popup_bad_name' ? 'Not a pool name' : 'The pool&#039;s features could not be read';
+		if (strpos($html, '<p class="zfsm-error" id="zfsm-compat-error">'.$said.'</p>') === false) { fwrite(STDERR, "pool info popup did not say why it has no answer\n"); exit(1); }
+		if (strpos($html, 'id="zfsm-read-write"') !== false || strpos($html, 'id="zfsm-features"') !== false) { fwrite(STDERR, "pool info popup answered without the features\n"); exit(1); }
+		break;
+
+	case 'pool_info_popup_stuck_zpool':
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		$_GET = array('zpool' => 'tank');
+		$GLOBALS['zfsm_popup_read_seconds'] = 2;
+		putenv('ZFSM_TEST_FEATURES=hang');
+		$began = microtime(true);
+		ob_start();
+		require $docroot.'/plugins/zfs.master/frontend/ZFSMPoolInfo.php';
+		$html = ob_get_clean();
+		$took = microtime(true) - $began;
+		if ($took > 10) { fwrite(STDERR, sprintf("pool info popup with a stuck zpool took %.1f s\n", $took)); exit(1); }
+		if (strpos($html, 'Reading the pool&#039;s features took too long') === false) { fwrite(STDERR, "pool info popup with a stuck zpool did not say why\n"); exit(1); }
+		break;
+
 	default:
 		exit(2);
 }

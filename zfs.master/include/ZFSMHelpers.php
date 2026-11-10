@@ -29,6 +29,7 @@ function loadConfig($config) {
 		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
 		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
 		'size_units' => ($general['size_units'] ?? '') === 'decimal' ? 'decimal' : 'binary',
+		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }

@@ -15,6 +15,114 @@ for arg in "$@"; do last_arg="$arg"; done
 # Every call, for a test that counts how many reads a page makes.
 if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
 
+# Replication (include/ZFSMReplicate.php) against a small pool kept in ZFSM_TEST_REPL_DIR: datasets ("name<TAB>type"),
+# marks (snapshots and bookmarks, "name<TAB>guid<TAB>createtxg", oldest first) and props ("name<TAB>property<TAB>value").
+# send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream.
+if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
+	R=$ZFSM_TEST_REPL_DIR
+	touch "$R/datasets" "$R/marks" "$R/props"
+	next_txg() { t=$(( $(cat "$R/txg" 2>/dev/null || echo 100) + 1 )); echo "$t" > "$R/txg"; echo "$t"; }
+	prop() { v=$(awk -F'\t' -v n="$1" -v p="$2" '$1 == n && $2 == p { v = $3 } END { print v }' "$R/props"); if [ -n "$v" ]; then echo "$v"; else echo "$3"; fi; }
+	set_prop() { awk -F'\t' -v n="$1" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new"; printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$R/props.new"; mv "$R/props.new" "$R/props"; }
+	exists() { awk -F'\t' -v n="$1" '$1 == n { f = 1 } END { exit !f }' "$R/datasets"; }
+	mark() { awk -F'\t' -v n="$1" -v f="$2" '$1 == n { print $f }' "$R/marks"; }
+	# A real stream's 312-byte first record (DRR_BEGIN, include/sys/zfs_ioctl.h): one filesystem, no flags; receive skips it.
+	begin() { printf '\000\000\000\000\000\000\000\000\254\313\272\365\002\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000'; head -c 272 /dev/zero; }
+	newest() { awk -F'\t' -v d="$1@" 'index($1, d) == 1 { g = $2 } END { print g }' "$R/marks"; }
+	case "$1" in
+	list)
+		if contains_arg 'name,guid,createtxg' "$@"; then
+			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+			types=$(for a in "$@"; do [ "${prev:-}" = -t ] && echo "$a"; prev=$a; done)
+			awk -F'\t' -v d="$last_arg" -v t="$types" '(index(t, "snapshot") && index($1, d "@") == 1) || (index(t, "bookmark") && index($1, d "#") == 1)' "$R/marks"
+			exit 0
+		fi
+		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name,type ]; then
+			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
+			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
+		fi
+		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
+			exists "$last_arg" && { echo "$last_arg"; exit 0; }
+			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
+		fi ;;
+	get)
+		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		if [ "$5" = property,value ]; then for p in $(printf '%s' "$6" | tr , ' '); do printf '%s\t%s\n' "$p" "$(prop "$last_arg" "$p" -)"; done; exit 0; fi
+		case "$6" in
+		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
+		guid) prop "$last_arg" guid "$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)" ;;
+		encryption) prop "$last_arg" encryption off ;;
+		receive_resume_token)
+			[ "${ZFSM_TEST_TOKEN_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			prop "$last_arg" receive_resume_token - ;;
+		*) prop "$last_arg" "$6" - ;;
+		esac
+		exit 0 ;;
+	send)
+		dry=0; raw=0; base=-; token=''; prev=''
+		for a in "$@"; do
+			case "$a" in -n) dry=1 ;; -w) raw=1 ;; esac
+			[ "$prev" = -i ] && base=$a
+			[ "$prev" = -t ] && token=$a
+			prev=$a
+		done
+		snap=$last_arg
+		if [ -n "$token" ]; then snap=${token#tok:}; base=RESUME; fi
+		guid=$(mark "$snap" 2)
+		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$snap" >&2; exit 1; }
+		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$snap" >&2
+		if [ "$base" = - ]; then printf 'full\t%s\t1000\n' "$snap" >&2; else printf 'incremental\t%s\t%s\t1000\n' "$base" "$snap" >&2; fi
+		printf 'size\t1000\n' >&2
+		[ "$dry" = 1 ] && exit 0
+		[ "${ZFSM_TEST_SEND_FAIL:-0}" = 1 ] && { printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
+		# Part of the stream, then a read error, as a failing disk under the source gives.
+		[ "${ZFSM_TEST_SEND_FAIL_PART:-0}" = 1 ] && { begin; printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"; printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
+		printf '00:00:01\t500\t%s\n' "$snap" >&2
+		begin
+		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"
+		[ "${ZFSM_TEST_SEND_CUT:-0}" = 1 ] || printf 'ZFSMEND\n'
+		exit 0 ;;
+	receive)
+		dest=$last_arg
+		stream=$(tail -c +313)
+		header=$(printf '%s\n' "$stream" | head -1)
+		[ -n "$header" ] || { printf 'cannot receive: failed to read from stream\n' >&2; exit 1; }
+		[ "${ZFSM_TEST_RECV_FAIL:-0}" = 1 ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
+		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
+		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
+			printf 'cannot receive incremental stream: most recent snapshot of %s does not match incremental source\n' "$dest" >&2; exit 1
+		fi
+		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
+		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
+			set_prop "$dest" receive_resume_token "tok:$snap"
+			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
+		fi
+		printf '%s@%s\t%s\t%s\n' "$dest" "${snap#*@}" "$guid" "$(next_txg)" >> "$R/marks"
+		set_prop "$dest" receive_resume_token -
+		exit 0 ;;
+	bookmark)
+		guid=$(mark "$2" 2); txg=$(mark "$2" 3)
+		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$2" >&2; exit 1; }
+		[ -n "$(mark "$3" 1)" ] && { printf "cannot create bookmark '%s': bookmark exists\n" "$3" >&2; exit 1; }
+		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
+		exit 0 ;;
+	create)
+		exists "$last_arg" && { printf "cannot create '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
+		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }
+		printf '%s\tfilesystem\n' "$last_arg" >> "$R/datasets"
+		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
+		exit 0 ;;
+	snapshot)
+		[ -n "$(mark "$last_arg" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
+		t=$(next_txg); printf '%s\t%s\t%s\n' "$last_arg" "$((t * 7919))" "$t" >> "$R/marks"
+		exit 0 ;;
+	destroy)
+		awk -F'\t' -v n="$last_arg" '$1 != n' "$R/marks" > "$R/marks.new" && mv "$R/marks.new" "$R/marks"
+		exit 0 ;;
+	esac
+fi
+
 # A zfs that never answers a list, as on a hung pool.
 if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = 1 ]; then sleep 30; fi
 # One that also ignores TERM, so only timeout's KILL stops it.

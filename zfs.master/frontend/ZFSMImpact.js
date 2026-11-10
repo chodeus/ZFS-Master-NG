@@ -1,6 +1,11 @@
+// Everything a dialog shows from ZFS is escaped: dataset, snapshot and folder names are user-controlled.
+function zfsmEscape(value) {
+	return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+}
+
 // The review shown before a destroy or rollback. Names are user-controlled, so everything is escaped here.
 function zfsmImpactHtml(preview, heading) {
-	const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+	const esc = zfsmEscape;
 	const list = items => {
 		const shown = items.slice(0, 50).map(item => '<li style="overflow-wrap:anywhere">'+esc(item)+'</li>').join('');
 		const more = items.length > 50 ? '<li>…and '+(items.length - 50)+' more</li>' : '';
@@ -38,7 +43,7 @@ function zfsmFetchReview(url, data, show, after = ' Nothing was changed.') {
 function zfsmRewriteHtml(preview) {
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	const warn = (text, id) => '<p'+(id ? ' id="'+id+'"' : '')+' style="color:#e22828;margin:.5em 0">'+text+'</p>';
-	if (preview.error) return warn(String(preview.error).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char])));
+	if (preview.error) return warn(zfsmEscape(preview.error));
 	const held = preview.snapshot_space === null || preview.snapshot_space === undefined ? 'an amount that could not be read' : zfsmSize(preview.snapshot_space);
 	let html = say('This writes every file in the dataset again, in place, so a changed compression, checksum, dedup or copies setting applies to the data already there. A changed record size is not applied.');
 	html += warn('Snapshots and clones keep the old blocks, so the pool can use up to the size of these files again until those snapshots are deleted. This dataset\'s snapshots hold '+held+' now.');
@@ -60,6 +65,31 @@ function zfsmRewriteSync(root) {
 	const resend = root.querySelector('#zfsm-rewrite-resend');
 	if (resend) resend.style.display = keep ? 'none' : '';
 	return keep;
+}
+
+// The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicate.php; zfsmReplicatePlanHtml fills its plan as the choices change.
+function zfsmReplicateHtml(options) {
+	const esc = zfsmEscape;
+	// The control inside its label names it for screen readers.
+	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+field+'</label></p>';
+	const snapshots = (options.snapshots || []).map(name => '<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
+	let html = row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
+	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="pool/dataset" value="'+esc(options.last_destination || '')+'">');
+	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
+	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p></div>';
+}
+
+function zfsmReplicatePlanHtml(plan) {
+	const esc = zfsmEscape;
+	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	if (plan.error) return '<p style="color:#e22828;margin:.5em 0">'+esc(plan.error)+'</p>';
+	if (plan.can_proceed !== true) return '';
+	const size = plan.size === null || plan.size === undefined ? '' : ', about '+zfsmSize(plan.size);
+	let html = say(plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
+		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
+		: 'The first replication sends everything'+size+'.');
+	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
+	return html+say('The copy is unmounted and read-only, so nothing changes it between replications.');
 }
 
 function zfsmImpactSummary(preview, verb) {

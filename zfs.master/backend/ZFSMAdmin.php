@@ -106,6 +106,11 @@ try {
 			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;
 
+		case 'validateaccept':
+			// Trimmed as loadConfig trims the saved setting.
+			echo json_encode(array('valid' => zfsmReplicaAcceptValid(trim(zfsmPostString('dataset')))));
+			break;
+
 		case 'adddirectortlisting':
 			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
 			break;
@@ -147,6 +152,17 @@ try {
 
 		case 'rewritedataset':
 			zfsmReturnAnswer(zfsmStartRewrite(zfsmPostString('zdataset'), zfsmPostString('physical') === '1'), 'ZFS Dataset Rewrite', 'Rewrite started', 'Unable to start the rewrite');
+			break;
+
+		case 'previewreplicate':
+			$zdataset = zfsmPostString('zdataset');
+			$snapshot = zfsmPostString('snapshot');
+			$zdest = zfsmPostString('destination');
+			echo json_encode(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			break;
+
+		case 'replicatedataset':
+			zfsmReturnAnswer(zfsmStartReplicate(zfsmPostString('zdataset'), zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg), 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
 		case 'convertdirectory':

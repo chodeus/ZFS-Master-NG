@@ -43,6 +43,7 @@ assert.deepEqual(['ONLINE&lt;b&gt;', '/mnt/&lt;img src=x&gt;', '1&lt;2'].map(tex
 assert.doesNotMatch(marked, /<img|<b>/, 'nothing in them becomes markup');
 assert.match(marked, /onclick="togglePoolTable\(decodeURIComponent\('show-zpool-tank'\), decodeURIComponent\('zdataset-tank'\)\);"/, 'the show and hide button gets the pool by safeJsArg');
 assert.match(marked, /<button type="button" onclick="createDataset\(decodeURIComponent\('tank'\)\);">Create Dataset<\/button>/, 'and Create Dataset, with no stray quote after it');
+assert.match(marked, /Create Dataset<\/button><button type="button" onclick="poolInfo\(decodeURIComponent\('tank'\)\);">Pool Info<\/button><\/td>/, 'and Pool Info beside it, last in the cell');
 
 // Used and Free: text or a bar, as the display setting says; the bars split the space between them.
 for (const [text, usedBar, freeBar] of [[0, false, false], [1, true, true], [10, false, true], [11, true, false]]) {

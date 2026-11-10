@@ -464,7 +464,8 @@ function generatePoolTableRows(zpool, devices, show_status, display, root) {
 	var tr = '<td id="'+pool+'-attribute-pool" class="zfsm-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+pool+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+pool+'</td>';
 	tr += '<td id="'+pool+'-attribute-health" class="zfsm-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+escapeHtml(zpool['Health'])+'</td>';
 	tr += '<td id="'+pool+'-attribute-name" class="zfsm-name"><button type="button" id="show-zpool-'+pool+'" onclick="togglePoolTable('+safeJsArg('show-zpool-'+zpool['Pool'])+', '+safeJsArg('zdataset-'+zpool['Pool'])+');">'+show_button_text+'</button>';
-	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button></td>';
+	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button>';
+	tr += '<button type="button" onclick="poolInfo('+safeJsArg(zpool['Pool'])+');">Pool Info</button></td>';
 	tr += '<td id="'+pool+'-attribute-mountpoint" class="zfsm-mount">'+escapeHtml(zpool['MountPoint'])+'</td>';
 	tr += '<td id="'+pool+'-attribute-refer" class="zfsm-refer">'+escapeHtml(zpool['Refer'])+'</td>';
 	tr += '<td id="'+pool+'-attribute-snapshots" class="zfsm-snaps">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'])+'</td>';
