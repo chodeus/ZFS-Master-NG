@@ -32,7 +32,7 @@ same(array('list', '-H', '-o', 'name,type', 'backup/replicas/tower'), $check($re
 same(array('list', '-H', '-o', 'name,type', 'backup/replicas/tower/data'), $check($req('exists', 'backup/replicas/tower/data')), 'and about a copy inside it');
 same(array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', 'backup/replicas/tower/data'), $check($req('snapshots', 'backup/replicas/tower/data')), 'snapshots lists a copy\'s snapshots');
 same(array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', 'backup/replicas/tower/data'), $check($req('token', 'backup/replicas/tower/data')), 'token reads a copy\'s resume token');
-same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'sharenfs', '-x', 'sharesmb', 'backup/replicas/tower/my data'), $check($req('receive', 'backup/replicas/tower/my data')), 'receive takes a stream read-only, never -F, inheriting the area\'s mountpoint=none whatever the stream holds');
+same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'volmode', '-x', 'setuid', '-x', 'devices', '-x', 'exec', '-x', 'sharenfs', '-x', 'sharesmb', '-x', 'snapdev', 'backup/replicas/tower/my data'), $check($req('receive', 'backup/replicas/tower/my data')), 'receive takes a stream read-only, never -F, and the stream can\'t set what the area holds off');
 
 // Everything else is refused.
 $data = bin2hex('backup/replicas/tower/data');
@@ -75,6 +75,7 @@ mkdir($work.'/pool', 0700, true);
 register_shutdown_function(function() use ($work) { exec('rm -rf '.escapeshellarg($work)); });
 putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
 putenv('ZFSM_TEST_CALL_LOG='.$work.'/calls.log');
+putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\nbackup\tfilesystem\nbackup/replicas\tfilesystem\n");
 file_put_contents($work.'/pool/marks', "tank/data@a\t11\t10\n");
 exec(escapeshellarg(zfsmCommandPath('zfs')).' send tank/data@a > '.escapeshellarg($work.'/stream').' 2>/dev/null');
@@ -87,13 +88,13 @@ $serve = function($request, $input = '/dev/null', $in = 'backup/replicas/tower')
 $calls = function($verb) use ($work) { return array_values(array_filter(is_file($work.'/calls.log') ? file($work.'/calls.log', FILE_IGNORE_NEW_LINES) : array(), function($line) use ($verb) { return strpos($line, $verb.' ') === 0; })); };
 same(array(1, '', "backup/replicas/tower doesn't exist yet\n"), $serve($req('exists', 'backup/replicas/tower')), 'before hello, the area isn\'t there');
 same(array(0, "zfsm-replica 1\narea backup/replicas/tower\n", ''), $serve('zfsm-replica 1 hello'), 'hello answers with the area');
-same(array('create -o mountpoint=none -o canmount=off backup/replicas/tower'), $calls('create'), 'having made it unmounted');
+same(array('create -o canmount=off -o mountpoint=none -o volmode=none -o setuid=off -o devices=off -o exec=off backup/replicas/tower'), $calls('create'), 'having made it never to mount, show as a block device or run anything');
 same(array(0, "zfsm-replica 1\narea backup/replicas/tower\n", ''), $serve('zfsm-replica 1 hello'), 'a second hello finds it ready');
 same(1, count($calls('create')), 'and makes nothing more');
 same(array(0, "backup/replicas/tower\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'exists answers with the name and type');
 same(1, $serve($req('exists', 'backup/replicas/tower/data'))[0], 'and fails for a copy not there yet');
 same(array(0, '', ''), $serve($req('receive', 'backup/replicas/tower/data'), $work.'/stream'), 'a stream is received');
-same(array('receive -s -u -o readonly=on -x mountpoint -x sharenfs -x sharesmb backup/replicas/tower/data'), $calls('receive'), 'with the fixed receive');
+same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev backup/replicas/tower/data'), $calls('receive'), 'with the fixed receive');
 same(array(0, "backup/replicas/tower/data@a\t11\t101\n", ''), $serve($req('snapshots', 'backup/replicas/tower/data')), 'snapshots lists what the copy now holds');
 same(array(0, "-\n", ''), $serve($req('token', 'backup/replicas/tower/data')), 'token reads no stopped run');
 @unlink($work.'/calls.log');
@@ -101,10 +102,36 @@ same(array(1, '', "backup/replicas/other/data is not inside backup/replicas/towe
 same(array(), $calls('receive'), 'and runs no zfs receive');
 same(false, strpos(file_get_contents($work.'/pool/datasets'), 'backup/replicas/other') !== false, 'so nothing appears outside the area');
 same(array(1, '', "backup/replicas/new doesn't exist yet\n"), $serve($req('receive', 'backup/replicas/new/data'), $work.'/stream', 'backup/replicas/new'), 'a receive never makes the area: only hello does');
-// Once the area could mount, nothing more goes in.
-file_put_contents($work.'/pool/props', "backup/replicas/tower\tmountpoint\t/mnt/backup/replicas/tower\n", FILE_APPEND);
-same(array(1, '', "backup/replicas/tower must keep mountpoint=none, so nothing replicated into it mounts\n"), $serve($req('receive', 'backup/replicas/tower/data2'), $work.'/stream'), 'a receive is refused once the area has a mountpoint');
-same(1, $serve('zfsm-replica 1 hello')[0], 'and so is hello');
+// Only a stream of one dataset goes in, read before zfs sees it: never a clone of another's snapshot, nor a -R or -p package.
+$record = function($flags = 0, $version = 1, $objset = 2, $magic = 0x2F5BACBAC, $type = 0) { return pack('VVPPPVV', $type, 0, $magic, $version, 0, $objset, $flags).str_repeat("\0", 272); };
+same(312, strlen($record()), 'a first record is 312 bytes');
+same('', zfsmReplicaStreamCheck($record()), 'a filesystem\'s stream');
+same('', zfsmReplicaStreamCheck($record(0xc, 0x11, 3)), 'a volume\'s, with the flags and feature bits real streams carry');
+same('A clone\'s stream is not accepted', zfsmReplicaStreamCheck($record(0xd, 0x11)), 'a clone\'s stream, which would hold a snapshot outside the area as its origin');
+same('A stream of several datasets (zfs send -R or -p) is not accepted', zfsmReplicaStreamCheck($record(0, 2)), 'a package of streams');
+same('Not a send stream', zfsmReplicaStreamCheck(substr($record(), 0, 311)), 'a short one');
+same('Not a send stream', zfsmReplicaStreamCheck($record(0, 1, 2, 0x2F5BACBAD)), 'a wrong magic');
+same('Not a send stream', zfsmReplicaStreamCheck($record(0, 1, 2, 0x2F5BACBAC, 1)), 'a first record that isn\'t BEGIN');
+same('Only a filesystem or volume stream is accepted', zfsmReplicaStreamCheck($record(0, 1, 1)), 'another kind of dataset');
+file_put_contents($work.'/clone', $record(0xd, 0x11)."ZFSMSTREAM\ttank/data@a\t-\t11\t0\n");
+@unlink($work.'/calls.log');
+same(array(1, '', "A clone's stream is not accepted\n"), $serve($req('receive', 'backup/replicas/tower/evil'), $work.'/clone'), 'a clone\'s stream is refused');
+same(array(), $calls('receive'), 'before zfs receive runs');
+same(array(1, '', "Not a send stream\n"), $serve($req('receive', 'backup/replicas/tower/evil'), '/dev/null'), 'and so is no stream at all');
+// At most four receives into an area run at once.
+$slots = array();
+for ($slot = 0; $slot < 4; $slot++) $slots[] = zfsmReplicaReceiveSlot('backup/replicas/tower');
+same(4, count(array_filter($slots)), 'four slots');
+same(array(1, '', "No receive into backup/replicas/tower can start while four are running\n"), $serve($req('receive', 'backup/replicas/tower/data5'), $work.'/stream'), 'a fifth receive is refused');
+foreach ($slots as $held) zfsmJobUnlock($held);
+same(true, zfsmReplicaReceiveSlot('backup/replicas/other') !== null, 'and another area has its own');
+// Once the area could mount or run anything, nothing more goes in.
+foreach (array('mountpoint' => '/mnt/backup/replicas/tower', 'exec' => 'on') as $property => $value) {
+	file_put_contents($work.'/pool/props', "backup/replicas/tower\t$property\t$value\n", FILE_APPEND);
+	same(array(1, '', "backup/replicas/tower must keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so nothing replicated into it mounts or runs\n"), $serve($req('receive', 'backup/replicas/tower/data2'), $work.'/stream'), 'a receive is refused once the area\'s '.$property.' changed');
+	same(1, $serve('zfsm-replica 1 hello')[0], 'and so is hello');
+	file_put_contents($work.'/pool/props', "backup/replicas/tower\t$property\t".zfsmReplicaAreaProps()[$property]."\n", FILE_APPEND);
+}
 
 // The settings list each key that runs the checker, and whether restrict and from= hold it.
 $checker = '/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php';
@@ -115,12 +142,25 @@ file_put_contents($work.'/authorized_keys', implode("\n", array(
 	'from="10.0.20.12",command="'.$checker.' nas" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC zfs.master@nas',
 	'restrict,command="'.$checker.'" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID zfs.master@noname',
 	'restrict,command="/usr/bin/rrsync /backup" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE rsync@other',
+	'restrict,pty,port-forwarding,from="10.0.20.13",command="'.$checker.' reopened" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF zfs.master@reopened',
+	'restrict,from="*",command="'.$checker.' anywhere" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG zfs.master@anywhere',
+	'restrict,from="!10.0.20.14",command="'.$checker.' negated" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH zfs.master@negated',
 )));
 same(array(
 	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
 	array('sender' => 'nas', 'comment' => 'zfs.master@nas', 'restrict' => false, 'from' => true),
 	array('sender' => '', 'comment' => 'zfs.master@noname', 'restrict' => true, 'from' => false),
-), zfsmReplicaKeys($work.'/authorized_keys'), 'only the checker\'s keys are listed, with what holds each one');
+	array('sender' => 'reopened', 'comment' => 'zfs.master@reopened', 'restrict' => false, 'from' => true),
+	array('sender' => 'anywhere', 'comment' => 'zfs.master@anywhere', 'restrict' => true, 'from' => false),
+	array('sender' => 'negated', 'comment' => 'zfs.master@negated', 'restrict' => true, 'from' => false),
+), zfsmReplicaKeys($work.'/authorized_keys'), 'only the checker\'s keys are listed, with what holds each one: a limit turned back on after restrict, or a from= with a wildcard or !, doesn\'t hold');
+$listed = zfsmReplicaKeysHtml(array(
+	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
+	array('sender' => 'odd', 'comment' => "zfs.master@\xff<b>", 'restrict' => false, 'from' => true),
+));
+same(true, strpos($listed, '<span style="display:block">tower (zfs.master@tower): limited to replication</span>') !== false, 'a held key reads as limited');
+same(true, strpos($listed, '<span style="display:block;color:#e22828">odd (zfs.master@'."\u{FFFD}".'&lt;b&gt;): its line needs restrict') !== false, 'one that isn\'t shows in red, escaped, even when its comment isn\'t valid UTF-8: '.$listed);
+same('None yet', zfsmReplicaKeysHtml(array()), 'no keys yet');
 same(array(), zfsmReplicaKeys($work.'/missing'), 'no file, no keys');
 
 // scripts/replica-serve.php drops the environment's test hooks and fixes PATH before it reads anything, so neither the fake zfs nor a
