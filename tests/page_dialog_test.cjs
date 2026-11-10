@@ -351,6 +351,7 @@ async function confirm() {
   const planText = () => window.document.getElementById('zfsm-replicate-plan').textContent;
   const held = () => window.Swal2.getConfirmButton().disabled;
   assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
+  assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
   assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data'}], 'it asks for the choices, then the plan for them');
   assert.match(planText(), /changes since b, about 2\.00 KiB/, 'the plan says what it sends');
   assert.equal(held(), false, 'a plan that can go enables Replicate');
