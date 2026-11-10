@@ -196,9 +196,10 @@ function zfsmReplicateStream($plan, $zdataset) {
 	}
 	$send_code = proc_close($send);
 	$receive_code = proc_close($receive);
-	// When one side fails the other fails with it: send on a broken pipe, receive on a short stream. The side that failed first says why.
+	// When one side fails the other fails with it: send on a broken pipe, receive on a short stream. The side that failed first says why,
+	// in its first line: receive goes on with how to resume by hand, which the next run does by itself.
 	$why = $receive_code !== 0 && ($send_code === 0 || stripos($errors['receive'], 'failed to read from stream') === false) ? $errors['receive'] : $errors['send'];
-	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim($why));
+	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")));
 }
 
 // After a run: this destination's bookmark at the snapshot it now holds, and its older ones removed. Returns what went wrong, or ''.
@@ -243,9 +244,9 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null) {
 			zfsmCopyProgress('replicate_stop', array('dataset' => $zdataset));
 		}
 		if ($result['code'] !== 0) {
-			$why = zfsmOneLine($result['errors'] !== '' ? $result['errors'] : 'exit code '.$result['code']);
+			$why = rtrim($result['errors'] !== '' ? $result['errors'] : 'exit code '.$result['code'], '.');
 			$resumable = getDatasetProperty(explode('/', $zdest, 2)[0], $zdest, 'receive_resume_token');
-			$then = is_string($resumable) && $resumable !== '' && $resumable !== '-' ? '; replicate it again to carry on from where it stopped' : '';
+			$then = is_string($resumable) && $resumable !== '' && $resumable !== '-' ? '. Replicate it again to carry on from where it stopped.' : '.';
 			zfsmLog('Replication of '.$what.$how.' failed: '.$why);
 			zfsnotify($title, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, '', 'warning');
 			return 1;
