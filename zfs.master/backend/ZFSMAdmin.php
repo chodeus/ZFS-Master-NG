@@ -106,6 +106,10 @@ try {
 			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;
 
+		case 'validateaccept':
+			echo json_encode(array('valid' => zfsmReplicaAcceptValid(zfsmPostString('dataset'))));
+			break;
+
 		case 'adddirectortlisting':
 			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
 			break;

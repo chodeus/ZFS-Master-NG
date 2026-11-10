@@ -27,6 +27,8 @@ $cases = array(
 	'preview_rollback' => array(array('cmd' => 'previewrollback', 'snapshot' => 'tank/data@daily'), '0', '', 'previewed'),
 	'diff_snapshot' => array(array('cmd' => 'diffsnapshot', 'snapshot' => 'tank/data@daily'), '0', '', 'diffed'),
 	'preview_convert' => array(array('cmd' => 'previewconvert', 'directory' => '/mnt/tank/no such folder', 'pool' => 'tank'), '0', '', 'review_refused'),
+	'accept_inside_pool' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup/replicas'), '0', '', 'accept_valid'),
+	'accept_pool_top' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup'), '0', '', 'accept_invalid'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -58,6 +60,7 @@ if ($expected === 'diffed') $passed = count($answer['changes'] ?? array()) === 5
 if ($expected === 'not_snapshot') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Snapshot does not exist') !== false;
 if ($expected === 'unreviewed') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'please review') !== false;
 if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($answer['failed']);
+if ($expected === 'accept_valid' || $expected === 'accept_invalid') $passed = $answer === array('valid' => $expected === 'accept_valid');
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {

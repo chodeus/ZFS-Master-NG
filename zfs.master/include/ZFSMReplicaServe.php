@@ -34,10 +34,14 @@ function zfsmReplicaStreamCheck($record) {
 	return in_array($begin['objset'], array(2, 3), true) ? '' : 'Only a filesystem or volume stream is accepted';
 }
 
-// A sender's area, <accept>/<sender>; null when either name isn't allowed, and a pool's top dataset is never accepted.
+// The Accept Replicas Into setting: a dataset inside a pool, never a pool's top dataset (the Settings page asks validateaccept).
+function zfsmReplicaAcceptValid($accept) {
+	return zfsmValidDatasetName($accept) && strpos($accept, '/') !== false;
+}
+
+// A sender's area, <accept>/<sender>; null when either name isn't allowed.
 function zfsmReplicaArea($accept, $sender) {
-	if (!zfsmValidDatasetName($accept) || strpos($accept, '/') === false) return null;
-	return zfsmReplicaSenderName($sender) ? $accept.'/'.$sender : null;
+	return zfsmReplicaAcceptValid($accept) && zfsmReplicaSenderName($sender) ? $accept.'/'.$sender : null;
 }
 
 function zfsmReplicaSenderName($sender) {

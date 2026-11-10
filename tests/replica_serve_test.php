@@ -20,6 +20,7 @@ function same($expected, $actual, $message) {
 // Each sender gets its own area inside the accepting dataset, named in its key's line; a pool's top dataset is never accepted.
 same('backup/replicas/tower', zfsmReplicaArea('backup/replicas', 'tower'), 'a sender\'s area is inside the accepting dataset');
 foreach (array('' => 'tower', 'backup' => 'tower', 'bad;name/x' => 'tower') as $into => $sender) same(null, zfsmReplicaArea($into, $sender), 'nothing is accepted into '.var_export($into, true));
+same(array(true, false, false, false, false), array_map('zfsmReplicaAcceptValid', array('backup/replicas', '', 'backup', 'bad;name/x', 'backup/')), 'the Settings page warns about the same values');
 foreach (array(null, '', 'a b', 'a/b', '-x', '.hidden', 'x;y', str_repeat('n', 65)) as $sender) same(null, zfsmReplicaArea('backup/replicas', $sender), 'no area for the sender name '.var_export($sender, true));
 
 $area = 'backup/replicas/tower';
@@ -189,8 +190,8 @@ same(true, strpos($listed, '<span style="display:block;color:#e22828">odd (zfs.m
 same('None yet', zfsmReplicaKeysHtml(array()), 'no keys yet');
 same(array(), zfsmReplicaKeys($work.'/missing'), 'no file, no keys');
 
-// scripts/replica-serve.php drops the environment's test hooks and fixes PATH before it reads anything, so neither the fake zfs nor a
-// zfs first on the caller's PATH runs; its area comes from its one argument and the accepting dataset from a file the Helpers fixture reads.
+// scripts/replica-serve.php keeps only the request and the client's address from the environment and fixes PATH before it reads anything,
+// so neither the fake zfs nor a zfs first on the caller's PATH runs; the accepting dataset comes from a file the Helpers fixture reads.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica-serve.php')) {
 	$script = $docroot.'/plugins/zfs.master/scripts/replica-serve.php';
@@ -199,11 +200,14 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	file_put_contents($work.'/decoy/zfs', "#!/bin/sh\ntouch ".escapeshellarg($work.'/decoy-ran')."\necho none\n");
 	chmod($work.'/decoy/zfs', 0755);
 	@unlink($work.'/calls.log');
-	$accept_file = sys_get_temp_dir().'/zfsm-replica-accept';
-	file_put_contents($accept_file, 'backup/replicas');
+	// The environment the script's own commands would get, read as it exits.
+	file_put_contents($work.'/env-dump.php', '<?php register_shutdown_function(function() { file_put_contents('.var_export($work.'/env.json', true).', json_encode(getenv())); });');
+	// In a pool that can't exist: a host zfs the fixed PATH finds can't make anything.
+	$accept_file = $docroot.'/zfsm-replica-accept';
+	file_put_contents($accept_file, 'zfsm-no-such-pool/replicas');
 	$run = function($request, $args) use ($script, $work) {
-		$env = array_merge(getenv(), array('SSH_ORIGINAL_COMMAND' => $request, 'PATH' => $work.'/decoy:'.getenv('PATH')));
-		$process = proc_open(array_merge(array(PHP_BINARY, '-n', $script), $args), array(0 => array('file', '/dev/null', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $pipes, null, $env);
+		$env = array_merge(getenv(), array('SSH_ORIGINAL_COMMAND' => $request, 'SSH_CLIENT' => '192.0.2.7 50000 22', 'LANG' => 'C.UTF-8', 'ZFS_COLOR' => '1', 'PATH' => $work.'/decoy:'.getenv('PATH')));
+		$process = proc_open(array_merge(array(PHP_BINARY, '-n', '-d', 'auto_prepend_file='.$work.'/env-dump.php', $script), $args), array(0 => array('file', '/dev/null', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $pipes, null, $env);
 		$out = stream_get_contents($pipes[1]);
 		$err = stream_get_contents($pipes[2]);
 		fclose($pipes[1]);
@@ -212,6 +216,9 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	};
 	$hello = $run('zfsm-replica 1 hello', array('tower'));
 	same(array(false, array(), true), array(is_file($work.'/decoy-ran'), $calls('get'), $hello[0] !== 0), 'it runs neither a zfs first on the caller\'s PATH nor the test one: '.var_export($hello, true));
+	$kept = json_decode((string)@file_get_contents($work.'/env.json'), true) ?: array();
+	ksort($kept);
+	same(array('PATH' => '/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin', 'SSH_CLIENT' => '192.0.2.7 50000 22', 'SSH_ORIGINAL_COMMAND' => 'zfsm-replica 1 hello'), $kept, 'and its commands get only the request, the client\'s address and the fixed PATH');
 	same(array(1, '', "Not a replication request\n"), $run('zfs list', array('tower')), 'a plain zfs command is refused');
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array()), 'a key line naming no sender is refused');
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array('tower', 'extra')), 'and one naming more than one');

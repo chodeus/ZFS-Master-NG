@@ -12,7 +12,7 @@ function parse_plugin_cfg($plugin, $sections = false) {
 		'snap_prefix' => '',
 		'snap_pattern' => 'Y-m-d-His',
 		'snap_utc' => getenv('ZFSM_TEST_SNAP_UTC') ?: '0',
-		// A file, not the environment: scripts/replica-serve.php drops every ZFSM_TEST_ setting before it reads this.
-		'replica_accept' => (string)@file_get_contents(sys_get_temp_dir().'/zfsm-replica-accept')
+		// A file in the docroot, not the environment or TMPDIR: scripts/replica-serve.php keeps neither.
+		'replica_accept' => (string)@file_get_contents(($GLOBALS['docroot'] ?? '').'/zfsm-replica-accept')
 	));
 }
