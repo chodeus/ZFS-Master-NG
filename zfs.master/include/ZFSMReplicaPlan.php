@@ -48,7 +48,7 @@ function zfsmReplicateSendArgs($plan, $dry_run = false) {
 }
 
 // -s: a stopped run resumes. -u and canmount=noauto keep a filesystem's copy unmounted, even after a reboot; volmode=none keeps a volume's
-// copy from being a second block device of the same data. Resumed and incremental receives apply them too (OpenZFS 2.4.4, checked live).
+// copy from being a second block device of the same data. Resumed and incremental receives apply them too.
 function zfsmReplicateReceiveArgs($plan) {
 	$args = array('receive', '-s', '-u', '-o', 'readonly=on');
 	array_push($args, '-o', $plan['type'] === 'filesystem' ? 'canmount=noauto' : 'volmode=none');
