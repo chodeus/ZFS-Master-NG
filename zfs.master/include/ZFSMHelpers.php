@@ -28,6 +28,7 @@ function loadConfig($config) {
 		'snap_utc' => zfsmSettingInt($general, 'snap_utc', 0),
 		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
 		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
+		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }
