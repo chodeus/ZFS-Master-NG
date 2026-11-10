@@ -37,8 +37,10 @@ function zfsmUpgradeAllows($compatibility) {
 	$allowed = null;
 	foreach (explode(',', $compatibility) as $set) {
 		$text = zfsmCompatibilitySet(trim($set));
-		if ($text === null) return false;
-		$names = preg_split('/[\s,]+/', preg_replace('/#.*$/m', '', $text), -1, PREG_SPLIT_NO_EMPTY);
+		// A set PCRE fails to parse is as unread as one that can't be opened.
+		$stripped = $text === null ? null : preg_replace('/#.*$/m', '', $text);
+		$names = $stripped === null ? false : preg_split('/[\s,]+/', $stripped, -1, PREG_SPLIT_NO_EMPTY);
+		if ($names === false) return false;
 		$allowed = $allowed === null ? $names : array_values(array_intersect($allowed, $names));
 	}
 	return $allowed;

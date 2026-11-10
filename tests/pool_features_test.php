@@ -106,6 +106,14 @@ same(array('legacy', null, array(), false, true), $upgrade('legacy'), 'legacy: U
 same(array('narrow', array('7.0', '7.0'), array('head_errlog'), false, true), $upgrade('narrow'), 'a set with head_errlog: Upgrade Pool puts it in use');
 same(array('wide', null, array('blake3'), false, true), $upgrade('wide'), 'a set in /etc/zfs/compatibility.d wins over the same name in /usr/share');
 same(array('narrow,'.$sets.'/usr/wide', array('7.0', '7.0'), array('head_errlog'), false, true), $upgrade('narrow,'.$sets.'/usr/wide'), 'two sets, one by path: only the features in both');
+// A set PCRE fails to parse (its backtrack limit, JIT off) reads as unread, not a TypeError in the popup.
+$limits = array(ini_get('pcre.backtrack_limit'), ini_get('pcre.jit'));
+ini_set('pcre.jit', '0');
+ini_set('pcre.backtrack_limit', '0');
+$parsed = zfsmUpgradeAllows('grub2');
+ini_set('pcre.backtrack_limit', $limits[0]);
+ini_set('pcre.jit', $limits[1]);
+same(false, $parsed, 'a set that fails to parse is unread');
 same(array('missing', null, array(), true, false), $upgrade('missing'), 'a set that can\'t be read: no claim about Upgrade Pool, and it says so');
 // A set that allows everything Upgrade Pool would turn on limits nothing, though the answer doesn't change.
 file_put_contents($sets.'/usr/all', "head_errlog vdev_zaps_v2 blake3\n");
