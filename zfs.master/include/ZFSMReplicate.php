@@ -107,7 +107,7 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest) {
 		if ($base === null) return $refuse($newest['name'].' is not on this dataset, so '.$zdest.' can\'t be updated without destroying it');
 		if ($base['guid'] === $snap['guid']) return $refuse($zdest.' already holds '.$from);
 		if ($base['txg'] > $snap['txg']) return $refuse($zdest.' already holds '.$base['name'].', which is newer than '.$from);
-		$plan = array_merge($plan, array('mode' => 'incremental', 'base' => $base['name']));
+		$plan = array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
 	}
 	if ($from === null) return array_merge($plan, array('size' => null));
 	$estimate = runProcess('zfs', zfsmReplicateSendArgs($plan, true));

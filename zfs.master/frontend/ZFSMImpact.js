@@ -62,6 +62,30 @@ function zfsmRewriteSync(root) {
 	return keep;
 }
 
+// The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicate.php; zfsmReplicatePlanHtml fills its plan as the choices change.
+function zfsmReplicateHtml(options) {
+	const esc = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+'</label>'+field+'</p>';
+	const snapshots = (options.snapshots || []).map(name => '<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
+	let html = row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
+	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="pool/dataset" value="'+esc(options.last_destination || '')+'">');
+	html += '<div id="zfsm-replicate-plan"></div>';
+	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p></div>';
+}
+
+function zfsmReplicatePlanHtml(plan) {
+	const esc = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char]));
+	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	if (plan.error) return '<p style="color:#e22828;margin:.5em 0">'+esc(plan.error)+'</p>';
+	if (plan.can_proceed !== true) return '';
+	const size = plan.size === null || plan.size === undefined ? '' : ', about '+zfsmImpactSize(plan.size);
+	let html = say(plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
+		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
+		: 'The first replication sends everything'+size+'.');
+	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
+	return html+say('The copy is unmounted and read-only, so nothing changes it between replications.');
+}
+
 function zfsmImpactSummary(preview, verb) {
 	if (!preview.objects || !preview.objects.length) return '';
 	const frees = preview.reclaim === null || preview.reclaim === undefined ? '' : ' and frees about '+zfsmImpactSize(preview.reclaim);
