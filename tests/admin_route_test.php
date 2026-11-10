@@ -18,7 +18,9 @@ $routes = array(
 	'destroysnapshot' => array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '0'),
 	'destroydataset' => array('cmd' => 'destroydataset', 'zdataset' => 'tank/data', 'force' => '1'),
 	'previewrewrite' => array('cmd' => 'previewrewrite', 'zdataset' => 'tank/vol'),
-	'rewritedataset' => array('cmd' => 'rewritedataset', 'zdataset' => 'tank/vol')
+	'rewritedataset' => array('cmd' => 'rewritedataset', 'zdataset' => 'tank/vol'),
+	'previewreplicate' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data'),
+	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data')
 );
 
 $route = $argv[1] ?? '';
@@ -31,6 +33,16 @@ if ($route === 'createdataset') {
 	$mount = sys_get_temp_dir().'/zfsm-route-new';
 	if (!is_dir($mount)) mkdir($mount);
 	putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
+}
+
+// The replication routes run on the fake's small pool (tests/replicate_test.php covers the runs themselves).
+if ($route === 'previewreplicate' || $route === 'replicatedataset') {
+	$pool = sys_get_temp_dir().'/zfsm-route-repl-'.getmypid();
+	@mkdir($pool);
+	file_put_contents($pool.'/datasets', "tank/data\tfilesystem\nbackup\tfilesystem\n");
+	file_put_contents($pool.'/marks', "tank/data@a\t11\t10\ntank/data@b\t12\t20\n");
+	file_put_contents($pool.'/props', '');
+	putenv('ZFSM_TEST_REPL_DIR='.$pool);
 }
 
 // These need a token from the review the dialogs show first.
@@ -55,6 +67,18 @@ if ($route === 'snapshotdataset_utc') {
 		fwrite(STDERR, 'a snapshot taken with UTC names set was not named in UTC: '.$output."\n");
 		exit(1);
 	}
+}
+// Replication: the preview plans a first, full copy; a start whose copy has nowhere to go says why and starts nothing.
+if ($route === 'previewreplicate' || $route === 'replicatedataset') {
+	$ok = $route === 'previewreplicate'
+		? ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full'
+		: ($answer['failed']['tank/data'] ?? '') === 'The copy goes inside nowhere, which doesn\'t exist';
+	if (!$ok) {
+		fwrite(STDERR, $route.' answered: '.$output."\n");
+		exit(1);
+	}
+	echo $route." route passed\n";
+	exit(0);
 }
 // The rewrite routes on the fixture's volume, which has no files: each answers why instead of starting anything.
 if ($route === 'previewrewrite' || $route === 'rewritedataset') {
