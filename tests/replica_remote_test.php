@@ -146,6 +146,7 @@ $want = array('user root', 'hostname 10.0.20.11', 'port 2222', 'batchmode yes', 
 	'userknownhostsfile '.$files['known_hosts'], 'globalknownhostsfile /dev/null', 'hostkeyalgorithms ssh-ed25519', 'forwardagent no', 'forwardx11 no',
 	'clearallforwardings yes', 'permitlocalcommand no', 'connecttimeout 10', 'serveraliveinterval 15', 'serveralivecountmax 4', 'identityfile '.$files['key']);
 same(array(0, array()), array($resolved_code, array_values(array_diff($want, $resolved))), 'ssh takes every option and holds them: '.implode(' | ', $resolved));
+same(array('identityfile '.$files['key']), array_values(preg_grep('/^identityfile /', $resolved)), 'and offers this key alone, none of root\'s own');
 same(array("[10.0.20.11]:2222 ".$host_key), file($files['known_hosts'], FILE_IGNORE_NEW_LINES), 'known_hosts holds only the pinned key, at its port');
 same('600', substr(sprintf('%o', fileperms($files['key'])), -3), 'the RAM copy of the key is 0600');
 zfsmReplicaSshCleanup($files);
