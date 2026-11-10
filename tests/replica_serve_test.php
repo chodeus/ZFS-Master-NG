@@ -230,6 +230,9 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array('tower', 'extra')), 'and one naming more than one');
 	unlink($accept_file);
 	same(array(1, '', "This server does not accept replicas from this key\n"), $run('zfsm-replica 1 hello', array('tower')), 'with no accepting dataset set, nothing is accepted');
+} else {
+	fwrite(STDERR, "FAILED: the entry-point checks need ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");
+	exit(1);
 }
 
 // The host key a sender compares, as ssh-keygen -l prints it (a throwaway key made for this test).
