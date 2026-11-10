@@ -89,7 +89,8 @@ function zfsmReplicatePlanHtml(plan) {
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');
 	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
-	return html+say('The copy is unmounted and read-only, so nothing changes it between replications.');
+	return html+say(plan.type === 'volume' ? 'The copy is read-only and isn\'t a block device, so nothing changes it between replications.'
+		: 'The copy is unmounted and read-only, so nothing changes it between replications.');
 }
 
 function zfsmImpactSummary(preview, verb) {

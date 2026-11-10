@@ -176,7 +176,7 @@ same(0, zfsmRunReplicate('tank/enc', 'e', 'backup/enc'), 'an encrypted dataset r
 same(array('send -P -v -w tank/enc@e'), $calls('send'), 'sent raw');
 $reset();
 same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol'), 'a volume runs');
-same(array('receive -s -u -o readonly=on backup/vol'), $calls('receive'), 'received read-only, without canmount');
+same(array('receive -s -u -o readonly=on -o volmode=none backup/vol'), $calls('receive'), 'received read-only, without canmount, and not as a block device');
 
 // One run per dataset: while another holds the lock, a second neither plans nor runs.
 $fresh();
