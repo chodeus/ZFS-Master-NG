@@ -122,6 +122,16 @@ same(array('normal: Replication of tank/data@b to backup/data finished (carried 
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/vol@v\n", FILE_APPEND);
 same('backup/data holds a part-received replication of tank/vol@v, not of this dataset', $refuse('b', 'backup/data'), 'another dataset\'s token is not resumed');
 
+// The same snapshot again, after its copy was destroyed: the bookmark already there is this one, not a failure.
+$fresh();
+same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a first run');
+file_put_contents($work.'/pool/datasets', implode('', array_filter(file($work.'/pool/datasets'), function($line) { return strpos($line, "backup/data\t") !== 0; })));
+file_put_contents($work.'/pool/marks', implode('', array_filter(file($work.'/pool/marks'), function($line) { return strpos($line, 'backup/data@') !== 0; })));
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'runs again into a new copy');
+same(array('normal: Replication of tank/data@b to backup/data finished (in full).'), $read('notify-detail.log'), 'and finishes without a bookmark warning');
+same(array($bookmark('backup/data', 'b')), $names('tank/data', 'bookmark'), 'with its one bookmark');
+
 // When one side fails the other does too; the notification gives the side that failed first.
 $fresh();
 putenv('ZFSM_TEST_SEND_FAIL=1');
@@ -133,6 +143,22 @@ putenv('ZFSM_TEST_RECV_FAIL=1');
 same(1, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a receive that fails fails the run');
 putenv('ZFSM_TEST_RECV_FAIL');
 same(true, strpos($read('notify-detail.log')[0] ?? '', 'failed: cannot receive new filesystem stream: out of space') !== false, 'with receive\'s error: '.($read('notify-detail.log')[0] ?? ''));
+$fresh();
+putenv('ZFSM_TEST_SEND_FAIL_PART=1');
+same(1, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a send that fails part-way fails the run');
+putenv('ZFSM_TEST_SEND_FAIL_PART');
+same(true, strpos($read('notify-detail.log')[0] ?? '', "failed: warning: cannot send ?tank/data@b?: Input/output error.") !== false, 'with send\'s error, not receive\'s incomplete stream: '.($read('notify-detail.log')[0] ?? ''));
+// A snapshot the run took for itself goes when nothing can carry the run on, and stays while a stopped run needs it.
+$fresh();
+putenv('ZFSM_TEST_RECV_FAIL=1');
+same(1, zfsmRunReplicate('tank/data', 'repl-9', 'backup/data', null, true), 'a run that took its snapshot and failed');
+putenv('ZFSM_TEST_RECV_FAIL');
+same(false, in_array('tank/data@repl-9', $names('tank/data', 'snapshot'), true), 'leaves no snapshot behind');
+$fresh();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/data', 'repl-10', 'backup/data', null, true), 'a run that took its snapshot and was cut off');
+putenv('ZFSM_TEST_SEND_CUT');
+same(true, in_array('tank/data@repl-10', $names('tank/data', 'snapshot'), true), 'keeps it for the run that carries on');
 
 // An encrypted dataset goes raw, so the copy stays locked with its key; a volume takes no canmount.
 $reset();

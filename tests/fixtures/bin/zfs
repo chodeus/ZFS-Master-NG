@@ -66,6 +66,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		printf 'size\t1000\n' >&2
 		[ "$dry" = 1 ] && exit 0
 		[ "${ZFSM_TEST_SEND_FAIL:-0}" = 1 ] && { printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
+		# Part of the stream, then a read error, as a failing disk under the source gives.
+		[ "${ZFSM_TEST_SEND_FAIL_PART:-0}" = 1 ] && { printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"; printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
 		printf '00:00:01\t500\t%s\n' "$snap" >&2
 		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"
 		[ "${ZFSM_TEST_SEND_CUT:-0}" = 1 ] || printf 'ZFSMEND\n'
