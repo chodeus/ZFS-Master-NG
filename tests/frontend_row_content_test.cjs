@@ -107,6 +107,7 @@ context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: ',.', scale: -1};
 assert.deepEqual(space({used: 3027000000, available: 9970000000}), ['13 GB', '3,03 GB', '9,97 GB'], 'a pool in Unraid\'s units, as its Boot Pool table shows the same space');
 assert.deepEqual([cells(row(ds({referenced: 225000000000, used: 225000000000, available: 616000000000}), {text: 0}))[3], cells(row(ds({used: 225000000000, available: 616000000000}), {text: 0}))[6]], ['225 GB', '225 GB'], 'a dataset\'s Refer and Used too');
+assert.match(nameCell(ds({quota: 1e12})), /Quota: 1 TB</, 'a quota is a space figure, in the same units as Used');
 delete context.zfsm_config;
 delete context.zfsm_display;
 

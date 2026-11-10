@@ -13,6 +13,9 @@ for (const c of answers) {
   assert.equal(context.zfsmUnraidSize(c.bytes, {scale: c.scale, number: c.number}, c.decimals ?? undefined), c.text, `${c.bytes} B, decimals ${c.decimals}, scale ${c.scale}, number "${c.number}"`);
 }
 
+// A null display setting is Unraid's default, as a missing one is, in PHP too (size_format_test.php).
+assert.equal(context.zfsmUnraidSize(3027000000, {scale: null, number: null}), '3.03 GB');
+
 // The setting: ZFS's units unless Settings picks Unraid's; anything else keeps ZFS's.
 const size = (config, bytes, decimals) => {
   context.zfsm_config = config;
