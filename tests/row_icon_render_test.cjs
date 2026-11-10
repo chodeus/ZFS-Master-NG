@@ -57,7 +57,7 @@ document.fonts.ready.then(() => {
     return top;
   };
   const rows = [...document.querySelectorAll('#zfs_master tr')].map(tr => {
-    const cell = tr.children[2];
+    const cell = tr.querySelector('.zfsm-name-label');
     const name = [...cell.childNodes].filter(node => node.nodeType === 3 && node.textContent.trim()).pop();
     // Icons read as level with lowercase text whose x-height middle they share.
     const middle = baseline(probe => name.after(probe)) - ink('x', fontOf(getComputedStyle(cell)))[0] / 2;

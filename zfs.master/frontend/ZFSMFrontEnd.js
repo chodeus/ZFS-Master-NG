@@ -29,6 +29,11 @@ function snapshotCell(color, count) {
 	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span>';
 }
 
+// The name, then Actions, centred on one line however tall Unraid draws the button; divs, as 6.x indents every span in its tables.
+function nameCell(label, actions) {
+	return '<td class="zfsm-name"><div class="zfsm-name-row"><div class="zfsm-name-label">'+label+'</div>'+actions+'</div></td>';
+}
+
 // A dataset or folder row starts with its browse link, then the slot a copy or rewrite reports into (zfsmShowCopyProgress).
 function rowLeadCell(browsePath) {
 	// Unraid 7.2+ browses only /mnt and /boot; mirrors zfsmSnapshotBrowseRoot in ZFSMSnapshotFiles.php.
@@ -293,8 +298,8 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		const id = elementToken(directory);
 		var tr = '<tr id="tr-dir-'+id+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 		tr += rowLeadCell(directory);
-		tr += '<td class="zfsm-name">'+'&emsp;&emsp;'.repeat(depth)+'<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>'+escapeHtml(directory.substring(directory.lastIndexOf("/") + 1));
-		tr += '<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button></td>';
+		tr += nameCell('&emsp;&emsp;'.repeat(depth)+'<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>'+escapeHtml(directory.substring(directory.lastIndexOf("/") + 1)),
+			'<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>');
 		tr += '<td class="zfsm-mount">'+escapeHtml(directory)+'</td><td class="zfsm-refer"></td>';
 		tr += '<td class="zfsm-snaps">'+snapshotCell(icon_color, 0)+'</td><td></td><td></td><td></td>';
 		agg += tr+'</tr>';
@@ -429,11 +434,11 @@ function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mo
 	const {icon_color, snap_count} = datasetSnapInfo(zdataset, snap_max_days_alert, properties);
 	const id = elementToken(zdataset['name']);
 
-	tr += '<td class="zfsm-name">'+'&emsp;&emsp;'.repeat(zdataset['name'].split('/').length - 1);
-	tr += detailsLink('Details of '+zdataset['name'], '<i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>', implodeWithKeys('<br>', properties));
-	tr += datasetBadges(zdataset);
-	tr += escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
-	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+', '+childSnapshotCount(zdataset)+');" class="zfs_compact">Actions</button></td>';
+	const label = '&emsp;&emsp;'.repeat(zdataset['name'].split('/').length - 1)
+		+detailsLink('Details of '+zdataset['name'], '<i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>', implodeWithKeys('<br>', properties))
+		+datasetBadges(zdataset)
+		+escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
+	tr += nameCell(label, '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+', '+childSnapshotCount(zdataset)+');" class="zfs_compact">Actions</button>');
 
 	tr += '<td class="zfsm-mount">'+(zdataset['mountpoint'] != "none" ? escapeHtml(zdataset['mountpoint']) : '')+'</td>';
 	tr += '<td class="zfsm-refer">'+zfsmSize(zdataset['referenced'])+'</td>';

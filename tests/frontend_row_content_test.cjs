@@ -81,11 +81,11 @@ assert.match(progress, /width:45%/, 'the copy bar follows the percentage');
 assert.match(progress, / - 12\.3MB\/s - 0:01:02</, 'speed and time are shown');
 assert.equal(context.parseDirectoryCopy('sending incremental file list'), '', 'a line without progress shows nothing');
 
-// Actions sits at the end of the name cell, on dataset and folder rows alike.
-assert.match(nameCell(ds()), /data<button type="button" id="[^"]+" onclick="addDatasetContext\([^"]+\);" class="zfs_compact">Actions<\/button>$/, 'a dataset\'s Actions ends its name cell');
+// Actions follows the name in one row of the name cell, on dataset and folder rows alike.
+assert.match(nameCell(ds()), /^<div class="zfsm-name-row"><div class="zfsm-name-label">[\s\S]*data<\/div><button type="button" id="[^"]+" onclick="addDatasetContext\([^"]+\);" class="zfs_compact">Actions<\/button><\/div>$/, 'a dataset\'s Actions ends its name cell');
 const folder = cells(context.generateDatasetDirectoryRows('tank', ds({directories: ['/mnt/tank/data/x']}), 'zdataset-tank', true, 0));
 assert.equal(folder.length, 8, 'a folder row has the same cells as a dataset row');
-assert.match(folder[1], /x<button type="button" id="[^"]+" onclick="addDirectoryContext\([^"]+\);" class="zfs_compact">Actions<\/button>$/, 'a folder\'s Actions ends its name cell');
+assert.match(folder[1], /^<div class="zfsm-name-row"><div class="zfsm-name-label">[\s\S]*x<\/div><button type="button" id="[^"]+" onclick="addDirectoryContext\([^"]+\);" class="zfs_compact">Actions<\/button><\/div>$/, 'a folder\'s Actions ends its name cell');
 // Used and Free carry Unraid's own markup (nchan/device_list), so its theme draws them exactly as in its pool tables.
 assert.match(cells(row(ds(), {text: 1}))[6], /^<div class="usage-disk"><span style="width:25%" class="[a-z-]*"><\/span><span>1 KiB<\/span><\/div>$/, 'Used is Unraid\'s usage-disk markup');
 
