@@ -34,7 +34,19 @@ reviews:
         - Validate every request value before use. Dataset and snapshot names follow OpenZFS: letters, digits, `-_.: ` and spaces are valid, so do not reject them.
         - Destructive actions (`zfs destroy`, rollback, `rm`, rename over): re-confine the realpath immediately before acting, stop at mount boundaries, enforce Destructive Mode on the server, and diff the guards across sibling branches.
         - A failed read is not an empty result. Empty pool, mount or in-use lists must block destructive work rather than allow it. Report failures to the UI; never report success on a non-zero exit.
+        - getDatasetProperty() returns null both for a failed read and for `-`. Where that difference decides an action (a resume token, a destroy), flag it unless the read checks its exit code.
+        - "Inside a dataset" means equal to it, or starting with it plus `/` (`@` or `#` for its snapshots and bookmarks). Flag a bare string-prefix test: `tank/data2` is not inside `tank/data`.
         - Escape anything echoed into HTML or inline script. Config is saved to `/boot`, so saved values from older versions must keep working.
+        - File names, ZFS user properties and anything from another server may not be valid UTF-8. htmlspecialchars() needs ENT_SUBSTITUTE, or it returns '' and the text disappears. json_encode() needs JSON_INVALID_UTF8_SUBSTITUTE, or its false result must be handled; never echo, publish or hash a json_encode() that can fail.
+        - Every `zfs receive` takes `-s -u -o readonly=on` and never `-F`. A copy of a volume must not appear as a block device (volmode=none).
+    - path: "zfs.master/{scripts/replica-serve.php,include/ZFSMReplicaServe.php}"
+      instructions: |
+        Reached by another server's SSH key (authorized_keys `command=`) and run as root. Treat everything from that server as hostile: SSH_ORIGINAL_COMMAND, the script's arguments, and the stream on stdin.
+        - Trust nothing from the environment: PATH and the ZFSM_TEST_* hooks are reset before anything runs, and the docroot comes from the script's own path.
+        - Each request runs one fixed zfs command, with no shell and no option taken from the request. Every name must be inside the sender's own area, `<accepting dataset>/<sender>/`; only `exists` may name the area itself.
+        - zfs receive must not see a stream until its first record is checked: one dataset's stream only. Refuse a clone stream (DRR_FLAG_CLONE) and a -R or -p package. ZFS finds a clone's origin by guid anywhere in the pool, so a name check alone can't confine it.
+        - Copies inherit the area's mountpoint=none, volmode=none and setuid, devices and exec off. The receive excludes those and the share properties with `-x`, and every request is refused once the area's properties change.
+        - authorized_keys options apply left to right: a later `pty` or `*-forwarding` undoes `restrict`, and a `from=` holding `*`, `?` or `!` doesn't limit where the key connects from.
     - path: "zfs.master/frontend/**/*.js"
       instructions: |
         Runs on Unraid's shared Main tab next to other plugins.
