@@ -1,0 +1,57 @@
+<?php
+// Background jobs (scripts/rewrite.php, scripts/replicate.php): one per dataset at a time, each in a session of its own.
+
+// One lock file per dataset and job, named by the dataset's guid: the lock follows a renamed dataset, and a long name can't make the file name too long.
+// The file stays after a run, so two runs never lock different files for one dataset; a crashed run's lock goes with its process.
+function zfsmJobLockFile($zdataset, $job) {
+	$guid = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid');
+	// Tests set the folder in the environment, so the background script they start uses it too.
+	$test_dir = getenv('ZFSM_TEST_JOB_DIR');
+	$dir = $test_dir ? rtrim($test_dir, '/').'/'.$job : '/var/run/zfs.master.'.$job;
+	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? $dir.'/'.$guid.'.lock' : null;
+}
+
+function zfsmJobRunning($lock_file) {
+	$handle = @fopen($lock_file, 'r');
+	if ($handle === false) return false;
+	$free = flock($handle, LOCK_SH | LOCK_NB);
+	if ($free) flock($handle, LOCK_UN);
+	fclose($handle);
+	return !$free;
+}
+
+// The lock for this run: false when another run holds it, null when it can't be opened.
+function zfsmJobLock($lock_file) {
+	if (!is_dir(dirname($lock_file))) @mkdir(dirname($lock_file), 0700, true);
+	$lock = @fopen($lock_file, 'c');
+	if ($lock === false) return null;
+	if (flock($lock, LOCK_EX | LOCK_NB)) return $lock;
+	fclose($lock);
+	return false;
+}
+
+function zfsmJobUnlock($lock) {
+	flock($lock, LOCK_UN);
+	fclose($lock);
+}
+
+// Starts scripts/<script> in a session of its own, so the job outlives the page that asked for it.
+// Returns whether it said "started" (it holds its lock by then, zfsmJobStarted), and the first of anything else it printed.
+function zfsmStartJob($script, $args) {
+	$path = ($GLOBALS['docroot'] ?? '/usr/local/emhttp').'/plugins/zfs.master/scripts/'.$script;
+	$php = $GLOBALS['zfsm_php'] ?? '/usr/bin/php';
+	$launch = runProcess('setsid', array_merge(array('-f', $php, '-q', $path), $args));
+	$started = in_array('started', preg_split('/\R/', (string)($launch['output'] ?? '')), true);
+	return array($started, substr(zfsmOneLine($launch['output'] ?? ''), 0, 300));
+}
+
+// The job's side of zfsmStartJob: say "started", then let go of the pipe so the page is answered at once.
+function zfsmJobStarted() {
+	fwrite(STDOUT, "started\n");
+	fflush(STDOUT);
+	fclose(STDIN);
+	fclose(STDOUT);
+	fclose(STDERR);
+	// Reopened on /dev/null they take fds 0-2 again, so nothing opened later is written to as stdout or stderr.
+	$GLOBALS['zfsm_stdio'] = array(fopen('/dev/null', 'r'), fopen('/dev/null', 'w'), fopen('/dev/null', 'w'));
+}

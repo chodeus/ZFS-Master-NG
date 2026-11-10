@@ -29,7 +29,7 @@ mkdir($work, 0700);
 register_shutdown_function(function() use ($work) { exec('rm -rf '.escapeshellarg($work)); });
 mkdir($work.'/data');
 putenv('ZFSM_TEST_DATASET_MOUNT='.$work.'/data');
-putenv('ZFSM_TEST_REWRITE_DIR='.$work.'/state');
+putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 // zfsnotify runs <docroot>/plugins/dynamix/scripts/notify: point it at the fake.
 mkdir($work.'/docroot/plugins/dynamix/scripts', 0755, true);
 copy(__DIR__.'/fixtures/unraid/notify', $work.'/docroot/plugins/dynamix/scripts/notify');
@@ -94,8 +94,8 @@ same(0, zfsmRunRewrite('tank/data', true), 'a rewrite that worked returns 0');
 same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'asked for, -P is used where the pool has the feature');
 same(array('rewrite_start', 'rewrite_stop'), $GLOBALS['zfsm_feed'], 'the row hears when it starts and stops');
 same(array('normal: Rewrite of tank/data finished: 5 files rewritten'), $read('notify-detail.log'), 'the notification says how many files');
-same(false, zfsmRewriteRunning(zfsmRewriteLockFile('tank/data')), 'a finished run releases its lock');
-same(true, is_file(zfsmRewriteLockFile('tank/data')), 'and keeps its lock file, so a later run locks the same one');
+same(false, zfsmJobRunning(zfsmJobLockFile('tank/data', 'rewrite')), 'a finished run releases its lock');
+same(true, is_file(zfsmJobLockFile('tank/data', 'rewrite')), 'and keeps its lock file, so a later run locks the same one');
 $reset();
 zfsmRunRewrite('tank/data', false);
 same(array('rewrite -r -x -v '.$work.'/data'), $read('rewrite.log'), 'not asked for, no -P even where the pool has the feature');
@@ -143,11 +143,11 @@ same(1, count($read('rewrite.log')), 'and runs zfs rewrite once');
 $reset();
 putenv('ZFSM_TEST_PHYSICAL=enabled');
 putenv('ZFSM_TEST_GUID=4711');
-$lock_file = zfsmRewriteLockFile('tank/data');
+$lock_file = zfsmJobLockFile('tank/data', 'rewrite');
 @mkdir(dirname($lock_file), 0700, true);
 $held = fopen($lock_file, 'c');
 flock($held, LOCK_EX);
-same(true, zfsmRewriteRunning($lock_file), 'a held lock is a running rewrite');
+same(true, zfsmJobRunning($lock_file), 'a held lock is a running rewrite');
 same(0, zfsmRunRewrite('tank/data', false), 'a second run steps aside');
 same(array(), $read('rewrite.log'), 'and never runs zfs rewrite');
 same(array('can_proceed' => false, 'error' => 'A rewrite of this dataset is already running'), zfsmRewritePreview('tank/data'), 'the dialog says one is running');
@@ -170,13 +170,13 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/rewrite
 	$began = microtime(true);
 	same(array('succeeded' => array('tank/data' => 'Rewrite started; a notification says when it is done'), 'failed' => array()), zfsmStartRewrite('tank/data', true), 'a start says it started');
 	same(true, microtime(true) - $began < 1.5, 'and answers while the rewrite is still running');
-	// The script inherits ZFSM_TEST_REWRITE_DIR, so it locks inside this test's folder.
-	$background_lock = zfsmRewriteLockFile('tank/data');
+	// The script inherits ZFSM_TEST_JOB_DIR, so it locks inside this test's folder.
+	$background_lock = zfsmJobLockFile('tank/data', 'rewrite');
 	same(0, strpos($background_lock, $work.'/state/'), 'the lock stays in the test folder');
-	same(true, zfsmRewriteRunning($background_lock), 'which holds the dataset\'s lock by then');
-	for ($wait = 0; $wait < 100 && zfsmRewriteRunning($background_lock); $wait++) usleep(50000);
+	same(true, zfsmJobRunning($background_lock), 'which holds the dataset\'s lock by then');
+	for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
 	putenv('ZFSM_TEST_REWRITE_PAUSE');
-	same(false, zfsmRewriteRunning($background_lock), 'and finishes, letting go of it');
+	same(false, zfsmJobRunning($background_lock), 'and finishes, letting go of it');
 	same(array('rewrite -r -x -v -P '.$work.'/data'), $read('rewrite.log'), 'the background script ran the rewrite, with -P as asked');
 	// A start that never got going says so, with what it printed, instead of promising a notification.
 	$reset();

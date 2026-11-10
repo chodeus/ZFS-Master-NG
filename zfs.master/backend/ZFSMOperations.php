@@ -8,6 +8,7 @@ require_once __ROOT__."/include/ZFSMHelpers.php";
 require_once __ROOT__."/include/ZFSMImpact.php";
 require_once __ROOT__."/include/ZFSMSnapshotFiles.php";
 require_once __ROOT__."/include/ZFSMAlerts.php";
+require_once __ROOT__."/include/ZFSMJobs.php";
 require_once __ROOT__."/include/ZFSMRewrite.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
