@@ -27,7 +27,7 @@ assert.equal(size({size_units: 'GB'}, 3027000000), '2.8 GiB', 'an unknown value 
 
 // ZFS units print as the Main tab always has: powers of 1024, one decimal.
 for (const [bytes, text] of [[0, '0 B'], [512, '512 B'], [1536, '1.5 KiB'], [1024 ** 4 * 2.78, '2.8 TiB'], [1024 ** 6, '1 EiB']]) {
-  assert.equal(context.zfsmBinarySize(bytes), text, `${bytes} B in ZFS units`);
+  assert.equal(context.fromBytesToString(bytes), text, `${bytes} B in ZFS units`);
 }
 
 console.log(`size format tests passed: ${answers.length} of Unraid's answers`);

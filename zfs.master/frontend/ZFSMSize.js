@@ -1,18 +1,20 @@
 // Sizes in the units Settings picked: ZFS's (GiB, as zpool prints them) or Unraid's (GB, as its Main page prints them).
-// Mirrors zfsmSize in include/ZFSMHelpers.php; both read the same setting and display format.
+// Mirrors zfsmSize in include/ZFSMHelpers.php, except that PHP's ZFS units keep two decimals (Snapshots Admin, as before).
 function zfsmSize(bytes, decimals) {
 	const config = typeof zfsm_config === 'object' && zfsm_config ? zfsm_config : {};
 	const display = typeof zfsm_display === 'object' && zfsm_display ? zfsm_display : {};
-	return config.size_units === 'decimal' ? zfsmUnraidSize(bytes, display, decimals) : zfsmBinarySize(bytes);
+	return config.size_units === 'decimal' ? zfsmUnraidSize(bytes, display, decimals) : fromBytesToString(bytes);
 }
 
-function zfsmBinarySize(bytes) {
+// ZFS's units, as the Main tab always printed them; also used directly for record size, quota and block size.
+function fromBytesToString(bytes) {
 	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
-	let value = Number(bytes);
-	value = Number.isFinite(value) ? Math.max(value, 0) : 0;
-	const pow = Math.min(Math.floor((value ? Math.log(value) : 0) / Math.log(1024)), units.length - 1);
-	value /= Math.pow(1024, pow);
-	return (Math.round((value + Number.EPSILON) * 10) / 10)+' '+units[pow];
+	bytes = Number(bytes);
+	bytes = Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
+	const pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
+	const limitedPow = Math.min(pow, units.length - 1);
+	bytes /= Math.pow(1024, limitedPow);
+	return (Math.round((bytes + Number.EPSILON) * 10) / 10) + ' ' + units[limitedPow];
 }
 
 // Unraid's my_scale (webGui/include/Helpers.php) at base 1000; tests/fixtures/unraid_sizes.json holds its own answers.

@@ -83,19 +83,6 @@ function nl2br(str, is_xhtml) {
     return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
 }
 
-function fromBytesToString(bytes) {
-	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
-  
-	bytes = Number(bytes);
-	bytes = Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
-	const pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
-	const limitedPow = Math.min(pow, units.length - 1);
-  
-	bytes /= Math.pow(1024, limitedPow);
-  
-	return (Math.round((bytes + Number.EPSILON) * 10) / 10) + ' ' + units[limitedPow];
-}
-
 function fromStringToBytes(spacestr) {
 	let returnNumber = parseFloat(spacestr);
 
