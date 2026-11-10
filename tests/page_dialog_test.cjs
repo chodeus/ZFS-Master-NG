@@ -34,11 +34,14 @@ let properties = {};
 let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
 let rewritePreview = {};
 let replicateAnswer = () => ({});
+// Answers held back to arrive late, as a slow plan would.
+const lateAnswers = [];
+let holdReplicate = false;
 window.$.post = (url, data, done) => {
   posts.push({...data});
   if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
   if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
-  if (data.cmd === 'previewreplicate') done(JSON.stringify(replicateAnswer(data)));
+  if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
   const reply = window.$.Deferred();
   replies.push(reply);
@@ -344,9 +347,18 @@ async function confirm() {
   await new Promise(resolve => window.setTimeout(resolve, 450));
   await settle();
   assert.deepEqual([/which doesn't exist/.test(planText()), held()], [true, true], 'a refused plan says why and keeps Replicate off');
+  // An older plan that answers after a newer one is dropped.
+  holdReplicate = true;
+  snap().value = 'a';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
   dest().value = 'backup/data';
   dest().dispatchEvent(new window.Event('input'));
   await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, false], 'a late answer for an older choice does not replace the plan on screen');
   snap().value = '';
   snap().dispatchEvent(new window.Event('change'));
   await settle();
