@@ -45,7 +45,9 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
 		guid) prop "$last_arg" guid "$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)" ;;
 		encryption) prop "$last_arg" encryption off ;;
-		receive_resume_token) prop "$last_arg" receive_resume_token - ;;
+		receive_resume_token)
+			[ "${ZFSM_TEST_TOKEN_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			prop "$last_arg" receive_resume_token - ;;
 		*) prop "$last_arg" "$6" - ;;
 		esac
 		exit 0 ;;

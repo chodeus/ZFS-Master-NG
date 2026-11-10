@@ -372,6 +372,21 @@ async function confirm() {
   lateAnswers.splice(0).forEach(answer => answer());
   await settle();
   assert.deepEqual([/changes since a/.test(planText()), held()], [true, false], 'a late answer for an older choice does not replace the plan on screen');
+  // A plan asked for before the destination changed answers while the new one is still being typed.
+  holdReplicate = true;
+  snap().value = 'b';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'nowhere/copy';
+  dest().dispatchEvent(new window.Event('input'));
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, true], 'it does not enable Replicate for a destination it was not planned for');
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([/changes since b/.test(planText()), held()], [true, false], 'the plan for the destination on screen enables it');
   snap().value = '';
   snap().dispatchEvent(new window.Event('change'));
   await settle();

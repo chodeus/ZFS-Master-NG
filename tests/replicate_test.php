@@ -159,6 +159,16 @@ putenv('ZFSM_TEST_SEND_CUT=1');
 same(1, zfsmRunReplicate('tank/data', 'repl-10', 'backup/data', null, true), 'a run that took its snapshot and was cut off');
 putenv('ZFSM_TEST_SEND_CUT');
 same(true, in_array('tank/data@repl-10', $names('tank/data', 'snapshot'), true), 'keeps it for the run that carries on');
+// A token that can't be read may still be there: the snapshot stays, and the plan refuses rather than guess.
+$fresh();
+putenv('ZFSM_TEST_SEND_CUT=1');
+putenv('ZFSM_TEST_TOKEN_FAIL=1');
+same(1, zfsmRunReplicate('tank/data', 'repl-11', 'backup/data', null, true), 'a cut-off run whose token can\'t be read');
+putenv('ZFSM_TEST_SEND_CUT');
+same(true, in_array('tank/data@repl-11', $names('tank/data', 'snapshot'), true), 'keeps the snapshot it took');
+same(true, strpos($read('notify-detail.log')[0] ?? '', 'incomplete stream. Whether it can carry on could not be read; the snapshot it took is kept.') !== false, 'and says so: '.($read('notify-detail.log')[0] ?? ''));
+same('Could not check whether backup/data holds a part-received replication', $refuse('repl-11', 'backup/data'), 'the next plan refuses while the token can\'t be read');
+putenv('ZFSM_TEST_TOKEN_FAIL');
 
 // An encrypted dataset goes raw, so the copy stays locked with its key; a volume takes no canmount.
 $reset();

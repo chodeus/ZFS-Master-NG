@@ -56,6 +56,14 @@ function zfsmReplicateReceiveArgs($plan) {
 	return $args;
 }
 
+// The token a stopped run left on the copy: '' for none or no copy, null when the read failed (getDatasetProperty gives null for both).
+function zfsmReplicaToken($zdest) {
+	$result = runProcess('zfs', array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', $zdest));
+	if (($result['code'] ?? 1) !== 0) return zfsmDatasetMissing($zdest) === true ? '' : null;
+	$token = trim((string)($result['output'] ?? ''));
+	return $token === '-' ? '' : $token;
+}
+
 function zfsmReplicateSize($output) {
 	return preg_match('/^size\s+([0-9]+)\s*$/m', (string)$output, $match) ? (int)$match[1] : null;
 }
@@ -94,8 +102,9 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$missing = zfsmDatasetMissing($zdest);
 	if ($missing === null) return $refuse('Could not check whether '.$zdest.' exists');
 	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'raw' => $encryption !== 'off', 'type' => $type, 'base' => null, 'token' => null);
-	$token = $missing ? null : getDatasetProperty(explode('/', $zdest, 2)[0], $zdest, 'receive_resume_token');
-	if (is_string($token) && $token !== '' && $token !== '-') {
+	$token = $missing ? '' : zfsmReplicaToken($zdest);
+	if ($token === null) return $refuse('Could not check whether '.$zdest.' holds a part-received replication');
+	if ($token !== '') {
 		// A run that stopped part-way left a token on the copy: zfs send -t carries on from there, whatever snapshot is picked now.
 		$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
 		if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {

@@ -758,7 +758,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 						confirm.disabled = answer.can_proceed !== true;
 					});
 				};
-				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
+				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
 				plan();
 			},

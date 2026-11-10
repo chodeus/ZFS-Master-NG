@@ -98,7 +98,7 @@ function zfsmReplicaMark($zdataset, $plan) {
 }
 
 // The background run: one per dataset at a time, its progress on the row, a notification at the end, or saying why it didn't start.
-// $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run needs it.
+// $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false) {
 	$title = 'ZFS Replication';
@@ -138,11 +138,11 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		}
 		if ($result['code'] !== 0) {
 			$why = rtrim($result['errors'] !== '' ? $result['errors'] : 'exit code '.$result['code'], '.');
-			$resumable = getDatasetProperty(explode('/', $zdest, 2)[0], $zdest, 'receive_resume_token');
-			$resumable = is_string($resumable) && $resumable !== '' && $resumable !== '-';
-			$then = $resumable ? '. Replicate it again to carry on from where it stopped.' : '.';
-			// Nothing will carry this run on, so the snapshot it took for it goes.
-			if ($take && !$resumable) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
+			$token = zfsmReplicaToken($zdest);
+			$then = $token === '' ? '.' : '. Replicate it again to carry on from where it stopped.';
+			if ($token === null) $then = '. Whether it can carry on could not be read'.($take ? '; the snapshot it took is kept.' : '.');
+			// Only a copy read as holding no token frees the snapshot this run took.
+			if ($take && $token === '') runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
 			zfsmLog('Replication of '.$what.$how.' failed: '.$why);
 			zfsnotify($title, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, '', 'warning');
 			return 1;
