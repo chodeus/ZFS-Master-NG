@@ -170,13 +170,26 @@ same(true, strpos($read('notify-detail.log')[0] ?? '', 'incomplete stream. Wheth
 same('Could not check whether backup/data holds a part-received replication', $refuse('repl-11', 'backup/data'), 'the next plan refuses while the token can\'t be read');
 putenv('ZFSM_TEST_TOKEN_FAIL');
 
-// An encrypted dataset goes raw, so the copy stays locked with its key; a volume takes no canmount.
+// An encrypted dataset goes raw, so the copy stays locked with its key; a volume's copy takes volmode=none, not canmount, on every run.
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'e', 'backup/enc'), 'an encrypted dataset runs');
 same(array('send -P -v -w tank/enc@e'), $calls('send'), 'sent raw');
 $reset();
 same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol'), 'a volume runs');
-same(array('receive -s -u -o readonly=on backup/vol'), $calls('receive'), 'received read-only, without canmount');
+same(array('receive -s -u -o readonly=on -o volmode=none backup/vol'), $calls('receive'), 'received read-only, without canmount, and not as a block device');
+file_put_contents($work.'/pool/marks', "tank/vol@w\t32\t35\n", FILE_APPEND);
+$reset();
+same('incremental', zfsmReplicatePlan('tank/vol', 'w', 'backup/vol')['mode'], 'a volume\'s next run is incremental');
+same(0, zfsmRunReplicate('tank/vol', 'w', 'backup/vol'), 'and runs');
+same(array('receive -s -u -o readonly=on -o volmode=none backup/vol'), $calls('receive'), 'an incremental takes volmode=none too');
+$reset();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/vol', 'v', 'backup/vol2'), 'a volume\'s first run cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+$reset();
+same('resume', zfsmReplicatePlan('tank/vol', 'v', 'backup/vol2')['mode'], 'the next plan resumes it');
+same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol2'), 'and runs');
+same(array('receive -s -u -o readonly=on -o volmode=none backup/vol2'), $calls('receive'), 'a resumed run takes volmode=none too');
 
 // One run per dataset: while another holds the lock, a second neither plans nor runs.
 $fresh();
