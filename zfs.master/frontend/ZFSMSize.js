@@ -20,7 +20,9 @@ function fromBytesToString(bytes) {
 // Unraid's my_scale (webGui/include/Helpers.php) at base 1000; tests/fixtures/unraid_sizes.json holds its own answers.
 function zfsmUnraidSize(bytes, display, decimals) {
 	const units = ['', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'];
-	const {scale = -1, number = '.,'} = display;
+	// ?? as in PHP's zfsmSize: a null setting means Unraid's default, as a missing one does.
+	const scale = display.scale ?? -1;
+	const number = display.number ?? '.,';
 	let value = Math.max(Number(bytes) || 0, 0);
 	if (scale == 0 && (typeof decimals !== 'number' || decimals < 0)) return zfsmNumberFormat(value, 0, String(number));
 	let base = value ? Math.floor(Math.log(value) / Math.log(1000)) : 0;

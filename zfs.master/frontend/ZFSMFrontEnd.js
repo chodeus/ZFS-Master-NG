@@ -317,7 +317,7 @@ function getPropertiesByType(zdataset) {
 			'Primary Cache' : zdataset['primarycache'],
 			'Encryption' : zdataset['encryption'],
 			'Key Status' : zdataset['keystatus'],
-			'Quota' : fromBytesToString(zdataset['quota']),
+			'Quota' : zfsmSize(zdataset['quota']),
 			'Read Only' : zdataset['readonly'],
 			'Case Sensitive' : zdataset['casesensitivity'],
 			'Sync' : zdataset['sync'],
@@ -479,7 +479,7 @@ function poolSpaceCells(zpool, root, display) {
 	const free = usable ? root['available'] : zpool['Free'];
 	const text = (bytes, raw, decimals) => usable ? zfsmSize(bytes, decimals) : poolSizeText(raw, decimals);
 	const percent = 100-Math.round(calculateFreePercent(used, free));
-	return '<td id="'+pool+'-attribute-size">'+text(used + free, zpool['Size'], -1)+'</td>'
+	return '<td id="'+pool+'-attribute-size">'+(usable ? zfsmSize(used + free, -1) : poolSizeText(zpool['Size'], -1))+'</td>'
 		+'<td id="'+pool+'-attribute-used">'+usageCell(text(used, zpool['Used']), percent, false, display)+'</td>'
 		+'<td id="'+pool+'-attribute-free">'+usageCell(text(free, zpool['Free']), 100-percent, true, display)+'</td>';
 }

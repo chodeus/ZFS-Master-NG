@@ -13,6 +13,7 @@ $zdataset = $_GET['zdataset'] ?? '';
 $config = loadConfig(parse_plugin_cfg($plugin, true));
 // Sizes follow Settings' Size Units and Unraid's number format, as on the Main tab.
 $size_display = array_intersect_key(parse_plugin_cfg('dynamix', true)['display'] ?? array(), array('scale' => 0, 'number' => 0));
+$size_text = function($bytes) use ($config, $size_display) { return zfsmSize($bytes, $config['size_units'], $size_display); };
 $exclusion = (string)($config['dataset_exclusion'] ?? '');
 $with_children = ($_GET['children'] ?? '') === '1';
 // A stuck zfs mustn't hold the popup open: its reads share one time limit, and a read that runs out counts as a failed read.
@@ -101,7 +102,7 @@ $snapshot_access = $snapshot_access ?? array();
 	$total_used = array_sum(array_map(function($snap) { return (int)($snap['used'] ?? 0); }, $snapshots));
 	$dataset_count = count(array_unique(array_map(function($snap) { return explode('@', (string)($snap['name'] ?? ''), 2)[0]; }, $snapshots)));
 	$in_datasets = $with_children ? ' in '.$dataset_count.' dataset'.($dataset_count === 1 ? '' : 's') : '';
-	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').$in_datasets.' · '.zfsmSize($total_used, $config['size_units'], $size_display).' used';
+	$count_text = $snapshot_error !== '' ? 'Snapshots could not be listed' : count($snapshots).' snapshot'.(count($snapshots) === 1 ? '' : 's').$in_datasets.' · '.$size_text($total_used).' used';
 	$has_automatic = (bool)array_filter(array_column($snapshots, 'name'), 'zfsmIsAutomaticSnapshot');
 	$filter_hint = $with_children ? 'Filter by dataset or name' : 'Filter by name';
 	?>
@@ -158,9 +159,9 @@ $snapshot_access = $snapshot_access ?? array();
 				if ($holds > 0) echo '<span class="zfsm-badge">held</span>';
 				if (($snap['defer_destroy'] ?? '') === 'on') echo '<span class="zfsm-badge">deferred</span>';
 			echo '</td>';
-			echo '<td class="num"'.$sort_value($snap['used']).'>'.zfsmSize($snap['used'], $config['size_units'], $size_display).'</td>';
-			echo '<td class="num"'.$sort_value($snap['referenced']).'>'.zfsmSize($snap['referenced'], $config['size_units'], $size_display).'</td>';
-			echo '<td class="num"'.$sort_value($snap['written']).'>'.zfsmSize($snap['written'], $config['size_units'], $size_display).'</td>';
+			echo '<td class="num"'.$sort_value($snap['used']).'>'.$size_text($snap['used']).'</td>';
+			echo '<td class="num"'.$sort_value($snap['referenced']).'>'.$size_text($snap['referenced']).'</td>';
+			echo '<td class="num"'.$sort_value($snap['written']).'>'.$size_text($snap['written']).'</td>';
 			echo '<td class="num"'.$sort_value($holds).'>'.$holds.'</td>';
 			echo '<td'.$sort_value($snap['creation']).'>'.htmlspecialchars(zfsmTime($snap['creation']), ENT_QUOTES, 'UTF-8').'</td>';
 			echo '<td><span class="zfsm-actions">';

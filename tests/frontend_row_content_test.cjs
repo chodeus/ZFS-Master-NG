@@ -102,7 +102,7 @@ for (const [label, root, zpool] of [['an empty pool', {used: 0, available: 0}, {
   assert.doesNotMatch(row, /NaN/, label+': no NaN in the markup');
   assert.equal((row.match(/<span style="width:0%"/g) || []).length, 2, label+': both bars empty');
 }
-// Settings' Size Units: Unraid's units on the Main tab, with its decimals and number format (tests/size_format_test.cjs).
+// Settings' Size Units: Unraid's units on the Main tab, with its decimals and number format (tests/frontend_size_format_test.cjs, size_format_test.php).
 context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: ',.', scale: -1};
 assert.deepEqual(space({used: 3027000000, available: 9970000000}), ['13 GB', '3,03 GB', '9,97 GB'], 'a pool in Unraid\'s units, as its Boot Pool table shows the same space');
