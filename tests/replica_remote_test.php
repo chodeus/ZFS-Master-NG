@@ -32,7 +32,7 @@ $script = function($name, $body) use ($work) {
 };
 // ssh-keyscan and ip answer from the test; ssh checks what it was given, then runs the checker as sshd's forced command would.
 $script('ssh-keyscan', "printf '%s\\n' \"ssh-keyscan \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\necho \"# \$*: SSH-2.0-OpenSSH_10.0\" >&2\n[ -n \"\${ZFSM_TEST_SCAN:-}\" ] && printf '%s\\n' \"\$ZFSM_TEST_SCAN\"\nexit 0\n");
-$script('ip', "printf '%s\\n' \"ip \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\nprintf '%s dev br0 src 10.0.20.5 uid 0 \\n    cache \\n' \"\$3\"\n");
+$script('ip', "printf '%s\\n' \"ip \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\n[ -n \"\${ZFSM_TEST_NO_ROUTE:-}\" ] && exit 2\nprintf '%s dev br0 src 10.0.20.5 uid 0 \\n    cache \\n' \"\$3\"\n");
 $script('ssh', implode("\n", array(
 	'printf "%s\n" "ssh $*" >> "$ZFSM_TEST_SSH_LOG"',
 	"key=''; known=''; prev=''",
@@ -91,11 +91,16 @@ $script('ssh-keygen', "echo 'ssh-keygen: out of entropy' >&2\nexit 1\n");
 same(array('error' => 'ssh-keygen: out of entropy'), zfsmReplicaKeyMake(), 'a failed make says why');
 same(array(), array_values(array_diff(scandir($work.'/flash2/ssh'), array('.', '..'))), 'and leaves nothing');
 unlink($work.'/bin/ssh-keygen');
+// A make that placed only the public half has no key, so it can be made again.
+copy($work.'/flash/ssh/id_ed25519.pub', $work.'/flash2/ssh/id_ed25519.pub');
+same(array(null, true), array(zfsmReplicaPublicKey(), strpos(zfsmReplicaKeyHtml(), 'onclick="zfsmSendKey()"') !== false), 'a public half alone is no key');
+$remade = zfsmReplicaKeyMake();
+same(array(true, true), array(is_file($work.'/flash2/ssh/id_ed25519'), ($remade['key'] ?? '') === trim(file_get_contents($work.'/flash2/ssh/id_ed25519.pub'))), 'and is made again, in full');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
 
 // Addresses and ports: nothing that ssh could read as an option, nothing outside an IP or DNS name.
-same(array(true, true, true, true), array_map('zfsmReplicaHostValid', array('10.0.20.11', 'fd7a:115c:a1e0::1', 'nas', 'tower.tail1234.ts.net')), 'IP addresses and DNS names are taken');
-same(array(false, false, false, false, false, false), array_map('zfsmReplicaHostValid', array('', '-oProxyCommand=x', 'a b', '[::1]', 'root@nas', 'nas.')), 'nothing else');
+same(array(true, true), array_map('zfsmReplicaHostValid', array('10.0.20.11', 'fd7a:115c:a1e0::1')), 'IP addresses are taken, as the key line\'s from= must be one');
+same(array(false, false, false, false, false, false), array_map('zfsmReplicaHostValid', array('nas', 'tower.tail1234.ts.net', '', '-oProxyCommand=x', '[::1]', 'root@10.0.20.11')), 'nothing else, DNS names included');
 same(array(true, false, false, false), array_map('zfsmReplicaPortValid', array(22, 0, 65536, '22')), 'a port is a number from 1 to 65535');
 
 // The host key a server offers, read with ssh-keyscan; its comment lines and other key types are skipped.
@@ -109,25 +114,27 @@ same(array('ssh-keyscan -T 10 -t ed25519 -p 2222 10.0.20.11'), $log(), 'read onc
 putenv('ZFSM_TEST_SCAN=10.0.20.11 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ');
 same(array('error' => 'No ed25519 host key came back from 10.0.20.11 port 22'), zfsmReplicaScan('10.0.20.11', 22), 'no ed25519 key, no answer');
 $log();
-same(array('error' => 'Give the server\'s IP address or DNS name and its SSH port'), zfsmReplicaScan('-oProxyCommand=x', 22), 'an address that isn\'t one is refused');
+same(array('error' => 'Give the server\'s IP address and its SSH port'), zfsmReplicaScan('-oProxyCommand=x', 22), 'an address that isn\'t one is refused');
 same(array(), $log(), 'without running ssh-keyscan');
 putenv('ZFSM_TEST_SCAN');
 
 // Adding pins the host key the page showed; the name stays until it is removed.
 same('The host key is not the one shown; read it again', zfsmReplicaRemoteAdd('nas', '10.0.20.11', 2222, $host_key, 'SHA256:other'), 'a key other than the one compared is refused');
-same('Give the server\'s address, SSH port and the host key read from it', zfsmReplicaRemoteAdd('nas', '10.0.20.11', 2222, 'ssh-ed25519 AAAA', $host_print), 'so is a key that isn\'t one');
+same('Give the server\'s IP address, SSH port and the host key read from it', zfsmReplicaRemoteAdd('nas', '10.0.20.11', 2222, 'ssh-ed25519 AAAA', $host_print), 'so is a key that isn\'t one');
+same('Give the server\'s IP address, SSH port and the host key read from it', zfsmReplicaRemoteAdd('nas', '10.0.20.11', 2222, $host_key."\n* ".$host_key, $host_print), 'and one carrying a second known_hosts line after it');
 same('Name it with 1 to 64 letters, digits, _ . : or -, starting with a letter or digit', zfsmReplicaRemoteAdd('my nas', '10.0.20.11', 2222, $host_key, $host_print), 'and a name with a space');
 same('', zfsmReplicaRemoteAdd('nas', '10.0.20.11', 2222, $host_key, $host_print), 'a server is added');
 same('nas is already a server here; remove it first to change it', zfsmReplicaRemoteAdd('nas', '10.0.20.12', 22, $host_key, $host_print), 'its name isn\'t taken over');
 same(array('nas' => array('name' => 'nas', 'host' => '10.0.20.11', 'port' => 2222, 'key' => $host_key)), zfsmReplicaRemotes(), 'it is kept with its pinned key');
 $saved = json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true);
 $saved[] = array('name' => 'broken', 'host' => '10.0.20.13', 'port' => '22', 'key' => $host_key);
+$saved[] = array('name' => 'smuggled', 'host' => '10.0.20.14', 'port' => 22, 'key' => $host_key."\n@cert-authority * ".$host_key);
 file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
 same(array('nas'), array_keys(zfsmReplicaRemotes()), 'an entry the file holds in another shape is left out');
 $nas = zfsmReplicaRemotes()['nas'];
 
 // The line the other server adds: from= the address this server sends from, the exact checker and this server's name.
-$line = zfsmReplicaKeyLine($nas);
+$line = zfsmReplicaKeyLine($nas, zfsmReplicaSender());
 same('restrict,from="10.0.20.5",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php tower" '.$public, $line, 'one line to add there');
 same(array('ip route get 10.0.20.11'), $log(), 'from the kernel\'s route to it');
 file_put_contents($work.'/authorized_keys', "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHwdIausNEPnAJgtomzVsSoe8NyNhe7L/745s7iIuKjF someone\n".$line."\n");
@@ -135,6 +142,11 @@ same(array(array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict
 same(true, strpos(zfsmReplicaKeysHtml(zfsmReplicaKeys($work.'/authorized_keys')), 'tower (zfs.master@tower): limited to replication') !== false, 'and say so');
 $listed_html = zfsmReplicaRemotesHtml(zfsmReplicaRemotes());
 same(true, strpos($listed_html, 'nas (10.0.20.11 port 2222), host key '.$host_print) !== false && strpos($listed_html, 'value="'.zfsmHtml($line).'"') !== false, 'Settings lists the server with its line');
+putenv('ZFSM_TEST_NO_ROUTE=1');
+same(null, zfsmReplicaKeyLine($nas, zfsmReplicaSender()), 'no route to it, no line: a from= that can\'t match is never offered');
+same(true, strpos(zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'The address this server sends from to it could not be read.') !== false, 'Settings says why');
+putenv('ZFSM_TEST_NO_ROUTE');
+same(null, zfsmReplicaKeyLine($nas, null), 'nor before this server has its key');
 $log();
 
 // ssh's options, checked by the real ssh -G: only the pinned host key, this key alone, no config file, nothing forwarded.
@@ -144,7 +156,7 @@ same(array('--', '10.0.20.11', 'zfsm-replica 1 hello'), array_slice($args, -3), 
 exec('ssh -G '.implode(' ', array_map('escapeshellarg', array_slice($args, 0, -2))).' 10.0.20.11 2>&1', $resolved, $resolved_code);
 $want = array('user root', 'hostname 10.0.20.11', 'port 2222', 'batchmode yes', 'stricthostkeychecking true', 'identitiesonly yes', 'identityagent none',
 	'userknownhostsfile '.$files['known_hosts'], 'globalknownhostsfile /dev/null', 'hostkeyalgorithms ssh-ed25519', 'forwardagent no', 'forwardx11 no',
-	'clearallforwardings yes', 'permitlocalcommand no', 'connecttimeout 10', 'serveraliveinterval 15', 'serveralivecountmax 4', 'identityfile '.$files['key']);
+	'clearallforwardings yes', 'permitlocalcommand no', 'loglevel ERROR', 'connecttimeout 10', 'serveraliveinterval 15', 'serveralivecountmax 2', 'identityfile '.$files['key']);
 same(array(0, array()), array($resolved_code, array_values(array_diff($want, $resolved))), 'ssh takes every option and holds them: '.implode(' | ', $resolved));
 same(array('identityfile '.$files['key']), array_values(preg_grep('/^identityfile /', $resolved)), 'and offers this key alone, none of root\'s own');
 same(array("[10.0.20.11]:2222 ".$host_key), file($files['known_hosts'], FILE_IGNORE_NEW_LINES), 'known_hosts holds only the pinned key, at its port');
@@ -160,6 +172,11 @@ putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 putenv('ZFSM_TEST_SENDER=tower');
 same(array('area' => 'backup/replicas/tower'), zfsmReplicaHello($nas), 'hello answers with this server\'s area there');
 $seen = $log();
+file_put_contents($work.'/pool/datasets', "backup/My Replicas\tfilesystem\n", FILE_APPEND);
+putenv('ZFSM_TEST_ACCEPT=backup/My Replicas');
+same(array('area' => 'backup/My Replicas/tower'), zfsmReplicaHello($nas), 'an area whose name holds a space');
+putenv('ZFSM_TEST_ACCEPT=backup/replicas');
+$log();
 same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
 putenv('ZFSM_TEST_ACCEPT=');
@@ -167,7 +184,7 @@ same(array('error' => 'This server does not accept replicas from this key'), zfs
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
 same(array('error' => 'Host key verification failed.'), zfsmReplicaHello($nas), 'ssh\'s own error comes through');
 putenv('ZFSM_TEST_SSH_FAIL');
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash2/ssh';
+$GLOBALS['zfsm_ssh_dir'] = $work.'/flash3/ssh';
 same(array('error' => 'This server has no key yet, or its RAM copy could not be made'), zfsmReplicaHello($nas), 'no key, no ssh');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
 $log();

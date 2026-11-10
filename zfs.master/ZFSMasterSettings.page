@@ -211,7 +211,7 @@ _(Servers)_:
 :end
 
 _(Add A Server)_:
-: <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address or DNS name" aria-label="Address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
+: <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address" aria-label="IP address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
 
 :zc_settings_send_add_plug:
 > The name is how this list shows the server. Compare the host key read here with the one that server's ZFS Master NG Settings show under Accept Replicas Into; tick that they match, then Add.
@@ -256,8 +256,14 @@ zfsmCheckAccept($('input[name="replica_accept"]').val());
 
 // Replicate To Other Servers: each answer carries the refreshed HTML (include/ZFSMReplicaRemote.php) or why not.
 var zfsm_send_found = null;
+var zfsm_send_asked = 0;
 function zfsmSendPost(data, done) {
-	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', data, function(answer) { done(answer || {}); }, 'json').fail(function() { done({error: 'No answer from this server'}); });
+	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', data, function(answer) {
+		answer = answer || {};
+		// ZFSMAdmin's catch-all answers {failed: {request: why}}, with no error.
+		if (!answer.error && answer.failed) answer = {error: Object.values(answer.failed)[0] || 'The request failed'};
+		done(answer);
+	}, 'json').fail(function() { done({error: 'No answer from this server'}); });
 }
 function zfsmSendKey() {
 	zfsmSendPost({cmd: 'replicakey'}, function(answer) {
@@ -270,8 +276,11 @@ function zfsmSendKey() {
 function zfsmSendScan() {
 	var asked = {host: $('#zfsm-send-host').val(), port: $('#zfsm-send-port').val()};
 	var found = $('#zfsm-send-found').css('color', '').text('Reading…');
+	var ask = ++zfsm_send_asked;
 	zfsm_send_found = null;
 	zfsmSendPost($.extend({cmd: 'replicascan'}, asked), function(answer) {
+		// An answer for an address or port changed since is dropped.
+		if (ask !== zfsm_send_asked) return;
 		if (answer.error) return found.css('color', '#e22828').text(answer.error);
 		zfsm_send_found = $.extend(asked, {key: answer.key, fingerprint: answer.fingerprint});
 		var add = $('<input type="button" value="Add" disabled>').on('click', zfsmSendAdd);
@@ -280,7 +289,7 @@ function zfsmSendScan() {
 	});
 }
 // A changed address or port needs its own host key read again.
-$('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_found = null; $('#zfsm-send-found').empty(); });
+$('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_asked++; zfsm_send_found = null; $('#zfsm-send-found').empty(); });
 function zfsmSendAdd() {
 	if (!zfsm_send_found) return;
 	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
