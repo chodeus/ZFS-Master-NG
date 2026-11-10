@@ -49,6 +49,7 @@ $fresh = function() use ($pool, $reset) {
 	@unlink(getenv('ZFSM_TEST_REPL_DIR').'/txg');
 };
 $bookmark = function($dest, $snapshot) { return 'tank/data#'.zfsmReplicaBookmarkPrefix($dest).$snapshot; };
+$cfg = array('snap_prefix' => 'repl-', 'snap_pattern' => 'YmdHis', 'snap_utc' => 1);
 
 // A first run sends in full, unmounted and read-only, and marks what the copy holds with a bookmark for that destination.
 $fresh();
@@ -149,15 +150,42 @@ $held = fopen($lock_file, 'c');
 flock($held, LOCK_EX);
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a second run steps aside');
 same(array(), $calls('send'), 'and sends nothing');
-same('A replication of this dataset is already running', zfsmReplicatePreview('tank/data', 'b', 'backup/data')['error'], 'the dialog says one is running');
+same('A replication of this dataset is already running', zfsmReplicatePreview('tank/data', 'b', 'backup/data', $cfg)['error'], 'the dialog says one is running');
 flock($held, LOCK_UN);
 fclose($held);
 
 // The dialog: snapshots newest first; with a snapshot taken now the size isn't known yet.
-$preview = zfsmReplicatePreview('tank/data', '', '');
+$preview = zfsmReplicatePreview('tank/data', '', '', $cfg);
 same(array(array('b', 'a'), '', false), array($preview['snapshots'], $preview['last_destination'], $preview['can_proceed']), 'snapshots newest first, and nothing to plan without a destination');
-$preview = zfsmReplicatePreview('tank/data', '', 'backup/data');
+$preview = zfsmReplicatePreview('tank/data', '', 'backup/data', $cfg);
 same(array(true, 'full', null), array($preview['can_proceed'], $preview['mode'], $preview['size']), 'a snapshot taken now: planned, size unknown');
+
+// The dialog reads the dataset's snapshots once per change, and a start plans without the size estimate, which the job makes.
+$reset();
+zfsmReplicatePreview('tank/data', 'b', 'backup/data', $cfg);
+same(1, count(array_filter($read('calls.log'), function($line) { return strpos($line, 'list -H -p -d 1 -t snapshot,bookmark') === 0 && substr($line, -10) === ' tank/data'; })), 'one listing of the dataset\'s snapshots per preview');
+$reset();
+same(null, zfsmReplicatePlan('tank/data', 'b', 'backup/data', array('estimate' => false))['size'], 'a plan without its estimate');
+same(array(), array_values(array_filter($read('calls.log'), function($line) { return strpos($line, 'send ') === 0; })), 'runs no zfs send at all');
+
+// A snapshot taken now is named before the run, so the bookmark it needs is checked as well; and only the plugin's own bookmarks name a destination.
+// tank/data#zfsm_ plus the hex of this name (2 x 127) plus _repl-<14 digits> is past ZFS's 255.
+$long = 'backup/'.str_repeat('x', 120);
+same('The names are too long for the bookmark that keeps the next replication incremental', zfsmReplicatePreview('tank/data', '', $long, $cfg)['error'], 'a new snapshot whose bookmark would be too long');
+same('', zfsmReplicaLastDestination(array(array('name' => 'tank/data#zfsm_ab_daily', 'guid' => '1', 'txg' => 1))), 'another tool\'s zfsm_ bookmark names no destination');
+
+// The job takes a new snapshot under its lock: none while another run holds it, and none left behind when the run can't go ahead.
+$lock_file = zfsmJobLockFile('tank/data', 'replicate');
+$held = fopen($lock_file, 'c');
+flock($held, LOCK_EX);
+same(0, zfsmRunReplicate('tank/data', 'repl-1', 'backup/data', null, true), 'with another run holding the lock, a second steps aside');
+same(false, in_array('tank/data@repl-1', $names('tank/data', 'snapshot'), true), 'without taking its snapshot');
+flock($held, LOCK_UN);
+fclose($held);
+$reset();
+same(1, zfsmRunReplicate('tank/data', 'repl-2', 'nowhere/data', null, true), 'a run whose copy has nowhere to go does not start');
+same(false, in_array('tank/data@repl-2', $names('tank/data', 'snapshot'), true), 'and removes the snapshot it took');
+same(array('warning: Replication of tank/data to nowhere/data not started: The copy goes inside nowhere, which doesn?t exist'), $read('notify-detail.log'), 'saying why, made safe for notification agents');
 
 // A start takes the snapshot, runs scripts/replicate.php in a session of its own and answers once it holds the lock.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
@@ -171,6 +199,14 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
 	same(false, zfsmJobRunning($background_lock), 'and finishes, letting go of its lock');
 	same(1, preg_match('/^backup\/data@repl-[0-9]{14}$/', $names('backup/data', 'snapshot')[0] ?? ''), 'the copy holds the snapshot it took');
+	// A copy with a stopped run carries that run on, and the start says so instead of naming the snapshot picked.
+	file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/data@b\n", FILE_APPEND);
+	$answer = zfsmStartReplicate('tank/data', 'a', 'backup/data', $cfg);
+	same(array('tank/data' => 'Replication of tank/data@b to backup/data carries on from where it stopped; replicate again afterwards for newer snapshots; a notification says when it is done'), $answer['succeeded'], 'a resumed start says what it carries on');
+	for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
+	// The run's reason not to start reaches the page, not only the notification.
+	$failed = zfsmStartReplicate('tank/data', '', $long.'y', $cfg)['failed']['tank/data'] ?? '';
+	same('The names are too long for the bookmark that keeps the next replication incremental', $failed, 'a start refused before the job says why');
 	$GLOBALS['docroot'] = $work.'/docroot';
 }
 

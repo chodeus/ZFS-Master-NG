@@ -169,17 +169,17 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	} else if (msg.op == 'stop_directory_copy') {
 		zfsmShowCopyProgress(msg.data.dataset, null);
 	} else if (msg.op == 'rewrite_start') {
-		zfsmJobProgress(msg.data.dataset, 'Rewriting files…');
+		zfsmJobProgress(msg.data.dataset, 'rewrite', 'Rewriting files…');
 	} else if (msg.op == 'rewrite_progress') {
-		zfsmJobProgress(msg.data.dataset, 'Rewriting files… '+Number(msg.data.files)+' done');
+		zfsmJobProgress(msg.data.dataset, 'rewrite', 'Rewriting files… '+Number(msg.data.files)+' done');
 	} else if (msg.op == 'rewrite_stop') {
-		zfsmJobProgress(msg.data.dataset, null);
+		zfsmJobProgress(msg.data.dataset, 'rewrite', null);
 	} else if (msg.op == 'replicate_start') {
-		zfsmJobProgress(msg.data.dataset, 'Replicating…');
+		zfsmJobProgress(msg.data.dataset, 'replicate', 'Replicating…');
 	} else if (msg.op == 'replicate_progress') {
-		zfsmJobProgress(msg.data.dataset, 'Replicating… '+fromBytesToString(msg.data.bytes)+(msg.data.total ? ' of '+fromBytesToString(msg.data.total) : ''));
+		zfsmJobProgress(msg.data.dataset, 'replicate', 'Replicating… '+fromBytesToString(msg.data.bytes)+(msg.data.total ? ' of '+fromBytesToString(msg.data.total) : ''));
 	} else if (msg.op == 'replicate_stop') {
-		zfsmJobProgress(msg.data.dataset, null);
+		zfsmJobProgress(msg.data.dataset, 'replicate', null);
 	}
 
 	processHiddenDatasets();
@@ -197,11 +197,20 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   }
 
   // A running rewrite or replication reports every 2 seconds; one silent for 12 has stopped, even if its stop message was lost.
+  // Per dataset and job, as a rewrite and a replication can run on one dataset at once and share its row.
   var zfsm_job_expiry = {};
-  function zfsmJobProgress(dataset, html) {
-	clearTimeout(zfsm_job_expiry[dataset]);
-	if (html !== null) zfsm_job_expiry[dataset] = setTimeout(function() { zfsmShowCopyProgress(dataset, null); }, 12000);
-	zfsmShowCopyProgress(dataset, html);
+  var zfsm_job_text = {};
+  function zfsmJobProgress(dataset, job, html) {
+	const key = dataset+'\n'+job;
+	clearTimeout(zfsm_job_expiry[key]);
+	const jobs = zfsm_job_text[dataset] = zfsm_job_text[dataset] || {};
+	if (html === null) delete jobs[job];
+	else {
+		jobs[job] = html;
+		zfsm_job_expiry[key] = setTimeout(function() { zfsmJobProgress(dataset, job, null); }, 12000);
+	}
+	const shown = Object.values(jobs).join(' · ');
+	zfsmShowCopyProgress(dataset, shown === '' ? null : shown);
   }
 
   function zfsmRestoreCopyProgress() {

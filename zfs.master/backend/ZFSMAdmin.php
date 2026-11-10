@@ -153,7 +153,7 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$snapshot = zfsmPostString('snapshot');
 			$zdest = zfsmPostString('destination');
-			echo json_encode(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+			echo json_encode(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg); }), JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
 			break;
 
 		case 'replicatedataset':

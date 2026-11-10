@@ -36,13 +36,15 @@ function zfsmJobUnlock($lock) {
 }
 
 // Starts scripts/<script> in a session of its own, so the job outlives the page that asked for it.
-// Returns whether it said "started" (it holds its lock by then, zfsmJobStarted), and the first of anything else it printed.
-function zfsmStartJob($script, $args) {
+// Returns 'started' once it said so (it holds its lock by then, zfsmJobStarted), 'running' when another run holds the lock,
+// or 'failed' with the first of what it printed.
+function zfsmStartJob($script, $args, $lock_file) {
 	$path = ($GLOBALS['docroot'] ?? '/usr/local/emhttp').'/plugins/zfs.master/scripts/'.$script;
 	$php = $GLOBALS['zfsm_php'] ?? '/usr/bin/php';
 	$launch = runProcess('setsid', array_merge(array('-f', $php, '-q', $path), $args));
-	$started = in_array('started', preg_split('/\R/', (string)($launch['output'] ?? '')), true);
-	return array($started, substr(zfsmOneLine($launch['output'] ?? ''), 0, 300));
+	if (in_array('started', preg_split('/\R/', (string)($launch['output'] ?? '')), true)) return array('started', '');
+	if ($lock_file !== null && zfsmJobRunning($lock_file)) return array('running', '');
+	return array('failed', substr(zfsmOneLine($launch['output'] ?? ''), 0, 300));
 }
 
 // The job's side of zfsmStartJob: say "started", then let go of the pipe so the page is answered at once.

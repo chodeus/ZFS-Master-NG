@@ -6,8 +6,9 @@ $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 
+// "new": take the snapshot first (zfsmStartReplicate names it).
 if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '') {
-	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination>\n");
+	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new]\n");
 	exit(2);
 }
-exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted'));
+exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new'));

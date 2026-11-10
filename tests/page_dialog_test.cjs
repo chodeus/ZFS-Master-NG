@@ -324,6 +324,13 @@ async function confirm() {
   assert.equal(progress(), 'Replicating… 1.5 KiB of 4 KiB', 'the row shows how much of it is sent');
   send('replicate_stop');
   assert.equal(progress(), '', 'the row clears when it stops');
+  // A rewrite and a replication of one dataset share its row; one stopping leaves the other's progress.
+  send('rewrite_start');
+  send('replicate_start');
+  assert.equal(progress(), 'Rewriting files… · Replicating…', 'both show while both run');
+  send('rewrite_stop');
+  assert.equal(progress(), 'Replicating…', 'the rewrite stopping leaves the replication on the row');
+  send('replicate_stop');
 
   // Replicate: the plan follows the choices, and Replicate waits for the plan of what is on screen.
   const options = {snapshots: ['b', 'a'], last_destination: 'backup/data'};

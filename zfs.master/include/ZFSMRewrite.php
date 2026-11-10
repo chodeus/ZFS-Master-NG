@@ -41,11 +41,9 @@ function zfsmStartRewrite($zdataset, $physical) {
 	$preview = zfsmRewritePreview($zdataset);
 	if (!$preview['can_proceed']) return zfsmFailure($zdataset, $preview['error']);
 	if ($physical && $preview['physical_feature'] === '') return zfsmFailure($zdataset, 'The pool\'s physical_rewrite feature is not enabled, so birth times can\'t be kept');
-	list($started, $why) = zfsmStartJob('rewrite.php', array_merge(array($zdataset), $physical ? array('physical') : array()));
-	if ($started) return array('succeeded' => array($zdataset => 'Rewrite started; a notification says when it is done'), 'failed' => array());
-	$lock_file = zfsmJobLockFile($zdataset, 'rewrite');
-	if ($lock_file !== null && zfsmJobRunning($lock_file)) return zfsmFailure($zdataset, 'A rewrite of this dataset is already running');
-	return zfsmFailure($zdataset, 'The rewrite could not be started'.($why !== '' ? ': '.$why : ''));
+	list($state, $why) = zfsmStartJob('rewrite.php', array_merge(array($zdataset), $physical ? array('physical') : array()), zfsmJobLockFile($zdataset, 'rewrite'));
+	if ($state === 'started') return array('succeeded' => array($zdataset => 'Rewrite started; a notification says when it is done'), 'failed' => array());
+	return zfsmFailure($zdataset, $state === 'running' ? 'A rewrite of this dataset is already running' : 'The rewrite could not be started'.($why !== '' ? ': '.$why : ''));
 }
 
 // Runs zfs rewrite -v: each line on stdout is a file done, so the row can count them; keeps the first of its errors.
