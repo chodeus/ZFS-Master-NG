@@ -245,6 +245,9 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	$failed = zfsmStartReplicate('tank/data', '', 'backup/fresh', array('snap_prefix' => 'repl-', 'snap_pattern' => '\\f\\i\\x\\e\\d'))['failed']['tank/data'] ?? '';
 	same("The replication could not be started: cannot create snapshot 'tank/data@repl-fixed': dataset already exists", $failed, 'a run refused in the job says why on the page');
 	$GLOBALS['docroot'] = $work.'/docroot';
+} else {
+	fwrite(STDERR, "FAILED: the background start needs ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");
+	exit(1);
 }
 
 echo "replication tests passed\n";
