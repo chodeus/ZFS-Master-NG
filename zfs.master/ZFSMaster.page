@@ -40,6 +40,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   /* Dataset rows join the first two cells, so alignment goes by class, not by position. */
   #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
   #zfs_master.zfs_table thead td:nth-child(n+5),#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{text-align:right}
+  /* Long names and mounts wrap: Unraid's cells don't, so they would be cut off (7.x) or push the columns out of line (6.x). */
+  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{white-space:normal;overflow-wrap:anywhere}
   #zfs_master.zfs_table .zfsm-name .zfs_compact{float:right}
   #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;margin-left:10px;text-align:left}
   /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */

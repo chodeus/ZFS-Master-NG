@@ -34,11 +34,14 @@ for (const file of ['ZFSMSize.js', 'ZFSMFrontEnd.js']) vm.runInContext(fs.readFi
 const now = Math.floor(Date.now() / 1000);
 const root = {name: 'flash', type: 'filesystem', creation: now, used: 3027000000, available: 9970000000, referenced: 98000, mountpoint: 'none', keystatus: 'none', child: {}, snapshots: []};
 const display = {text: 1, warning: 70, critical: 90};
+const longName = 'flash/appdata/docker/containers/'+'a-very-long-dataset-name-'.repeat(3)+'end';
 const ourTable = units => {
   context.zfsm_config = {size_units: units};
   context.zfsm_display = {number: '.,', scale: -1};
   const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 1}, 'nvme0n1p3', true, display, root)+'</tr>'
-    + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display);
+    + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
+    // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
+    + context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
   if (units === 'decimal') assert.match(rows, />13 GB<\/td>[\s\S]*>3\.03 GB<[\s\S]*>9\.97 GB</, 'in Unraid\'s units the pool row shows Unraid\'s own text');
   return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`;
 };
@@ -77,7 +80,8 @@ document.fonts.ready.then(() => {
   });
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
-  out.textContent = JSON.stringify({unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree)});
+  const clipped = [...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => r+':'+(td.className || td.cellIndex)));
+  out.textContent = JSON.stringify({unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree), clipped});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
@@ -85,10 +89,11 @@ document.fonts.ready.then(() => {
       `--window-size=${width},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${theme} at ${width} in ${units}: the tables did not render`);
-    const {unraid, ours} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
-      const name = `${r ? 'dataset' : 'pool'} ${['Size', 'Used', 'Free'][c]}`;
+      const name = `${['pool', 'dataset', 'long dataset'][r]} ${['Size', 'Used', 'Free'][c]}`;
       near(cell.cell[0], unraid[c].cell[0], name+' cell left');
       near(cell.cell[1], unraid[c].cell[1], name+' cell right');
       if (!unraid[c].disk) return;
