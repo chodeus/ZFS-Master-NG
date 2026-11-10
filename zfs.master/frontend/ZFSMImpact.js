@@ -70,11 +70,12 @@ function zfsmRewriteSync(root) {
 // The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicate.php; zfsmReplicatePlanHtml fills its plan as the choices change.
 function zfsmReplicateHtml(options) {
 	const esc = zfsmEscape;
-	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+'</label>'+field+'</p>';
+	// The control inside its label names it for screen readers.
+	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+field+'</label></p>';
 	const snapshots = (options.snapshots || []).map(name => '<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
 	let html = row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="pool/dataset" value="'+esc(options.last_destination || '')+'">');
-	html += '<div id="zfsm-replicate-plan"></div>';
+	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p></div>';
 }
 
