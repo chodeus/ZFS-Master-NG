@@ -11,6 +11,8 @@ function parse_plugin_cfg($plugin, $sections = false) {
 		'snap_max_days_alert' => '30',
 		'snap_prefix' => '',
 		'snap_pattern' => 'Y-m-d-His',
-		'snap_utc' => getenv('ZFSM_TEST_SNAP_UTC') ?: '0'
+		'snap_utc' => getenv('ZFSM_TEST_SNAP_UTC') ?: '0',
+		// A file, not the environment: scripts/replica-serve.php drops every ZFSM_TEST_ setting before it reads this.
+		'replica_accept' => (string)@file_get_contents(sys_get_temp_dir().'/zfsm-replica-accept')
 	));
 }

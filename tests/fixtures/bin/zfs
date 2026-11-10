@@ -35,6 +35,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			awk -F'\t' -v d="$last_arg" -v t="$types" '(index(t, "snapshot") && index($1, d "@") == 1) || (index(t, "bookmark") && index($1, d "#") == 1)' "$R/marks"
 			exit 0
 		fi
+		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name,type ]; then
+			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
+			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
+		fi
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
 			exists "$last_arg" && { echo "$last_arg"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1

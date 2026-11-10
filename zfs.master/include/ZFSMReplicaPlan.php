@@ -49,9 +49,10 @@ function zfsmReplicateSendArgs($plan, $dry_run = false) {
 
 // -s keeps a stopped run resumable; -u and canmount=noauto keep the copy unmounted, even after a reboot; readonly=on stops writes to it.
 // A resumed receive takes the same options (OpenZFS 2.4.4, checked live), so a first copy stopped part-way still gets them.
+// -x: a stream's own mountpoint and shares are ignored, so a stream another server sends can't mount or share the copy elsewhere.
 function zfsmReplicateReceiveArgs($plan) {
 	$args = array('receive', '-s', '-u', '-o', 'readonly=on');
-	if ($plan['type'] === 'filesystem') array_push($args, '-o', 'canmount=noauto');
+	if ($plan['type'] === 'filesystem') array_push($args, '-o', 'canmount=noauto', '-x', 'mountpoint', '-x', 'sharenfs', '-x', 'sharesmb');
 	$args[] = $plan['dest'];
 	return $args;
 }
