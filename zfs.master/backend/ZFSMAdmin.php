@@ -106,6 +106,11 @@ try {
 			echo json_encode(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
 			break;
 
+		case 'validateaccept':
+			// Trimmed as loadConfig trims the saved setting.
+			echo json_encode(array('valid' => zfsmReplicaAcceptValid(trim(zfsmPostString('dataset')))));
+			break;
+
 		case 'adddirectortlisting':
 			zfsmReturnAnswer(addToDirectoryListing(zfsmPostString('zdataset')), 'Directory Listing', 'Dataset added successfully', 'Unable to add dataset');
 			break;
