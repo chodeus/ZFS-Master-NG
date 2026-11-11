@@ -59,7 +59,7 @@ exec('ssh -O exit -o ControlPath='.escapeshellarg($control).' 127.0.0.1 2>&1');
 file_put_contents($work.'/authorized_keys', '');
 $before = $connections();
 $refused = zfsmReplicaHello('self')['error'] ?? '';
-same(1, preg_match('/Permission denied \(publickey\)/', $refused), 'a key not in authorized_keys: '.$refused);
+same(1, preg_match('/Permission denied \(publickey[,)]/', $refused), 'a key not in authorized_keys: '.$refused);
 same(1, preg_match('/^Asking self again in [0-9]+ s/', zfsmReplicaHello('self')['error'] ?? ''), 'the next Test waits');
 same(1, preg_match('/^Asking self again in [0-9]+ s/', zfsmReplicatePreview('tank/data', 'b', $there, $cfg, 'self')['error'] ?? ''), 'and so does the dialog');
 same(1, $connections() - $before, 'one failed login, not one per question');
