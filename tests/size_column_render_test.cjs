@@ -41,7 +41,8 @@ const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3
 const ourTable = units => {
   context.zfsm_config = {size_units: units};
   context.zfsm_display = {number: '.,', scale: -1};
-  const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 1}, 'nvme0n1p3', true, display, root)+'</tr>'
+  // The pool's count reads Loading… until it arrives: the widest text that cell shows.
+  const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: null}, 'nvme0n1p3', true, display, root)+'</tr>'
     + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
     // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
     + context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
@@ -67,8 +68,8 @@ assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-sizes-'));
 let checked = 0;
 try {
-  // 390 is a phone and 1024 a small window: 7.x lays the table out at 1000px or more, the narrowest its columns get.
-  for (const theme of themes) for (const width of [390, 1024, 1280, 1920]) for (const units of ['decimal', 'binary']) {
+  // 390, a phone, gives 7.x's narrowest columns; 6.x cells don't clip, and a narrow 6.x table sizes itself by its own rows.
+  for (const theme of themes) for (const width of unraid7 ? [390, 1280, 1920] : [1280, 1920]) for (const units of ['decimal', 'binary']) {
     const css = [...base, theme].map(sheet).join('\n');
     const file = path.join(work, `table-${width}-${units}.html`);
     fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}\n${pageCss}</style></head><body>
@@ -82,7 +83,7 @@ document.fonts.ready.then(() => {
   });
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
-  const clipped = [...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => r+':'+(td.className || td.cellIndex)));
+  const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
   out.textContent = JSON.stringify({unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree), clipped});
   document.documentElement.appendChild(out);
 });
@@ -93,8 +94,6 @@ document.fonts.ready.then(() => {
     assert.ok(match, `${theme} at ${width} in ${units}: the tables did not render`);
     const {unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
     assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
-    // 6.x sizes a narrow table by its own rows, so only a full-width one lines up with Unraid's.
-    if (!unraid7 && width < 1280) continue;
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
       const name = `${['pool', 'dataset', 'long dataset'][r]} ${['Size', 'Used', 'Free'][c]}`;
@@ -112,4 +111,4 @@ document.fonts.ready.then(() => {
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at four widths, in both units`);
+console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width and two others' : 'two widths'}, in both units`);

@@ -31,7 +31,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   /* Size, Used and Free keep Unraid's own disk_status widths and layout, so they line up with its pool tables (tests/size_column_render_test.cjs). */
   #zfs_master.zfs_table thead td:nth-child(1){width:8%}
   #zfs_master.zfs_table thead td:nth-child(2){width:7%}
-  /* 7.x never lays the table out narrower than 1000px: at 7% the camera and count didn't fit, and Unraid's cells clip with an ellipsis. */
+  /* 7.2+ lays the table out at 1000px at least, where 7% clipped the camera and count to an ellipsis (Unraid's cells cut, not wrap). */
   #zfs_master.zfs_table thead td:nth-child(6){width:8%}
   /* 6.x lays the table out by every row: only the header sizes columns, and Name takes the slack, as Unraid's Identification does. */
   #zfs_master.zfs_table thead td:nth-child(3){width:<?=$is_unraid7 ? '29%' : 'auto'?>}
@@ -47,7 +47,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table .zfsm-name-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-name-label{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .zfsm-name-row .zfs_compact{flex:none}
-  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:2.5em;margin-left:6px;text-align:left}
+  /* Narrower still (7.0/7.1 phones, a larger font, Loading…), the count drops under the camera rather than being cut. */
+  #zfs_master.zfs_table .zfsm-snaps{white-space:normal}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;margin-left:6px;text-align:left}
   /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */
   #zfs_master.zfs_table .zfsm-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
   #zfs_master.zfs_table .zfsm-row-progress{display:inline-block;width:calc(100% - 2em);vertical-align:middle}
