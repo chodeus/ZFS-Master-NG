@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.11.3 (beta)
 
 - Table text wraps instead of being cut off (Health, long pool names, errors)
 - On Unraid 7.4, rows open the file manager from a folder, like Unraid's own pool rows
