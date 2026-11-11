@@ -2,8 +2,7 @@
 
 ## Unreleased
 
-- fix: local review — the count wraps under the camera wherever it can't fit (7.0/7.1 phones, larger fonts, Loading…), 3em keeps icons in line, headers are checked for clipping too
-- fix: the snapshot count shows on phones and small windows (Unraid 7 clipped it to …)
+- The snapshot count shows on phones and small windows
 
 ## 2026.11.11.1 (beta)
 
