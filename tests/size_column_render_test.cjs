@@ -108,7 +108,7 @@ document.fonts.ready.then(() => {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!node.parentElement.getClientRects().length) continue;
       const box = getComputedStyle(td); const room = td.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
-      for (const word of node.data.matchAll(/\S+/g)) {
+      for (const word of node.data.matchAll(/\\S+/g)) {
         const r = document.createRange(); r.setStart(node, word.index); r.setEnd(node, word.index + word[0].length);
         const parts = [...r.getClientRects()];
         if (parts.length > 1 && parts.reduce((sum, part) => sum + part.width, 0) <= room) found.push(word[0]);
