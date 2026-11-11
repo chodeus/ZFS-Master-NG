@@ -197,12 +197,18 @@ function zfsmReplicaSshCleanup($files) {
 	@rmdir($files['dir']);
 }
 
-// Only the pinned host key is trusted and nothing is forwarded; no config file can add a ProxyCommand or another key.
-// LogLevel=ERROR keeps a banner or warning out of the answer, which runProcess reads with ssh's errors.
+// One server's settings as a short name: its ssh connection and its back-off (include/ZFSMReplicaTarget.php) are kept under it.
+function zfsmReplicaRemoteId($remote) {
+	return substr(hash('sha256', implode("\n", array($remote['name'], $remote['host'], $remote['port'], $remote['key']))), 0, 16);
+}
+
+// Only the pinned host key and this key, nothing forwarded, no config file; LogLevel=ERROR keeps banners out of the answer runProcess reads.
+// Every call to a server rides one connection, kept 60 s after its last use: sshd throttles a source that connects often (Unraid's did).
 function zfsmReplicaSshArgs($remote, $files, $request) {
 	$options = array('IdentitiesOnly=yes', 'IdentityAgent=none', 'BatchMode=yes', 'StrictHostKeyChecking=yes', 'UserKnownHostsFile='.$files['known_hosts'],
 		'GlobalKnownHostsFile=/dev/null', 'CheckHostIP=no', 'HostKeyAlgorithms=ssh-ed25519', 'UpdateHostKeys=no', 'ForwardAgent=no', 'ForwardX11=no',
-		'ClearAllForwardings=yes', 'PermitLocalCommand=no', 'LogLevel=ERROR', 'ConnectTimeout=10', 'ServerAliveInterval=15', 'ServerAliveCountMax=2');
+		'ClearAllForwardings=yes', 'PermitLocalCommand=no', 'LogLevel=ERROR', 'ConnectTimeout=10', 'ServerAliveInterval=15', 'ServerAliveCountMax=2',
+		'ControlMaster=auto', 'ControlPath='.zfsmJobDir('replica-send').'/cm-'.zfsmReplicaRemoteId($remote), 'ControlPersist=60');
 	$args = array('-F', 'none', '-T', '-i', $files['key']);
 	foreach ($options as $option) array_push($args, '-o', $option);
 	return array_merge($args, array('-p', (string)$remote['port'], '-l', 'root', '--', $remote['host'], $request));

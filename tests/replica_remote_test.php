@@ -149,7 +149,8 @@ same(array('--', '10.0.20.11', 'zfsm-replica 1 hello'), array_slice($args, -3), 
 exec('ssh -G '.implode(' ', array_map('escapeshellarg', array_slice($args, 0, -2))).' 10.0.20.11 2>&1', $resolved, $resolved_code);
 $want = array('user root', 'hostname 10.0.20.11', 'port 2222', 'batchmode yes', 'stricthostkeychecking true', 'identitiesonly yes', 'identityagent none',
 	'userknownhostsfile '.$files['known_hosts'], 'globalknownhostsfile /dev/null', 'hostkeyalgorithms ssh-ed25519', 'forwardagent no', 'forwardx11 no',
-	'clearallforwardings yes', 'permitlocalcommand no', 'loglevel ERROR', 'connecttimeout 10', 'serveraliveinterval 15', 'serveralivecountmax 2', 'identityfile '.$files['key']);
+	'clearallforwardings yes', 'permitlocalcommand no', 'loglevel ERROR', 'connecttimeout 10', 'serveraliveinterval 15', 'serveralivecountmax 2', 'identityfile '.$files['key'],
+	'controlmaster auto', 'controlpath '.zfsmJobDir('replica-send').'/cm-'.zfsmReplicaRemoteId($nas), 'controlpersist 60');
 same(array(0, array()), array($resolved_code, array_values(array_diff($want, $resolved))), 'ssh takes every option and holds them: '.implode(' | ', $resolved));
 same(array('identityfile '.$files['key']), array_values(preg_grep('/^identityfile /', $resolved)), 'and offers this key alone, none of root\'s own');
 same(array("[10.0.20.11]:2222 ".$host_key), file($files['known_hosts'], FILE_IGNORE_NEW_LINES), 'known_hosts holds only the pinned key, at its port');
@@ -185,6 +186,13 @@ same(array('error' => 'This server does not accept replicas from this key'), zfs
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
 same(array('error' => 'Host key verification failed.'), zfsmReplicaHello('nas'), 'ssh\'s own error comes through');
 putenv('ZFSM_TEST_SSH_FAIL');
+// After ssh itself fails, that server isn't asked again for 30 s: sshd blocks a source whose logins keep failing.
+$log();
+$waiting = zfsmReplicaHello('nas')['error'] ?? '';
+same(array(1, array()), array(preg_match('/^Asking nas again in (30|29) s, so its sshd doesn\'t block this server for failed logins\. It said: Host key verification failed\.$/', $waiting), $log()), 'the next Test waits, without connecting: '.$waiting);
+touch(zfsmJobDir('replica-send').'/failed-'.zfsmReplicaRemoteId($nas), time() - 30);
+same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello('nas'), 'after 30 s it asks again, and gets the checker\'s answer');
+same(false, is_file(zfsmJobDir('replica-send').'/failed-'.zfsmReplicaRemoteId($nas)), 'and an answer clears the wait');
 mkdir($work.'/flash3/ssh', 0700, true);
 copy($work.'/flash/ssh/remotes.json', $work.'/flash3/ssh/remotes.json');
 putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash3/ssh');

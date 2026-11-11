@@ -1,6 +1,7 @@
 <?php
 // Where a copy lives: this server's zfs, or the checker on a trusted server over ssh (include/ZFSMReplicaServe.php).
 // Both run the checker's verbs as the same zfs commands (zfsmReplicaVerbArgs), so each answer is read one way.
+define('ZFSM_REPLICA_BACK_OFF', 30);
 
 // '' is this server. A trusted server is asked hello first: its answer is the area every copy there goes inside.
 // One that can't be used holds 'error', which the plan refuses with; zfsmReplicaTargetClose removes the RAM key copy.
@@ -34,12 +35,31 @@ function zfsmReplicaHello($server) {
 // One verb where the copy lives, as runProcess answers it. A zfs hung there keeps ssh's keepalives going, so each question has the read limit.
 function zfsmReplicaTargetAsk($target, $verb, $name) {
 	if ($target['server'] === '') return runProcess('zfs', zfsmReplicaVerbArgs($verb, $name));
+	$waiting = zfsmReplicaBackOff($target['remote']);
+	if ($waiting !== null) return array('code' => 255, 'output' => $waiting);
 	$args = zfsmReplicaSshArgs($target['remote'], $target['files'], 'zfsm-replica 1 '.$verb.($name !== '' ? ' '.bin2hex($name) : ''));
 	try {
-		return zfsmWithReadLimit(function() use ($args) { return runProcess('ssh', $args); });
+		$answer = zfsmWithReadLimit(function() use ($args) { return runProcess('ssh', $args); });
 	} catch (RuntimeException $timed_out) {
 		return array('code' => 124, 'output' => $timed_out->getMessage());
 	}
+	zfsmReplicaBackOffNote($target['remote'], $answer);
+	return $answer;
+}
+
+// sshd blocks a source whose logins keep failing (OpenSSH's PerSourcePenalties: 5 s a failure, blocked past 15 s): after ssh itself fails
+// (exit 255: no connection, login or host key), that server isn't asked again for 30 s. Why not yet, or null.
+function zfsmReplicaBackOff($remote) {
+	$file = zfsmJobDir('replica-send').'/failed-'.zfsmReplicaRemoteId($remote);
+	$since = @filemtime($file);
+	if ($since === false || time() - $since >= ZFSM_REPLICA_BACK_OFF) return null;
+	return 'Asking '.$remote['name'].' again in '.(ZFSM_REPLICA_BACK_OFF - (time() - $since)).' s, so its sshd doesn\'t block this server for failed logins. It said: '.(string)@file_get_contents($file);
+}
+
+function zfsmReplicaBackOffNote($remote, $answer) {
+	$file = zfsmJobDir('replica-send').'/failed-'.zfsmReplicaRemoteId($remote);
+	if (($answer['code'] ?? 255) === 255) @file_put_contents($file, zfsmCommandError($answer, 'ssh failed'));
+	else @unlink($file);
 }
 
 // A copy as messages name it: one on another server says which.

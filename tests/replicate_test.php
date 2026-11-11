@@ -335,6 +335,8 @@ same(1, zfsmRunReplicate('tank/data', 'repl-3', $there, null, true, 'nas'), 'a r
 putenv('ZFSM_TEST_SSH_FAIL');
 same(array(), $calls('snapshot'), 'takes no snapshot');
 same(array('warning: Replication of tank/data to '.$there.' on nas not started: ssh: connect to host 10.0.20.11 port 22: Connection refused'), $read('notify-detail.log'), 'and says why');
+same(1, preg_match('/^Asking nas again in \d+ s/', zfsmReplicatePreview('tank/data', 'd', $there, $cfg, 'nas')['error']), 'the dialog then waits before asking nas again');
+array_map('unlink', glob(zfsmJobDir('replica-send').'/failed-*'));
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'leaving no RAM copy of the key');
 file_put_contents($work.'/pool/props', "$there\treceive_resume_token\ttok:tank/data@gone\n", FILE_APPEND);
 same('backup/replicas/tower/data on nas holds a part-received replication that can\'t be resumed (cannot open \'tank/data@gone\': dataset does not exist); zfs receive -A backup/replicas/tower/data, run on nas, discards it', zfsmReplicatePreview('tank/data', 'd', $there, $cfg, 'nas')['error'], 'one there says where to discard it');
