@@ -23,6 +23,7 @@ const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localho
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMSize.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
@@ -134,7 +135,12 @@ async function confirm() {
   };
   const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
   const redraw = () => { window.requestRefresh(); answer(); };
-  const progress = () => window.document.getElementById(window.datasetRowId('tank/new')).children[0].textContent;
+  // Progress goes in its own slot, after the browse link that leads the row.
+  const progress = () => {
+    const lead = window.document.getElementById(window.datasetRowId('tank/new')).children[0];
+    assert.ok(lead.querySelector('a.zfsm-browse'), 'progress must not replace the row\'s browse link');
+    return lead.querySelector('.zfsm-row-progress').textContent;
+  };
   send('start_directory_copy');
   assert.equal(requests.length, 1, 'a copy must refresh the page so the new dataset gets its row');
   send('clone_directory');
@@ -329,6 +335,10 @@ async function confirm() {
   assert.equal(progress(), 'Replicating…', 'the row says it is replicating');
   feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
   assert.equal(progress(), 'Replicating… 1.5 KiB of 4 KiB', 'the row shows how much of it is sent');
+  window.zfsm_config.size_units = 'decimal';
+  feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
+  assert.equal(progress(), 'Replicating… 1.54 KB of 4.10 KB', 'in Unraid\'s units when Settings picks them');
+  delete window.zfsm_config.size_units;
   send('replicate_stop');
   assert.equal(progress(), '', 'the row clears when it stops');
   // A rewrite and a replication of one dataset share its row; one stopping leaves the other's progress.
@@ -354,7 +364,7 @@ async function confirm() {
   assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
   assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
   assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', server: '', destination: 'backup/data'}], 'it asks for the choices, then the plan for them');
-  assert.match(planText(), /changes since b, about 2\.00 KiB/, 'the plan says what it sends');
+  assert.match(planText(), /changes since b, about 2 KiB/, 'the plan says what it sends');
   assert.equal(held(), false, 'a plan that can go enables Replicate');
   dest().value = 'nowhere/copy';
   dest().dispatchEvent(new window.Event('input'));
@@ -447,7 +457,7 @@ async function confirm() {
   assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
   const review = window.document.querySelector('.swal2-html-container').textContent;
   assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
-  assert.match(review, /snapshots hold 1\.00 GiB now/, 'the review shows the snapshot space');
+  assert.match(review, /snapshots hold 1 GiB now/, 'the review shows the snapshot space');
   assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true, false], 'with the feature only enabled, -P starts off and the full-send warning shows');
   box().checked = true;
   box().dispatchEvent(new window.Event('change'));

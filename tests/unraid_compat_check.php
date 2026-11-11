@@ -139,7 +139,7 @@ switch ($check) {
 		require_once $docroot.'/webGui/include/Helpers.php';
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
-		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1, 'alert_interval' => 60, 'alert_stale' => 1,
+		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1, 'alert_interval' => 60, 'alert_stale' => 1, 'size_units' => 'binary',
 			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
 		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
@@ -241,7 +241,7 @@ switch ($check) {
 			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*?<dt>(?:<[^>]+>|[^<])*?'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
 		if (!preg_match('#<dt>(?:<[^>]+>|[^<])*?Snapshot Time(?:(?!</dl>).)*?<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
-		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale') as $label => $name) {
+		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
 			if (!preg_match('#<dt>(?:<[^>]+>|[^<])*?'.$label.'(?:(?!</dl>).)*?<select name="'.$name.'">#s', $rendered)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
@@ -398,6 +398,20 @@ switch ($check) {
 		if (strpos($html, 'simulated dataset snapshot failure') === false) { fwrite(STDERR, "snapshot popup did not show the listing error\n"); exit(1); }
 		if (strpos($html, 'Snapshots could not be listed') === false || strpos($html, '0 snapshots') !== false) { fwrite(STDERR, "snapshot popup header claims a count after a failed listing\n"); exit(1); }
 		if (strpos($html, 'id="zfsm-snap-filter"') !== false) { fwrite(STDERR, "snapshot popup offers a filter with nothing listed\n"); exit(1); }
+		break;
+
+	// Unraid's own my_scale still gives the answers zfsmSize and frontend/ZFSMSize.js are checked against.
+	case 'unraid_sizes':
+		require_once $docroot.'/webGui/include/Helpers.php';
+		// Unraid's pages define _() for translations; my_scale calls it for the B.
+		if (!function_exists('_')) { function _($text) { return $text; } }
+		foreach (json_decode(file_get_contents(__DIR__.'/fixtures/unraid_sizes.json'), true) as $c) {
+			$display = array('scale' => $c['scale'], 'number' => $c['number']);
+			$unit = '';
+			$number = my_scale($c['bytes'], $unit, $c['decimals']);
+			$text = $unit === '' ? $number : $number.' '.$unit;
+			if ($text !== $c['text']) { fwrite(STDERR, "this Unraid's my_scale gives '$text' for {$c['bytes']} B (decimals ".var_export($c['decimals'], true).", scale {$c['scale']}), not '{$c['text']}'\n"); exit(1); }
+		}
 		break;
 
 	// Which Unraid imports the pool, from the features zpool get all reports: block_cloning first, then ZFSM_TEST_FEATURES.
