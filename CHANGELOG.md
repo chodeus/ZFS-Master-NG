@@ -2,13 +2,8 @@
 
 ## Unreleased
 
-- fix: the count needs no cap once its gap is on the camera; the larger-font run is past Unraid's Large setting
-- fix: the snapshot gap sits on the camera, so a count on its own line has the whole width; the word check's regex survives the page template (\\S)
-- fix: review round 1 — full-width cells (errors, progress) split anywhere, so a long unbroken path can't widen a 6.x table; the test keeps them in the main table
-- fix: local review — every cell of ours wraps (error and progress rows too), words split only when they can't fit a line, Health 8% on 7.x for SUSPENDED, Size/Used/Free keep Unraid's layout; the test checks two lines at most and message rows
-- fix: every cell of ours wraps instead of cutting to … (Health, pool name, Refer, headers), so DEGRADED or a long pool name always shows
-- fix: local review — progress takes what the browse link leaves (7.4's folder is wider), each link names its path to screen readers, listed folders show a solid folder beside the browse one, the test fails if it can't tell how Unraid browses
-- feat: on Unraid 7.4+ a row opens the file manager from a folder, as Unraid's own pool rows do, instead of the tab arrow
+- Table text wraps instead of being cut off (Health, long pool names, errors)
+- On Unraid 7.4, rows open the file manager from a folder, like Unraid's own pool rows
 
 ## 2026.11.11.2 (beta)
 
