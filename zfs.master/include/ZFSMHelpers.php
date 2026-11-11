@@ -260,6 +260,11 @@ function zfsmJson($value, $flags = 0) {
 }
 
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
+// The installed plugin's version, from its manifest (/var/log/plugins holds the installed one); '' when it can't be read.
+function zfsmPluginVersion($manifest = '/var/log/plugins/zfs.master.plg') {
+	return preg_match('/<!ENTITY\s+version\s+"([^"<>]+)"/', (string)@file_get_contents($manifest), $match) === 1 ? $match[1] : '';
+}
+
 function zfsmSafeText($text) {
 	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
 }

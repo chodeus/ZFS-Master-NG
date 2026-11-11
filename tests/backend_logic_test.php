@@ -273,6 +273,13 @@ putenv('ZFSM_TEST_LIST_FAIL');
 $multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
 assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
 assertSameValue("cannot remove '/mnt/Åsa à': busy; try again", zfsmOneLine("cannot remove '/mnt/Åsa à': busy\r\ntry again"), 'Joining lines keeps UTF-8 characters whole');
+// Settings shows the installed version, read from the manifest's own entity; nothing when it can't be read.
+assertSameValue(1, preg_match('/^\d{4}\.\d{2}\.\d{2}\.\d+/', zfsmPluginVersion(__DIR__.'/../zfs.master.plg')), 'the version comes from the manifest: '.zfsmPluginVersion(__DIR__.'/../zfs.master.plg'));
+assertSameValue('', zfsmPluginVersion(sys_get_temp_dir().'/zfsm-no-such-manifest.plg'), 'no manifest, no version');
+$fake_manifest = tempnam(sys_get_temp_dir(), 'zfsm-plg');
+file_put_contents($fake_manifest, '<!ENTITY version "<script>">');
+assertSameValue('', zfsmPluginVersion($fake_manifest), 'a version holding markup is not one');
+unlink($fake_manifest);
 // A zfs killed by the inventory deadline, or failing silently, must still be reported. The fake answers name checks and fails -p reads.
 $silent_bin = sys_get_temp_dir().'/zfsm-silent-'.getmypid();
 mkdir($silent_bin);
