@@ -35,7 +35,7 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 	$send = @proc_open(array_merge(array($zfs), zfsmReplicateSendArgs($plan)), array(0 => array('file', '/dev/null', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $send_pipes, null, null, $options);
 	if (!is_resource($send)) return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start zfs send');
 	$receive = @proc_open($receive_command, array(0 => $send_pipes[1], 1 => array('pipe', 'w'), 2 => array('redirect', 1)), $receive_pipes, null, null, $options);
-	// Only the two zfs processes may hold the stream: a copy left here would keep receive waiting after send ends.
+	// Only send and the receive may hold the stream: a copy left here would keep the receive waiting after send ends.
 	fclose($send_pipes[1]);
 	if (!is_resource($receive)) {
 		proc_terminate($send);
