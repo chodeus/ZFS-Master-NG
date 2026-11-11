@@ -24,14 +24,23 @@ function poolRowId(name) {
 	return 'pool/'+encodeURIComponent(String(name ?? ''));
 }
 
-// Same three slots on every row, so the camera icons line up whether or not a row can be browsed.
-function snapshotCell(color, count, browsePath) {
+function snapshotCell(color, count) {
 	const style = color ? ' style="color:'+escapeHtml(color)+'"' : '';
+	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span>';
+}
+
+// The name, then Actions, centred on one line however tall Unraid draws the button; divs, as 6.x indents every span in its tables.
+function nameCell(label, actions) {
+	return '<td class="zfsm-name"><div class="zfsm-name-row"><div class="zfsm-name-label">'+label+'</div>'+actions+'</div></td>';
+}
+
+// A dataset or folder row starts with its browse link, then the slot a copy or rewrite reports into (zfsmShowCopyProgress).
+function rowLeadCell(browsePath) {
 	// Unraid 7.2+ browses only /mnt and /boot; mirrors zfsmSnapshotBrowseRoot in ZFSMSnapshotFiles.php.
 	const browse = typeof browsePath === 'string' && /^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)
-		? '<a href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
+		? '<a class="zfsm-browse" href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
 		: '';
-	return '<i class="fa fa-camera-retro icon"'+style+'></i><span class="zfsm-snap-count">'+escapeHtml(count)+'</span><span class="zfsm-snap-browse">'+browse+'</span>';
+	return '<td class="zfsm-lead" colspan="2">'+browse+'<span class="zfsm-row-progress"></span></td>';
 }
 
 // Puts the refresh time and buttons on Unraid's own title line and opts it out of the reads/writes toggle.
@@ -74,19 +83,6 @@ function nl2br(str, is_xhtml) {
     return (str + '').replace(/([^>\r\n]?)(\r\n|\n\r|\r|\n)/g, '$1' + breakTag + '$2');
 }
 
-function fromBytesToString(bytes) {
-	const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB'];
-  
-	bytes = Number(bytes);
-	bytes = Number.isFinite(bytes) ? Math.max(bytes, 0) : 0;
-	const pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
-	const limitedPow = Math.min(pow, units.length - 1);
-  
-	bytes /= Math.pow(1024, limitedPow);
-  
-	return (Math.round((bytes + Number.EPSILON) * 10) / 10) + ' ' + units[limitedPow];
-}
-
 function fromStringToBytes(spacestr) {
 	let returnNumber = parseFloat(spacestr);
 
@@ -110,11 +106,11 @@ function fromStringToBytes(spacestr) {
 	return returnNumber;
 }
 
-// zpool list prints short sizes (1.12T); dataset rows print 1.1 TiB. A faulted pool prints -.
-function poolSizeText(value) {
+// zpool list prints short sizes (1.12T); rows print them in the Size Units setting. A faulted pool prints -.
+function poolSizeText(value, decimals) {
 	const text = String(value ?? '');
 	const bytes = fromStringToBytes(text);
-	return Number.isFinite(bytes) ? fromBytesToString(bytes) : escapeHtml(text);
+	return Number.isFinite(bytes) ? zfsmSize(bytes, decimals) : escapeHtml(text);
 }
 
 function calculateFreePercent(used, free) {
@@ -209,7 +205,7 @@ function parseDirectoryCopy(msg) {
 
 	const groups = match.groups;
 
-	groups['data'] = fromBytesToString(groups['data'].replace(/,/g, ''));
+	groups['data'] = zfsmSize(groups['data'].replace(/,/g, ''));
 
 	return '<div class="usage-disk"><span style="margin:0;width:'+groups['progress']+'" class="greenbar"></span><span>'+groups['data']+' - '+groups['speed']+' - '+groups['time']+'</span></div>';
 }
@@ -282,49 +278,18 @@ function getPoolShowStatus(zpool) {
 
 function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, destructive_mode) {
 	var agg = '';
-
-	var icon_color = 'grey';
-	var snap_count = 0;
-
+	const icon_color = 'grey';
 	const depth = zdataset['name'].split('/').length;
 
 	Object.values(zdataset.directories).forEach((directory) => {
-		var tr = '<tr id="tr-dir-'+elementToken(directory)+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
-		tr += '<td></td><td></td><td>';
-
-		for (let i = 1; i <= depth; i++) {
-			tr += '&emsp;&emsp;';
-		}
-
-		tr += '<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>';
-
-		tr += escapeHtml(directory.substring(directory.lastIndexOf("/") + 1));
-		tr += '</td>';
-
-		// Actions
-
-		tr += '<td>';
-		var id = elementToken(directory);
-
-		tr += '<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>';
-		tr += '</td>';
-
-		//mountpoint
-		tr += '<td>'+escapeHtml(directory)+'</td>';
-
-		// Referr
-		tr += '<td></td>';
-
-		// Used
-		tr += '<td></td>';
-
-		// Free
-		tr += '<td></td>';
-
-		// Snapshots
-		tr += '<td>'+snapshotCell(icon_color, snap_count, directory)+'</td>';
-		tr += '</tr>';
-		agg += tr;
+		const id = elementToken(directory);
+		var tr = '<tr id="tr-dir-'+id+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
+		tr += rowLeadCell(directory);
+		tr += nameCell('&emsp;&emsp;'.repeat(depth)+'<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>'+escapeHtml(directory.substring(directory.lastIndexOf("/") + 1)),
+			'<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>');
+		tr += '<td class="zfsm-mount">'+escapeHtml(directory)+'</td><td class="zfsm-refer"></td>';
+		tr += '<td class="zfsm-snaps">'+snapshotCell(icon_color, 0)+'</td><td></td><td></td><td></td>';
+		agg += tr+'</tr>';
 	});
 
 	return agg;
@@ -352,12 +317,12 @@ function getPropertiesByType(zdataset) {
 			'Primary Cache' : zdataset['primarycache'],
 			'Encryption' : zdataset['encryption'],
 			'Key Status' : zdataset['keystatus'],
-			'Quota' : fromBytesToString(zdataset['quota']),
+			'Quota' : zfsmSize(zdataset['quota']),
 			'Read Only' : zdataset['readonly'],
 			'Case Sensitive' : zdataset['casesensitivity'],
 			'Sync' : zdataset['sync'],
 			'Origin' : zdataset['origin'] ?? '',
-			'Space used by Snaps' : fromBytesToString(zdataset['usedbysnapshots'])
+			'Space used by Snaps' : zfsmSize(zdataset['usedbysnapshots'])
 		}
 
 	} else if (zdataset['type'] !== undefined && zdataset['type'] == "volume".toLowerCase()) {
@@ -373,7 +338,7 @@ function getPropertiesByType(zdataset) {
 			'Read Only' : zdataset['readonly'],
 			'Sync' : zdataset['sync'],
 			'Origin': zdataset['origin'] ?? '',
-			'Space used by Snaps' : fromBytesToString(zdataset['usedbysnapshots'])
+			'Space used by Snaps' : zfsmSize(zdataset['usedbysnapshots'])
 		}
 	}
 
@@ -438,67 +403,42 @@ function datasetBadges(zdataset) {
 }
 
 // one Used or Free cell: the text alone, or a bar when the display setting asks for one
+// Unraid's own markup for Used and Free (nchan/device_list), so its theme draws the bar and the label exactly as in its tables.
 function usageCell(text, percent, free, display) {
 	const plain = free ? (display['text'] < 10 ? display['text'] % 10 == 0 : display['text'] % 10 != 0) : display['text'] % 10 == 0;
 
 	if (plain)
 		return text;
 
-	return '<div class="usage-disk"><span style="margin:0;width:'+percent+'%" class="'+usage_color(percent, free, display)+'"></span><span>'+text+'</span></div>';
+	// A share that can't be worked out (an empty or faulted pool) draws an empty bar.
+	const width = Number.isFinite(percent) ? percent : 0;
+	return '<div class="usage-disk"><span style="width:'+width+'%" class="'+usage_color(width, free, display)+'"></span><span>'+text+'</span></div>';
 }
 
 function generateDatasetRow(zpool, zdataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
 	var tr = '<tr id="'+datasetRowId(zdataset['name'])+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
-	tr += '<td></td><td></td><td>';
+	tr += rowLeadCell(zdataset['mountpoint']);
 
-	var properties = getPropertiesByType(zdataset);
+	const properties = getPropertiesByType(zdataset);
 	const {icon_color, snap_count} = datasetSnapInfo(zdataset, snap_max_days_alert, properties);
+	const id = elementToken(zdataset['name']);
 
-	const depth = zdataset['name'].split('/').length - 1;
+	const label = '&emsp;&emsp;'.repeat(zdataset['name'].split('/').length - 1)
+		+detailsLink('Details of '+zdataset['name'], '<i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>', implodeWithKeys('<br>', properties))
+		+datasetBadges(zdataset)
+		+escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
+	tr += nameCell(label, '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+', '+childSnapshotCount(zdataset)+');" class="zfs_compact">Actions</button>');
 
-	for (let i = 1; i <= depth; i++) {
-    	tr += '&emsp;&emsp;';
-	}
+	tr += '<td class="zfsm-mount">'+(zdataset['mountpoint'] != "none" ? escapeHtml(zdataset['mountpoint']) : '')+'</td>';
+	tr += '<td class="zfsm-refer">'+zfsmSize(zdataset['referenced'])+'</td>';
+	tr += '<td class="zfsm-snaps">'+snapshotCell(icon_color, zdataset['_snapshots_unavailable'] ? '—' : snap_count)+'</td>';
 
-	tr += detailsLink('Details of '+zdataset['name'], '<i class="fa fa-hdd-o icon" style="color:'+icon_color+'"></i>', implodeWithKeys('<br>', properties));
-	tr += datasetBadges(zdataset);
-
-	tr += escapeHtml(zdataset['name'].substring(zdataset['name'].lastIndexOf("/") + 1));
-	tr += '</td>';
-
-	// Actions
-
-	tr += '<td>';
-	var id = elementToken(zdataset['name']);
-
-	tr += '<button type="button" id="'+id+'" onclick="addDatasetContext('+safeJsArg(zpool)+', '+safeJsArg(zdataset['name'])+', '+snap_count+', '+safeJsArg(id)+', '+destructive_mode+', '+safeJsArg(zdataset['keystatus'])+', '+safeJsArg(zdataset['origin'] ?? '')+', '+safeJsArg(zdataset['type'] ?? 'filesystem')+', '+childSnapshotCount(zdataset)+');" class="zfs_compact">Actions</button>';
-	tr += '</td>';
-
-	//mountpoint
-	tr += '<td>';
-	if (zdataset['mountpoint'] != "none") {
-		tr += escapeHtml(zdataset['mountpoint']);
-	}
-
-	tr += '</td>';
-
-	// Referr
-	tr += '<td>';
-	tr += fromBytesToString(zdataset['referenced']);
-	tr += '</td>';
-
-	// Used and Free
+	// A dataset has no Size of its own; Used and Free share its space.
 	var percent = 100-Math.round(calculateFreePercent(zdataset['used'], zdataset['available']));
-
-	tr += '<td>'+usageCell(fromBytesToString(zdataset['used']), percent, false, display)+'</td>';
-	tr += '<td>'+usageCell(fromBytesToString(zdataset['available']), 100-percent, true, display)+'</td>';
-
-	// Snapshots
-
-	tr += '<td>'+snapshotCell(icon_color, zdataset['_snapshots_unavailable'] ? '—' : snap_count, zdataset['mountpoint'])+'</td>';
-	tr += '</tr>';
-
-	return tr;
+	tr += '<td></td>';
+	tr += '<td>'+usageCell(zfsmSize(zdataset['used']), percent, false, display)+'</td>';
+	tr += '<td>'+usageCell(zfsmSize(zdataset['available']), 100-percent, true, display)+'</td>';
+	return tr+'</tr>';
 }
 
 function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructive_mode, snap_max_days_alert, display) {
@@ -515,44 +455,34 @@ function generateDatasetArrayRows(zpool, dataset, parent, show_status, destructi
 	return tr;
 }
 
-function generatePoolTableRows(zpool, devices, show_status, display) {
+function generatePoolTableRows(zpool, devices, show_status, display, root) {
 	const show_button_text = getPoolShowButtonText(show_status);
 	const status_color = getPoolStatusColor(zpool['Health']);
 	const status_msg = getPoolStatusMsg(zpool['Health']);
 	const pool = escapeHtml(zpool['Pool']);
 
-	// Name and devices
-	var tr = '<td id="'+pool+'-attribute-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+pool+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+pool+'</td>';
-
-	// Health
-	tr += '<td id="'+pool+'-attribute-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+escapeHtml(zpool['Health'])+'</td>';
-
-	// Buttons
-	tr += '<td id="'+pool+'-attribute-name"><button type="button" id="show-zpool-'+pool+'" onclick="togglePoolTable('+safeJsArg('show-zpool-'+zpool['Pool'])+', '+safeJsArg('zdataset-'+zpool['Pool'])+');">'+show_button_text+'</button>';
+	var tr = '<td id="'+pool+'-attribute-pool" class="zfsm-pool">'+detailsLink('Devices of '+zpool['Pool'], '<i id="zpool-'+pool+'" class="fa fa-circle orb '+status_color+'-orb"></i>', nl2br(escapeHtml(devices)))+' '+pool+'</td>';
+	tr += '<td id="'+pool+'-attribute-health" class="zfsm-health">'+detailsLink('Health of '+zpool['Pool'], '<i class="fa fa-heartbeat" style="color:'+status_color+'"></i>', status_msg)+' '+escapeHtml(zpool['Health'])+'</td>';
+	tr += '<td id="'+pool+'-attribute-name" class="zfsm-name"><button type="button" id="show-zpool-'+pool+'" onclick="togglePoolTable('+safeJsArg('show-zpool-'+zpool['Pool'])+', '+safeJsArg('zdataset-'+zpool['Pool'])+');">'+show_button_text+'</button>';
 	tr += '<button type="button" onclick="createDataset('+safeJsArg(zpool['Pool'])+');">Create Dataset</button>';
 	tr += '<button type="button" onclick="poolInfo('+safeJsArg(zpool['Pool'])+');">Pool Info</button></td>';
+	tr += '<td id="'+pool+'-attribute-mountpoint" class="zfsm-mount">'+escapeHtml(zpool['MountPoint'])+'</td>';
+	tr += '<td id="'+pool+'-attribute-refer" class="zfsm-refer">'+escapeHtml(zpool['Refer'])+'</td>';
+	tr += '<td id="'+pool+'-attribute-snapshots" class="zfsm-snaps">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'])+'</td>';
+	return tr+poolSpaceCells(zpool, root, display);
+}
 
-	// Size
-	tr += '<td id="'+pool+'-attribute-size">'+poolSizeText(zpool['Size'])+'</td>';
-
-	// Mountpoint
-	tr += '<td id="'+pool+'-attribute-mountpoint">'+escapeHtml(zpool['MountPoint'])+'</td>';
-
-	// Refer
-	tr += '<td id="'+pool+'-attribute-refer">'+escapeHtml(zpool['Refer'])+'</td>';
-
-	// Used
-	var percent = 100-Math.round(calculateFreePercent(zpool['Used'], zpool['Free']));
-
-	tr += '<td id="'+pool+'-attribute-used">'+usageCell(poolSizeText(zpool['Used']), percent, false, display)+'</td>';
-
-	// Free
-	tr += '<td id="'+pool+'-attribute-free">'+usageCell(poolSizeText(zpool['Free']), 100-percent, true, display)+'</td>';
-
-	// Snapshots
-	tr += '<td id="'+pool+'-attribute-snapshots">'+snapshotCell('', zpool['Snapshots'] == null ? 'Loading…' : zpool['Snapshots'], '')+'</td>';
-
-	return tr; 
+// Size, Used and Free as Unraid shows a pool: its usable space, from the root dataset; zpool's raw figures when that couldn't be read.
+function poolSpaceCells(zpool, root, display) {
+	const pool = escapeHtml(zpool['Pool']);
+	const usable = !!root && !root['_error'] && Number.isFinite(root['used']) && Number.isFinite(root['available']);
+	const used = usable ? root['used'] : zpool['Used'];
+	const free = usable ? root['available'] : zpool['Free'];
+	const text = (bytes, raw, decimals) => usable ? zfsmSize(bytes, decimals) : poolSizeText(raw, decimals);
+	const percent = 100-Math.round(calculateFreePercent(used, free));
+	return '<td id="'+pool+'-attribute-size">'+(usable ? zfsmSize(used + free, -1) : poolSizeText(zpool['Size'], -1))+'</td>'
+		+'<td id="'+pool+'-attribute-used">'+usageCell(text(used, zpool['Used']), percent, false, display)+'</td>'
+		+'<td id="'+pool+'-attribute-free">'+usageCell(text(free, zpool['Free']), 100-percent, true, display)+'</td>';
 }
 
 function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, display) {
@@ -572,7 +502,7 @@ function updateFullBodyTable(data, destructive_mode, snap_max_days_alert, displa
 		const show_status = getPoolShowStatus(zpool['Pool']);
 
 		html_pools += '<tr id="'+poolRowId(zpool['Pool'])+'">';
-		html_pools += generatePoolTableRows( zpool, data['devices'][zpool['Pool']], show_status, display);
+		html_pools += generatePoolTableRows(zpool, data['devices'][zpool['Pool']], show_status, display, data['datasets'][zpool['Pool']]);
 		html_pools += '</tr>';
 		if (data['datasets'][zpool['Pool']] && data['datasets'][zpool['Pool']]['_error']) {
 			html_pools += '<tr class="zdataset-'+escapeHtml(zpool['Pool'])+'"><td colspan="9" style="color:#e22828">ZFS query failed: '+escapeHtml(data['datasets'][zpool['Pool']]['_error'])+'</td></tr>';

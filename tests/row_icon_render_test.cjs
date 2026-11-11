@@ -17,7 +17,7 @@ assert.ok(chrome, 'Chrome not found');
 
 // A dataset with every badge and a snapshot, a plain one, and a listed folder.
 const context = vm.createContext({console, localStorage: {getItem: () => null, setItem() {}, removeItem() {}}, document: {}, window: {}, Date, encodeURIComponent, decodeURIComponent});
-vm.runInContext(fs.readFileSync(path.join(plugin, 'frontend/ZFSMFrontEnd.js'), 'utf8'), context);
+for (const file of ['ZFSMSize.js', 'ZFSMFrontEnd.js']) vm.runInContext(fs.readFileSync(path.join(plugin, 'frontend', file), 'utf8'), context);
 const now = Math.floor(Date.now() / 1000);
 const ds = (name, extra) => Object.assign({name, type: 'filesystem', creation: now, used: 1024, available: 3072, referenced: 512, mountpoint: '/mnt/'+name, keystatus: 'none', child: {}, snapshots: []}, extra);
 const rows = context.generateDatasetRow('cache', ds('cache', {child: {'cache/appdata': ds('cache/appdata')}, origin: 'cache/base@s', keystatus: 'available', 'org.znapzend:enabled': 'on', snapshots: [{name: 'cache@a', creation: now - 3600, used: 1, referenced: 1}]}), 'zdataset-cache', true, 0, 30, {text: 1})
@@ -57,7 +57,7 @@ document.fonts.ready.then(() => {
     return top;
   };
   const rows = [...document.querySelectorAll('#zfs_master tr')].map(tr => {
-    const cell = tr.children[2];
+    const cell = tr.querySelector('.zfsm-name-label');
     const name = [...cell.childNodes].filter(node => node.nodeType === 3 && node.textContent.trim()).pop();
     // Icons read as level with lowercase text whose x-height middle they share.
     const middle = baseline(probe => name.after(probe)) - ink('x', fontOf(getComputedStyle(cell)))[0] / 2;

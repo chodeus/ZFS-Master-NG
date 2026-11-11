@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../zfs.master');
-const frontend = fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8');
+// ZFSMSize.js first, as ZFSMaster.page loads it: the rows format their sizes with it.
+const frontend = ['ZFSMSize.js', 'ZFSMFrontEnd.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
 const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
 const start = page.indexOf('function processHiddenDatasets()');
 const end = page.indexOf('function createDataset(zpool)');

@@ -63,6 +63,7 @@ jobs:
           node tests/frontend_toggle_test.cjs
           node tests/frontend_create_result_test.cjs
           node tests/frontend_impact_test.cjs
+          node tests/frontend_size_format_test.cjs
           node tests/frontend_snapshot_diff_test.cjs
           node tests/frontend_inventory_failure_test.cjs
           node tests/package_test.cjs
@@ -136,6 +137,9 @@ jobs:
 
       - name: Row icons sit level with their names in a real browser
         run: node tests/row_icon_render_test.cjs .webgui
+
+      - name: Size, Used and Free line up with Unraid's pool table in a real browser
+        run: node tests/size_column_render_test.cjs .webgui
 
       - name: Page dialogs on this version's jQuery
         working-directory: tests

@@ -32,6 +32,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/encoding_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/snapshot_files_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/size_format_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
 # replica-serve.php fixes PATH, so the zfs it runs is the first on that PATH: this fake, only while its test runs.

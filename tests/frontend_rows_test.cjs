@@ -3,7 +3,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../zfs.master');
-const frontend = fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8');
+// ZFSMSize.js first, as ZFSMaster.page loads it: the rows format their sizes with it.
+const frontend = ['ZFSMSize.js', 'ZFSMFrontEnd.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
 const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
 
 const context = vm.createContext({console, localStorage: {getItem: () => null, setItem() {}, removeItem() {}}, document: {}, window: {}, Date, encodeURIComponent, decodeURIComponent});
@@ -66,20 +67,23 @@ for (const [a, b] of [['tank/a b', 'tank/a_2520b'], ['tank/a%20b', 'tank/a_20b']
 	assert.notEqual(context.elementToken(a), context.elementToken(b), a+' and '+b+' need different ids');
 }
 
-// Every snapshot cell has the same slots, so the camera icons line up down the column.
+// Every snapshot cell is the camera and its count, so the cameras line up down the column.
 const cells = source => [...source.matchAll(/<i class="fa fa-camera-retro icon"[^>]*><\/i>(.*?)<\/td>/g)].map(match => match[1]);
-const datasetCells = cells(context.generateDatasetArrayRows('tank', {...bare('tank'), mountpoint: 'none', child: {a: bare('tank/a')}}, '', true, 0, 30, {}));
+const datasetRows = context.generateDatasetArrayRows('tank', {...bare('tank'), mountpoint: 'none', child: {a: bare('tank/a')}}, '', true, 0, 30, {});
+const datasetCells = cells(datasetRows);
 const poolCell = cells('<tr>'+context.generatePoolTableRows({Pool: 'tank', Health: 'ONLINE', Size: '1T', MountPoint: '/mnt/tank', Refer: '', Used: '1', Free: '1', Snapshots: 3}, '', true, {})+'</tr>');
-for (const cell of [...datasetCells, ...poolCell]) assert.match(cell, /^<span class="zfsm-snap-count">[^<]*<\/span><span class="zfsm-snap-browse">/, 'a snapshot cell keeps the count and browse slots: '+cell);
+for (const cell of [...datasetCells, ...poolCell]) assert.match(cell, /^<span class="zfsm-snap-count">[^<]*<\/span>$/, 'a snapshot cell holds the count alone: '+cell);
 assert.equal(datasetCells.length + poolCell.length, 3, 'pool, unmounted root and mounted child all checked');
-assert.doesNotMatch(datasetCells[0], /Main\/Browse/, 'no browse link without a mountpoint');
-assert.match(datasetCells[1], /Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"/);
-const hostile = context.snapshotCell('grey', 1, '/mnt/a"><img src=x onerror=alert(1)>');
-assert.doesNotMatch(hostile, /<img/, 'a mountpoint cannot inject markup');
-assert.doesNotMatch(context.snapshotCell('', 0, ''), /<a /);
-for (const elsewhere of ['/srv/data', '/mntx/a', 'legacy']) assert.doesNotMatch(context.snapshotCell('', 0, elsewhere), /<a /, 'Unraid 7.2+ cannot browse '+elsewhere);
-assert.match(context.snapshotCell('', 0, '/boot'), /Main\/Browse\?dir=%2Fboot"/, 'the boot pool can be browsed');
-assert.match(page, /\.zfsm-snap-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its slot');
+// A dataset or folder row opens with its browse link, then the slot a copy reports into.
+const leads = [...datasetRows.matchAll(/<td class="zfsm-lead" colspan="2">(.*?)<\/td>/g)].map(match => match[1]);
+assert.equal(leads.length, 2, 'each dataset row opens with its lead cell');
+assert.doesNotMatch(leads[0], /Main\/Browse/, 'no browse link without a mountpoint');
+assert.match(leads[1], /^<a class="zfsm-browse" href="\/Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa">.*<\/a><span class="zfsm-row-progress"><\/span>$/, 'the browse link comes first, then the progress slot');
+assert.doesNotMatch(context.rowLeadCell('/mnt/a"><img src=x onerror=alert(1)>'), /<img/, 'a mountpoint cannot inject markup');
+assert.doesNotMatch(context.rowLeadCell(''), /<a /);
+for (const elsewhere of ['/srv/data', '/mntx/a', 'legacy']) assert.doesNotMatch(context.rowLeadCell(elsewhere), /<a /, 'Unraid 7.2+ cannot browse '+elsewhere);
+assert.match(context.rowLeadCell('/boot'), /Main\/Browse\?dir=%2Fboot"/, 'the boot pool can be browsed');
+assert.match(page, /\.zfsm-browse \.zfs_bar_button\{float:none;display:inline-block/, 'the browse icon must not float inside its cell');
 assert.match(page, /<div id="zfs_master_div" class="TableContainer">\s*<table id="zfs_master"/, 'on Unraid 7.2+ phones the table scrolls in its own box, like Unraid\'s tables');
 assert.match(page, /@media \(max-width:768px\)\{\s*div\.title\.zfsm-title,div#title\.zfsm-title\{flex-wrap:wrap/, 'on phones only the plugin title line wraps');
 
