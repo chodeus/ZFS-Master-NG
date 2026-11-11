@@ -52,9 +52,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table .zfsm-name-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-name-label{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .zfsm-name-row .zfs_compact{flex:none}
-  /* The gap sits on the camera, so a count on a line of its own has the whole width; held to that line, it splits only when it can't fit. */
+  /* The gap sits on the camera, so a count that wraps to a line of its own has the whole width. */
   #zfs_master.zfs_table .zfsm-snaps .icon{margin-right:10px}
-  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;max-width:100%;text-align:left}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
   /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */
   #zfs_master.zfs_table .zfsm-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
   #zfs_master.zfs_table .zfsm-row-progress{display:inline-block;width:calc(100% - 2em);vertical-align:middle}

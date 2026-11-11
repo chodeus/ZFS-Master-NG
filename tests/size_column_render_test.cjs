@@ -79,7 +79,7 @@ assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-sizes-'));
 let checked = 0;
 try {
-  // 390, a phone: 7.2+'s narrowest columns (1000px table), also with a 20% larger font (its display font setting; phones draw wider).
+  // 390, a phone: 7.2+'s narrowest columns (1000px table), also with a 20% larger font (past its Large setting; phones draw wider).
   // A 6.x table sizes itself by its own rows there, so it only keeps words whole.
   const runs = unraid7 ? [[390, ''], [390, '75%'], [1280, ''], [1920, '']] : [[390, ''], [1280, ''], [1920, '']];
   for (const theme of themes) {
