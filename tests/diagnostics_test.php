@@ -76,6 +76,7 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 	$put('/etc/cron.d/root', "# Generated system monitoring schedule:\n*/1 * * * * /usr/local/emhttp/plugins/dynamix/scripts/monitor &> /dev/null\n".$cron_line);
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@Tower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
+	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"Tower\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"cache\"]\nname=\"cache\"\ntype=\"Cache\"\nfsType=\"zfs\"\nfsStatus=\"Mounted\"\nstatus=\"DISK_OK\"\nluksState=\"0\"\n[\"disk1\"]\nname=\"disk1\"\ntype=\"Data\"\nfsType=\"xfs\"\n");
 	mkdir($root.'/tmp');
@@ -91,6 +92,11 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 $settings = array('refresh_interval' => '60', 'directory_listing' => 'tank/data', 'alert_interval' => '60', 'replica_accept' => 'tank/data');
 $context = function($changed = array()) use ($settings, $plugin_dir) {
 	return array('dir' => $plugin_dir) + zfsmDiagContext(array('general' => $changed + $settings));
+};
+// A file that is there and that even root can't open: a socket in its place.
+$unopenable = function($path) {
+	unlink($path);
+	$GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$path);
 };
 // What one collector finds on that server after $change, as [findings, its file's text].
 $found = function($collector, $change = null, $changed = array()) use ($build, $context, $root) {
@@ -143,6 +149,8 @@ has("ZFSMHelpers.php on line 1\n", $read('plugin/php-errors.txt'), 'the PHP log\
 same(false, strpos($read('plugin/php-errors.txt'), 'dynamix/x.php'), 'and no others');
 has('== zfs.master lines in '.$root."/var/log/nginx/error.log\n(not there)\n", $read('plugin/php-errors.txt'), 'a log that is not there says so');
 same(array('(not there)', '(no lines)'), array(zfsmDiagPluginLines(array($root.'/var/log/missing'), 5), zfsmDiagPluginLines(array($root.'/etc/unraid-version'), 5)), 'a log that is not there is not a quiet one');
+$unopenable($root.'/var/log/syslog.1');
+same(array('(unreadable: '.$root.'/var/log/syslog.1)', "Jan  2 10:00:00 Tower zfs.master[41]: newer line\n(unreadable: ".$root.'/var/log/syslog.1)'), array(zfsmDiagPluginLines(array($root.'/var/log/syslog.1'), 5), zfsmDiagPluginLines(array($root.'/var/log/syslog.1', $root.'/var/log/syslog'), 5)), 'nor is one that can\'t be opened, and the logs that can are still read');
 has("Unraid: 7.4.0\nPHP: ".PHP_VERSION."\narray: mdState=STARTED, fsState=Started\npublishing paused: no\n", $read('unraid/context.txt'), 'Unraid\'s version and array state');
 has("== ZFS pools and disks Unraid lists\nname=cache type=Cache fsType=zfs fsStatus=Mounted status=DISK_OK luksState=0\n\n", $read('unraid/context.txt'), 'only the ZFS entries of disks.ini');
 has("== installed plugins\nother 2025.05.05\nzfs.master 2026.01.02\n", $read('unraid/context.txt'), 'the installed plugins');
@@ -154,6 +162,8 @@ has("volblocksize\tguid\tmounted\tcanmount\tvolmode\tencryptionroot\n", $read('z
 has("tank/vol\tvolume\t", $read('zfs/datasets.txt'), 'each dataset');
 same("dataset\tsnapshots\toldest\tnewest\theld\ntank\t1\t".date('Y-m-d H:i', 1700000300)."\t".date('Y-m-d H:i', 1700000300)."\t0\ntank/data\t2\t".date('Y-m-d H:i', 1700000400)."\t".date('Y-m-d H:i', 1700000500)."\t1\n", $read('zfs/snapshots-summary.txt'), 'snapshots are counted per dataset, never named');
 has("== datasets holding part of a received copy\n(none)\n", $read('zfs/bookmarks.txt'), 'no resume token');
+has("== zfs mounts in /proc/self/mountinfo\n102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n", $read('zfs/mounts.txt'), 'the ZFS mounts');
+same(false, strpos($read('zfs/mounts.txt'), 'tmpfs'), 'and no other mount');
 has("tank/data\torg.example:role\tmedia\tlocal\n", $read('zfs/user-properties.txt'), 'properties set on a dataset');
 has("== pool mounted at /boot\n(none)\n", $read('zfs/mounts.txt'), 'the boot pool');
 has("\texit 0\tzfs list -H -p -r -t filesystem,volume -o ", $read('zfs/timings.txt'), 'each read with its time and result');
@@ -224,6 +234,15 @@ same(array('manifest.md5 is missing, so the installed files could not be checked
 $schedule = function($change, $changed = array()) use ($found) { return $found('zfsmDiagSchedule', $change, $changed)[0]; };
 $old = time() - 3 * 3600;
 same(array('alerts are on, but the crontab has no line for them'), $schedule(function($root) { file_put_contents($root.'/etc/cron.d/root', "# nothing of ours\n"); }), 'alerts on with no crontab line');
+has($cron_line, zfsmAlertCron(60, '/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php'), 'the crontab line of these cases is the one the plugin writes');
+$other_job = "30 2 * * * /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data &> /dev/null\n";
+list($findings, $text) = $found('zfsmDiagSchedule', function($root) use ($other_job) { file_put_contents($root.'/etc/cron.d/root', $other_job); });
+same(array('alerts are on, but the crontab has no line for them'), $findings, 'another of the plugin\'s jobs in the crontab is not the alert check');
+has("== its lines in the live crontab\n".$other_job, $text, 'and that job\'s line is still shown');
+same(array('alerts are on, but the crontab has no line for them'), $schedule(function($root) use ($cron_line) { file_put_contents($root.'/etc/cron.d/root', '#'.$cron_line.' # '.$cron_line); }), 'nor is an alert line that is commented out');
+list($findings, $text) = $found('zfsmDiagSchedule', function($root) use ($unopenable) { $unopenable($root.'/etc/cron.d/root'); });
+same(array('alerts are on, but the crontab could not be read'), $findings, 'a crontab that can\'t be read is not one with no line');
+has("== its lines in the live crontab\n(unreadable)\n", $text, 'and the file says so');
 same(array('alerts are on every 60 minutes, but the last check was 180 minutes ago'), $schedule(function($root) use ($old) { touch($root.'/var/run/zfs.master.alerts.json', $old); touch($root.'/boot/config/plugins/zfs.master/alerts.cron', $old); }), 'checks that stopped');
 same(array(), $schedule(function($root) use ($old) { touch($root.'/var/run/zfs.master.alerts.json', $old); }), 'a schedule saved since the last check is waiting for its first one');
 same(array(), $schedule(function($root) use ($old) { unlink($root.'/etc/cron.d/root'); touch($root.'/var/run/zfs.master.alerts.json', $old); }, array('alert_interval' => '0')), 'alerts that are off need no crontab line');
@@ -250,7 +269,7 @@ has($root."/var/run/zfs.master.lock: free\n".$root."/var/run/zfs.master.alerts.j
 fclose($GLOBALS['zfsm_alerts_held']);
 // Asking never takes a lock: the alert check and a job's start take theirs without waiting, and would lose their turn.
 foreach (array('ZFSMDiagnostics.php', 'ZFSMDiagPlugin.php', 'ZFSMDiagZfs.php') as $file) {
-	same(0, preg_match('/\bflock\(|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock');
+	same(0, preg_match('/\bflock\((?!\$hold, LOCK_EX\))|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock but its own work folder\'s');
 }
 has("== running plugin scripts (pid, seconds, command)\n812\t40\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n\n", $text, 'only the plugin\'s scripts are listed');
 putenv('ZFSM_TEST_PS=fail');
@@ -267,6 +286,8 @@ list($findings, $text) = $found('zfsmDiagReplicaReceive', function($root) { unli
 same(array(), $findings, 'nor one that is off');
 has("accept replicas into: (off)\n", $text, 'which says it is off');
 has("== sender keys in root's authorized_keys\n(the file is not there)\n", $text, 'and a key file that is not there is not "no keys"');
+list(, $text) = $found('zfsmDiagReplicaReceive', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ssh/root/authorized_keys'); });
+has("== sender keys in root's authorized_keys\n(the file could not be read)\n", $text, 'nor is one that can\'t be read');
 same(array('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted'), $receive(null, array('replica_accept' => 'tank')), 'a pool\'s top dataset is not accepted');
 putenv('ZFSM_TEST_PROPERTIES_FAIL=1');
 same(array('the dataset Accept Replicas Into names could not be read'), $receive(null), 'an accepting dataset that can\'t be read');
@@ -291,6 +312,20 @@ same("pid\tseconds\tcommand\n700\t900\tzfs list -H -t snapshot\n701\t7200\tzfs s
 	."706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n707\t9000\t/usr/sbin/zfs get -H guid tank\n"
 	."708\t20\tzfs receive (its arguments are left out)\n709\t5\tzfs load-key (its arguments are left out)\n712\t4\tzfs create (its arguments are left out)\n713\t4\tzfs change-key (its arguments are left out)\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
 same("tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\tlocal\ntank/b\tcom.example:keylocation\thttps://x\tlocal\n", zfsmDiagHideKeyLocation("tank/a\tkeylocation\thttps://user:pw@keys.example/a\tlocal\ntank/b\tkeylocation\tprompt\tlocal\ntank/b\tcom.example:keylocation\thttps://x\tlocal\n"), 'where a key is kept stays out; prompt and other properties stay');
+// Part of a received copy: its dataset is named, its token is not, and a read that failed is not "none".
+putenv('ZFSM_TEST_RESUME_TOKEN=1-e604ea4bf-e0-789c636064000310a500c4ec50360710e72765a5269740f80cd8');
+list(, $text) = $found('zfsmDiagBookmarks');
+putenv('ZFSM_TEST_RESUME_TOKEN');
+has("== datasets holding part of a received copy\ntank/data\n\n", $text, 'a dataset holding part of a copy');
+same(false, strpos($text, '1-e604ea4bf'), 'without its token');
+putenv('ZFSM_TEST_GET_FAIL=tank');
+list(, $text) = $found('zfsmDiagBookmarks');
+putenv('ZFSM_TEST_GET_FAIL');
+has("receive_resume_token tank\nFAILED (exit 1): cannot open 'tank': permission denied\n\n== datasets holding part of a received copy\n(not read on every pool)\n", $text, 'a token read that failed is not "none"');
+list(, $text) = $found('zfsmDiagMounts', function($root) { unlink($root.'/proc/self/mountinfo'); });
+has("== zfs mounts in /proc/self/mountinfo\n(the mount list could not be read)\n", $text, 'a mount list that can\'t be read is not "no mounts"');
+list(, $text) = $found('zfsmDiagMounts', function($root) { file_put_contents($root.'/proc/self/mountinfo', "103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n"); });
+has("== zfs mounts in /proc/self/mountinfo\n(none)\n", $text, 'one with no ZFS mount says none');
 file_put_contents($work.'/counts.txt', "tank/a@1\t100\t0\ntank/a@2\t50\t2\ntank/a@3\t75\t1\ntank/b@1\t60\t0\nnot a snapshot\n");
 same(array('tank/a' => array(3, 50, 100, 2), 'tank/b' => array(1, 60, 60, 0)), zfsmDiagSnapshotCounts(file_get_contents($work.'/counts.txt')), 'the oldest, newest and held snapshots of each dataset');
 
@@ -335,6 +370,24 @@ $whole = zfsmDiagPoolRead('tank', 'zfs', $names);
 putenv('ZFSM_TEST_LIST_HANG');
 same(array(null, 'skipped, because zfs list timed out on this pool'), array($whole['code'], zfsmDiagPoolRead('tank', 'zfs', $names)['output']), 'a read that had its whole limit marks the pool, and zfs is not asked about it again');
 
+// A read that could not be started is a failure, not a timeout: the timeout command is hidden, in this test's own mount namespace.
+$timeouts = array_unique(array_filter(array_map('realpath', array('/usr/bin/timeout', '/bin/timeout'))));
+$mount = function($command) use ($timeouts) {
+	foreach ($timeouts as $path) {
+		exec($command.' '.escapeshellarg($path).' 2>&1', $said, $code);
+		same(0, $code, $command.' '.$path.': '.implode(' ', $said));
+	}
+	clearstatcache();
+};
+$build();
+zfsmDiagStart();
+$mount('mount --bind /dev/null');
+$unstarted = zfsmDiagRead('zfs', array('version'));
+$mount('umount');
+same(array(ZFSM_ERR_UNABLE_TO_CREATE_PROC, 'The system timeout utility is unavailable', false), array($unstarted['code'], $unstarted['output'], $GLOBALS['zfsm_diag']['timed_out']), 'a read that could not be started is not a timeout');
+has("\texit ".ZFSM_ERR_UNABLE_TO_CREATE_PROC."\tzfs version", implode("\n", $GLOBALS['zfsm_diag']['timings']), 'nor in the timings');
+same(0, zfsmDiagRead('zfs', array('version'))['code'], 'and the timeout command is back');
+
 // A pool list that hangs or fails: each file that needs it says which, and the list's own read is in the timings.
 $build();
 putenv('ZFSM_TEST_POOL_HANG=1');
@@ -350,6 +403,7 @@ putenv('ZFSM_TEST_POOL_FAIL=1');
 zfsmDiagRun($work.'/badlist', $context(), array(array('zfs/zpool-status.txt', 60, 'zfsmDiagZpoolStatus', array())));
 putenv('ZFSM_TEST_POOL_FAIL');
 same(array('zfs/zpool-status.txt'), $states_of($work.'/badlist')['failed'], 'a pool list that failed is a failure, not a timeout');
+has("FINDINGS (1)\n- a collector failed, so these files hold only its error: zfs/zpool-status.txt\n", file_get_contents($work.'/badlist/summary.txt'), 'and the summary names the file');
 
 // A collector that throws is noted and the rest still run.
 function zfsmTestThrows($ctx) { throw new LogicException('boom'); }
@@ -364,6 +418,7 @@ putenv('ZFSM_TEST_LIST_HANG');
 same(array("plugin/broken.txt\tfailed", "plugin/worse.txt\tfailed", "plugin/settings-saved.cfg.txt\tok", "plugin/inner.txt\ttimed out"), array_map(function($line) { return substr($line, 0, strrpos($line, "\t")); }, array_slice(file($work.'/thrown/collectors.txt', FILE_IGNORE_NEW_LINES), 1)), 'each collector\'s result');
 same(array("failed: boom\n", "timed out: zfs timed out\n"), array(file_get_contents($work.'/thrown/plugin/broken.txt'), file_get_contents($work.'/thrown/plugin/inner.txt')), 'a file whose collector failed or timed out says why');
 same(true, is_file($work.'/thrown/summary.txt') && is_file($work.'/thrown/README.txt'), 'the summary and README are still written');
+has("- a read timed out, so these files are incomplete: plugin/inner.txt\n- a collector failed, so these files hold only its error: plugin/broken.txt, plugin/worse.txt\n", file_get_contents($work.'/thrown/summary.txt'), 'the summary names the files that timed out and those that failed');
 // A folder that can't be written says so instead of passing.
 file_put_contents($work.'/a-file', '');
 same(false, zfsmDiagRun($work.'/a-file/inside', $context(), $mixed), 'files that could not be written are reported');
@@ -390,15 +445,25 @@ symlink($work.'/elsewhere', $root.'/tmp/zfs.master-diag.0123456789abcdef');
 zfsmDiagRemove($root.'/tmp/zfs.master-diag.0123456789abcdef');
 same(true, is_file($work.'/elsewhere/keep'), 'a link named like a work folder is not followed');
 unlink($root.'/tmp/zfs.master-diag.0123456789abcdef');
-// A killed run leaves its folder: the next run removes it once it is an hour old, and leaves a run that may still be going.
+// A killed run leaves its folder: the next run removes it once no run holds it. One a run still holds stays, however old,
+// and so does one just made, whose run may not hold it yet.
 $stale = $root.'/tmp/zfs.master-diag.00000000000000aa';
-$fresh = $root.'/tmp/zfs.master-diag.00000000000000bb';
-mkdir($stale);
-file_put_contents($stale.'/summary.txt', 'old names');
-touch($stale, time() - 3700);
-mkdir($fresh);
+$busy = $root.'/tmp/zfs.master-diag.00000000000000bb';
+$fresh = $root.'/tmp/zfs.master-diag.00000000000000cc';
+foreach (array($stale, $busy, $fresh) as $folder) {
+	mkdir($folder);
+	file_put_contents($folder.'/summary.txt', 'names');
+}
+touch($stale, time() - 120);
+touch($busy, time() - 7200);
+$GLOBALS['zfsm_busy'] = fopen($busy, 'r');
+flock($GLOBALS['zfsm_busy'], LOCK_EX);
 $second = zfsmDiagWorkDir();
-same(array(false, true, true), array(file_exists($stale), is_dir($fresh), is_dir($second)), 'an old work folder goes, a new one stays');
+same(array(false, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so does one just made');
+same(true, zfsmDiagLockHeld($second), 'a run holds its own work folder');
+fclose($GLOBALS['zfsm_busy']);
+zfsmDiagWorkDir();
+same(array(false, true), array(file_exists($busy), is_dir($second)), 'once its run has ended that folder goes too, and this run\'s stays');
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
 $docroot = getenv('ZFSM_TEST_DOCROOT');

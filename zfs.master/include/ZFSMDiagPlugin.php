@@ -130,18 +130,21 @@ function zfsmDiagFilesUnder($dir) {
 function zfsmDiagSchedule($ctx) {
 	$cron = zfsmStatePath('/boot/config/plugins/zfs.master/alerts.cron');
 	$state = zfsmStatePath('/var/run/zfs.master.alerts.json');
-	$live = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'zfs.master', 20);
+	list($live, $unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'zfs.master', 20);
+	// The line zfsmAlertCron writes, not commented out: another of the plugin's jobs in the crontab is not the alert check.
+	$scheduled = preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/alerts\.php check(\s|$)~', $live);
 	$interval = (int)$ctx['cfg']['alert_interval'];
 	$checked = is_file($state) ? time() - filemtime($state) : null;
 	// A schedule just saved, or a server just started, has not had its first check yet: the cron file's time and the start count as one.
 	$uptime = zfsmUptime();
 	$quiet = time() - max((int)@filemtime($state), (int)@filemtime($cron), $uptime > 0 ? time() - $uptime : 0);
-	if ($interval > 0 && !$live) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
+	if ($interval > 0 && $unread) zfsmDiagFinding('alerts are on, but the crontab could not be read');
+	elseif ($interval > 0 && !$scheduled) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
 	elseif ($interval > 0 && $quiet > 120 * $interval) zfsmDiagFinding('alerts are on every '.$interval.' minutes, but the last check was '.(int)($quiet / 60).' minutes ago');
 	return 'alerts: '.($interval > 0 ? 'every '.$interval.' minutes' : 'off')."\n"
 		.'last check: '.($checked === null ? 'never' : $checked.' seconds ago')."\n\n"
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))
-		.zfsmDiagSection('its lines in the live crontab', $live ? implode("\n", $live) : '(none)');
+		.zfsmDiagSection('its lines in the live crontab', $unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
 }
 
 function zfsmDiagAlertsState($ctx) {
@@ -187,7 +190,7 @@ function zfsmDiagReplicaReceive($ctx) {
 		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
 	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
-	$senders = file_exists($keys) ? '' : '(the file is not there)';
+	$senders = !file_exists($keys) ? '(the file is not there)' : (@file_get_contents($keys) === false ? '(the file could not be read)' : '');
 	foreach (zfsmReplicaKeys($keys) as $key) {
 		$checks = array('restrict' => $key['restrict'], 'from' => $key['from'], 'name' => zfsmReplicaSenderName($key['sender']));
 		$senders .= ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.implodeWithKeys(', ', array_map(function($held) { return $held ? 'ok' : 'NOT OK'; }, $checks))."\n";

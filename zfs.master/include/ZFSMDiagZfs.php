@@ -140,9 +140,11 @@ function zfsmDiagSnapshotCounts($output) {
 function zfsmDiagBookmarks($ctx) {
 	$text = zfsmDiagShowAll(zfsmDiagPerPool('zfs', array('list', '-H', '-p', '-r', '-t', 'bookmark', '-o', 'name,guid,createtxg,creation')));
 	$partial = array();
+	$unread = false;
 	foreach (zfsmDiagPerPool('zfs', array('get', '-H', '-r', '-t', 'filesystem,volume', '-o', 'name,value', 'receive_resume_token')) as $title => $result) {
 		if ($result['code'] !== 0) {
 			$text .= zfsmDiagShow($title, $result);
+			$unread = true;
 			continue;
 		}
 		foreach (zfsmImpactRows($result['output']) as $row) {
@@ -150,6 +152,7 @@ function zfsmDiagBookmarks($ctx) {
 			if (count($field) === 2 && $field[1] !== '-') $partial[] = $field[0];
 		}
 	}
+	if ($unread) $partial[] = '(not read on every pool)';
 	return $text.zfsmDiagSection('datasets holding part of a received copy', $partial ? implode("\n", $partial) : '(none)');
 }
 
@@ -166,10 +169,12 @@ function zfsmDiagHideKeyLocation($output) {
 }
 
 function zfsmDiagMounts($ctx) {
-	$mounts = array_filter(zfsmImpactRows(zfsmDiagFile('/proc/self/mountinfo')), function($line) { return strpos($line, ' - zfs ') !== false; });
+	$list = @file_get_contents(zfsmStatePath('/proc/self/mountinfo'));
+	$mounts = array_filter(zfsmImpactRows($list), function($line) { return strpos($line, ' - zfs ') !== false; });
+	$unread = '(the mount list could not be read)';
 	$boot = zfsmBootPool();
-	return zfsmDiagSection('pool mounted at /boot', $boot === null ? '(the mount list could not be read)' : ($boot !== '' ? $boot : '(none)'))
-		.zfsmDiagSection('zfs mounts in /proc/self/mountinfo', $mounts ? implode("\n", $mounts) : '(none)');
+	return zfsmDiagSection('pool mounted at /boot', $boot === null ? $unread : ($boot !== '' ? $boot : '(none)'))
+		.zfsmDiagSection('zfs mounts in /proc/self/mountinfo', $list === false ? $unread : ($mounts ? implode("\n", $mounts) : '(none)'));
 }
 
 // zfs, zpool and rsync commands and the plugin's scripts, by the command's own name: another command's arguments can hold a password.

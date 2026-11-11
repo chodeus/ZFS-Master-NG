@@ -72,7 +72,7 @@ function zfsmDiagSeconds($seconds) {
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
 	$report = "file\tresult\tseconds\n";
-	$incomplete = array();
+	$unfinished = array('timed out' => array(), 'failed' => array());
 	$written = true;
 	foreach ($collectors ?? zfsmDiagCollectors() as $collector) {
 		list($file, $seconds, $collect) = $collector;
@@ -86,11 +86,12 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 			$result = $error instanceof ZFSMTimeout ? 'timed out' : 'failed';
 			$text = $result.': '.$error->getMessage();
 		}
-		if ($result === 'timed out') $incomplete[] = $file;
+		if ($result !== 'ok') $unfinished[$result][] = $file;
 		$written = zfsmDiagWrite($dir.'/'.$file, $text) && $written;
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
-	if ($incomplete) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $incomplete));
+	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
+	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
 	$written = zfsmDiagWrite($dir.'/collectors.txt', $report) && $written;
 	$written = zfsmDiagWrite($dir.'/summary.txt', zfsmDiagSummary()) && $written;
 	return zfsmDiagWrite($dir.'/README.txt', zfsmDiagReadme()) && $written;
@@ -124,13 +125,17 @@ function zfsmDiagWrite($file, $text) {
 	return @file_put_contents($file, $text) === strlen($text);
 }
 
-// A new folder only root can read, for the files while they hold real names; null when it can't be made.
-// A run that was killed leaves its folder: one older than an hour is no run still going, and goes first.
+// A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
+// to its end, however it ends. A killed run's folder is one no lock holds, a minute after it was made: those go first.
 function zfsmDiagWorkDir() {
+	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');
-	foreach (glob($prefix.'*') ?: array() as $old) if (time() - (int)@filemtime($old) > 3600) zfsmDiagRemove($old);
+	foreach (glob($prefix.'*') ?: array() as $old) if (zfsmDiagLockHeld($old) === false && time() - (int)@filemtime($old) > 60) zfsmDiagRemove($old);
 	$dir = $prefix.bin2hex(random_bytes(8));
-	return @mkdir($dir, 0700) ? $dir : null;
+	$hold = @mkdir($dir, 0700) ? @fopen($dir, 'r') : false;
+	if ($hold === false || !flock($hold, LOCK_EX)) return null;
+	$holds[] = $hold;
+	return $dir;
 }
 
 // Removes a work folder: only one zfsmDiagWorkDir made, and never through a link.
@@ -156,12 +161,17 @@ function zfsmDiagSection($title, $text) {
 	return '== '.$title."\n".rtrim((string)$text, "\n")."\n\n";
 }
 
-// The last $keep lines of $files that hold $needle, a line at a time: a syslog can fill /var/log's 128 MB.
+// [the last $keep lines of $files that hold $needle, the files that are there but can't be opened], a line at a time:
+// a syslog can fill /var/log's 128 MB.
 function zfsmDiagMatchingLines($files, $needle, $keep) {
 	$lines = array();
+	$unread = array();
 	foreach ($files as $file) {
 		$handle = @fopen($file, 'r');
-		if ($handle === false) continue;
+		if ($handle === false) {
+			if (file_exists($file)) $unread[] = $file;
+			continue;
+		}
 		while (($line = fgets($handle)) !== false) {
 			if (strpos($line, $needle) === false) continue;
 			$lines[] = rtrim($line, "\r\n");
@@ -169,13 +179,14 @@ function zfsmDiagMatchingLines($files, $needle, $keep) {
 		}
 		fclose($handle);
 	}
-	return array_slice($lines, -$keep);
+	return array(array_slice($lines, -$keep), $unread);
 }
 
-// The last $keep lines of $files that name the plugin; a log that is not there says so instead of reading as quiet.
+// The last $keep lines of $files that name the plugin; a log that is not there or can't be read says so instead of reading as quiet.
 function zfsmDiagPluginLines($files, $keep) {
 	if (!array_filter($files, 'file_exists')) return '(not there)';
-	$lines = zfsmDiagMatchingLines($files, 'zfs.master', $keep);
+	list($lines, $unread) = zfsmDiagMatchingLines($files, 'zfs.master', $keep);
+	foreach ($unread as $file) $lines[] = '(unreadable: '.$file.')';
 	return $lines ? implode("\n", $lines) : '(no lines)';
 }
 

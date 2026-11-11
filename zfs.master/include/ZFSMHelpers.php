@@ -122,12 +122,13 @@ function zfsmWithDeadline($seconds, $read) {
 	}
 }
 
-// runProcess under a time limit of its own: a read past it comes back with code null and why, instead of throwing.
+// runProcess under a time limit of its own, never throwing: a read past it comes back with code null and why,
+// one that could not be started with runProcess's code for that.
 function zfsmReadWithin($seconds, $command, $args) {
 	try {
 		return zfsmWithDeadline($seconds, function() use ($command, $args) { return runProcess($command, $args); });
 	} catch (RuntimeException $error) {
-		return array('code' => null, 'output' => $error->getMessage());
+		return array('code' => $error instanceof ZFSMTimeout ? null : ZFSM_ERR_UNABLE_TO_CREATE_PROC, 'output' => $error->getMessage());
 	}
 }
 

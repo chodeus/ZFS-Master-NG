@@ -291,6 +291,12 @@ if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFS
 	exit 1
 fi
 
+# ZFSM_TEST_RESUME_TOKEN is the token tank/data holds of a copy that stopped part way.
+if [ "$1" = "get" ] && contains_arg 'receive_resume_token' "$@" && contains_arg 'name,value' "$@"; then
+	printf 'tank\t-\ntank/data\t%s\ntank/vol\t-\n' "${ZFSM_TEST_RESUME_TOKEN:--}"
+	exit 0
+fi
+
 if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
 	printf '%s\n' "${ZFSM_TEST_ENCRYPTION:-off}"
 	exit 0
