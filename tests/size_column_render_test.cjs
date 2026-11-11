@@ -41,14 +41,25 @@ const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3
 const ourTable = units => {
   context.zfsm_config = {size_units: units};
   context.zfsm_display = {number: '.,', scale: -1};
-  // The pool's count reads Loading… until it arrives: the widest text that cell shows.
+  // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
+  const longDataset = context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', referenced: 1073636966, child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
+  // Two jobs' progress at once, as zfsmJobProgress joins them, and an error row as ZFSMFrontEnd.js writes one, its path unbroken
+  // and wider than the table: neither may push the columns out of line.
+  const progressRow = longDataset.replace('<span class="zfsm-row-progress"></span>', '<span class="zfsm-row-progress">Rewrite 45% · Replicating 1.2 GiB of 3.4 GiB</span>');
+  assert.notEqual(progressRow, longDataset, 'the long dataset row has an empty progress cell to fill');
+  const errorRow = '<tr><td colspan="9" style="color:#e22828">ZFS query failed: cannot open \''+longName+'/'+'x'.repeat(400)+'\': I/O error on device nvme1n1p1</td></tr>';
+  // The pool's count reads Loading… until it arrives; the second pool has a long name, SUSPENDED (the longest state) and a big count.
   const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: null}, 'nvme0n1p3', true, display, root)+'</tr>'
     + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
-    // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
-    + context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
+    + progressRow
+    + '<tr>'+context.generatePoolTableRows({Pool: 'fast-nvme-pool-01', Health: 'SUSPENDED', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 12345}, 'nvme1n1p1', true, display, {...root, name: 'fast-nvme-pool-01'})+'</tr>'
+    + errorRow;
   const [size, used, free] = texts[units];
+
   assert.ok(rows.includes('>'+size+'</td>') && rows.includes('>'+used+'<') && rows.includes('>'+free+'<'), `in ${units} units the pool row shows ${texts[units].join(', ')}`);
-  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`;
+  // The same table without the error row: it must not move Size, Used and Free, also where 6.x can't line up with Unraid's.
+  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`
+    + `<div class="TableContainer">${ourHead}<tbody>${rows.replace(errorRow, '')}</tbody></table></div>`;
 };
 
 // Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
@@ -68,13 +79,17 @@ assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-sizes-'));
 let checked = 0;
 try {
-  // 390, a phone, gives 7.x's narrowest columns; 6.x cells don't clip, and a narrow 6.x table sizes itself by its own rows.
-  for (const theme of themes) for (const width of unraid7 ? [390, 1280, 1920] : [1280, 1920]) for (const units of ['decimal', 'binary']) {
-    const css = [...base, theme].map(sheet).join('\n');
-    const file = path.join(work, `table-${width}-${units}.html`);
+  // 390, a phone: 7.2+'s narrowest columns (1000px table), also with a 20% larger font (past its Large setting; phones draw wider).
+  // A 6.x table sizes itself by its own rows there, so it only keeps words whole.
+  const runs = unraid7 ? [[390, ''], [390, '75%'], [1280, ''], [1920, '']] : [[390, ''], [1280, ''], [1920, '']];
+  for (const theme of themes) {
+  const css = [...base, theme].map(sheet).join('\n');
+  for (const [width, font] of runs) for (const units of ['decimal', 'binary']) {
+    const run = `${theme} at ${width}${font ? ' with a '+font+' font' : ''} in ${units}`;
+    const file = path.join(work, `table-${width}${font ? '-font' : ''}-${units}.html`);
     // Headless Chrome keeps a window 500px wide at least: the tables sit in a frame of the width being checked.
     fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}\n${pageCss}</style></head><body>
-<div id="zfsm-frame" style="width:${width}px">${unraidTable(texts[units])}${ourTable(units)}</div>
+${font ? `<style>:root{--custom-font-size:${font}}</style>` : ''}<div id="zfsm-frame" style="width:${width}px">${unraidTable(texts[units])}${ourTable(units)}</div>
 <script>
 document.fonts.ready.then(() => {
   const box = el => { const r = el.getBoundingClientRect(); return [r.left, r.right]; };
@@ -84,25 +99,46 @@ document.fonts.ready.then(() => {
   });
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
+  // A short cell wraps to two lines at most, and a word that fits a line alone stays whole. Pool names, like dataset names, may take more.
+  const lines = td => { const rects = [...(() => { const r = document.createRange(); r.selectNodeContents(td); return r.getClientRects(); })()].sort((a, b) => a.top - b.top);
+    return rects.reduce((n, rect, i) => n + (i && rect.top > rects[i - 1].top + rects[i - 1].height / 2 ? 1 : 0), rects.length ? 1 : 0); };
+  const short = [...tables[1].tHead.rows[0].cells, ...tables[1].querySelectorAll('td.zfsm-health, td.zfsm-refer, td.zfsm-snaps')];
+  const tall = short.filter(td => lines(td) > 2).map(td => (td.className || 'head')+': '+td.textContent.trim().slice(0, 20));
+  const split = short.flatMap(td => { const walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT); const found = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement.getClientRects().length) continue;
+      const box = getComputedStyle(td); const room = td.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+      for (const word of node.data.matchAll(/\\S+/g)) {
+        const r = document.createRange(); r.setStart(node, word.index); r.setEnd(node, word.index + word[0].length);
+        const parts = [...r.getClientRects()];
+        if (parts.length > 1 && parts.reduce((sum, part) => sum + part.width, 0) <= room) found.push(word[0]);
+      }
+    }
+    return found; });
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
-  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree), clipped});
+  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
       `--window-size=${Math.max(width, 500)},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
-    assert.ok(match, `${theme} at ${width} in ${units}: the tables did not render`);
-    const {viewport, unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
-    assert.equal(viewport, width, `${theme} at ${width} in ${units}: the tables were laid out ${viewport}px wide`);
-    assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
-    const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
+    assert.ok(match, `${run}: the tables did not render`);
+    const {viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.equal(viewport, width, `${run}: the tables were laid out ${viewport}px wide`);
+    assert.deepEqual(clipped, [], `${run}: these cells (row:cell) hide part of their content`);
+    // A larger font may split a long word; it must still show whole.
+    if (!font) assert.deepEqual(tall, [], `${run}: these cells wrap to more than two lines`);
+    assert.deepEqual(split, [], `${run}: these words split though each fits a line alone`);
+    ours.forEach((row, r) => row.forEach((cell, c) => assert.deepEqual(cell.cell, bare[r][c].cell, `${run}: row ${r} cell ${c} moves with the error row`)));
+    if (font || (!unraid7 && width < 1280)) continue;
+    const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${run}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
-      const name = `${['pool', 'dataset', 'long dataset'][r]} ${['Size', 'Used', 'Free'][c]}`;
+      const name = `${['pool', 'dataset', 'long dataset', 'degraded pool'][r]} ${['Size', 'Used', 'Free'][c]}`;
       near(cell.cell[0], unraid[c].cell[0], name+' cell left');
       near(cell.cell[1], unraid[c].cell[1], name+' cell right');
       if (!unraid[c].disk) return;
-      assert.ok(cell.disk, `${theme} at ${width} in ${units}: ${name} has no bar where Unraid's has one`);
+      assert.ok(cell.disk, `${run}: ${name} has no bar where Unraid's has one`);
       near(cell.disk[0], unraid[c].disk[0], name+' bar left');
       near(cell.disk[1], unraid[c].disk[1], name+' bar right');
       near(cell.fill, unraid[c].fill, name+' fill start');
@@ -110,7 +146,8 @@ document.fonts.ready.then(() => {
       checked++;
     }));
   }
+  }
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width and two others' : 'two widths'}, in both units`);
+console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width (also with a larger font) and two others' : 'two widths, and a phone\'s for wrapping'}, in both units`);
