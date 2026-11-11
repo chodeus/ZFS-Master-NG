@@ -78,7 +78,7 @@ assert.equal(datasetCells.length + poolCell.length, 3, 'pool, unmounted root and
 const leads = [...datasetRows.matchAll(/<td class="zfsm-lead" colspan="2">(.*?)<\/td>/g)].map(match => match[1]);
 assert.equal(leads.length, 2, 'each dataset row opens with its lead cell');
 assert.doesNotMatch(leads[0], /Main\/Browse/, 'no browse link without a mountpoint');
-assert.match(leads[1], /^<a class="zfsm-browse" href="\/Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa">.*<\/a><span class="zfsm-row-progress"><\/span>$/, 'the browse link comes first, then the progress slot');
+assert.match(leads[1], /^<div class="zfsm-lead-row"><a class="zfsm-browse" href="\/Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa">.*<\/a><span class="zfsm-row-progress"><\/span><\/div>$/, 'the browse link comes first, then the progress slot');
 assert.doesNotMatch(context.rowLeadCell('/mnt/a"><img src=x onerror=alert(1)>'), /<img/, 'a mountpoint cannot inject markup');
 assert.doesNotMatch(context.rowLeadCell(''), /<a /);
 for (const elsewhere of ['/srv/data', '/mntx/a', 'legacy']) assert.doesNotMatch(context.rowLeadCell(elsewhere), /<a /, 'Unraid 7.2+ cannot browse '+elsewhere);
@@ -87,7 +87,7 @@ assert.match(context.rowLeadCell('/boot'), /Main\/Browse\?dir=%2Fboot"/, 'the bo
 const configBefore = context.zfsm_config;
 const leadOn = version => { context.zfsm_config = {...configBefore, version}; return context.rowLeadCell('/mnt/tank/a'); };
 for (const version of ['7.4.0-beta.0.1', '7.4.0', '7.10.1', '8.0.0']) {
-  assert.match(leadOn(version), /^<td class="zfsm-lead" colspan="2"><a class="zfsm-browse view info" href="\/Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa"><i class="fa fa-folder-o"><\/i><span>Open in File Manager<\/span><\/a><span class="zfsm-row-progress">/, 'Unraid '+version+' browses from a folder');
+  assert.match(leadOn(version), /^<td class="zfsm-lead" colspan="2"><div class="zfsm-lead-row"><a class="zfsm-browse view info" href="\/Main\/Browse\?dir=%2Fmnt%2Ftank%2Fa" aria-label="Open \/mnt\/tank\/a in File Manager"><i class="fa fa-folder-o"><\/i><span>Open in File Manager<\/span><\/a><span class="zfsm-row-progress">/, 'Unraid '+version+' browses from a folder');
 }
 for (const version of ['7.3.4', '6.12.15', '', undefined]) assert.match(leadOn(version), /<a class="zfsm-browse" href="[^"]+"><i class="icon-u-tab zfs_bar_button" title="Browse \/mnt\/tank\/a">/, 'Unraid '+version+' browses from the tab arrow');
 context.zfsm_config = configBefore;

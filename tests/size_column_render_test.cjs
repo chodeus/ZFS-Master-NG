@@ -39,8 +39,10 @@ const longName = 'flash/appdata/docker/containers/'+'a-very-long-dataset-name-'.
 // Unraid's own text for this pool in its units, and ours in ZFS units (tests/fixtures/zfs_sizes.json).
 const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3027000000, 9970000000].map(bytes => context.fromBytesToString(bytes))};
 // Our browse link follows the tree's own pool list: a folder from 7.4 (nchan/device_list's a.view), the tab arrow before.
-const deviceList = path.join(dynamix, 'nchan/device_list');
-const unraidFolder = fs.existsSync(deviceList) && fs.readFileSync(deviceList, 'utf8').includes('<i class=\\"fa fa-folder-o\\"></i><span>');
+const deviceList = ['nchan/device_list', 'include/DeviceList.php'].map(file => path.join(dynamix, file)).filter(fs.existsSync).map(file => fs.readFileSync(file, 'utf8')).join('\n');
+const browsesWith = icon => new RegExp('Browse\\?dir=[^\\n]*'+icon).test(deviceList);
+const unraidFolder = browsesWith('fa-folder-o');
+assert.ok(unraidFolder || browsesWith('icon-u-tab|explore\\.png'), 'this Unraid browses a pool from a folder, the tab arrow or 6.9\'s explore image');
 const ourTable = units => {
   context.zfsm_config = {size_units: units, version: unraidFolder ? '7.4.0' : '7.3.4'};
   context.zfsm_display = {number: '.,', scale: -1};
@@ -120,7 +122,10 @@ document.fonts.ready.then(() => {
     return found; });
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
   const browse = tables[1].querySelector('a.zfsm-browse');
-  out.textContent = JSON.stringify({browse: browse && [browse.querySelector('i').className, getComputedStyle(browse).width], viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
+  // Progress shares the browse link's line (its text may wrap below it).
+  const progress = [...tables[1].querySelectorAll('.zfsm-row-progress')].find(span => span.textContent);
+  const level = progress && (box => progress.getBoundingClientRect().top < box.bottom)(progress.parentNode.querySelector('a.zfsm-browse').getBoundingClientRect());
+  out.textContent = JSON.stringify({browse: browse && [browse.querySelector('i').className, getComputedStyle(browse).width], level, viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
@@ -128,7 +133,8 @@ document.fonts.ready.then(() => {
       `--window-size=${Math.max(width, 500)},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${run}: the tables did not render`);
-    const {browse, viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {browse, level, viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.equal(level, true, `${run}: a row's progress sits beside its browse link, not under it`);
     assert.ok(browse && browse[0].includes(unraidFolder ? 'fa-folder-o' : 'icon-u-tab'), `${run}: the browse link uses Unraid's own icon here: ${browse}`);
     if (unraidFolder) assert.equal(browse[1], '20px', `${run}: Unraid's a.view style reaches our folder link`);
     assert.equal(viewport, width, `${run}: the tables were laid out ${viewport}px wide`);
