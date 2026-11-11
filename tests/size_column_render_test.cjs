@@ -40,7 +40,7 @@ const longName = 'flash/appdata/docker/containers/'+'a-very-long-dataset-name-'.
 const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3027000000, 9970000000].map(bytes => context.fromBytesToString(bytes))};
 // Our browse link follows the tree's own pool list: a folder from 7.4 (nchan/device_list's a.view), the tab arrow before.
 const deviceList = ['nchan/device_list', 'include/DeviceList.php'].map(file => path.join(dynamix, file)).filter(fs.existsSync).map(file => fs.readFileSync(file, 'utf8')).join('\n');
-const browsesWith = icon => new RegExp('Browse\\?dir=[^\\n]*'+icon).test(deviceList);
+const browsesWith = icons => new RegExp('Browse\\?dir=[^\\n]*(?:'+icons+')').test(deviceList);
 const unraidFolder = browsesWith('fa-folder-o');
 assert.ok(unraidFolder || browsesWith('icon-u-tab|explore\\.png'), 'this Unraid browses a pool from a folder, the tab arrow or 6.9\'s explore image');
 const ourTable = units => {
