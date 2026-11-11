@@ -30,11 +30,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   /* Every rule is scoped to this plugin's own elements; the id outranks Unraid's table and button rules without !important. */
   /* Size, Used and Free keep Unraid's own disk_status widths and layout, so they line up with its pool tables (tests/size_column_render_test.cjs). */
   #zfs_master.zfs_table thead td:nth-child(1){width:8%}
-  #zfs_master.zfs_table thead td:nth-child(2){width:7%}
+  /* SUSPENDED, the longest pool state, fits Health's 8% at 7.2+'s 1000px; 6.x sizes it by its text. */
+  #zfs_master.zfs_table thead td:nth-child(2){width:<?=$is_unraid7 ? '8%' : '7%'?>}
   /* 7.2+ lays the table out at 1000px at least, where 7% clipped the camera and count to an ellipsis (Unraid's cells cut, not wrap). */
   #zfs_master.zfs_table thead td:nth-child(6){width:8%}
   /* 6.x lays the table out by every row: only the header sizes columns, and Name takes the slack, as Unraid's Identification does. */
-  #zfs_master.zfs_table thead td:nth-child(3){width:<?=$is_unraid7 ? '29%' : 'auto'?>}
+  #zfs_master.zfs_table thead td:nth-child(3){width:<?=$is_unraid7 ? '28%' : 'auto'?>}
   #zfs_master.zfs_table tbody td{width:auto}
   /* 7.x scales columns by header padding; this cell carries the 9px of Unraid's tenth cell. */
   #zfs_master.zfs_table thead td:nth-child(4){width:19%;padding-right:10px}
@@ -42,17 +43,23 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   /* Dataset rows join the first two cells, so alignment goes by class, not by position. */
   #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
   #zfs_master.zfs_table thead td:nth-child(n+5),#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{text-align:right}
-  /* Long names and mounts wrap: Unraid's cells don't, so they would be cut off (7.x) or push the columns out of line (6.x). */
-  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{white-space:normal;overflow-wrap:anywhere}
+  /* Unraid's cells cut what doesn't fit to an ellipsis (7.x) or push the columns out of line (6.x); every cell of ours wraps, splitting
+     a word only when it can't fit a line alone, so DEGRADED, a count or an error always shows. Paths split anywhere: names, mounts, messages. */
+  #zfs_master.zfs_table td{white-space:normal;overflow-wrap:break-word}
+  /* Size, Used and Free stay Unraid's: free to wrap, 6.x would size them by their shortest word and hand their width to Name. */
+  #zfs_master.zfs_table td:nth-last-child(-n+3):not([colspan]){white-space:nowrap}
+  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount,#zfs_master.zfs_table td[colspan]{overflow-wrap:anywhere}
   #zfs_master.zfs_table .zfsm-name-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-name-label{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .zfsm-name-row .zfs_compact{flex:none}
-  /* Narrower still (7.0/7.1 phones, a larger font, Loading…), the count drops under the camera rather than being cut. */
-  #zfs_master.zfs_table .zfsm-snaps{white-space:normal}
-  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;margin-left:6px;text-align:left}
+  /* The gap sits on the camera, so a count that wraps to a line of its own has the whole width. */
+  #zfs_master.zfs_table .zfsm-snaps .icon{margin-right:10px}
+  #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;text-align:left}
   /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */
   #zfs_master.zfs_table .zfsm-browse .zfs_bar_button{float:none;display:inline-block;padding:0}
-  #zfs_master.zfs_table .zfsm-row-progress{display:inline-block;width:calc(100% - 2em);vertical-align:middle}
+  /* Progress takes what the browse link leaves: Unraid 7.4's folder (a.view) is wider than the arrow before it. */
+  #zfs_master.zfs_table .zfsm-lead-row{display:flex;align-items:center}
+  #zfs_master.zfs_table .zfsm-row-progress{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .fa-plus-square,#zfs_master.zfs_table .fa-minus-square{font-size:calc(1em + 1px)}
   /* Unraid's i.icon rule centres and spaces the drive, folder and camera; the badges and fold box need the same: tests/row_icon_render_test.cjs. */
   #zfs_master.zfs_table .fa-append{vertical-align:middle;margin-right:4px}

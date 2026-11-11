@@ -34,13 +34,21 @@ function nameCell(label, actions) {
 	return '<td class="zfsm-name"><div class="zfsm-name-row"><div class="zfsm-name-label">'+label+'</div>'+actions+'</div></td>';
 }
 
+// Unraid 7.4 browses a pool from a folder (nchan/device_list's a.view), earlier versions from the tab arrow: ours follows the server's.
+function zfsmBrowsesFromFolder() {
+	const [major, minor] = String((typeof zfsm_config === 'object' && zfsm_config && zfsm_config.version) || '').split('.').map(Number);
+	return major > 7 || (major === 7 && minor >= 4);
+}
+
 // A dataset or folder row starts with its browse link, then the slot a copy or rewrite reports into (zfsmShowCopyProgress).
 function rowLeadCell(browsePath) {
 	// Unraid 7.2+ browses only /mnt and /boot; mirrors zfsmSnapshotBrowseRoot in ZFSMSnapshotFiles.php.
-	const browse = typeof browsePath === 'string' && /^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)
-		? '<a class="zfsm-browse" href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
-		: '';
-	return '<td class="zfsm-lead" colspan="2">'+browse+'<span class="zfsm-row-progress"></span></td>';
+	const lead = browse => '<td class="zfsm-lead" colspan="2"><div class="zfsm-lead-row">'+browse+'<span class="zfsm-row-progress"></span></div></td>';
+	if (typeof browsePath !== 'string' || !/^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)) return lead('');
+	const href = '/Main/Browse?dir='+encodeURIComponent(browsePath);
+	return lead(zfsmBrowsesFromFolder()
+		? '<a class="zfsm-browse view info" href="'+href+'" aria-label="'+escapeHtml('Open '+browsePath+' in File Manager')+'"><i class="fa fa-folder-o"></i><span>Open in File Manager</span></a>'
+		: '<a class="zfsm-browse" href="'+href+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>');
 }
 
 // Puts the refresh time and buttons on Unraid's own title line and opts it out of the reads/writes toggle.
@@ -285,7 +293,7 @@ function generateDatasetDirectoryRows(zpool, zdataset, parent, show_status, dest
 		const id = elementToken(directory);
 		var tr = '<tr id="tr-dir-'+id+'" class="zdataset-'+escapeHtml(zpool)+' '+escapeHtml(parent)+'" style="display: '+(show_status ? 'table-row' : 'none')+'">';
 		tr += rowLeadCell(directory);
-		tr += nameCell('&emsp;&emsp;'.repeat(depth)+'<a><i class="fa fa-folder-o icon" style="color:'+icon_color+'"></i></a>'+escapeHtml(directory.substring(directory.lastIndexOf("/") + 1)),
+		tr += nameCell('&emsp;&emsp;'.repeat(depth)+'<a><i class="fa fa-folder icon" style="color:'+icon_color+'"></i></a>'+escapeHtml(directory.substring(directory.lastIndexOf("/") + 1)),
 			'<button type="button" id="'+id+'" onclick="addDirectoryContext('+safeJsArg(directory)+', '+safeJsArg(zpool)+', '+safeJsArg(id)+', '+destructive_mode+');" class="zfs_compact">Actions</button>');
 		tr += '<td class="zfsm-mount">'+escapeHtml(directory)+'</td><td class="zfsm-refer"></td>';
 		tr += '<td class="zfsm-snaps">'+snapshotCell(icon_color, 0)+'</td><td></td><td></td><td></td>';
