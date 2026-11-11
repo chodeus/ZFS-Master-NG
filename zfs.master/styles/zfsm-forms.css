@@ -9,6 +9,8 @@
 .zfsm-section[open]>summary::before{transform:rotate(90deg)}
 .zfsm-section>summary:hover{background:rgba(128,128,128,.15)}
 .zfsm-section>:not(summary){padding:0 16px}
+/* Room under the last control: Unraid 7's phone layout otherwise sets it on the section's bottom border. */
+.zfsm-section[open]{padding-bottom:10px}
 
 /* A label with a hint shows the help cursor; hovering it shows the hint, styled like Unraid's tooltips. */
 .zfsm-tip{position:relative;cursor:help}
