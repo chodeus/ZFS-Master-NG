@@ -219,9 +219,8 @@ function zfsmPopupStylesheets($docroot) {
 	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
 }
 
-// Every HTML escape and JSON encode goes through these (tests/encoding_test.php): a byte that isn't UTF-8 becomes U+FFFD,
-// where htmlspecialchars would give '' and json_encode false for the whole value. A value JSON can't hold (NAN) becomes 0 or null,
-// unless the caller asks for JSON_THROW_ON_ERROR.
+// Every HTML escape and JSON encode goes through these (tests/encoding_test.php): a non-UTF-8 byte becomes U+FFFD.
+// A value JSON can't hold (NAN) becomes 0 or null, unless the caller asks for JSON_THROW_ON_ERROR.
 function zfsmHtml($text) {
 	return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
