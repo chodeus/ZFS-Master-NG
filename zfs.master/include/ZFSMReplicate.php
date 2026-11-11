@@ -86,7 +86,7 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 	// unless it is only the broken pipe; a line each, as receive goes on with how to resume by hand, which the next run does itself.
 	$send_failed = $send_code !== 0 && trim($errors['send']) !== '' && stripos($errors['send'], 'broken pipe') === false;
 	$why = $send_failed || $receive_code === 0 ? $errors['send'] : $errors['receive'];
-	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")));
+	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'receive_code' => $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")));
 }
 
 // After a run: this destination's bookmark at the snapshot it now holds, and its older ones removed. Returns what went wrong, or ''.
@@ -175,6 +175,8 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		}
 		// ssh can be lost after the receive there ended: a copy that holds the snapshot is done, whatever the stream reported.
 		$held = $result['code'] === 0 ? true : zfsmReplicaCopyHolds($zdataset, $plan, $target);
+		// ssh lost (255) can leave the receive there still running: a copy without the snapshot yet may get it.
+		if ($held === false && $target['server'] !== '' && ($result['receive_code'] ?? 0) === 255) $held = null;
 		if ($held !== true) return zfsmReplicateFailed($zdataset, $plan, $target, $result, $held, $take ? $snapshot : '', array($what.$how, $what));
 		$marked = zfsmReplicaMark($zdataset, $plan);
 		$notes = array();

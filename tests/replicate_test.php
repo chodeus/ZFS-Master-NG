@@ -376,6 +376,23 @@ same(array(true, true), array(in_array($there.'@repl-9', $names($there, 'snapsho
 same(array('warning: Replication of tank/data@repl-9 to '.$there.' on nas finished (changes since d). Its stream reported exit code 255, but the copy holds the snapshot.'), $read('notify-detail.log'), 'with a warning that says what happened');
 runProcess('zfs', array('snapshot', 'tank/data@z'));
 same('incremental', zfsmReplicatePreview('tank/data', 'z', $there, $cfg, 'nas')['mode'] ?? 'refused', 'and the next run goes on from it');
+// Lost before the receive there ended: not holding the snapshot yet isn't lacking it, so the snapshot stays for when it lands.
+$late_bin = $work.'/latebin';
+mkdir($late_bin);
+foreach (glob($bin_dir.'/*') as $file) symlink($file, $late_bin.'/'.basename($file));
+unlink($late_bin.'/ssh');
+file_put_contents($late_bin.'/ssh', "#!/bin/sh\nfor last in \"\$@\"; do :; done\ncase \"\$last\" in *' receive '*) cat > \"$work/held-stream\"; echo 'Connection to 10.0.20.11 closed by remote host.' >&2; exit 255 ;; esac\nexec \"$bin_dir/ssh\" \"\$@\"\n");
+chmod($late_bin.'/ssh', 0755);
+putenv('ZFSM_TEST_BIN_DIR='.$late_bin);
+$reset();
+same(1, zfsmRunReplicate('tank/data', 'repl-late', $there, null, true, 'nas'), 'a run whose ssh is lost before the receive there ended');
+putenv('ZFSM_TEST_BIN_DIR='.$bin_dir);
+same(array(false, true), array(in_array($there.'@repl-late', $names($there, 'snapshot'), true), in_array('tank/data@repl-late', $names('tank/data', 'snapshot'), true)), 'the copy has nothing yet, and the snapshot is kept');
+same(true, strpos($read('notify-detail.log')[0] ?? '', 'closed by remote host. Whether it can carry on could not be read; the snapshot it took is kept.') !== false, 'saying it couldn\'t tell: '.($read('notify-detail.log')[0] ?? ''));
+exec(escapeshellarg($bin_dir.'/ssh').' -- 10.0.20.11 '.escapeshellarg('zfsm-replica 1 receive '.bin2hex($there)).' < '.escapeshellarg($work.'/held-stream').' 2>&1', $landed, $landed_code);
+same(array(0, true), array($landed_code, in_array($there.'@repl-late', $names($there, 'snapshot'), true)), 'the receive there then lands');
+$next = zfsmReplicatePreview('tank/data', '', $there, $cfg, 'nas');
+same(array('incremental', 'repl-late'), array($next['mode'] ?? $next['error'], $next['since'] ?? ''), 'and the next run goes on from the kept snapshot');
 
 // Refused, with why: a name outside the area, a server that isn't trusted, one that can't be reached, a checker that refuses.
 same('On nas, the copy goes inside backup/replicas/tower, such as backup/replicas/tower/data', zfsmReplicatePreview('tank/data', 'd', 'backup/data', $cfg, 'nas')['error'], 'a name outside its area there, before the checker sees it');
