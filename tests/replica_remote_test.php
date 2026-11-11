@@ -105,7 +105,7 @@ $remade = zfsmReplicaKeyMake();
 same(array(true, true), array(is_file($work.'/flash2/ssh/id_ed25519'), ($remade['key'] ?? '') === trim(file_get_contents($work.'/flash2/ssh/id_ed25519.pub'))), 'and is made again, in full');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
 
-// Addresses and ports: nothing that ssh could read as an option, nothing outside an IP or DNS name.
+// Addresses and ports: an IP address only, so nothing that ssh could read as an option and no DNS name.
 same(array(true, true), array_map('zfsmReplicaHostValid', array('10.0.20.11', 'fd7a:115c:a1e0::1')), 'IP addresses are taken, as the key line\'s from= must be one');
 same(array(false, false, false, false, false, false), array_map('zfsmReplicaHostValid', array('nas', 'tower.tail1234.ts.net', '', '-oProxyCommand=x', '[::1]', 'root@10.0.20.11')), 'nothing else, DNS names included');
 same(array(true, false, false, false), array_map('zfsmReplicaPortValid', array(22, 0, 65536, '22')), 'a port is a number from 1 to 65535');
@@ -140,11 +140,14 @@ file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
 same(array('nas'), array_keys(zfsmReplicaRemotes()), 'an entry the file holds in another shape is left out');
 $kept = file_get_contents($work.'/flash/ssh/remotes.json');
 file_put_contents($work.'/flash/ssh/remotes.json', '{"name": "nas", "host"');
-same($work.'/flash/ssh/remotes.json could not be read as a list of servers; fix or remove it first', zfsmReplicaRemoteAdd('other', '10.0.20.12', 22, $host_key, $host_print), 'a file that can\'t be read is never written over');
+$unreadable = $work.'/flash/ssh/remotes.json could not be read as a list of servers; fix or remove it first';
+same($unreadable, zfsmReplicaRemoteAdd('other', '10.0.20.12', 22, $host_key, $host_print), 'a file that can\'t be read is never written over');
 same('{"name": "nas", "host"', file_get_contents($work.'/flash/ssh/remotes.json'), 'it stays as it was');
-same(array(), zfsmReplicaRemotes(), 'and lists no servers');
+same(array(null, $unreadable), array(zfsmReplicaRemotes(), zfsmReplicaRemote('nas')), 'a failed read is not an empty list, and Test says why');
+same('<span style="color:#e22828">'.zfsmHtml($unreadable).'</span>', zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'so does Settings, where "None yet" would hide the pinned servers');
 file_put_contents($work.'/flash/ssh/remotes.json', $kept);
 $nas = zfsmReplicaRemotes()['nas'];
+same(array($nas, 'No server here is named other'), array(zfsmReplicaRemote('nas'), zfsmReplicaRemote('other')), 'one server by its name, or that none has it');
 
 // The line the other server adds: from= the address this server sends from, the exact checker and this server's name.
 $line = zfsmReplicaKeyLine($nas, zfsmReplicaSender());
@@ -160,6 +163,13 @@ same(null, zfsmReplicaKeyLine($nas, zfsmReplicaSender()), 'no route to it, no li
 same(true, strpos(zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'The address this server sends from to it could not be read.') !== false, 'Settings says why');
 putenv('ZFSM_TEST_NO_ROUTE');
 same(null, zfsmReplicaKeyLine($nas, null), 'nor before this server has its key');
+// No sender, no line: Settings asks for the key only when that is what is missing.
+file_put_contents($work.'/ident.cfg', "NAME=\"bad name\"\n");
+same(true, strpos(zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'This server\'s name must be 1 to 64 letters, digits, _ . : or -, starting with a letter or digit; rename it under Settings, Identification to see the line to add there.') !== false, 'a key under a server name no sender can have asks for the name');
+file_put_contents($work.'/ident.cfg', "NAME=\"tower\"\n");
+rename($work.'/flash/ssh/id_ed25519', $work.'/flash/ssh/id_ed25519.away');
+same(true, strpos(zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'Make this server\'s key to see the line to add there.') !== false, 'no key asks for the key');
+rename($work.'/flash/ssh/id_ed25519.away', $work.'/flash/ssh/id_ed25519');
 $log();
 
 // ssh's options, checked by the real ssh -G: only the pinned host key, this key alone, no config file, nothing forwarded.
@@ -208,11 +218,18 @@ putenv('ZFSM_TEST_JOB_DIR='.$work.'/not-a-folder');
 same('Could not open the settings lock in '.$work.'/not-a-folder/replica-send', zfsmReplicaRemoteRemove('nas'), 'an unusable lock folder is named');
 putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 
-// Removing forgets the server and its pinned key.
+// Removing forgets the server and its pinned key, with any second record the file holds under its name.
+$names = function() use ($work) { return array_column(json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true), 'name'); };
+$saved = json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true);
+$saved[] = array('name' => 'nas', 'host' => '10.0.20.99', 'port' => 22, 'key' => $host_key);
+file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
+same('', zfsmReplicaRemoteAdd('spare', '10.0.20.12', 22, $host_key, $host_print), 'another server is added');
+same(array(array('nas', 'spare', 'broken', 'smuggled', 'nas'), '10.0.20.11'), array($names(), zfsmReplicaRemote('nas')['host']), 'a second record under a listed name is written back, and the first stays the one in use');
 same('No server here is named other', zfsmReplicaRemoteRemove('other'), 'only a listed server can be removed');
 same('', zfsmReplicaRemoteRemove('nas'), 'a server is removed');
-same(array(), zfsmReplicaRemotes(), 'and is gone');
-same(array('broken', 'smuggled'), array_column(json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true), 'name'), 'the entries in other shapes are written back as they were');
-same('None yet', zfsmReplicaRemotesHtml(array()), 'Settings says when there are none');
+same(array('spare'), array_keys(zfsmReplicaRemotes()), 'and is gone: its second record does not bring it back');
+same(array('spare', 'broken', 'smuggled'), $names(), 'the entries in other shapes are written back as they were');
+same('', zfsmReplicaRemoteRemove('spare'), 'the last server is removed');
+same('None yet', zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'Settings says when there are none');
 
 echo "replica remote tests passed\n";

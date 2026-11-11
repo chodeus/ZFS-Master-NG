@@ -212,7 +212,7 @@ _(This Server's Key)_:
 : <span id="zfsm-send-key"><?=zfsmReplicaKeyHtml()?></span> <span id="zfsm-send-key-status" style="color:#e22828"></span>
 
 :zc_settings_send_key_plug:
-> This server's own SSH key for sending copies, made here once; its private half never leaves this server. A server added below accepts copies from it once its root adds the line shown under it to SSH authorized keys (Users, root).
+> This server's own SSH key for sending copies, made here once; its private half never leaves this server. A server added below accepts copies from it once its own Settings name a dataset under **Accept Replicas Into** and its root adds the line shown under it to SSH authorized keys (Users, root).
 :end
 
 _(Servers)_:
@@ -308,15 +308,21 @@ $('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_asked++
 function zfsmSendAdd() {
 	if (!zfsm_send_found) return;
 	var ask = zfsm_send_asked;
+	var found = $('#zfsm-send-found');
+	found.children('.zfsm-send-refused').remove();
 	// Off while it runs: a second click would answer "already a server here" for an Add that worked.
-	$('#zfsm-send-found input').prop('disabled', true);
+	var controls = found.find('input').prop('disabled', true);
 	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
 		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
 		// A host key read since keeps its fields and its Add.
 		if (ask !== zfsm_send_asked) return;
-		if (answer.error) return $('#zfsm-send-found').css('color', '#e22828').text(answer.error);
+		if (answer.error) {
+			// Add and its ticked box come back: a name put right is added without reading the host key again.
+			controls.prop('disabled', false);
+			return found.append($('<span class="zfsm-send-refused" style="color:#e22828">').text(' '+answer.error));
+		}
 		zfsm_send_found = null;
-		$('#zfsm-send-found').empty();
+		found.empty();
 		$('#zfsm-send-name, #zfsm-send-host').val('');
 	});
 }

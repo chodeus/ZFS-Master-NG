@@ -137,8 +137,8 @@ try {
 			break;
 
 		case 'replicatest':
-			$remote = zfsmReplicaRemotes()[zfsmPostString('name')] ?? null;
-			echo zfsmJson($remote === null ? array('error' => 'No server here is named '.zfsmPostString('name')) : zfsmWithReadLimit(function() use ($remote) { return zfsmReplicaHello($remote); }));
+			$remote = zfsmReplicaRemote(zfsmPostString('name'));
+			echo zfsmJson(is_string($remote) ? array('error' => $remote) : zfsmWithReadLimit(function() use ($remote) { return zfsmReplicaHello($remote); }));
 			break;
 
 		case 'adddirectortlisting':

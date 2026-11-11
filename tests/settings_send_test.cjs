@@ -58,7 +58,21 @@ $('#zfsm-send-found input[type=checkbox]').prop('checked', true).trigger('change
 add.trigger('click');
 assert.deepEqual([add.prop('disabled'), $('#zfsm-send-found input[type=checkbox]').prop('disabled')], [true, true], 'Add and its box are off while it runs');
 // Copied out of jsdom's realm: strict deepEqual compares prototypes too.
-assert.deepEqual({...posts.pop().data}, {cmd: 'replicaadd', name: 'nas', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
+const refused = posts.pop();
+assert.deepEqual({...refused.data}, {cmd: 'replicaadd', name: 'nas', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
+
+// A refused Add says why beside the host key read and keeps its Add: a name put right goes without another read.
+refused.done({error: 'nas is already a server here; remove it first to change it'});
+const box = $('#zfsm-send-found input[type=checkbox]');
+assert.deepEqual([add.prop('disabled'), box.prop('disabled'), box.prop('checked')], [false, false, true], 'Add and its ticked box are back on');
+assert.match(text('zfsm-send-found'), /^Host key SHA256:abc .* nas is already a server here; remove it first to change it$/, 'the reason shows after the host key read');
+$('#zfsm-send-name').val('nas2');
+add.trigger('click');
+assert.equal(text('zfsm-send-found').includes('already a server'), false, 'the reason goes when Add runs again');
+const again = posts.pop();
+assert.deepEqual({...again.data}, {cmd: 'replicaadd', name: 'nas2', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'}, 'the same host key goes with the new name');
+again.done({servers_html: '<span>nas2</span>'});
+assert.deepEqual([text('zfsm-send-found'), $('#zfsm-send-name').val(), $('#zfsm-send-host').val(), text('zfsm-send-servers')], ['', '', '', 'nas2'], 'an Add that worked lists the server and clears the read and its fields');
 
 // A scan's answer for an address changed since is dropped: nothing to add for the old one.
 window.zfsmSendScan();

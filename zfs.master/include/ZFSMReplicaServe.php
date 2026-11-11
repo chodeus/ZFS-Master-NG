@@ -44,6 +44,8 @@ function zfsmReplicaArea($accept, $sender) {
 	return zfsmReplicaAcceptValid($accept) && zfsmReplicaSenderName($sender) ? $accept.'/'.$sender : null;
 }
 
+// zfsmReplicaSenderName's rule in words, for each message that refuses a name.
+define('ZFSM_REPLICA_NAME_RULE', '1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
 function zfsmReplicaSenderName($sender) {
 	return is_string($sender) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/D', $sender) === 1;
 }

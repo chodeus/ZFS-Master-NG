@@ -238,11 +238,11 @@ switch ($check) {
 		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
 		$rendered = Markdown($html);
 		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts') as $section => $field) {
-			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*?<dt>(?:<[^>]+>|[^<])*?'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
+			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*?<dt>(?:(?!</dt>).)*?'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
-		if (!preg_match('#<dt>(?:<[^>]+>|[^<])*?Snapshot Time(?:(?!</dl>).)*?<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		if (!preg_match('#<dt>(?:(?!</dt>).)*?Snapshot Time(?:(?!</dl>).)*?<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
 		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
-			if (!preg_match('#<dt>(?:<[^>]+>|[^<])*?'.$label.'(?:(?!</dl>).)*?<select name="'.$name.'">#s', $rendered)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+			if (!preg_match('#<dt>(?:(?!</dt>).)*?'.$label.'(?:(?!</dl>).)*?<select name="'.$name.'">#s', $rendered)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }

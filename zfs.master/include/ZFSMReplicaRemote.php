@@ -42,7 +42,7 @@ function zfsmReplicaSettingsLock() {
 // Made once and never replaced here: a new key would leave every server's line naming the old one. The private half stays on this server.
 function zfsmReplicaKeyMake() {
 	$name = zfsmReplicaThisName();
-	if ($name === null) return array('error' => 'This server\'s name must be 1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
+	if ($name === null) return array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE);
 	$lock = zfsmReplicaSettingsLock();
 	if (is_string($lock)) return array('error' => $lock);
 	try {
@@ -97,9 +97,20 @@ function zfsmReplicaRemoteValid($remote) {
 		&& zfsmReplicaPortValid($remote['port'] ?? null) && zfsmReplicaHostKeyValid($remote['key'] ?? null);
 }
 
-// The trusted servers by name; an entry the file holds in any other shape is left out, never half-used.
+// The trusted servers by name, null when remotes.json can't be read; an entry the file holds in any other shape is left out, never half-used.
 function zfsmReplicaRemotes() {
-	return zfsmReplicaRemotesRead()['valid'] ?? array();
+	return zfsmReplicaRemotesRead()['valid'] ?? null;
+}
+
+// One trusted server, or a string saying why there is none: a file that can't be read is not "no such server".
+function zfsmReplicaRemote($name) {
+	$remotes = zfsmReplicaRemotes();
+	if ($remotes === null) return zfsmReplicaRemotesUnreadable();
+	return $remotes[$name] ?? 'No server here is named '.$name;
+}
+
+function zfsmReplicaRemotesUnreadable() {
+	return zfsmReplicaSshDir().'/remotes.json could not be read as a list of servers; fix or remove it first';
 }
 
 // remotes.json as 'valid' servers by name and 'other' entries, kept as they are for a write; null when it exists but isn't a list.
@@ -124,11 +135,13 @@ function zfsmReplicaRemotesChange($change) {
 	try {
 		$dir = zfsmReplicaSshDir();
 		$read = zfsmReplicaRemotesRead();
-		if ($read === null) return $dir.'/remotes.json could not be read as a list of servers; fix or remove it first';
+		if ($read === null) return zfsmReplicaRemotesUnreadable();
 		$remotes = $change($read['valid']);
 		if (is_string($remotes)) return $remotes;
+		// A second record under a name goes when that name does, so a removed server can't come back with another host key.
+		$other = array_filter($read['other'], function($entry) use ($remotes) { return !zfsmReplicaRemoteValid($entry) || isset($remotes[$entry['name']]); });
 		if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return 'Could not make '.$dir;
-		$saved = zfsmWriteFileAtomic($dir.'/remotes.json', zfsmJson(array_merge(array_values($remotes), $read['other']), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+		$saved = zfsmWriteFileAtomic($dir.'/remotes.json', zfsmJson(array_merge(array_values($remotes), $other), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
 		return $saved ? '' : 'Could not save '.$dir.'/remotes.json';
 	} finally {
 		zfsmJobUnlock($lock);
@@ -151,7 +164,7 @@ function zfsmReplicaScan($host, $port) {
 // Added only with the fingerprint the page showed, so the key saved is the one compared; a name already used must be removed first.
 function zfsmReplicaRemoteAdd($name, $host, $port, $key, $fingerprint) {
 	$remote = array('name' => $name, 'host' => $host, 'port' => $port, 'key' => $key);
-	if (!zfsmReplicaSenderName($name)) return 'Name it with 1 to 64 letters, digits, _ . : or -, starting with a letter or digit';
+	if (!zfsmReplicaSenderName($name)) return 'Name it with '.ZFSM_REPLICA_NAME_RULE;
 	if (!zfsmReplicaRemoteValid($remote)) return 'Give the server\'s IP address, SSH port and the host key read from it';
 	if (!is_string($fingerprint) || zfsmKeyFingerprint($key) !== $fingerprint) return 'The host key is not the one shown; read it again';
 	return zfsmReplicaRemotesChange(function($remotes) use ($remote) {
@@ -243,8 +256,11 @@ function zfsmReplicaKeyHtml() {
 }
 
 function zfsmReplicaRemotesHtml($remotes) {
+	if ($remotes === null) return '<span style="color:#e22828">'.zfsmHtml(zfsmReplicaRemotesUnreadable()).'</span>';
 	if (!$remotes) return 'None yet';
 	$sender = zfsmReplicaSender();
+	$no_line = 'The address this server sends from to it could not be read.';
+	if ($sender === null) $no_line = zfsmReplicaPublicKey() === null ? 'Make this server\'s key to see the line to add there.' : 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification to see the line to add there.';
 	$html = '';
 	foreach ($remotes as $remote) {
 		$id = 'zfsm-send-'.bin2hex($remote['name']);
@@ -257,7 +273,7 @@ function zfsmReplicaRemotesHtml($remotes) {
 		if ($line !== null) {
 			$html .= '<input type="text" readonly style="width:100%" aria-label="'.zfsmHtml('The line to add on '.$remote['name']).'" value="'.zfsmHtml($line).'">';
 		} else {
-			$html .= '<span style="display:block">'.($sender === null ? 'Make this server\'s key to see the line to add there.' : 'The address this server sends from to it could not be read.').'</span>';
+			$html .= '<span style="display:block">'.$no_line.'</span>';
 		}
 	}
 	return $html;
