@@ -259,6 +259,13 @@ function zfsmJson($value, $flags = 0) {
 	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE | ($flags & JSON_THROW_ON_ERROR ? 0 : JSON_PARTIAL_OUTPUT_ON_ERROR));
 }
 
+// A plugin's version as its manifest's PLUGIN element gives it, entities expanded as Unraid's plugin('version') reads it; '' when unreadable.
+function zfsmPluginVersion($manifest) {
+	$plugin = is_file($manifest) ? @simplexml_load_file($manifest, 'SimpleXMLElement', LIBXML_NOCDATA) : false;
+	$version = $plugin ? (string)$plugin['version'] : '';
+	return preg_match('/^[\w.+-]+$/D', $version) === 1 ? $version : '';
+}
+
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
 function zfsmSafeText($text) {
 	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);

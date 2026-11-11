@@ -1,3 +1,5 @@
+.zfsm-version{margin:0 0 10px;text-align:left;opacity:.7}
+
 /* Collapsible groups as in FolderView3's folder editor; neutral colours so every Unraid theme works. */
 .zfsm-section{margin-bottom:6px;border:1px solid rgba(128,128,128,.3);border-radius:4px}
 .zfsm-section>summary{padding:10px 16px;font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;background:rgba(128,128,128,.08);user-select:none}
@@ -7,6 +9,8 @@
 .zfsm-section[open]>summary::before{transform:rotate(90deg)}
 .zfsm-section>summary:hover{background:rgba(128,128,128,.15)}
 .zfsm-section>:not(summary){padding:0 16px}
+/* Room under the last control: Unraid 7's phone layout otherwise sets it on the section's bottom border. */
+.zfsm-section[open]{padding-bottom:10px}
 
 /* A label with a hint shows the help cursor; hovering it shows the hint, styled like Unraid's tooltips. */
 .zfsm-tip{position:relative;cursor:help}
