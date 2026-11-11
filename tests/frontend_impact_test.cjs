@@ -73,6 +73,14 @@ const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_
 assert.doesNotMatch(replicate, /new<b>/, 'a snapshot name cannot inject markup');
 assert.match(replicate, /<option value="new&lt;b&gt;">[\s\S]*<option value="old">[\s\S]*<option value="">Take one now<\/option>/, 'newest snapshot first, Take one now last');
 assert.match(replicate, /id="zfsm-replicate-dest"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
+assert.doesNotMatch(replicate, /zfsm-replicate-server/, 'no trusted servers: no server to pick');
+// Trusted servers: offered with this one, the last copy's server picked while it is still trusted, and its dataset only with it.
+const servers = context.zfsmReplicateHtml({snapshots: ['a'], servers: ['nas', 'n"<x>'], last_server: 'nas', last_destination: 'backup/replicas/tower/a'});
+assert.match(servers, /<select id="zfsm-replicate-server"[^>]*><option value="">This server<\/option><option value="nas" selected>nas<\/option><option value="n&quot;&lt;x&gt;">n&quot;&lt;x&gt;<\/option><\/select>/, 'servers are offered, escaped, the last one picked');
+assert.match(servers, /id="zfsm-replicate-dest"[^>]*value="backup\/replicas\/tower\/a"/, 'with its copy');
+const untrusted = context.zfsmReplicateHtml({snapshots: ['a'], servers: ['nas'], last_server: 'old', last_destination: 'backup/replicas/tower/a'});
+assert.match(untrusted, /<option value="nas">nas<\/option>/, 'a last server no longer trusted is not picked');
+assert.match(untrusted, /id="zfsm-replicate-dest"[^>]*value=""/, 'nor its copy filled in for this server');
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2\.00 KiB\./);
@@ -82,5 +90,6 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', siz
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'an incremental says a device the copy has now goes');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'so does a resumed run');
+assert.doesNotMatch(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume', server: 'nas'}), /one it has now/, 'another server\'s copy inherits volmode=none from its area: no device to remove');
 
 console.log('destroy and rollback dialog tests passed');

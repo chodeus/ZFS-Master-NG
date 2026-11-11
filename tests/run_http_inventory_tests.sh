@@ -16,8 +16,8 @@ mkdir -p /tmp/zfsm-http-test/webGui/include /tmp/zfsm-http-test/plugins /tmp/zfs
 ln -s "$zfsm_repo/zfs.master" /tmp/zfsm-http-test/plugins/zfs.master
 ln -s "$zfsm_repo/tests/fixtures/unraid/Helpers.php" /tmp/zfsm-http-test/webGui/include/Helpers.php
 ln -s "$zfsm_repo/tests/fixtures/unraid/publish_forbidden.php" /tmp/zfsm-http-test/webGui/include/publish.php
-cp "$zfsm_repo/tests/fixtures/bin/zfs" "$zfsm_repo/tests/fixtures/bin/zpool" /tmp/zfsm-bin/
-chmod +x /tmp/zfsm-bin/zfs /tmp/zfsm-bin/zpool
+cp "$zfsm_repo/tests/fixtures/bin/zfs" "$zfsm_repo/tests/fixtures/bin/zpool" "$zfsm_repo/tests/fixtures/bin/ssh" /tmp/zfsm-bin/
+chmod +x /tmp/zfsm-bin/zfs /tmp/zfsm-bin/zpool /tmp/zfsm-bin/ssh
 export ZFSM_TEST_DOCROOT=/tmp/zfsm-http-test ZFSM_TEST_BIN_DIR=/tmp/zfsm-bin
 touch /tmp/publishPaused
 for mode in full lazy pool invalid missing gone pool_failure snapshot_failure refresh_paused; do

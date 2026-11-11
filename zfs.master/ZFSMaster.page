@@ -740,7 +740,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		}
 		let asked = 0;
 		let timer = null;
-		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim()});
+		const choices = (popup) => {
+			const server = popup.querySelector('#zfsm-replicate-server');
+			return {snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, server: server ? server.value : '', destination: popup.querySelector('#zfsm-replicate-dest').value.trim()};
+		};
 		Swal2.fire({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options),
@@ -752,21 +755,26 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					const ask = ++asked;
 					const chosen = choices(popup);
 					confirm.disabled = true;
-					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination}, function(answer) {
+					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, server: chosen.server, destination: chosen.destination}, function(answer) {
 						if (ask !== asked) return;
+						// Another server with no name given plans its own (zfsmReplicatePreview): shown, so Replicate sends what was planned.
+						if (chosen.destination === '' && answer.dest) popup.querySelector('#zfsm-replicate-dest').value = answer.dest;
 						popup.querySelector('#zfsm-replicate-plan').innerHTML = zfsmReplicatePlanHtml(answer);
 						confirm.disabled = answer.can_proceed !== true;
 					});
 				};
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				const server = popup.querySelector('#zfsm-replicate-server');
+				// Each server has its own names: a new one starts empty, and gets that server's.
+				if (server) server.addEventListener('change', () => { popup.querySelector('#zfsm-replicate-dest').value = ''; plan(); });
 				plan();
 			},
 			preConfirm: () => choices(Swal2.getPopup())
 		}).then((result) => {
 			clearTimeout(timer);
 			if (!result.isConfirmed) return;
-			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, destination: result.value.destination}, function(data) {
+			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, server: result.value.server, destination: result.value.destination}, function(data) {
 				Swal2.fire({title: 'Replication Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
 			});
 		});

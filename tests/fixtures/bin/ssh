@@ -1,0 +1,17 @@
+#!/bin/sh
+# ssh for tests: logs what it was given, then runs the checker as sshd's forced command would (ZFSM_TEST_SERVE, tests/fixtures/fake_ssh_serve.php).
+log=${ZFSM_TEST_SSH_LOG:-/dev/null}
+printf "%s\n" "ssh $*" >> "$log"
+key=''; known=''; prev=''
+for a in "$@"; do
+	[ "$prev" = -i ] && key=$a
+	case "$prev:$a" in -o:UserKnownHostsFile=*) known=${a#UserKnownHostsFile=} ;; esac
+	prev=$a
+done
+for last in "$@"; do :; done
+printf "key-mode %s\n" "$(stat -c %a "$key")" >> "$log"
+[ -n "${ZFSM_TEST_FLASH_KEY:-}" ] && cmp -s "$key" "$ZFSM_TEST_FLASH_KEY" && echo key-same >> "$log"
+printf "known %s\n" "$(cat "$known")" >> "$log"
+[ -n "${ZFSM_TEST_SSH_FAIL:-}" ] && { echo "$ZFSM_TEST_SSH_FAIL" >&2; exit 255; }
+[ -n "${ZFSM_TEST_SERVE:-}" ] || { echo 'fake ssh: ZFSM_TEST_SERVE is not set' >&2; exit 255; }
+SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"

@@ -25,36 +25,21 @@ same(2, count($found), 'ssh-keygen and ssh are installed');
 $work = sys_get_temp_dir().'/zfsm-send-'.getmypid().'-'.bin2hex(random_bytes(4));
 mkdir($work.'/bin', 0700, true);
 register_shutdown_function(function() use ($work) { exec('rm -rf '.escapeshellarg($work)); });
-foreach (array('zfs', 'zpool') as $fake) copy(getenv('ZFSM_TEST_BIN_DIR').'/'.$fake, $work.'/bin/'.$fake) && chmod($work.'/bin/'.$fake, 0755);
+foreach (array('zfs', 'zpool', 'ssh') as $fake) copy(getenv('ZFSM_TEST_BIN_DIR').'/'.$fake, $work.'/bin/'.$fake) && chmod($work.'/bin/'.$fake, 0755);
 $script = function($name, $body) use ($work) {
 	file_put_contents($work.'/bin/'.$name, "#!/bin/sh\n".$body);
 	chmod($work.'/bin/'.$name, 0755);
 };
-// ssh-keyscan and ip answer from the test; ssh checks what it was given, then runs the checker as sshd's forced command would.
+// ssh-keyscan and ip answer from the test; ssh (tests/fixtures/bin/ssh) logs what it was given, then runs the checker as sshd's forced command would.
 $script('ssh-keyscan', "printf '%s\\n' \"ssh-keyscan \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\necho \"# \$*: SSH-2.0-OpenSSH_10.0\" >&2\n[ -n \"\${ZFSM_TEST_SCAN:-}\" ] && printf '%s\\n' \"\$ZFSM_TEST_SCAN\"\nexit 0\n");
 $script('ip', "printf '%s\\n' \"ip \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\n[ -n \"\${ZFSM_TEST_NO_ROUTE:-}\" ] && exit 2\nprintf '%s dev br0 src 10.0.20.5 uid 0 \\n    cache \\n' \"\$3\"\n");
-$script('ssh', implode("\n", array(
-	'printf "%s\n" "ssh $*" >> "$ZFSM_TEST_SSH_LOG"',
-	"key=''; known=''; prev=''",
-	'for a in "$@"; do',
-	'	[ "$prev" = -i ] && key=$a',
-	'	case "$prev:$a" in -o:UserKnownHostsFile=*) known=${a#UserKnownHostsFile=} ;; esac',
-	'	prev=$a',
-	'done',
-	'for last in "$@"; do :; done',
-	'printf "key-mode %s\n" "$(stat -c %a "$key")" >> "$ZFSM_TEST_SSH_LOG"',
-	'cmp -s "$key" "$ZFSM_TEST_FLASH_KEY" && echo key-same >> "$ZFSM_TEST_SSH_LOG"',
-	'printf "known %s\n" "$(cat "$known")" >> "$ZFSM_TEST_SSH_LOG"',
-	'[ -n "${ZFSM_TEST_SSH_FAIL:-}" ] && { echo "$ZFSM_TEST_SSH_FAIL" >&2; exit 255; }',
-	'SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"',
-	'')));
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
 putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 putenv('ZFSM_TEST_SSH_LOG='.$work.'/ssh.log');
 putenv('ZFSM_TEST_PHP='.PHP_BINARY);
 putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
-$GLOBALS['zfsm_ident_file'] = $work.'/ident.cfg';
+putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash/ssh');
+putenv('ZFSM_TEST_IDENT_FILE='.$work.'/ident.cfg');
 putenv('ZFSM_TEST_FLASH_KEY='.$work.'/flash/ssh/id_ed25519');
 $log = function() use ($work) {
 	$lines = is_file($work.'/ssh.log') ? file($work.'/ssh.log', FILE_IGNORE_NEW_LINES) : array();
@@ -94,7 +79,7 @@ foreach (array('lost' => null, 'emptied' => '') as $how => $content) {
 }
 
 // A failed ssh-keygen leaves no key and says why.
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash2/ssh';
+putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash2/ssh');
 $script('ssh-keygen', "echo 'ssh-keygen: out of entropy' >&2\nexit 1\n");
 same(array('error' => 'ssh-keygen: out of entropy'), zfsmReplicaKeyMake(), 'a failed make says why');
 same(array(), array_values(array_diff(scandir($work.'/flash2/ssh'), array('.', '..'))), 'and leaves nothing');
@@ -104,7 +89,7 @@ copy($work.'/flash/ssh/id_ed25519.pub', $work.'/flash2/ssh/id_ed25519.pub');
 same(array(null, true), array(zfsmReplicaPublicKey(), strpos(zfsmReplicaKeyHtml(), 'onclick="zfsmSendKey()"') !== false), 'a public half alone is no key');
 $remade = zfsmReplicaKeyMake();
 same(array(true, true), array(is_file($work.'/flash2/ssh/id_ed25519'), ($remade['key'] ?? '') === trim(file_get_contents($work.'/flash2/ssh/id_ed25519.pub'))), 'and is made again, in full');
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
+putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash/ssh');
 
 // Addresses and ports: nothing that ssh could read as an option, nothing outside an IP or DNS name.
 same(array(true, true), array_map('zfsmReplicaHostValid', array('10.0.20.11', 'fd7a:115c:a1e0::1')), 'IP addresses are taken, as the key line\'s from= must be one');
@@ -178,23 +163,26 @@ file_put_contents($work.'/pool/datasets', "backup\tfilesystem\nbackup/replicas\t
 putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
 putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 putenv('ZFSM_TEST_SENDER=tower');
-same(array('area' => 'backup/replicas/tower'), zfsmReplicaHello($nas), 'hello answers with this server\'s area there');
+same(array('area' => 'backup/replicas/tower'), zfsmReplicaHello('nas'), 'hello answers with this server\'s area there');
 $seen = $log();
 file_put_contents($work.'/pool/datasets', "backup/My Replicas\tfilesystem\n", FILE_APPEND);
 putenv('ZFSM_TEST_ACCEPT=backup/My Replicas');
-same(array('area' => 'backup/My Replicas/tower'), zfsmReplicaHello($nas), 'an area whose name holds a space');
+same(array('area' => 'backup/My Replicas/tower'), zfsmReplicaHello('nas'), 'an area whose name holds a space');
 putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();
 same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
 putenv('ZFSM_TEST_ACCEPT=');
-same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello($nas), 'a server that accepts nothing says so');
+same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello('nas'), 'a server that accepts nothing says so');
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
-same(array('error' => 'Host key verification failed.'), zfsmReplicaHello($nas), 'ssh\'s own error comes through');
+same(array('error' => 'Host key verification failed.'), zfsmReplicaHello('nas'), 'ssh\'s own error comes through');
 putenv('ZFSM_TEST_SSH_FAIL');
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash3/ssh';
-same(array('error' => 'This server has no key yet, or its RAM copy could not be made'), zfsmReplicaHello($nas), 'no key, no ssh');
-$GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';
+mkdir($work.'/flash3/ssh', 0700, true);
+copy($work.'/flash/ssh/remotes.json', $work.'/flash3/ssh/remotes.json');
+putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash3/ssh');
+same(array('error' => 'This server has no key yet, or its RAM copy could not be made'), zfsmReplicaHello('nas'), 'no key, no ssh');
+same(array('error' => 'No server here is named other'), zfsmReplicaHello('other'), 'only a trusted server is asked');
+putenv('ZFSM_TEST_SSH_DIR='.$work.'/flash/ssh');
 $log();
 
 // A settings lock that can't be opened says so, rather than that another save is running.

@@ -14,6 +14,7 @@ require_once __ROOT__."/include/ZFSMReplicaPlan.php";
 require_once __ROOT__."/include/ZFSMReplicate.php";
 require_once __ROOT__."/include/ZFSMReplicaServe.php";
 require_once __ROOT__."/include/ZFSMReplicaRemote.php";
+require_once __ROOT__."/include/ZFSMReplicaTarget.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
@@ -77,8 +78,12 @@ function zfsmDatasetMissing($name) {
 	if (!zfsmValidDatasetName($name)) return null;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', $name));
 	if (($result['code'] ?? 1) === 0) return false;
-	// Only the closing diagnostic counts: a name may itself contain the words.
-	return preg_match('/: dataset does not exist\s*\z/', $result['output'] ?? '') === 1 ? true : null;
+	return zfsmNoSuchDataset($result) ? true : null;
+}
+
+// Only the closing diagnostic counts: a name may itself contain the words.
+function zfsmNoSuchDataset($result) {
+	return preg_match('/: dataset does not exist\s*\z/', (string)($result['output'] ?? '')) === 1;
 }
 
 function zfsmSnapshotExists($name) {

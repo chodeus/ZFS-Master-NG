@@ -5,12 +5,12 @@ require_once __DIR__.'/ZFSMJobs.php';
 
 // On the flash drive, so the key and the pinned host keys survive a reboot; ssh only ever reads RAM copies (zfsmReplicaSshFiles).
 function zfsmReplicaSshDir() {
-	return $GLOBALS['zfsm_ssh_dir'] ?? '/boot/config/plugins/zfs.master/ssh';
+	return getenv('ZFSM_TEST_SSH_DIR') ?: '/boot/config/plugins/zfs.master/ssh';
 }
 
 // The sender name in the key line on the servers it sends to; null when Unraid's server name breaks the sender-name rules there.
 function zfsmReplicaThisName() {
-	$ident = @parse_ini_file($GLOBALS['zfsm_ident_file'] ?? '/boot/config/ident.cfg');
+	$ident = @parse_ini_file(getenv('ZFSM_TEST_IDENT_FILE') ?: '/boot/config/ident.cfg');
 	$name = is_array($ident) ? (string)($ident['NAME'] ?? '') : '';
 	return zfsmReplicaSenderName($name) ? $name : null;
 }
@@ -206,22 +206,6 @@ function zfsmReplicaSshArgs($remote, $files, $request) {
 	$args = array('-F', 'none', '-T', '-i', $files['key']);
 	foreach ($options as $option) array_push($args, '-o', $option);
 	return array_merge($args, array('-p', (string)$remote['port'], '-l', 'root', '--', $remote['host'], $request));
-}
-
-// hello on the other server: the area its copies go into, or why there is none (ssh's own error or the checker's refusal).
-// runProcess trims the answer, so it ends at the area's name, which may hold spaces.
-function zfsmReplicaHello($remote) {
-	$files = zfsmReplicaSshFiles($remote);
-	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
-	try {
-		$hello = runProcess('ssh', zfsmReplicaSshArgs($remote, $files, 'zfsm-replica 1 hello'));
-	} finally {
-		zfsmReplicaSshCleanup($files);
-	}
-	if (($hello['code'] ?? 1) === 0 && preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) === 1 && zfsmValidDatasetName($match[1])) {
-		return array('area' => $match[1]);
-	}
-	return array('error' => zfsmCommandError($hello, 'No answer from '.$remote['name']));
 }
 
 function zfsmReplicaKeyHtml() {

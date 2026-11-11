@@ -137,8 +137,8 @@ try {
 			break;
 
 		case 'replicatest':
-			$remote = zfsmReplicaRemotes()[zfsmPostString('name')] ?? null;
-			echo zfsmJson($remote === null ? array('error' => 'No server here is named '.zfsmPostString('name')) : zfsmWithReadLimit(function() use ($remote) { return zfsmReplicaHello($remote); }));
+			$server = zfsmPostString('name');
+			echo zfsmJson(zfsmWithReadLimit(function() use ($server) { return zfsmReplicaHello($server); }));
 			break;
 
 		case 'adddirectortlisting':
@@ -188,11 +188,12 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$snapshot = zfsmPostString('snapshot');
 			$zdest = zfsmPostString('destination');
-			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg); }), JSON_UNESCAPED_SLASHES);
+			$server = zfsmPostString('server');
+			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg, $server) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg, $server); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'replicatedataset':
-			zfsmReturnAnswer(zfsmStartReplicate(zfsmPostString('zdataset'), zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg), 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			zfsmReturnAnswer(zfsmStartReplicate(zfsmPostString('zdataset'), zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server')), 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
 		case 'convertdirectory':

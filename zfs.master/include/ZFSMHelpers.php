@@ -66,14 +66,14 @@ function implodeWithKeys($glue, $array, $symbol = ': ') {
 	);
 }
 	
-// The command to run: a test's own copy from ZFSM_TEST_BIN_DIR when it has one. Null for a zfs or zpool
-// the test lacks, so a test never reaches the host's.
+// The command to run: a test's own copy from ZFSM_TEST_BIN_DIR when it has one. Null for a zfs, zpool or ssh
+// the test lacks, so a test never reaches the host's pools or another server.
 function zfsmCommandPath($command) {
 	$test_bin_dir = getenv('ZFSM_TEST_BIN_DIR');
 	if ($test_bin_dir === false || $test_bin_dir === '') return $command;
 	$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
 	if (is_file($candidate)) return $candidate;
-	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
+	return in_array(basename($command), array('zfs', 'zpool', 'ssh'), true) ? null : $command;
 }
 
 // Runs $read with every runProcess in it under one time limit; a sooner limit already set stays, and the old one comes back after.
@@ -95,7 +95,7 @@ define('ZFSM_KEEP_OUTPUT', 4096);
 // With $keep_bytes, lets the command run to its end but keeps only that much of its output, and counts its lines in 'lines'.
 function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
 	$command = zfsmCommandPath($command);
-	if ($command === null) return array('code' => 127, 'output' => 'zfs and zpool must come from ZFSM_TEST_BIN_DIR in a test');
+	if ($command === null) return array('code' => 127, 'output' => 'zfs, zpool and ssh must come from ZFSM_TEST_BIN_DIR in a test');
 	$descriptor_spec = array(
 		0 => array('pipe', 'r'),
 		1 => array('pipe', 'w'),

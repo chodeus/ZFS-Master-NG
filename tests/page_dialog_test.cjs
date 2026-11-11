@@ -353,7 +353,7 @@ async function confirm() {
   const held = () => window.Swal2.getConfirmButton().disabled;
   assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
   assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
-  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data'}], 'it asks for the choices, then the plan for them');
+  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', server: '', destination: 'backup/data'}], 'it asks for the choices, then the plan for them');
   assert.match(planText(), /changes since b, about 2\.00 KiB/, 'the plan says what it sends');
   assert.equal(held(), false, 'a plan that can go enables Replicate');
   dest().value = 'nowhere/copy';
@@ -392,10 +392,42 @@ async function confirm() {
   snap().value = '';
   snap().dispatchEvent(new window.Event('change'));
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data'}, 'Take one now is planned too');
+  assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', server: '', destination: 'backup/data'}, 'Take one now is planned too');
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data'}, 'Replicate starts with what is on screen');
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', server: '', destination: 'backup/data'}, 'Replicate starts with what is on screen');
+  window.Swal2.close();
+
+  // Another server: picking it empties the name, its plan fills in the name planned there, and Replicate sends to it.
+  const withServers = {snapshots: ['b', 'a'], servers: ['nas'], last_server: '', last_destination: 'backup/data'};
+  replicateAnswer = data => data.server === 'nas' ? {...withServers, dest: data.destination || 'backup/replicas/tower/new', can_proceed: true, mode: 'full', size: 1, raw: false}
+    : data.destination === '' ? {...withServers, can_proceed: false, error: ''} : {...withServers, can_proceed: true, mode: 'incremental', since: 'b', size: 1, raw: false};
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  const server = () => window.document.getElementById('zfsm-replicate-server');
+  assert.deepEqual([server().value, dest().value, server().labels[0].textContent.startsWith('Send to:')], ['', 'backup/data', true], 'this server and its last copy, the choice named by its label');
+  server().value = 'nas';
+  server().dispatchEvent(new window.Event('change'));
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', server: 'nas', destination: ''}, 'another server is asked with no name');
+  assert.deepEqual([dest().value, held()], ['backup/replicas/tower/new', false], 'the name planned there is filled in');
+  // An answer for a name typed since is dropped, and fills nothing in.
+  holdReplicate = true;
+  server().value = '';
+  server().dispatchEvent(new window.Event('change'));
+  server().value = 'nas';
+  server().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'backup/replicas/tower/mine';
+  dest().dispatchEvent(new window.Event('input'));
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([dest().value, held()], ['backup/replicas/tower/mine', true], 'a late answer leaves the typed name alone');
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', server: 'nas', destination: 'backup/replicas/tower/mine'}, 'Replicate sends to that server, with the name on screen');
   window.Swal2.close();
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.

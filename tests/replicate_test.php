@@ -40,7 +40,7 @@ $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($wo
 $names = function($dataset, $types) { return array_column(zfsmReplicaMarks($dataset, $types) ?? array(), 'name'); };
 // Real sends and receives, without the dry runs (-n) each plan makes for its estimate.
 $calls = function($verb) use ($read) { return array_values(array_filter($read('calls.log'), function($line) use ($verb) { return strpos($line, $verb.' ') === 0 && strpos($line, ' -n ') === false; })); };
-$reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log') as $name) @unlink($work.'/'.$name); $GLOBALS['zfsm_feed'] = array(); };
+$reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'ssh.log') as $name) @unlink($work.'/'.$name); $GLOBALS['zfsm_feed'] = array(); };
 $fresh = function() use ($pool, $reset) {
 	$reset();
 	$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "tank/vol\tvolume", "tank/enc\tfilesystem", "backup\tfilesystem", "backup/empty\tfilesystem"));
@@ -86,7 +86,7 @@ same(array('normal: Replication of tank/data@d to backup/data finished (changes 
 $reset();
 same(0, zfsmRunReplicate('tank/data', 'd', 'backup/other'), 'a second destination runs');
 same(array($bookmark('backup/data', 'd'), $bookmark('backup/other', 'd')), $names('tank/data', 'bookmark'), 'each destination keeps its own bookmark');
-same('backup/other', zfsmReplicaLastDestination(zfsmReplicaMarks('tank/data')), 'the dialog offers the newest destination');
+same(array('server' => '', 'dest' => 'backup/other'), zfsmReplicaLastDestination(zfsmReplicaMarks('tank/data')), 'the dialog offers the newest destination');
 
 // Nothing is ever destroyed at the copy: what it can't take is refused, with why.
 $refuse = function($snapshot, $dest) { $plan = zfsmReplicatePlan('tank/data', $snapshot, $dest); return $plan['can_proceed'] ? 'proceeds' : $plan['error']; };
@@ -221,7 +221,8 @@ same(array(), array_values(array_filter($read('calls.log'), function($line) { re
 // tank/data#zfsm_ plus the hex of this name (2 x 117) plus _ is 250, which fits; the new snapshot's repl-<14 digits> takes it past ZFS's 255.
 $long = 'backup/'.str_repeat('x', 110);
 same('The names are too long for the bookmark that keeps the next replication incremental', zfsmReplicatePreview('tank/data', '', $long, $cfg)['error'], 'a new snapshot whose bookmark would be too long');
-same('', zfsmReplicaLastDestination(array(array('name' => 'tank/data#zfsm_ab_daily', 'guid' => '1', 'txg' => 1))), 'another tool\'s zfsm_ bookmark names no destination');
+same(array('server' => '', 'dest' => ''), zfsmReplicaLastDestination(array(array('name' => 'tank/data#zfsm_ab_daily', 'guid' => '1', 'txg' => 1))), 'another tool\'s zfsm_ bookmark names no destination');
+same(array('server' => '', 'dest' => ''), zfsmReplicaLastDestination(array(array('name' => 'tank/data#'.zfsmReplicaBookmarkPrefix('backup/x', 'bad name').'s', 'guid' => '1', 'txg' => 1))), 'nor one whose server name breaks the rules');
 
 // The job takes a new snapshot under its lock: none while another run holds it, and none left behind when the run can't go ahead.
 $lock_file = zfsmJobLockFile('tank/data', 'replicate');
@@ -262,5 +263,82 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	fwrite(STDERR, "FAILED: the background start needs ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");
 	exit(1);
 }
+
+// A copy on a trusted server: the fake ssh (tests/fixtures/bin/ssh) runs the checker's real request handling there, on this same fake pool.
+$fresh();
+file_put_contents($work.'/pool/datasets', "backup/replicas\tfilesystem\n", FILE_APPEND);
+$ssh_dir = $work.'/flash/ssh';
+mkdir($ssh_dir, 0700, true);
+file_put_contents($ssh_dir.'/id_ed25519', "this server's key\n");
+$host_key = 'ssh-ed25519 '.base64_encode("\0\0\0\x0bssh-ed25519\0\0\0\x20".str_repeat('k', 32));
+file_put_contents($ssh_dir.'/remotes.json', json_encode(array(array('name' => 'nas', 'host' => '10.0.20.11', 'port' => 22, 'key' => $host_key))));
+$test_env = array('SSH_DIR' => $ssh_dir, 'SSH_LOG' => $work.'/ssh.log', 'PHP' => PHP_BINARY, 'SERVE' => __DIR__.'/fixtures/fake_ssh_serve.php', 'ACCEPT' => 'backup/replicas', 'SENDER' => 'tower');
+foreach ($test_env as $name => $value) putenv('ZFSM_TEST_'.$name.'='.$value);
+// Each request the checker got, its dataset decoded from hex.
+$requests = function() use ($read) {
+	$asked = array();
+	foreach (preg_grep('/^ssh /', $read('ssh.log')) as $line) {
+		$request = explode(' ', substr($line, strpos($line, ' -- 10.0.20.11 ') + 15));
+		$asked[] = $request[2].(isset($request[3]) ? ' '.hex2bin($request[3]) : '');
+	}
+	return $asked;
+};
+$there = 'backup/replicas/tower/data';
+$preview = zfsmReplicatePreview('tank/data', 'b', '', $cfg, 'nas');
+same(array(array('nas'), $there, true, 'full'), array($preview['servers'], $preview['dest'], $preview['can_proceed'], $preview['mode'] ?? $preview['error']), 'the dialog offers the server, and plans <its area>/data there');
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'b', $there, null, false, 'nas'), 'a first run to it');
+same(array('hello', 'exists backup/replicas/tower', 'exists '.$there, 'receive '.$there), $requests(), 'hello, the plan\'s questions, then the stream into the checker\'s receive');
+same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev '.$there), $calls('receive'), 'which takes the copy\'s properties from its area');
+same(array($there.'@b'), $names($there, 'snapshot'), 'the copy there holds b');
+same(array('tank/data#'.zfsmReplicaBookmarkPrefix($there, 'nas').'b'), $names('tank/data', 'bookmark'), 'and the dataset a bookmark for that server\'s copy');
+same(array('normal: Replication of tank/data@b to '.$there.' on nas finished (in full).'), $read('notify-detail.log'), 'the notification names the server');
+same(array('server' => 'nas', 'dest' => $there), zfsmReplicaLastDestination(zfsmReplicaMarks('tank/data')), 'the dialog offers that server and copy next');
+same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the RAM copy of the key is gone');
+
+$reset();
+runProcess('zfs', array('snapshot', 'tank/data@c'));
+same(0, zfsmRunReplicate('tank/data', 'c', $there, null, false, 'nas'), 'the next run');
+same(array('send -P -v -i tank/data@b tank/data@c'), $calls('send'), 'sends the changes since what the copy there holds');
+same(array('hello', 'exists backup/replicas/tower', 'exists '.$there, 'token '.$there, 'snapshots '.$there, 'receive '.$there), $requests(), 'read from the checker');
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'c', 'backup/data'), 'a copy here as well');
+same(array('tank/data#'.zfsmReplicaBookmarkPrefix($there, 'nas').'c', 'tank/data#'.zfsmReplicaBookmarkPrefix('backup/data').'c'), $names('tank/data', 'bookmark'), 'each keeps its own bookmark');
+
+// A stopped run there leaves its token there; the next one carries on from it.
+$reset();
+runProcess('zfs', array('snapshot', 'tank/data@d'));
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/data', 'd', $there, null, false, 'nas'), 'a run cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+same(true, strpos($read('notify-detail.log')[0] ?? '', $there.' on nas failed: cannot receive incremental stream: checksum mismatch or incomplete stream. Replicate it again to carry on from where it stopped.') !== false, 'says another run carries on: '.($read('notify-detail.log')[0] ?? ''));
+$reset();
+$preview = zfsmReplicatePreview('tank/data', 'a', $there, $cfg, 'nas');
+same(array('resume', 'tank/data@d', 'tok:tank/data@d'), array($preview['mode'], $preview['snapshot'], $preview['token']), 'the next plan resumes it');
+same(0, zfsmRunReplicate('tank/data', 'a', $there, null, false, 'nas'), 'and runs');
+same(array('send -P -v -t tok:tank/data@d'), $calls('send'), 'from the token read there');
+same(array($there.'@b', $there.'@c', $there.'@d'), $names($there, 'snapshot'), 'the copy there ends at d');
+
+// Refused, with why: a name outside the area, a server that isn't trusted, one that can't be reached, a checker that refuses.
+same('On nas, the copy goes inside backup/replicas/tower, such as backup/replicas/tower/data', zfsmReplicatePreview('tank/data', 'd', 'backup/data', $cfg, 'nas')['error'], 'a name outside its area there, before the checker sees it');
+same('No server here is named other', zfsmReplicatePreview('tank/data', 'd', 'backup/x', $cfg, 'other')['error'], 'a server that isn\'t a trusted one');
+$reset();
+putenv('ZFSM_TEST_SSH_FAIL=ssh: connect to host 10.0.20.11 port 22: Connection refused');
+same(1, zfsmRunReplicate('tank/data', 'repl-3', $there, null, true, 'nas'), 'a run that can\'t reach the server');
+putenv('ZFSM_TEST_SSH_FAIL');
+same(false, in_array('tank/data@repl-3', $names('tank/data', 'snapshot'), true), 'takes no snapshot');
+same(array('warning: Replication of tank/data to '.$there.' on nas not started: ssh: connect to host 10.0.20.11 port 22: Connection refused'), $read('notify-detail.log'), 'and says why');
+same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'leaving no RAM copy of the key');
+file_put_contents($work.'/pool/props', "backup/replicas/tower\tmountpoint\t/mnt/replicas\n", FILE_APPEND);
+same('backup/replicas/tower must keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so nothing replicated into it mounts or runs', zfsmReplicatePreview('tank/data', 'd', $there, $cfg, 'nas')['error'], 'the checker\'s refusal there, in its own words');
+
+// A start hands the job the server, and the job sends there.
+$fresh();
+file_put_contents($work.'/pool/datasets', "backup/replicas\tfilesystem\n", FILE_APPEND);
+$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+same(array('succeeded' => array('tank/data' => 'Replication to '.$there.' on nas started; a notification says when it is done'), 'failed' => array()), zfsmStartReplicate('tank/data', 'b', $there, $cfg, 'nas'), 'a start to a trusted server');
+for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
+same(array($there.'@b'), $names($there, 'snapshot'), 'the job sent it there');
+$GLOBALS['docroot'] = $work.'/docroot';
 
 echo "replication tests passed\n";
