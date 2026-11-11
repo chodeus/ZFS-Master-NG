@@ -29,6 +29,7 @@ for gate in rollback_newer destroy_recursive destroy_dataset rollback_plain dest
     "$zfsm_php" -n "$zfsm_repo/tests/admin_gate_test.php" "$gate"
 done
 "$zfsm_php" -n "$zfsm_repo/tests/impact_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/encoding_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/snapshot_files_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"

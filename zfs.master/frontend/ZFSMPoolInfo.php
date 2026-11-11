@@ -42,7 +42,6 @@ if ($compatibility !== null && $compatibility['read_write'] === null) {
 }
 $groups = array('in_use' => 'In use: these set the answer above', 'enabled' => 'Enabled, not in use: turning one on can raise the answer', 'off' => 'Off: Unraid\'s Upgrade Pool would turn these on');
 $on_upgrade = array('at once' => 'In use as soon as Upgrade Pool runs', 'next import' => 'In use from the first import after Upgrade Pool', 'enabled' => 'Enabled only', '' => 'Unknown');
-$html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UTF-8'); };
 ?>
 
 <!DOCTYPE html>
@@ -91,18 +90,18 @@ $html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UT
 	<details class="zfsm-section" open>
 	<summary>Compatibility<span class="zfsm-count">which Unraid can import this pool</span></summary>
 	<?php if ($compatibility === null): ?>
-	<p class="zfsm-error" id="zfsm-compat-error"><?=$html($read_error)?></p>
+	<p class="zfsm-error" id="zfsm-compat-error"><?=zfsmHtml($read_error)?></p>
 	<?php else: ?>
 	<div class="zfsm-form">
-		<dl><dt>Imports read-write on:</dt><dd id="zfsm-read-write"><?=$html($read_write)?></dd></dl>
-		<?php if ($older !== ''): ?><dl><dt>Older Unraid:</dt><dd id="zfsm-older"><?=$html($older)?></dd></dl><?php endif; ?>
-		<?php if ($after !== ''): ?><dl><dt>After Upgrade Pool:</dt><dd id="zfsm-after-upgrade"><?=$html($after)?></dd></dl><?php endif; ?>
+		<dl><dt>Imports read-write on:</dt><dd id="zfsm-read-write"><?=zfsmHtml($read_write)?></dd></dl>
+		<?php if ($older !== ''): ?><dl><dt>Older Unraid:</dt><dd id="zfsm-older"><?=zfsmHtml($older)?></dd></dl><?php endif; ?>
+		<?php if ($after !== ''): ?><dl><dt>After Upgrade Pool:</dt><dd id="zfsm-after-upgrade"><?=zfsmHtml($after)?></dd></dl><?php endif; ?>
 	</div>
 	<?php if ($compatibility['would_raise']): ?>
 	<p class="zfsm-subhead">Would need a newer Unraid after:</p>
 	<div class="zfsm-table-scroll"><table class="zfsm-info-table" id="zfsm-would-raise"><tbody>
 	<?php foreach ($compatibility['would_raise'] as $feature): ?>
-		<tr data-raise="<?=$html($feature['name'])?>"><td class="zfsm-needs">Unraid <?=$html($feature['unraid'])?></td><td><?=$html($feature['turned_on_by'].($feature['raises_read_write'] ? '' : ' (then older Unraid can\'t import it even read-only)'))?></td></tr>
+		<tr data-raise="<?=zfsmHtml($feature['name'])?>"><td class="zfsm-needs">Unraid <?=zfsmHtml($feature['unraid'])?></td><td><?=zfsmHtml($feature['turned_on_by'].($feature['raises_read_write'] ? '' : ' (then older Unraid can\'t import it even read-only)'))?></td></tr>
 	<?php endforeach; ?>
 	</tbody></table></div>
 	<?php endif; ?>
@@ -112,9 +111,9 @@ $html = function($text) { return htmlspecialchars((string)$text, ENT_QUOTES, 'UT
 	<div class="zfsm-table-scroll"><table class="zfsm-info-table" id="zfsm-features">
 	<thead><tr><th>Feature</th><th>Needs</th><th>Turned on by</th></tr></thead>
 	<?php foreach ($groups as $group => $heading): if (!$compatibility[$group]) continue; ?>
-	<tbody data-group="<?=$group?>"><tr class="zfsm-group"><th colspan="3"><?=$html($heading)?></th></tr>
+	<tbody data-group="<?=$group?>"><tr class="zfsm-group"><th colspan="3"><?=zfsmHtml($heading)?></th></tr>
 	<?php foreach ($compatibility[$group] as $feature): ?>
-		<tr data-feature="<?=$html($feature['name'])?>"><td class="zfsm-feature"><?=$html($feature['name'])?></td><td class="zfsm-needs"><?=$html($feature['unraid'] === null ? 'Not in this plugin\'s list' : 'Unraid '.$feature['unraid'].', older '.($feature['readable'] ? 'read-only' : 'can\'t import'))?></td><td><?=$html($group === 'off' ? $on_upgrade[(string)$feature['on_upgrade']] : ($feature['turned_on_by'] ?? ''))?></td></tr>
+		<tr data-feature="<?=zfsmHtml($feature['name'])?>"><td class="zfsm-feature"><?=zfsmHtml($feature['name'])?></td><td class="zfsm-needs"><?=zfsmHtml($feature['unraid'] === null ? 'Not in this plugin\'s list' : 'Unraid '.$feature['unraid'].', older '.($feature['readable'] ? 'read-only' : 'can\'t import'))?></td><td><?=zfsmHtml($group === 'off' ? $on_upgrade[(string)$feature['on_upgrade']] : ($feature['turned_on_by'] ?? ''))?></td></tr>
 	<?php endforeach; ?>
 	</tbody>
 	<?php endforeach; ?>

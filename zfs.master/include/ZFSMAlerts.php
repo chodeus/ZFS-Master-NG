@@ -171,7 +171,7 @@ function zfsmRunAlerts($cfg, $now) {
 		}
 		$state['problems'] = array_map(function($problem) { unset($problem['message']); return $problem; }, $problems);
 	}
-	file_put_contents($state_file.'.tmp', json_encode($state));
+	file_put_contents($state_file.'.tmp', zfsmJson($state));
 	rename($state_file.'.tmp', $state_file);
 	flock($lock, LOCK_UN);
 }

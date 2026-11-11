@@ -56,10 +56,11 @@ function launch({interval = 30, cache = null, storageThrows = false, missingSubs
   vm.runInContext(inventory, context);
   vm.runInContext(keys, context);
   const script = mainScript.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php => {
-    if (php.includes('json_encode($zfsm_cfg')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
+    if (php.includes('zfsmJson($zfsm_cfg')) return JSON.stringify({version: '7.3.2', refresh_interval: interval,
       destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []});
-    if (php.includes('json_encode($display')) return JSON.stringify({text: 0, warning: 80, critical: 90});
+    if (php.includes('zfsmJson($display')) return JSON.stringify({text: 0, warning: 80, critical: 90});
     if (php.includes('$urlzmadmin')) return '/plugins/zfs.master/backend/ZFSMAdmin.php';
+    if (php.includes('$csrf_token')) return '"page-token"';
     return '';
   });
   vm.runInContext(script, context, {filename: 'rendered-ZFSMaster.page.js'});
