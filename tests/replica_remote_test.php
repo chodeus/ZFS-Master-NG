@@ -172,6 +172,12 @@ putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();
 same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
+try {
+	zfsmWithDeadline(0, function() { return zfsmReplicaHello('nas'); });
+	same('timed out', 'answered', 'a hello past its time limit');
+} catch (RuntimeException $timed_out) {
+	same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'one that runs out of time leaves no copy either');
+}
 putenv('ZFSM_TEST_ACCEPT=');
 same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello('nas'), 'a server that accepts nothing says so');
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');

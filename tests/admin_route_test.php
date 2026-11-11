@@ -20,8 +20,12 @@ $routes = array(
 	'previewrewrite' => array('cmd' => 'previewrewrite', 'zdataset' => 'tank/vol'),
 	'rewritedataset' => array('cmd' => 'rewritedataset', 'zdataset' => 'tank/vol'),
 	'previewreplicate' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data'),
-	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data')
+	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data'),
+	'previewreplicate_server' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'server' => 'nas', 'destination' => ''),
+	'replicatedataset_server' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'server' => 'nas', 'destination' => 'backup/data'),
+	'replicatest' => array('cmd' => 'replicatest', 'name' => 'nas')
 );
+$replication = array('previewreplicate', 'replicatedataset', 'previewreplicate_server', 'replicatedataset_server', 'replicatest');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -35,14 +39,15 @@ if ($route === 'createdataset') {
 	putenv('ZFSM_TEST_DATASET_MOUNT='.$mount);
 }
 
-// The replication routes run on the fake's small pool (tests/replicate_test.php covers the runs themselves).
-if ($route === 'previewreplicate' || $route === 'replicatedataset') {
+// The replication routes run on the fake's small pool, with no trusted server (tests/replicate_test.php covers the runs themselves).
+if (in_array($route, $replication, true)) {
 	$pool = sys_get_temp_dir().'/zfsm-route-repl-'.getmypid();
 	@mkdir($pool);
 	file_put_contents($pool.'/datasets', "tank/data\tfilesystem\nbackup\tfilesystem\n");
 	file_put_contents($pool.'/marks', "tank/data@a\t11\t10\ntank/data@b\t12\t20\n");
 	file_put_contents($pool.'/props', '');
 	putenv('ZFSM_TEST_REPL_DIR='.$pool);
+	putenv('ZFSM_TEST_SSH_DIR='.$pool.'/ssh');
 }
 
 // These need a token from the review the dialogs show first.
@@ -68,11 +73,17 @@ if ($route === 'snapshotdataset_utc') {
 		exit(1);
 	}
 }
-// Replication: the preview plans a first, full copy; a start whose copy has nowhere to go says why and starts nothing.
-if ($route === 'previewreplicate' || $route === 'replicatedataset') {
-	$ok = $route === 'previewreplicate'
-		? ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full'
-		: ($answer['failed']['tank/data'] ?? '') === 'The copy goes inside nowhere, which doesn\'t exist';
+// Replication: the preview plans a first, full copy; a start whose copy has nowhere to go says why and starts nothing; the server
+// reaches each route, which asks for it by name.
+if (in_array($route, $replication, true)) {
+	$untrusted = 'No server here is named nas';
+	$said = array(
+		'previewreplicate' => ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full',
+		'replicatedataset' => ($answer['failed']['tank/data'] ?? '') === 'The copy goes inside nowhere, which doesn\'t exist',
+		'previewreplicate_server' => ($answer['error'] ?? '') === $untrusted,
+		'replicatedataset_server' => ($answer['failed']['tank/data'] ?? '') === $untrusted,
+		'replicatest' => ($answer['error'] ?? '') === $untrusted);
+	$ok = $said[$route];
 	if (!$ok) {
 		fwrite(STDERR, $route.' answered: '.$output."\n");
 		exit(1);

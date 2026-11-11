@@ -43,6 +43,6 @@ umount /usr/local/sbin
 "$zfsm_php" -n "$zfsm_repo/tests/replica_remote_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/pool_features_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
-for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset; do
+for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset previewreplicate_server replicatedataset_server replicatest; do
     "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"
 done
