@@ -76,9 +76,10 @@ assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-sizes-'));
 let checked = 0;
 try {
-  // 390, a phone, gives 7.2+'s narrowest columns (its table stays 1000px wide); 6.x cells don't clip, and a narrow 6.x table sizes itself by its own rows.
+  // 390, a phone: 7.2+'s narrowest columns (its table stays 1000px wide). A 6.x table sizes itself by its own rows there, so it can't
+  // line up with Unraid's, but its words must not split letter by letter.
   // A 20% larger font there (Unraid 7's display font setting; phones also draw text wider) must still clip nothing.
-  const runs = unraid7 ? [[390, ''], [390, '75%'], [1280, ''], [1920, '']] : [[1280, ''], [1920, '']];
+  const runs = unraid7 ? [[390, ''], [390, '75%'], [1280, ''], [1920, '']] : [[390, ''], [1280, ''], [1920, '']];
   for (const theme of themes) {
   const css = [...base, theme].map(sheet).join('\n');
   for (const [width, font] of runs) for (const units of ['decimal', 'binary']) {
@@ -114,7 +115,7 @@ document.fonts.ready.then(() => {
     assert.deepEqual(clipped, [], `${run}: these cells (row:cell) hide part of their content`);
     // A larger font may split a long word; it must still show whole.
     if (!font) assert.deepEqual(tall, [], `${run}: these cells wrap to more than two lines`);
-    if (font) continue;
+    if (font || (!unraid7 && width < 1280)) continue;
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${run}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
       const name = `${['pool', 'dataset', 'long dataset', 'degraded pool'][r]} ${['Size', 'Used', 'Free'][c]}`;
@@ -133,4 +134,4 @@ document.fonts.ready.then(() => {
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width (also with a larger font) and two others' : 'two widths'}, in both units`);
+console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width (also with a larger font) and two others' : 'two widths, and a phone\'s for wrapping'}, in both units`);
