@@ -6,13 +6,17 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.11.2">
-<!ENTITY md5 "57cb16ace692e8bc3895ec06c7a74c33">
+<!ENTITY version "2026.11.11.3">
+<!ENTITY md5 "1b3657193a0952c6a1f1099836f554d2">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.11.3
+- Table text wraps instead of being cut off (Health, long pool names, errors)
+- On Unraid 7.4, rows open the file manager from a folder, like Unraid's own pool rows
 
 ###2026.11.11.2
 - The snapshot count shows on phones and small windows
