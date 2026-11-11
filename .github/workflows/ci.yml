@@ -141,6 +141,9 @@ jobs:
       - name: Size, Used and Free line up with Unraid's pool table in a real browser
         run: node tests/size_column_render_test.cjs .webgui
 
+      - name: Settings sections keep a gap under their last control in a real browser
+        run: node tests/settings_render_test.cjs .webgui
+
       - name: Page dialogs on this version's jQuery
         working-directory: tests
         run: |

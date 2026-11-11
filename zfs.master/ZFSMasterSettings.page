@@ -11,10 +11,12 @@ require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaRemote.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
+$zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
 
 ?>
    
 <link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-forms.css'); ?>">
+<?php if ($zfsm_version !== ''): ?><p class="zfsm-version"><?=zfsmHtml(_('Version').' '.$zfsm_version)?></p><?php endif; ?>
 
 <form markdown="1" name="<?=$plugin?>_settings" method="POST" action="/update.php" target="progressFrame">
 <input type="hidden" name="csrf_token" value="<?=zfsmHtml($var['csrf_token'] ?? '')?>"/>
