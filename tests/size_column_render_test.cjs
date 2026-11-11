@@ -99,7 +99,7 @@ document.fonts.ready.then(() => {
   });
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
-  // A short cell wraps to two lines at most, and each word in it stays whole. Pool names, like dataset names, may take more.
+  // A short cell wraps to two lines at most, and a word that fits a line alone stays whole. Pool names, like dataset names, may take more.
   const lines = td => { const rects = [...(() => { const r = document.createRange(); r.selectNodeContents(td); return r.getClientRects(); })()].sort((a, b) => a.top - b.top);
     return rects.reduce((n, rect, i) => n + (i && rect.top > rects[i - 1].top + rects[i - 1].height / 2 ? 1 : 0), rects.length ? 1 : 0); };
   const short = [...tables[1].tHead.rows[0].cells, ...tables[1].querySelectorAll('td.zfsm-health, td.zfsm-refer, td.zfsm-snaps')];
@@ -107,7 +107,12 @@ document.fonts.ready.then(() => {
   const split = short.flatMap(td => { const walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT); const found = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       if (!node.parentElement.getClientRects().length) continue;
-      for (const word of node.data.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(node, word.index); r.setEnd(node, word.index + word[0].length); if (r.getClientRects().length > 1) found.push(word[0]); }
+      const box = getComputedStyle(td); const room = td.clientWidth - parseFloat(box.paddingLeft) - parseFloat(box.paddingRight);
+      for (const word of node.data.matchAll(/\S+/g)) {
+        const r = document.createRange(); r.setStart(node, word.index); r.setEnd(node, word.index + word[0].length);
+        const parts = [...r.getClientRects()];
+        if (parts.length > 1 && parts.reduce((sum, part) => sum + part.width, 0) <= room) found.push(word[0]);
+      }
     }
     return found; });
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
@@ -124,7 +129,7 @@ document.fonts.ready.then(() => {
     assert.deepEqual(clipped, [], `${run}: these cells (row:cell) hide part of their content`);
     // A larger font may split a long word; it must still show whole.
     if (!font) assert.deepEqual(tall, [], `${run}: these cells wrap to more than two lines`);
-    if (!font) assert.deepEqual(split, [], `${run}: these words split across lines`);
+    assert.deepEqual(split, [], `${run}: these words split though each fits a line alone`);
     ours.forEach((row, r) => row.forEach((cell, c) => assert.deepEqual(cell.cell, bare[r][c].cell, `${run}: row ${r} cell ${c} moves with the error row`)));
     if (font || (!unraid7 && width < 1280)) continue;
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${run}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
