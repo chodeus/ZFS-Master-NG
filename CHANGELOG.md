@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The snapshot count shows on phones and small windows
+
 ## 2026.11.11.1 (beta)
 
 - Replicate a dataset to another pool, in the background
