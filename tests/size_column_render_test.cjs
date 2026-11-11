@@ -43,20 +43,21 @@ const ourTable = units => {
   context.zfsm_display = {number: '.,', scale: -1};
   // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
   const longDataset = context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', referenced: 1073636966, child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
-  // Rows of messages, in a second table: their text widens a 6.x table's columns, which would only make the line-up check moot.
-  // Two jobs' progress at once, as zfsmJobProgress joins them, and an error row as ZFSMFrontEnd.js writes one.
+  // Two jobs' progress at once, as zfsmJobProgress joins them, and an error row as ZFSMFrontEnd.js writes one, its path unbroken:
+  // neither may push the columns out of line.
   const progressRow = longDataset.replace('<span class="zfsm-row-progress"></span>', '<span class="zfsm-row-progress">Rewrite 45% · Replicating 1.2 GiB of 3.4 GiB</span>');
   assert.notEqual(progressRow, longDataset, 'the long dataset row has an empty progress cell to fill');
-  const messages = progressRow + '<tr><td colspan="9" style="color:#e22828">ZFS query failed: cannot open \'fast-nvme-pool-01/appdata\': I/O error on device nvme1n1p1, the pool is suspended until the device is replaced</td></tr>';
+  const errorRow = '<tr><td colspan="9" style="color:#e22828">ZFS query failed: cannot open \''+longName+'/'+'x'.repeat(160)+'\': I/O error on device nvme1n1p1</td></tr>';
   // The pool's count reads Loading… until it arrives; the second pool has a long name, SUSPENDED (the longest state) and a big count.
   const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: null}, 'nvme0n1p3', true, display, root)+'</tr>'
     + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
-    + longDataset
-    + '<tr>'+context.generatePoolTableRows({Pool: 'fast-nvme-pool-01', Health: 'SUSPENDED', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 12345}, 'nvme1n1p1', true, display, {...root, name: 'fast-nvme-pool-01'})+'</tr>';
+    + progressRow
+    + '<tr>'+context.generatePoolTableRows({Pool: 'fast-nvme-pool-01', Health: 'SUSPENDED', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 12345}, 'nvme1n1p1', true, display, {...root, name: 'fast-nvme-pool-01'})+'</tr>'
+    + errorRow;
   const [size, used, free] = texts[units];
 
   assert.ok(rows.includes('>'+size+'</td>') && rows.includes('>'+used+'<') && rows.includes('>'+free+'<'), `in ${units} units the pool row shows ${texts[units].join(', ')}`);
-  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div><div class="TableContainer">${ourHead}<tbody>${messages}</tbody></table></div>`;
+  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`;
 };
 
 // Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
@@ -100,7 +101,7 @@ document.fonts.ready.then(() => {
   const lines = td => { const rects = [...(() => { const r = document.createRange(); r.selectNodeContents(td); return r.getClientRects(); })()].sort((a, b) => a.top - b.top);
     return rects.reduce((n, rect, i) => n + (i && rect.top > rects[i - 1].top + rects[i - 1].height / 2 ? 1 : 0), rects.length ? 1 : 0); };
   const tall = [...tables[1].tHead.rows[0].cells, ...tables[1].querySelectorAll('td.zfsm-health, td.zfsm-refer, td.zfsm-snaps')].filter(td => lines(td) > 2).map(td => (td.className || 'head')+': '+td.textContent.trim().slice(0, 20));
-  const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows, ...tables[2].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
+  const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
   out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), clipped, tall});
   document.documentElement.appendChild(out);
 });

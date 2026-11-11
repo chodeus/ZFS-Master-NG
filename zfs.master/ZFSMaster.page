@@ -44,11 +44,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
   #zfs_master.zfs_table thead td:nth-child(n+5),#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{text-align:right}
   /* Unraid's cells cut what doesn't fit to an ellipsis (7.x) or push the columns out of line (6.x); every cell of ours wraps, splitting
-     a word only when it can't fit a line alone, so DEGRADED, a count or an error always shows. Names and mounts are paths: split anywhere. */
+     a word only when it can't fit a line alone, so DEGRADED, a count or an error always shows. Paths split anywhere: names, mounts, messages. */
   #zfs_master.zfs_table td{white-space:normal;overflow-wrap:break-word}
   /* Size, Used and Free stay Unraid's: free to wrap, 6.x would size them by their shortest word and hand their width to Name. */
   #zfs_master.zfs_table td:nth-last-child(-n+3):not([colspan]){white-space:nowrap}
-  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{overflow-wrap:anywhere}
+  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount,#zfs_master.zfs_table td[colspan]{overflow-wrap:anywhere}
   #zfs_master.zfs_table .zfsm-name-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-name-label{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .zfsm-name-row .zfs_compact{flex:none}
