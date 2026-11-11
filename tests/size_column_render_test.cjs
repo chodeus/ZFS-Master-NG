@@ -70,12 +70,14 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-sizes-'));
 let checked = 0;
 try {
   // 390, a phone, gives 7.x's narrowest columns; 6.x cells don't clip, and a narrow 6.x table sizes itself by its own rows.
-  for (const theme of themes) for (const width of unraid7 ? [390, 1280, 1920] : [1280, 1920]) for (const units of ['decimal', 'binary']) {
+  // A 20% larger font there (Unraid 7's display font setting; phones also draw text wider) must still clip nothing.
+  const runs = unraid7 ? [[390, ''], [390, '75%'], [1280, ''], [1920, '']] : [[1280, ''], [1920, '']];
+  for (const theme of themes) for (const [width, font] of runs) for (const units of ['decimal', 'binary']) {
     const css = [...base, theme].map(sheet).join('\n');
-    const file = path.join(work, `table-${width}-${units}.html`);
+    const file = path.join(work, `table-${width}${font ? '-font' : ''}-${units}.html`);
     // Headless Chrome keeps a window 500px wide at least: the tables sit in a frame of the width being checked.
     fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}\n${pageCss}</style></head><body>
-<div id="zfsm-frame" style="width:${width}px">${unraidTable(texts[units])}${ourTable(units)}</div>
+${font ? `<style>:root{--custom-font-size:${font}}</style>` : ''}<div id="zfsm-frame" style="width:${width}px">${unraidTable(texts[units])}${ourTable(units)}</div>
 <script>
 document.fonts.ready.then(() => {
   const box = el => { const r = el.getBoundingClientRect(); return [r.left, r.right]; };
@@ -96,7 +98,8 @@ document.fonts.ready.then(() => {
     assert.ok(match, `${theme} at ${width} in ${units}: the tables did not render`);
     const {viewport, unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
     assert.equal(viewport, width, `${theme} at ${width} in ${units}: the tables were laid out ${viewport}px wide`);
-    assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
+    assert.deepEqual(clipped, [], `${theme} at ${width}${font ? ' with a '+font+' font' : ''} in ${units}: these cells (row:cell) hide part of their content`);
+    if (font) continue;
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
       const name = `${['pool', 'dataset', 'long dataset', 'degraded pool'][r]} ${['Size', 'Used', 'Free'][c]}`;
@@ -114,4 +117,4 @@ document.fonts.ready.then(() => {
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width and two others' : 'two widths'}, in both units`);
+console.log(`Size, Used and Free line up with Unraid's pool table and no cell clips (${unraid7 ? 'fixed' : 'auto'} layout): ${checked} bars in ${themes.length} themes at ${unraid7 ? 'a phone\'s width (also with a larger font) and two others' : 'two widths'}, in both units`);
