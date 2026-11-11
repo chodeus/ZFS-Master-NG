@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/ZFSMLog.php';
 
 // A general setting as an integer, or $default when it isn't there.
 function zfsmSettingInt($general, $key, $default) {
@@ -283,10 +284,9 @@ function zfsmCommandError($result, $fallback) {
 	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
 }
 
-function zfsmLog($message, $priority = LOG_ERR) {
-	openlog('zfs.master', LOG_PID, LOG_USER);
-	syslog($priority, zfsmSafeText($message));
-	closelog();
+// A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
+function zfsmStatePath($path) {
+	return ($GLOBALS['zfsm_root'] ?? '').$path;
 }
 
 function commandAnswer($subject, $result) {

@@ -12,6 +12,8 @@ mount -t tmpfs tmpfs /tmp
 # impact_test.php writes under /mnt/user, which on an Unraid host holds the user shares.
 mkdir -p /mnt/user
 mount -t tmpfs tmpfs /mnt/user
+# Every zfsmLog call, and each script a test starts, appends to /var/log/zfs.master.log: never the host's.
+mount -t tmpfs tmpfs /var/log
 mkdir -p /tmp/zfsm-http-test/webGui/include /tmp/zfsm-http-test/plugins /tmp/zfsm-bin
 ln -s "$zfsm_repo/zfs.master" /tmp/zfsm-http-test/plugins/zfs.master
 ln -s "$zfsm_repo/tests/fixtures/unraid/Helpers.php" /tmp/zfsm-http-test/webGui/include/Helpers.php
@@ -33,6 +35,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/snapshot_files_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/size_format_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/plugin_log_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
 # replica-serve.php fixes PATH, so the zfs it runs is the first on that PATH: this fake, only while its test runs.

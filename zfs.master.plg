@@ -345,7 +345,7 @@ for p in /var/log/packages/&name;-*; do
 done
 rm -rf /boot/config/plugins/&name;
 rm -rf &plugdir;
-rm -f /tmp/zfsm_reload
+rm -f /tmp/zfsm_reload /var/log/&name;.log /var/log/&name;.log.1
 echo ""
 echo "-----------------------------------------------------------"
 echo " ZFS Master NG has been removed."

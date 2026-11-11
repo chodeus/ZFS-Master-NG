@@ -65,9 +65,11 @@ grep -q 'docker%-old' "$flash/zfs.master.cfg" || fail 'settings lost on upgrade'
 grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid && fail 'old daemon still in nchan.pid'
 grep -q 'plugins/other/nchan/zfs_master:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
 
-# Real plugin removal.
+# Real plugin removal; the plugin's log is in RAM, outside the package.
+touch /var/log/zfs.master.log /var/log/zfs.master.log.1
 $plugin remove zfs.master.plg > "$work/remove.log" 2>&1 || { cat "$work/remove.log"; fail 'remove failed'; }
 [ ! -e "$live" ] && [ ! -e "$flash" ] && [ ! -e /var/log/plugins/zfs.master.plg ] || fail 'remove left files behind'
+[ ! -e /var/log/zfs.master.log ] && [ ! -e /var/log/zfs.master.log.1 ] || fail 'remove left the plugin log behind'
 ls /var/log/packages/zfs.master-* >/dev/null 2>&1 && fail 'remove left a package record'
 
 # A download that fails must leave the old install and the archive its next boot needs.
