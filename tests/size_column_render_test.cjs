@@ -43,11 +43,11 @@ const ourTable = units => {
   context.zfsm_display = {number: '.,', scale: -1};
   // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
   const longDataset = context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', referenced: 1073636966, child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
-  // Two jobs' progress at once, as zfsmJobProgress joins them, and an error row as ZFSMFrontEnd.js writes one, its path unbroken:
-  // neither may push the columns out of line.
+  // Two jobs' progress at once, as zfsmJobProgress joins them, and an error row as ZFSMFrontEnd.js writes one, its path unbroken
+  // and wider than the table: neither may push the columns out of line.
   const progressRow = longDataset.replace('<span class="zfsm-row-progress"></span>', '<span class="zfsm-row-progress">Rewrite 45% · Replicating 1.2 GiB of 3.4 GiB</span>');
   assert.notEqual(progressRow, longDataset, 'the long dataset row has an empty progress cell to fill');
-  const errorRow = '<tr><td colspan="9" style="color:#e22828">ZFS query failed: cannot open \''+longName+'/'+'x'.repeat(160)+'\': I/O error on device nvme1n1p1</td></tr>';
+  const errorRow = '<tr><td colspan="9" style="color:#e22828">ZFS query failed: cannot open \''+longName+'/'+'x'.repeat(400)+'\': I/O error on device nvme1n1p1</td></tr>';
   // The pool's count reads Loading… until it arrives; the second pool has a long name, SUSPENDED (the longest state) and a big count.
   const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: null}, 'nvme0n1p3', true, display, root)+'</tr>'
     + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
