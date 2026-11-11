@@ -240,12 +240,8 @@ function zfsmContainerNames($ps_output) {
 }
 
 function zfsmReadContainerNames() {
-	try {
-		$result = zfsmWithDeadline(3, function() { return runProcess('docker', array('ps', '--no-trunc', '--format', '{{.ID}} {{.Names}}')); });
-		return ($result['code'] ?? 1) === 0 ? zfsmContainerNames($result['output'] ?? '') : array();
-	} catch (RuntimeException $error) {
-		return array();
-	}
+	$result = zfsmReadWithin(3, 'docker', array('ps', '--no-trunc', '--format', '{{.ID}} {{.Names}}'));
+	return $result['code'] === 0 ? zfsmContainerNames($result['output'] ?? '') : array();
 }
 
 // '' when the namespace does not use the dataset; null when its mountinfo can't be read, as when the process just exited.

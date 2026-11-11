@@ -90,11 +90,7 @@ function zfsmStaleProblem($output, $now, $max_days, $exclusion) {
 
 // A read for the check, under a time limit so a hung pool can't stack up cron runs; a timeout is a failed read.
 function zfsmAlertRead($command, $args) {
-	try {
-		return zfsmWithDeadline($GLOBALS['zfsm_alert_read_seconds'] ?? 120, function() use ($command, $args) { return runProcess($command, $args); });
-	} catch (RuntimeException $error) {
-		return array('code' => 1, 'output' => $error->getMessage());
-	}
+	return zfsmReadWithin($GLOBALS['zfsm_alert_read_seconds'] ?? 120, $command, $args);
 }
 
 // What is wrong now, keyed so the next run can tell what is new and what has cleared; $missing_due once pools must be imported.
@@ -141,8 +137,13 @@ function zfsmAlertNotices($previous, $current) {
 }
 
 // Whether pools must be imported by now: Unraid has mounted everything, and 10 minutes have passed since the boot or the last check that saw the array stopped.
+// Seconds since the server started; 0 when that can't be read.
+function zfsmUptime() {
+	return (int)(float)@file_get_contents($GLOBALS['zfsm_uptime'] ?? '/proc/uptime');
+}
+
 function zfsmMissingDue($array, $state, $now) {
-	$uptime = (int)(float)@file_get_contents($GLOBALS['zfsm_uptime'] ?? '/proc/uptime');
+	$uptime = zfsmUptime();
 	$since = max($now - $uptime, (int)($state['stopped_at'] ?? 0));
 	return ($array['fsState'] ?? '') === 'Started' && $uptime > 0 && $now - $since >= ZFSM_ALERT_GRACE;
 }

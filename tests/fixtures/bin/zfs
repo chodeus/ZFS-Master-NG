@@ -129,6 +129,12 @@ if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = 1 ]; then sleep 30; fi
 if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = stubborn ]; then trap '' TERM; sleep 30; fi
 # One whose output stays open after it ends, as a zfs stuck in the kernel holds it: timeout's KILL can't reach the holder.
 if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = held ]; then setsid sleep 30 & exit 0; fi
+if [ "$1" = "version" ]; then printf 'zfs-2.4.4-1\nzfs-kmod-2.4.4-1\n'; exit 0; fi
+# Each snapshot's creation and holds, as diagnostics counts them per dataset: ZFSM_TEST_SNAPSHOT_COUNTS is a file of such lines.
+if [ "$1" = "list" ] && contains_arg 'name,creation,userrefs' "$@"; then
+	if [ -n "${ZFSM_TEST_SNAPSHOT_COUNTS:-}" ]; then cat "$ZFSM_TEST_SNAPSHOT_COUNTS"; else printf '%s@root\t1700000300\t0\n%s/data@daily\t1700000400\t1\n%s/data@hourly\t1700000500\t0\n' "$last_arg" "$last_arg" "$last_arg"; fi
+	exit 0
+fi
 # zfs rewrite (OpenZFS 2.4+): usage with no file; with -v, one line per file it rewrote.
 if [ "$1" = "rewrite" ]; then
 	[ "${ZFSM_TEST_NO_REWRITE:-0}" = 1 ] && { printf "unrecognized command 'rewrite'\n" >&2; exit 2; }
@@ -274,6 +280,7 @@ if [ "$1" = "list" ]; then
 fi
 
 if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
+	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
 	printf 'tank\torg.example:role\tstorage\tlocal\n'
 	printf 'tank/data\torg.example:role\tmedia\tlocal\n'
 	exit 0
