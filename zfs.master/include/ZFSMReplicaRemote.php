@@ -3,7 +3,8 @@
 // to the checker there (scripts/replica-serve.php, include/ZFSMReplicaServe.php), which runs one fixed zfs command per request.
 require_once __DIR__.'/ZFSMJobs.php';
 
-// On the flash drive, so the key and the pinned host keys survive a reboot; ssh only ever reads RAM copies (zfsmReplicaSshFiles).
+// On the flash drive, unencrypted, so the key and the pinned host keys survive a reboot. ssh refuses the flash drive's modes,
+// so it reads RAM copies (zfsmReplicaKeyCopy): they protect nothing, the flash drive and its backups hold the key.
 function zfsmReplicaSshDir() {
 	return $GLOBALS['zfsm_ssh_dir'] ?? '/boot/config/plugins/zfs.master/ssh';
 }
@@ -117,8 +118,10 @@ function zfsmReplicaRemotesUnreadable() {
 function zfsmReplicaRemotesRead() {
 	$file = zfsmReplicaSshDir().'/remotes.json';
 	if (!file_exists($file)) return array('valid' => array(), 'other' => array());
-	$list = json_decode((string)@file_get_contents($file), true);
-	if (!is_array($list)) return null;
+	$text = (string)@file_get_contents($file);
+	// Read as objects first: as arrays, {} is an empty list and one server's record a list of its fields.
+	if (!is_array(json_decode($text))) return null;
+	$list = json_decode($text, true);
 	$read = array('valid' => array(), 'other' => array());
 	foreach ($list as $remote) {
 		if (zfsmReplicaRemoteValid($remote) && !isset($read['valid'][$remote['name']])) $read['valid'][$remote['name']] = array('name' => $remote['name'], 'host' => $remote['host'], 'port' => $remote['port'], 'key' => $remote['key']);
@@ -152,6 +155,7 @@ function zfsmReplicaRemotesChange($change) {
 function zfsmReplicaScan($host, $port) {
 	if (!zfsmReplicaHostValid($host) || !zfsmReplicaPortValid($port)) return array('error' => 'Give the server\'s IP address and its SSH port');
 	$scan = runProcess('ssh-keyscan', array('-T', '10', '-t', 'ed25519', '-p', (string)$port, $host));
+	if (($scan['code'] ?? 1) !== 0) return array('error' => 'ssh-keyscan failed for '.$host.' port '.$port.' (exit '.(int)($scan['code'] ?? 1).')');
 	foreach (preg_split('/\R/', (string)($scan['output'] ?? '')) as $line) {
 		$fields = preg_split('/\s+/', trim($line));
 		if (count($fields) < 3 || $fields[0][0] === '#') continue;

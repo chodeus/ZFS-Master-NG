@@ -30,7 +30,7 @@ $script = function($name, $body) use ($work) {
 	chmod($work.'/bin/'.$name, 0755);
 };
 // ssh-keyscan and ip answer from the test; ssh checks what it was given, then runs the checker as sshd's forced command would.
-$script('ssh-keyscan', "printf '%s\\n' \"ssh-keyscan \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\necho \"# \$*: SSH-2.0-OpenSSH_10.0\" >&2\n[ -n \"\${ZFSM_TEST_SCAN:-}\" ] && printf '%s\\n' \"\$ZFSM_TEST_SCAN\"\nexit 0\n");
+$script('ssh-keyscan', "printf '%s\\n' \"ssh-keyscan \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\necho \"# \$*: SSH-2.0-OpenSSH_10.0\" >&2\n[ -n \"\${ZFSM_TEST_SCAN:-}\" ] && printf '%s\\n' \"\$ZFSM_TEST_SCAN\"\nexit \"\${ZFSM_TEST_SCAN_EXIT:-0}\"\n");
 $script('ip', "printf '%s\\n' \"ip \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\n[ -n \"\${ZFSM_TEST_NO_ROUTE:-}\" ] && exit 2\nprintf '%s dev br0 src 10.0.20.5 uid 0 \\n    cache \\n' \"\$3\"\n");
 $script('ssh', implode("\n", array(
 	'printf "%s\n" "ssh $*" >> "$ZFSM_TEST_SSH_LOG"',
@@ -121,6 +121,11 @@ same(array('ssh-keyscan -T 10 -t ed25519 -p 2222 10.0.20.11'), $log(), 'read onc
 putenv('ZFSM_TEST_SCAN=10.0.20.11 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ');
 same(array('error' => 'No ed25519 host key came back from 10.0.20.11 port 22'), zfsmReplicaScan('10.0.20.11', 22), 'no ed25519 key, no answer');
 $log();
+putenv('ZFSM_TEST_SCAN=10.0.20.11 '.$host_key);
+putenv('ZFSM_TEST_SCAN_EXIT=1');
+same(array('error' => 'ssh-keyscan failed for 10.0.20.11 port 22 (exit 1)'), zfsmReplicaScan('10.0.20.11', 22), 'a scan that failed offers no key, even one it printed');
+putenv('ZFSM_TEST_SCAN_EXIT');
+$log();
 same(array('error' => 'Give the server\'s IP address and its SSH port'), zfsmReplicaScan('-oProxyCommand=x', 22), 'an address that isn\'t one is refused');
 same(array(), $log(), 'without running ssh-keyscan');
 putenv('ZFSM_TEST_SCAN');
@@ -144,6 +149,11 @@ $unreadable = $work.'/flash/ssh/remotes.json could not be read as a list of serv
 same($unreadable, zfsmReplicaRemoteAdd('other', '10.0.20.12', 22, $host_key, $host_print), 'a file that can\'t be read is never written over');
 same('{"name": "nas", "host"', file_get_contents($work.'/flash/ssh/remotes.json'), 'it stays as it was');
 same(array(null, $unreadable), array(zfsmReplicaRemotes(), zfsmReplicaRemote('nas')), 'a failed read is not an empty list, and Test says why');
+foreach (array('{}', json_encode(json_decode($kept, true)[0])) as $not_a_list) {
+	file_put_contents($work.'/flash/ssh/remotes.json', $not_a_list);
+	same(array(null, $unreadable, $not_a_list), array(zfsmReplicaRemotes(), zfsmReplicaRemoteAdd('other', '10.0.20.12', 22, $host_key, $host_print), file_get_contents($work.'/flash/ssh/remotes.json')), 'a file that is not a list is not an empty list either, and is left as it was: '.substr($not_a_list, 0, 20));
+}
+file_put_contents($work.'/flash/ssh/remotes.json', '{"name": "nas", "host"');
 same('<span style="color:#e22828">'.zfsmHtml($unreadable).'</span>', zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'so does Settings, where "None yet" would hide the pinned servers');
 file_put_contents($work.'/flash/ssh/remotes.json', $kept);
 $nas = zfsmReplicaRemotes()['nas'];
