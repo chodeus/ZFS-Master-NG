@@ -38,6 +38,8 @@ putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
 putenv('ZFSM_TEST_JOB_DIR='.$work.'/jobs');
 putenv('ZFSM_TEST_PS='.$work.'/ps.txt');
 $GLOBALS['zfsm_root'] = $root;
+$GLOBALS['zfsm_ssh_dir'] = $root.'/boot/config/plugins/zfs.master/ssh';
+$GLOBALS['zfsm_ident_file'] = $root.'/boot/config/ident.cfg';
 // Up for ten days, unless a case says the server has just started.
 $GLOBALS['zfsm_uptime'] = $work.'/uptime';
 file_put_contents($work.'/uptime', "864000.00 800000.00\n");
@@ -51,10 +53,12 @@ $manifest = function($url, $md5) {
 		."<!ENTITY pluginURL \"$url/&name;.plg\">\n]>\n<PLUGIN name=\"&name;\" version=\"&version;\" pluginURL=\"&pluginURL;\"></PLUGIN>\n";
 };
 $cron_line = "7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\n";
+// An ed25519 public key as ssh writes it, its 32 key bytes all $byte.
+$ed25519 = function($byte) { return 'ssh-ed25519 '.base64_encode("\0\0\0\x0bssh-ed25519\0\0\0\x20".str_repeat($byte, 32)); };
 $good_key = 'restrict,from="10.0.0.5",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php nas2" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGoodKeyGoodKeyGoodKeyGoodKeyGoodKeyGoodKeyGo root@nas2';
 
 // A server with nothing wrong: every file a collector reads, as Unraid 7.4 lays them out.
-$build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line, $good_key) {
+$build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line, $good_key, $ed25519) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($plugin_dir).' '.escapeshellarg($work.'/jobs').' 2>&1', $said, $code);
 	// With the realpath cache too: it still resolves the last server's manifest link, and symlink() would then name its target.
 	clearstatcache(true);
@@ -74,7 +78,11 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 	$put('/var/run/zfs.master.lock', '');
 	$put('/var/run/zfs.master.alerts.json', '{"problems":[]}');
 	$put('/etc/cron.d/root', "# Generated system monitoring schedule:\n*/1 * * * * /usr/local/emhttp/plugins/dynamix/scripts/monitor &> /dev/null\n".$cron_line);
-	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@Tower\n");
+	$put('/etc/ssh/ssh_host_ed25519_key.pub', $ed25519('k')." root@Tower\n");
+	$put('/boot/config/ident.cfg', "NAME=\"Tower\"\n");
+	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519', "-----BEGIN OPENSSH PRIVATE KEY-----\nPRIVATEKEYTEXT\n-----END OPENSSH PRIVATE KEY-----\n");
+	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $ed25519('p')." zfs.master@Tower\n");
+	$put('/boot/config/plugins/zfs.master/ssh/remotes.json', json_encode(array(array('name' => 'nas3', 'host' => '10.0.0.9', 'port' => 2222, 'key' => $ed25519('h')))));
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
 	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"Tower\"\n");
@@ -141,6 +149,9 @@ has("accept replicas into: tank/data\nhost key: SHA256:", $read('plugin/replicat
 has("nas2 (root@nas2): restrict: ok, from: ok, name: ok\n", $read('plugin/replication-receive.txt'), 'each sender key\'s checks');
 same(false, strpos($read('plugin/replication-receive.txt'), 'AAAAC3'), 'no key text');
 same(false, strpos($read('plugin/replication-receive.txt'), 'admin@laptop'), 'nor a key that is not a sender\'s');
+has("this server's name as a sender: Tower\nprivate key: there\npublic key: ".zfsmKeyFingerprint($ed25519('p'))."\nkey copies in RAM: 0\nrecords in remotes.json the plugin does not use: 0\n", $read('plugin/replication-send.txt'), 'the sending key by its fingerprint');
+has("== servers this one sends to (name, address, port, pinned host key)\nnas3\t10.0.0.9\t2222\t".zfsmKeyFingerprint($ed25519('h'))."\n", $read('plugin/replication-send.txt'), 'each server and its pinned host key\'s fingerprint');
+foreach (array('PRIVATEKEYTEXT', explode(' ', $ed25519('p'))[1], explode(' ', $ed25519('h'))[1]) as $key_text) same(false, strpos($read('plugin/replication-send.txt'), $key_text), 'no key text, private or public');
 same('getDatasets', json_decode($read('plugin/inventory.json.txt'), true)['op'], 'the Main tab\'s first read');
 has("Snapshot created: tank/data@plugin-log\n", $read('plugin/log.txt'), 'the plugin\'s own log');
 has("zfs.master[40]: older line\nJan  2 10:00:00 Tower zfs.master[41]: newer line\n", $read('plugin/log.txt'), 'the system log\'s lines, older file first');
@@ -295,6 +306,24 @@ putenv('ZFSM_TEST_PROPERTIES_FAIL');
 list($findings, $text) = $found('zfsmDiagReplicaReceive', function($root) use ($good_key) { file_put_contents($root.'/boot/config/ssh/root/authorized_keys', str_replace('restrict,', '', $good_key)."\n".str_replace(array('10.0.0.5', 'nas2'), array('10.0.0.0/24', 'nas3'), $good_key)."\n"); });
 same(array('a sender key\'s line does not hold it to replication: nas2', 'a sender key\'s line does not hold it to replication: nas3'), $findings, 'a key its line does not hold');
 has("nas2 (root@nas2): restrict: NOT OK, from: ok, name: ok\nnas3 (root@nas3): restrict: ok, from: NOT OK, name: ok\n", $text, 'and which check it fails');
+
+// Replication's sending side.
+$send = function($change) use ($found) { return $found('zfsmDiagReplicaSend', $change)[0]; };
+$ssh = '/boot/config/plugins/zfs.master/ssh';
+same(array(), $send(null), 'a good sending side has no findings');
+list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh) { exec('rm -rf '.escapeshellarg($root.$ssh)); unlink($root.'/boot/config/ident.cfg'); });
+same(array(), $findings, 'nor a server that sends nothing, whatever its name');
+has("private key: not there\npublic key: not there or not usable\n", $text, 'which says it has no key');
+has("== servers this one sends to (name, address, port, pinned host key)\n(none)\n", $text, 'and no servers');
+same(array('this server\'s sending key has lost its public half; Make This Server\'s Key in Settings restores it'), $send(function($root) use ($ssh) { file_put_contents($root.$ssh.'/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }), 'a key whose public half is not a key');
+same(array('this server\'s name can\'t be a sender\'s name, so no server can be given its key line'), $send(function($root) { file_put_contents($root.'/boot/config/ident.cfg', "NAME=\"my tower\"\n"); }), 'a server name that can\'t be a sender\'s');
+list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh) { file_put_contents($root.$ssh.'/remotes.json', '{"name":"nas3"}'); });
+same(array('the list of servers to send to can\'t be read: '.$root.$ssh.'/remotes.json'), $findings, 'a server list that is not a list');
+has("== servers this one sends to (name, address, port, pinned host key)\n(remotes.json could not be read as a list)\n", $text, 'is not "no servers"');
+list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh, $ed25519) { file_put_contents($root.$ssh.'/remotes.json', json_encode(array(array('name' => 'nas3', 'host' => 'nas3.lan', 'port' => 22, 'key' => $ed25519('h')), array('name' => 'nas4', 'host' => '10.0.0.10', 'port' => 22, 'key' => $ed25519('i'))))); });
+same(array('1 record(s) in remotes.json are not servers the plugin can use'), $findings, 'a record the plugin does not use');
+has("records in remotes.json the plugin does not use: 1\n\n== servers this one sends to (name, address, port, pinned host key)\nnas4\t10.0.0.10\t22\t", $text, 'beside the servers it does');
+has("key copies in RAM: 1\n", $found('zfsmDiagReplicaSend', function() use ($work) { mkdir($work.'/jobs/replica-send/ssh-0123456789ab', 0700, true); })[1], 'a copy of the key left in RAM is counted');
 
 // The pools and the commands running on them.
 putenv('ZFSM_TEST_POOL_HEALTH=DEGRADED');
