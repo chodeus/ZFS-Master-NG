@@ -38,8 +38,11 @@ const display = {text: 1, warning: 70, critical: 90};
 const longName = 'flash/appdata/docker/containers/'+'a-very-long-dataset-name-'.repeat(3)+'end';
 // Unraid's own text for this pool in its units, and ours in ZFS units (tests/fixtures/zfs_sizes.json).
 const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3027000000, 9970000000].map(bytes => context.fromBytesToString(bytes))};
+// Our browse link follows the tree's own pool list: a folder from 7.4 (nchan/device_list's a.view), the tab arrow before.
+const deviceList = path.join(dynamix, 'nchan/device_list');
+const unraidFolder = fs.existsSync(deviceList) && fs.readFileSync(deviceList, 'utf8').includes('<i class=\\"fa fa-folder-o\\"></i><span>');
 const ourTable = units => {
-  context.zfsm_config = {size_units: units};
+  context.zfsm_config = {size_units: units, version: unraidFolder ? '7.4.0' : '7.3.4'};
   context.zfsm_display = {number: '.,', scale: -1};
   // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
   const longDataset = context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', referenced: 1073636966, child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
@@ -116,7 +119,8 @@ document.fonts.ready.then(() => {
     }
     return found; });
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
-  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
+  const browse = tables[1].querySelector('a.zfsm-browse');
+  out.textContent = JSON.stringify({browse: browse && [browse.querySelector('i').className, getComputedStyle(browse).width], viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
@@ -124,7 +128,9 @@ document.fonts.ready.then(() => {
       `--window-size=${Math.max(width, 500)},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${run}: the tables did not render`);
-    const {viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {browse, viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.ok(browse && browse[0].includes(unraidFolder ? 'fa-folder-o' : 'icon-u-tab'), `${run}: the browse link uses Unraid's own icon here: ${browse}`);
+    if (unraidFolder) assert.equal(browse[1], '20px', `${run}: Unraid's a.view style reaches our folder link`);
     assert.equal(viewport, width, `${run}: the tables were laid out ${viewport}px wide`);
     assert.deepEqual(clipped, [], `${run}: these cells (row:cell) hide part of their content`);
     // A larger font may split a long word; it must still show whole.

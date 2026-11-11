@@ -34,12 +34,20 @@ function nameCell(label, actions) {
 	return '<td class="zfsm-name"><div class="zfsm-name-row"><div class="zfsm-name-label">'+label+'</div>'+actions+'</div></td>';
 }
 
+// Unraid 7.4 browses a pool from a folder (nchan/device_list's a.view), earlier versions from the tab arrow: ours follows the server's.
+function zfsmBrowsesFromFolder() {
+	const [major, minor] = String((typeof zfsm_config === 'object' && zfsm_config && zfsm_config.version) || '').split('.').map(Number);
+	return major > 7 || (major === 7 && minor >= 4);
+}
+
 // A dataset or folder row starts with its browse link, then the slot a copy or rewrite reports into (zfsmShowCopyProgress).
 function rowLeadCell(browsePath) {
 	// Unraid 7.2+ browses only /mnt and /boot; mirrors zfsmSnapshotBrowseRoot in ZFSMSnapshotFiles.php.
-	const browse = typeof browsePath === 'string' && /^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)
-		? '<a class="zfsm-browse" href="/Main/Browse?dir='+encodeURIComponent(browsePath)+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>'
-		: '';
+	if (typeof browsePath !== 'string' || !/^\/(?:mnt|boot)(?:\/|$)/.test(browsePath)) return '<td class="zfsm-lead" colspan="2"><span class="zfsm-row-progress"></span></td>';
+	const href = '/Main/Browse?dir='+encodeURIComponent(browsePath);
+	const browse = zfsmBrowsesFromFolder()
+		? '<a class="zfsm-browse view info" href="'+href+'"><i class="fa fa-folder-o"></i><span>Open in File Manager</span></a>'
+		: '<a class="zfsm-browse" href="'+href+'"><i class="icon-u-tab zfs_bar_button" title="Browse '+escapeHtml(browsePath)+'"></i></a>';
 	return '<td class="zfsm-lead" colspan="2">'+browse+'<span class="zfsm-row-progress"></span></td>';
 }
 
