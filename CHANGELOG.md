@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.11.1 (beta)
 
 - Replicate a dataset to another pool, in the background
 - The row shows how far it got; a notification says when it finishes
