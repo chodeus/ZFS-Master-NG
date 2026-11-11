@@ -30,7 +30,7 @@ function zfsmLogKeep($text, $priority) {
 			// A writer that waited out a turn-over holds .1: it starts again on the new file, and must not turn that one over too.
 			if (@fileinode($file) !== $stat['ino']) continue;
 			if ($stat['size'] < ZFSM_LOG_BYTES) {
-				fwrite($handle, $line);
+				@fwrite($handle, $line);
 				return;
 			}
 			if (!@rename($file, $file.'.1')) return;

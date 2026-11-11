@@ -63,6 +63,13 @@ proc_close($holder);
 clearstatcache();
 same(array('w', "first after the turn-over\n", 1), array(file_get_contents($log.'.1', false, null, 0, 1), file($log)[0], preg_match('/ second writer$/D', trim(file_get_contents($log)))), 'the writer that waited writes to the new file and leaves .1 alone');
 
+// A log that opens but takes no more, as on a full /var/log, drops the line as quietly.
+mkdir($root.'/full/var/log', 0700, true);
+symlink('/dev/full', $root.'/full/var/log/zfs.master.log');
+$GLOBALS['zfsm_root'] = $root.'/full';
+zfsmLog('no room');
+same(array('zfs.master.log'), array_values(array_diff(scandir($root.'/full/var/log'), array('.', '..'))), 'a line that can\'t be written is dropped, with no other file made');
+
 // A log that can't be written never stops the action that logged.
 $GLOBALS['zfsm_root'] = $root.'/missing';
 zfsmLog('nowhere to write');

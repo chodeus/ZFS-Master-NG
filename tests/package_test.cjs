@@ -66,7 +66,7 @@ try {
   const files = execFileSync('tar', ['-tJf', archive], {encoding: 'utf8'}).trim().split(/\r?\n/).filter(entry => !entry.endsWith('/'));
   // manifest.md5 names every packaged file once, with its md5, so an install can be checked against the release.
   const listed = fs.readFileSync(path.join(packaged, 'manifest.md5'), 'utf8').trim().split('\n').map(line => line.split('  '));
-  assert.equal(new Set(listed.map(([, file]) => file)).size, checked, 'manifest.md5 lists every packaged file once');
+  assert.deepEqual([listed.length, new Set(listed.map(([, file]) => file)).size], [checked, checked], 'manifest.md5 lists every packaged file once');
   for (const [md5, file] of listed) assert.equal(crypto.createHash('md5').update(fs.readFileSync(path.join(root, 'zfs.master', file))).digest('hex'), md5, `manifest.md5 is wrong for ${file}`);
   assert.equal(files.length, checked + 1, 'Unexpected package files');
   assert.ok(files.every(entry => entry.replace(/^\.\//, '').startsWith('usr/local/emhttp/plugins/zfs.master/')), 'Package must install only under the plugin directory');
