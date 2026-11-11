@@ -57,7 +57,9 @@ const ourTable = units => {
   const [size, used, free] = texts[units];
 
   assert.ok(rows.includes('>'+size+'</td>') && rows.includes('>'+used+'<') && rows.includes('>'+free+'<'), `in ${units} units the pool row shows ${texts[units].join(', ')}`);
-  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`;
+  // The same table without the error row: it must not move Size, Used and Free, also where 6.x can't line up with Unraid's.
+  return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`
+    + `<div class="TableContainer">${ourHead}<tbody>${rows.replace(errorRow, '')}</tbody></table></div>`;
 };
 
 // Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
@@ -97,12 +99,19 @@ document.fonts.ready.then(() => {
   });
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
-  // A short cell wraps to two lines at most: a word split letter by letter shows as many. Pool names, like dataset names, may take more.
+  // A short cell wraps to two lines at most, and each word in it stays whole. Pool names, like dataset names, may take more.
   const lines = td => { const rects = [...(() => { const r = document.createRange(); r.selectNodeContents(td); return r.getClientRects(); })()].sort((a, b) => a.top - b.top);
     return rects.reduce((n, rect, i) => n + (i && rect.top > rects[i - 1].top + rects[i - 1].height / 2 ? 1 : 0), rects.length ? 1 : 0); };
-  const tall = [...tables[1].tHead.rows[0].cells, ...tables[1].querySelectorAll('td.zfsm-health, td.zfsm-refer, td.zfsm-snaps')].filter(td => lines(td) > 2).map(td => (td.className || 'head')+': '+td.textContent.trim().slice(0, 20));
+  const short = [...tables[1].tHead.rows[0].cells, ...tables[1].querySelectorAll('td.zfsm-health, td.zfsm-refer, td.zfsm-snaps')];
+  const tall = short.filter(td => lines(td) > 2).map(td => (td.className || 'head')+': '+td.textContent.trim().slice(0, 20));
+  const split = short.flatMap(td => { const walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT); const found = [];
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.parentElement.getClientRects().length) continue;
+      for (const word of node.data.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(node, word.index); r.setEnd(node, word.index + word[0].length); if (r.getClientRects().length > 1) found.push(word[0]); }
+    }
+    return found; });
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
-  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), clipped, tall});
+  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].filter(row => row.cells.length > 1).map(lastThree), bare: [...tables[2].tBodies[0].rows].map(lastThree), clipped, tall, split});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
@@ -110,11 +119,13 @@ document.fonts.ready.then(() => {
       `--window-size=${Math.max(width, 500)},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${run}: the tables did not render`);
-    const {viewport, unraid, ours, clipped, tall} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {viewport, unraid, ours, bare, clipped, tall, split} = JSON.parse(match[1].replace(/&quot;/g, '"'));
     assert.equal(viewport, width, `${run}: the tables were laid out ${viewport}px wide`);
     assert.deepEqual(clipped, [], `${run}: these cells (row:cell) hide part of their content`);
     // A larger font may split a long word; it must still show whole.
     if (!font) assert.deepEqual(tall, [], `${run}: these cells wrap to more than two lines`);
+    if (!font) assert.deepEqual(split, [], `${run}: these words split across lines`);
+    ours.forEach((row, r) => row.forEach((cell, c) => assert.deepEqual(cell.cell, bare[r][c].cell, `${run}: row ${r} cell ${c} moves with the error row`)));
     if (font || (!unraid7 && width < 1280)) continue;
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${run}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
