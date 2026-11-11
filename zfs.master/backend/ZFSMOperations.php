@@ -702,8 +702,9 @@ function zfsmFilesystemMounts() {
 	return $mounts;
 }
 
+// U+FFFD stands in for a byte that isn't UTF-8 in every name the page shows (zfsmJson), so a path holding one may name another folder.
 function zfsmResolveDirectory($path, $must_exist = true) {
-	if (!is_string($path) || $path === '' || $path[0] !== '/' || preg_match('/[\x00-\x1F\x7F]/', $path)) return null;
+	if (!is_string($path) || $path === '' || $path[0] !== '/' || preg_match('/[\x00-\x1F\x7F]|\xEF\xBF\xBD/', $path)) return null;
 	$resolved = $must_exist ? realpath($path) : realpath(dirname($path));
 	if ($resolved === false) return null;
 	if (!$must_exist) $resolved = rtrim($resolved, '/').'/'.basename($path);
@@ -758,7 +759,7 @@ function zfsmRsyncArgs() {
 
 // Progress is optional: a missing feed must not abort a copy already under way.
 function zfsmCopyProgress($op, $data) {
-	if (function_exists('publish')) publish('zfs_master', json_encode(array('op' => $op, 'data' => $data)));
+	if (function_exists('publish')) publish('zfs_master', zfsmJson(array('op' => $op, 'data' => $data)));
 }
 
 function zfsmCopyWithProgress($rsync_args, $from, $to, $dataset_name) {

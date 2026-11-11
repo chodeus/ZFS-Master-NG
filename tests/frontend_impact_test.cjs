@@ -80,5 +80,9 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset goes raw');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'an incremental says a device the copy has now goes');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'so does a resumed run');
 
 console.log('destroy and rollback dialog tests passed');

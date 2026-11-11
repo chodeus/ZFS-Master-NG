@@ -99,6 +99,29 @@ switch ($check) {
 		if (strpos($html, '<i id=zfsm-injected>') !== false) { fwrite(STDERR, "a saved setting closed the page's script tag\n"); exit(1); }
 		break;
 
+	case 'invalid_utf8_setting':
+		// A hand-edited setting with a byte that isn't UTF-8: the Main tab's settings script and the Settings field keep the value,
+		// with U+FFFD in its place, where they would be empty (and Apply would then save the field empty).
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$original = file_get_contents($cfg);
+		file_put_contents($cfg, str_replace('snap_prefix = ""', "snap_prefix = \"auto-\xff\"", $original));
+		try {
+			$arrives = strpos(parse_plugin_cfg('zfs.master', true)['general']['snap_prefix'] ?? '', "\xff") !== false;
+			$main = run_page($docroot.'/plugins/zfs.master/ZFSMaster.page', true);
+			$settings = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			file_put_contents($cfg, $original);
+		}
+		if (!$arrives) { fwrite(STDERR, "this Unraid's settings reader no longer hands the byte over, so this check tests nothing\n"); exit(1); }
+		$config = preg_match('/var zfsm_config = (.*);\n/', $main, $match) === 1 ? json_decode($match[1], true) : null;
+		if (!is_array($config)) { fwrite(STDERR, "the Main tab's settings script is not JSON\n"); exit(1); }
+		$shown = 'auto-'."\u{FFFD}";
+		if (($config['snap_prefix'] ?? null) !== $shown) { fwrite(STDERR, 'the Main tab read the prefix as '.var_export($config['snap_prefix'] ?? null, true)."\n"); exit(1); }
+		if (strpos($settings, 'name="snap_prefix" value="'.$shown.'"') === false) { fwrite(STDERR, "the Settings field lost the prefix\n"); exit(1); }
+		break;
+
 	case 'main_page_stuck_zfs':
 		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
 		$_SERVER['REQUEST_METHOD'] = 'GET';

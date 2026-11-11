@@ -108,6 +108,11 @@ assertSameValue(true, !empty($nonforce_result['failed']), 'Non-force directory r
 assertSameValue(true, is_dir($nonempty_directory), 'Non-force directory removal deleted a non-empty directory');
 assertSameValue(true, !empty(deleteDirectory($nonempty_directory, 1)['succeeded']), 'Forced recursive directory removal failed');
 assertSameValue(false, file_exists($nonempty_directory), 'Forced recursive directory removal left the directory behind');
+// The page shows a name that isn't UTF-8 with U+FFFD in its place, so a path holding U+FFFD may be another folder's: refused.
+$twin = $directory_test_root.'/a'."\u{FFFD}";
+mkdir($twin);
+assertSameValue(array(true, true), array(!empty(deleteDirectory($twin, 1)['failed']), is_dir($twin)), 'A folder whose path holds U+FFFD is not deleted');
+rmdir($twin);
 $nested_parent = $directory_test_root.'/nested';
 $nested_child = $nested_parent.'/child';
 mkdir($nested_child, 0777, true);
@@ -138,6 +143,9 @@ $kept = runProcess('printf', array('a\nb'), null, 0, 100);
 assertSameValue(array("a\nb", 2), array($kept['output'], $kept['lines']), 'A last line without a newline still counts');
 $kept = runProcess('true', array(), null, 0, 100);
 assertSameValue(array('', 0), array($kept['output'], $kept['lines']), 'No output is no lines');
+// More input than a pipe holds, to a command that ends without reading it: the write always meets a closed pipe.
+$early = runProcess('sh', array('-c', 'echo refused >&2; exit 4'), str_repeat("secret\n", 300000));
+assertSameValue(array(4, 'refused'), array($early['code'], trim($early['output'])), 'A command that ends before reading its input fails by its own exit code and output');
 
 $tree = zfsmLoadPoolTree('tank', true, '', 1);
 assertSameValue('tank', $tree['name'], 'Pool root dataset was not returned');

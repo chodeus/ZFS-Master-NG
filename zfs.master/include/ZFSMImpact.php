@@ -9,7 +9,7 @@ function zfsmImpactRows($output) {
 function zfsmImpactToken($target, $mode, $objects, $others) {
 	sort($objects, SORT_STRING);
 	sort($others, SORT_STRING);
-	return hash('sha256', json_encode(array($target, $mode, $objects, $others)));
+	return hash('sha256', serialize(array($target, $mode, $objects, $others)));
 }
 
 function zfsmValidDestroyTarget($target) {

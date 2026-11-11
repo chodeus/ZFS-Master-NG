@@ -118,7 +118,8 @@ async function confirm() {
   window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
     php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
       : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
-      : php.includes('$urlzmadmin') ? '/zfsm-admin' : ''));
+      : php.includes('$urlzmadmin') ? '/zfsm-admin'
+      : php.includes('$csrf_token') ? '"page-token"' : ''));
   await settle();
   assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
   const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));

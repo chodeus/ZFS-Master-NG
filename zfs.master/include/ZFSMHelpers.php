@@ -151,7 +151,8 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	}
 
 	if ($stdin !== null && $stdin !== '') {
-		fwrite($pipes[0], $stdin);
+		// A command that ends without reading it closes its end: the write fails, and its exit code and output say why.
+		@fwrite($pipes[0], $stdin);
 	}
 	fclose($pipes[0]);
 	// A zfs stuck in the kernel ignores even KILL and holds its output open: past the limit and timeout's own grace, let it go.
@@ -246,6 +247,16 @@ function zfsmPopupStylesheets($docroot) {
 	$theme = preg_match('/^[a-z]+$/', (string)($display['theme'] ?? '')) === 1 ? $display['theme'] : 'black';
 	$sheets = array('/webGui/styles/default-color-palette.css', '/webGui/styles/default-base.css', '/webGui/styles/themes/'.$theme.'.css');
 	return array_values(array_filter($sheets, function($sheet) use ($docroot) { return is_file($docroot.$sheet); }));
+}
+
+// Every HTML escape and JSON encode goes through these (tests/encoding_test.php): a non-UTF-8 byte becomes U+FFFD.
+// A value JSON can't hold (NAN) becomes 0 or null, unless the caller asks for JSON_THROW_ON_ERROR.
+function zfsmHtml($text) {
+	return htmlspecialchars((string)$text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function zfsmJson($value, $flags = 0) {
+	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE | ($flags & JSON_THROW_ON_ERROR ? 0 : JSON_PARTIAL_OUTPUT_ON_ERROR));
 }
 
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
@@ -358,7 +369,7 @@ function generatePoolDatasetOptions($dataset_array) {
 	
 	foreach ($dataset_array['child'] as $zdataset):
 		$option = ltrim(stristr($zdataset['name'], '/'), '/')."/";
-		echo '<option value="'.htmlspecialchars($option, ENT_QUOTES, 'UTF-8').'">';
+		echo '<option value="'.zfsmHtml($option).'">';
 
 		if (count($zdataset['child']) > 0):
 			generatePoolDatasetOptions($zdataset);

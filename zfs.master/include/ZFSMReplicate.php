@@ -1,6 +1,6 @@
 <?php
 // Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy on another pool that each run brings up to date.
-// The copy is received unmounted and read-only, and never with -F: a run only adds to it, so nothing there is rolled back or destroyed.
+// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and never with -F: a run only adds to it, so nothing there is rolled back or destroyed.
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked.
