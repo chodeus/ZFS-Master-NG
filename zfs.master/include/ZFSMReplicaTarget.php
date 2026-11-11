@@ -96,10 +96,11 @@ function zfsmReplicaTargetToken($target, $zdest) {
 	return $token === '-' ? '' : $token;
 }
 
-// The copy's snapshots, oldest first; null when they can't be read.
+// The copy's snapshots, oldest first (none when there is no copy); null when they can't be read.
 function zfsmReplicaTargetSnapshots($target, $zdest) {
 	$result = zfsmReplicaTargetAsk($target, 'snapshots', $zdest);
-	return ($result['code'] ?? 1) === 0 ? zfsmReplicaMarksRead($zdest, $result['output']) : null;
+	if (($result['code'] ?? 1) !== 0) return zfsmNoSuchDataset($result) ? array() : null;
+	return zfsmReplicaMarksRead($zdest, $result['output']);
 }
 
 // The command the stream goes into; null in a test without the fake. The checker there sets the copy's properties from its area.

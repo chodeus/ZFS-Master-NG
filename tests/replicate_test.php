@@ -171,6 +171,14 @@ same(true, in_array('tank/data@repl-11', $names('tank/data', 'snapshot'), true),
 same(true, strpos($read('notify-detail.log')[0] ?? '', 'incomplete stream. Whether it can carry on could not be read; the snapshot it took is kept.') !== false, 'and says so: '.($read('notify-detail.log')[0] ?? ''));
 same('Could not check whether backup/data holds a part-received replication', $refuse('repl-11', 'backup/data'), 'the next plan refuses while the token can\'t be read');
 putenv('ZFSM_TEST_TOKEN_FAIL');
+$fresh();
+putenv('ZFSM_TEST_RECV_FAIL=1');
+putenv('ZFSM_TEST_MARKS_FAIL=backup/data');
+same(1, zfsmRunReplicate('tank/data', 'repl-12', 'backup/data', null, true), 'a failed run whose copy\'s snapshots can\'t be read');
+putenv('ZFSM_TEST_RECV_FAIL');
+putenv('ZFSM_TEST_MARKS_FAIL');
+same(true, in_array('tank/data@repl-12', $names('tank/data', 'snapshot'), true), 'keeps the snapshot it took, as the copy may hold it');
+same(true, strpos($read('notify-detail.log')[0] ?? '', 'out of space. Whether it can carry on could not be read; the snapshot it took is kept.') !== false, 'and says so: '.($read('notify-detail.log')[0] ?? ''));
 
 // An encrypted dataset goes raw, so the copy stays locked with its key; a volume's copy takes volmode=none, not canmount, on every run.
 $reset();
@@ -318,13 +326,56 @@ putenv('ZFSM_TEST_SEND_CUT=1');
 same(1, zfsmRunReplicate('tank/data', 'd', $there, null, false, 'nas'), 'a run cut off part-way');
 putenv('ZFSM_TEST_SEND_CUT');
 same(true, strpos($read('notify-detail.log')[0] ?? '', $there.' on nas failed: cannot receive incremental stream: checksum mismatch or incomplete stream. Replicate it again to carry on from where it stopped.') !== false, 'says another run carries on: '.($read('notify-detail.log')[0] ?? ''));
-same(array('receive '.$there, 'token '.$there), array_slice($requests(), -2), 'from the token read there');
+same(array('receive '.$there, 'snapshots '.$there, 'token '.$there), array_slice($requests(), -3), 'the copy there is read for the snapshot, then its token');
 $reset();
 $preview = zfsmReplicatePreview('tank/data', 'a', $there, $cfg, 'nas');
-same(array('resume', 'tank/data@d', 'tok:tank/data@d'), array($preview['mode'], $preview['snapshot'], $preview['token']), 'the next plan resumes it');
+$guid_of = function($name) { return array_column(zfsmReplicaMarks(explode('@', $name)[0]) ?? array(), 'guid', 'name')[$name] ?? ''; };
+$cut_token = 'tok:tank/data@d;from='.$guid_of('tank/data@c');
+same(array('resume', 'tank/data@d', $cut_token), array($preview['mode'], $preview['snapshot'], $preview['token']), 'the next plan resumes it, its token from c, as zfs records it');
 same(0, zfsmRunReplicate('tank/data', 'a', $there, null, false, 'nas'), 'and runs');
-same(array('send -P -v -t tok:tank/data@d'), $calls('send'), 'from the token read there');
+same(array('send -P -v -t '.$cut_token), $calls('send'), 'from the token read there');
 same(array($there.'@b', $there.'@c', $there.'@d'), $names($there, 'snapshot'), 'the copy there ends at d');
+
+// The other server writes its copy's token, and zfs send -t sends what the token says: the snapshot its toguid finds (beyond toname's
+// dataset), raw only with rawok. So every field is checked here; the listing is zfs send -n -t's, as OpenZFS 2.4.4 prints it.
+same(array('97d39594f721a26f', '70efa6e04727a09d', '0', ''), array(zfsmGuidHex('10940252386846941807'), zfsmGuidHex('8137906533878440093'), zfsmGuidHex('0'), zfsmGuidHex('-1')), 'guids as a token lists them (seen live)');
+$enc_there = 'backup/replicas/tower/enc';
+$reset();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/enc', 'e', $enc_there, null, false, 'nas'), 'a raw run there cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+$preview = zfsmReplicatePreview('tank/enc', 'e', $enc_there, $cfg, 'nas');
+same(array('resume', 'tok:tank/enc@e;raw'), array($preview['mode'] ?? $preview['error'], $preview['token'] ?? ''), 'a token that carries rawok resumes');
+$reset();
+same(0, zfsmRunReplicate('tank/enc', 'e', $enc_there, null, false, 'nas'), 'and runs');
+same(array('send -P -v -t tok:tank/enc@e;raw'), $calls('send'), 'raw, as the token says (zfs send -t takes no -w)');
+$forged = function($token, $dataset, $dest) use ($work, $cfg) {
+	file_put_contents($work.'/pool/props', "$dest\treceive_resume_token\t$token\n", FILE_APPEND);
+	$plan = zfsmReplicatePreview($dataset, '', $dest, $cfg, 'nas');
+	return ($plan['can_proceed'] ?? false) ? 'resumes: zfs '.implode(' ', zfsmReplicateSendArgs($plan)) : $plan['error'];
+};
+$refused = function($why, $dest) { return $dest.' on nas holds a part-received replication that isn\'t resumed: '.$why.'. zfs receive -A '.$dest.', run on nas, discards it'; };
+same($refused('it would send this encrypted dataset decrypted', $enc_there), $forged('tok:tank/enc@e', 'tank/enc', $enc_there), 'a token without rawok for an encrypted dataset');
+same($refused('its snapshot is not tank/data@d here', $there), $forged('tok:tank/data@d;toguid=999', 'tank/data', $there), 'a toguid that isn\'t its toname\'s');
+same($refused('it goes on from a snapshot this dataset doesn\'t have', $there), $forged('tok:tank/data@d;from=999', 'tank/data', $there), 'a fromguid this dataset doesn\'t have');
+same($refused('it asks for savedok, which this plugin never sends', $there), $forged('tok:tank/data@d;savedok', 'tank/data', $there), 'a field this plugin never asks for');
+file_put_contents($work.'/pool/props', "$there\treceive_resume_token\t-\n", FILE_APPEND);
+
+// ssh can be lost after the receive there ended: the copy holds the snapshot, so the run is done, the snapshot and its bookmark kept.
+$drop_bin = $work.'/dropbin';
+mkdir($drop_bin);
+foreach (glob($bin_dir.'/*') as $file) symlink($file, $drop_bin.'/'.basename($file));
+unlink($drop_bin.'/ssh');
+file_put_contents($drop_bin.'/ssh', "#!/bin/sh\nfor last in \"\$@\"; do :; done\n\"$bin_dir/ssh\" \"\$@\"; code=\$?\ncase \"\$last\" in *' receive '*) [ \$code = 0 ] && exit 255 ;; esac\nexit \$code\n");
+chmod($drop_bin.'/ssh', 0755);
+putenv('ZFSM_TEST_BIN_DIR='.$drop_bin);
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'repl-9', $there, null, true, 'nas'), 'a run whose ssh is lost after the receive there');
+putenv('ZFSM_TEST_BIN_DIR='.$bin_dir);
+same(array(true, true), array(in_array($there.'@repl-9', $names($there, 'snapshot'), true), in_array('tank/data@repl-9', $names('tank/data', 'snapshot'), true)), 'the copy holds the snapshot, and it is kept here');
+same(array('warning: Replication of tank/data@repl-9 to '.$there.' on nas finished (changes since d). Its stream reported exit code 255, but the copy holds the snapshot.'), $read('notify-detail.log'), 'with a warning that says what happened');
+runProcess('zfs', array('snapshot', 'tank/data@z'));
+same('incremental', zfsmReplicatePreview('tank/data', 'z', $there, $cfg, 'nas')['mode'] ?? 'refused', 'and the next run goes on from it');
 
 // Refused, with why: a name outside the area, a server that isn't trusted, one that can't be reached, a checker that refuses.
 same('On nas, the copy goes inside backup/replicas/tower, such as backup/replicas/tower/data', zfsmReplicatePreview('tank/data', 'd', 'backup/data', $cfg, 'nas')['error'], 'a name outside its area there, before the checker sees it');

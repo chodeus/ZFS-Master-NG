@@ -73,6 +73,38 @@ function zfsmReplicateEstimate($plan) {
 	return ($estimate['code'] ?? 1) === 0 ? zfsmReplicateSize($estimate['output']) : null;
 }
 
+// A guid as zfs list prints it (decimal, past PHP's integers) in the hex a resume token lists; '' for anything else.
+function zfsmGuidHex($decimal) {
+	if (!is_string($decimal) || !preg_match('/^[0-9]{1,20}$/D', $decimal)) return '';
+	$hex = '';
+	do {
+		$quotient = '';
+		$rest = 0;
+		foreach (str_split($decimal) as $digit) {
+			$rest = $rest * 10 + (int)$digit;
+			$quotient .= intdiv($rest, 16);
+			$rest %= 16;
+		}
+		$hex = dechex($rest).$hex;
+		$decimal = ltrim($quotient, '0');
+	} while ($decimal !== '');
+	return $hex;
+}
+
+// '' when a resume token sends this dataset's own snapshot as the copy expects, else why not. The copy's server wrote it, so every field
+// counts: zfs send -t finds the snapshot by toguid, beyond toname's dataset, and sends raw only when rawok says so.
+function zfsmReplicaTokenError($listing, $zdataset, $marks, $raw) {
+	preg_match_all('/^\t([a-z_]+) = (.*)$/m', (string)$listing, $lines, PREG_SET_ORDER);
+	$fields = array_column($lines, 2, 1);
+	$unknown = array_diff(array_keys($fields), array('object', 'offset', 'bytes', 'toguid', 'toname', 'fromguid', 'compressok', 'rawok', 'embedok', 'largeblockok', 'longnameok'));
+	if ($unknown) return 'it asks for '.implode(', ', $unknown).', which this plugin never sends';
+	$guids = array_map('zfsmGuidHex', array_column($marks, 'guid', 'name'));
+	if (!isset($fields['toname'], $guids[$fields['toname']]) || '0x'.$guids[$fields['toname']] !== ($fields['toguid'] ?? '')) return 'its snapshot is not '.($fields['toname'] ?? 'named').' here';
+	if (isset($fields['fromguid']) && !in_array(substr($fields['fromguid'], 2), $guids, true)) return 'it goes on from a snapshot this dataset doesn\'t have';
+	if ($raw && ($fields['rawok'] ?? '') !== '1') return 'it would send this encrypted dataset decrypted';
+	return '';
+}
+
 function zfsmReplicaBookmarkFits($zdataset, $plan, $snapshot) {
 	return strlen($zdataset.'#'.zfsmReplicaBookmarkPrefix($plan['dest'], $plan['server']).$snapshot) <= 255;
 }
@@ -110,11 +142,13 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	if ($token !== '') {
 		// A run that stopped part-way left a token on the copy: zfs send -t carries on from there, whatever snapshot is picked now.
 		$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
+		$there = $target['server'] !== '' ? ', run on '.$target['server'].',' : '';
 		if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
-			$there = $target['server'] !== '' ? ', run on '.$target['server'].',' : '';
 			return $refuse($where($zdest).' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.$there.' discards it');
 		}
 		if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $refuse($where($zdest).' holds a part-received replication of '.$match[1].', not of this dataset');
+		$why = zfsmReplicaTokenError($info['output'], $zdataset, $marks, $plan['raw']);
+		if ($why !== '') return $refuse($where($zdest).' holds a part-received replication that isn\'t resumed: '.$why.'. zfs receive -A '.$zdest.$there.' discards it');
 		if (!zfsmReplicaBookmarkFits($zdataset, $plan, substr($match[1], strlen($zdataset) + 1))) return $refuse($too_long);
 		return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output'])));
 	}

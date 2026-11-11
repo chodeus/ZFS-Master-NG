@@ -105,6 +105,31 @@ function zfsmReplicaMark($zdataset, $plan) {
 	return '';
 }
 
+function zfsmReplicateWhy($result) {
+	return rtrim($result['errors'] !== '' ? $result['errors'] : 'exit code '.$result['code'], '.');
+}
+
+// Whether the copy holds the plan's snapshot (by guid); null when either side can't be read.
+function zfsmReplicaCopyHolds($zdataset, $plan, $target) {
+	$guid = array_column(zfsmReplicaMarks($zdataset) ?? array(), 'guid', 'name')[$plan['snapshot']] ?? null;
+	$held = zfsmReplicaTargetSnapshots($target, $plan['dest']);
+	if ($guid === null || $held === null) return null;
+	return in_array($guid, array_column($held, 'guid'), true);
+}
+
+// A run whose copy isn't read as holding its snapshot: whether another run carries on, and the snapshot it took ($taken) removed only
+// when the copy is read as lacking it and holding no token. $what: as the log names it, then the notification.
+function zfsmReplicateFailed($zdataset, $plan, $target, $result, $held, $taken, $what) {
+	$why = zfsmReplicateWhy($result);
+	$token = zfsmReplicaTargetToken($target, $plan['dest']);
+	$then = $token === '' ? '.' : '. Replicate it again to carry on from where it stopped.';
+	if ($token === null || ($token === '' && $held === null)) $then = '. Whether it can carry on could not be read'.($taken !== '' ? '; the snapshot it took is kept.' : '.');
+	if ($taken !== '' && $token === '' && $held === false) runProcess('zfs', array('destroy', $zdataset.'@'.$taken));
+	zfsmLog('Replication of '.$what[0].' failed: '.$why);
+	zfsnotify('ZFS Replication', 'Replication of '.$what[1].' failed: '.zfsmSafeText($why).$then, '', 'warning');
+	return 1;
+}
+
 // The background run: one per dataset at a time, its progress on the row, a notification at the end, or saying why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
@@ -148,19 +173,14 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		} finally {
 			zfsmCopyProgress('replicate_stop', array('dataset' => $zdataset));
 		}
-		if ($result['code'] !== 0) {
-			$why = rtrim($result['errors'] !== '' ? $result['errors'] : 'exit code '.$result['code'], '.');
-			$token = zfsmReplicaTargetToken($target, $zdest);
-			$then = $token === '' ? '.' : '. Replicate it again to carry on from where it stopped.';
-			if ($token === null) $then = '. Whether it can carry on could not be read'.($take ? '; the snapshot it took is kept.' : '.');
-			// Only a copy read as holding no token frees the snapshot this run took.
-			if ($take && $token === '') runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
-			zfsmLog('Replication of '.$what.$how.' failed: '.$why);
-			zfsnotify($title, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, '', 'warning');
-			return 1;
-		}
+		// ssh can be lost after the receive there ended: a copy that holds the snapshot is done, whatever the stream reported.
+		$held = $result['code'] === 0 ? true : zfsmReplicaCopyHolds($zdataset, $plan, $target);
+		if ($held !== true) return zfsmReplicateFailed($zdataset, $plan, $target, $result, $held, $take ? $snapshot : '', array($what.$how, $what));
 		$marked = zfsmReplicaMark($zdataset, $plan);
-		$note = $marked === '' ? '' : 'The bookmark that keeps the next run incremental could not be made: '.$marked;
+		$notes = array();
+		if ($result['code'] !== 0) $notes[] = 'Its stream reported '.zfsmReplicateWhy($result).', but the copy holds the snapshot.';
+		if ($marked !== '') $notes[] = 'The bookmark that keeps the next run incremental could not be made: '.$marked;
+		$note = implode(' ', $notes);
 		zfsmLog('Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.$note : ''), LOG_NOTICE);
 		zfsnotify($title, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), '', $note === '' ? 'normal' : 'warning');
 		return 0;

@@ -32,6 +32,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 	case "$1" in
 	list)
 		if contains_arg 'name,guid,createtxg' "$@"; then
+			[ "${ZFSM_TEST_MARKS_FAIL:-}" = "$last_arg" ] && { printf 'cannot iterate filesystems: I/O error\n' >&2; exit 1; }
 			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
 			types=$(for a in "$@"; do [ "${prev:-}" = -t ] && echo "$a"; prev=$a; done)
 			awk -F'\t' -v d="$last_arg" -v t="$types" '(index(t, "snapshot") && index($1, d "@") == 1) || (index(t, "bookmark") && index($1, d "#") == 1)' "$R/marks"
@@ -67,10 +68,21 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			prev=$a
 		done
 		snap=$last_arg
-		if [ -n "$token" ]; then snap=${token#tok:}; base=RESUME; fi
+		# A token here is tok:<snapshot>[;raw][;from=<guid>][;toguid=<guid>][;<field>]: what a real one holds, listed as zfs send -n -t lists it.
+		if [ -n "$token" ]; then
+			rest=${token#tok:}; snap=${rest%%;*}; base=RESUME
+			field() { printf '%s' "$rest" | tr ';' '\n' | sed -n "s/^$1=//p"; }
+			toguid=$(field toguid); [ -n "$toguid" ] || toguid=$(mark "$snap" 2)
+		fi
 		guid=$(mark "$snap" 2)
 		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$snap" >&2; exit 1; }
-		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$snap" >&2
+		if [ -n "$token" ]; then
+			printf 'resume token contents:\nnvlist version: 0\n' >&2
+			[ -n "$(field from)" ] && printf '\tfromguid = 0x%x\n' "$(field from)" >&2
+			printf '\tobject = 0x100\n\toffset = 0x20000\n\tbytes = 0x41bc0\n\ttoguid = 0x%x\n\ttoname = %s\n' "$toguid" "$snap" >&2
+			case ";$rest;" in *';raw;'*) printf '\tcompressok = 1\n\trawok = 1\n' >&2; raw=1 ;; esac
+			for extra in $(printf '%s' "$rest" | tr ';' '\n' | sed -n '2,$p' | grep -v -e '^raw$' -e '=' ); do printf '\t%s = 1\n' "$extra" >&2; done
+		fi
 		if [ "$base" = - ]; then printf 'full\t%s\t1000\n' "$snap" >&2; else printf 'incremental\t%s\t%s\t1000\n' "$base" "$snap" >&2; fi
 		printf 'size\t1000\n' >&2
 		[ "$dry" = 1 ] && exit 0
@@ -95,7 +107,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		fi
 		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
 		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
-			set_prop "$dest" receive_resume_token "tok:$snap"
+			# A resumed stream cut off again keeps the token it had; a new one records the stream's raw and base, as a real token does.
+			raw=$(printf '%s' "$header" | cut -f5)
+			tok="tok:$snap"; [ "$raw" = 1 ] && tok="$tok;raw"; [ "$base" != - ] && [ "$base" != RESUME ] && tok="$tok;from=$(mark "$base" 2)"
+			[ "$base" = RESUME ] || set_prop "$dest" receive_resume_token "$tok"
 			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
 		fi
 		printf '%s@%s\t%s\t%s\n' "$dest" "${snap#*@}" "$guid" "$(next_txg)" >> "$R/marks"
