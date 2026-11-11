@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.11.2 (beta)
 
 - The snapshot count shows on phones and small windows
 

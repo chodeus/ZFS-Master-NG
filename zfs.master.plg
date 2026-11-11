@@ -6,13 +6,16 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.11.1">
-<!ENTITY md5 "8b0b2349ec9850f9cd57cf2eeeed3456">
+<!ENTITY version "2026.11.11.2">
+<!ENTITY md5 "57cb16ace692e8bc3895ec06c7a74c33">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.11.2
+- The snapshot count shows on phones and small windows
 
 ###2026.11.11.1
 - Replicate a dataset to another pool, in the background
