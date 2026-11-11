@@ -41,11 +41,6 @@ function zfsmReturnAnswer($ret, $title, $success_text, $failed_text, $unraid_not
 	echo zfsmJson($answer, JSON_UNESCAPED_SLASHES);
 }
 
-// A dry run can still block on a slow pool, so it shares the inventory time limit.
-function zfsmWithReadLimit($read) {
-	return zfsmWithDeadline(45, $read);
-}
-
 function zfsmRequireDestructiveMode($config, $subject) {
 	return (int)($config['destructive_mode'] ?? 0) === 1 ? null : zfsmFailure($subject, 'Destructive Mode is disabled in ZFS Master NG settings');
 }

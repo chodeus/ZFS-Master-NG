@@ -88,6 +88,11 @@ function zfsmWithDeadline($seconds, $read) {
 	}
 }
 
+// The page's reads: a dry run on a slow pool or another server's answer can block, so they share one time limit.
+function zfsmWithReadLimit($read) {
+	return zfsmWithDeadline(45, $read);
+}
+
 // How much a command that can print a line per file keeps of its output: enough for its first errors.
 define('ZFSM_KEEP_OUTPUT', 4096);
 

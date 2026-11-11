@@ -79,8 +79,7 @@ function zfsmReplicaBookmarkFits($zdataset, $plan, $snapshot) {
 
 // What a run from $snapshot to $zdest would do, or why it can't: mode 'full', 'incremental' (from 'base') or 'resume' (from 'token'), with an estimated size.
 // A null $snapshot is one the run takes first, named $with['new_name']: newer than all the others, its size unknown until then.
-// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives
-// (zfsmReplicaTargetOpen), this server when not given.
+// $with: 'marks' already read, 'estimate' false skips the zfs send -n, 'target' from zfsmReplicaTargetOpen (this server when not given).
 function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$refuse = function($why) { return array('can_proceed' => false, 'error' => $why); };
 	$too_long = 'The names are too long for the bookmark that keeps the next replication incremental';
@@ -112,7 +111,8 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 		// A run that stopped part-way left a token on the copy: zfs send -t carries on from there, whatever snapshot is picked now.
 		$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
 		if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
-			return $refuse($where($zdest).' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it');
+			$there = $target['server'] !== '' ? ', run on '.$target['server'].',' : '';
+			return $refuse($where($zdest).' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.$there.' discards it');
 		}
 		if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $refuse($where($zdest).' holds a part-received replication of '.$match[1].', not of this dataset');
 		if (!zfsmReplicaBookmarkFits($zdataset, $plan, substr($match[1], strlen($zdataset) + 1))) return $refuse($too_long);

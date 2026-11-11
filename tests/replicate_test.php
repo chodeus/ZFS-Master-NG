@@ -121,6 +121,8 @@ same(array(array('backup/data@b'), array($bookmark('backup/data', 'b'))), array(
 same(array('normal: Replication of tank/data@b to backup/data finished (carried on from where it stopped).'), $read('notify-detail.log'), 'the notification says it carried on');
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/vol@v\n", FILE_APPEND);
 same('backup/data holds a part-received replication of tank/vol@v, not of this dataset', $refuse('b', 'backup/data'), 'another dataset\'s token is not resumed');
+file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/data@gone\n", FILE_APPEND);
+same('backup/data holds a part-received replication that can\'t be resumed (cannot open \'tank/data@gone\': dataset does not exist); zfs receive -A backup/data discards it', $refuse('b', 'backup/data'), 'one that can\'t be resumed says how to discard it');
 
 // The same snapshot again, after its copy was destroyed: the bookmark already there is this one, not a failure.
 $fresh();
@@ -334,6 +336,8 @@ putenv('ZFSM_TEST_SSH_FAIL');
 same(array(), $calls('snapshot'), 'takes no snapshot');
 same(array('warning: Replication of tank/data to '.$there.' on nas not started: ssh: connect to host 10.0.20.11 port 22: Connection refused'), $read('notify-detail.log'), 'and says why');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'leaving no RAM copy of the key');
+file_put_contents($work.'/pool/props', "$there\treceive_resume_token\ttok:tank/data@gone\n", FILE_APPEND);
+same('backup/replicas/tower/data on nas holds a part-received replication that can\'t be resumed (cannot open \'tank/data@gone\': dataset does not exist); zfs receive -A backup/replicas/tower/data, run on nas, discards it', zfsmReplicatePreview('tank/data', 'd', $there, $cfg, 'nas')['error'], 'one there says where to discard it');
 file_put_contents($work.'/pool/props', "backup/replicas/tower\tmountpoint\t/mnt/replicas\n", FILE_APPEND);
 same('backup/replicas/tower must keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so nothing replicated into it mounts or runs', zfsmReplicatePreview('tank/data', 'd', $there, $cfg, 'nas')['error'], 'the checker\'s refusal there, in its own words');
 

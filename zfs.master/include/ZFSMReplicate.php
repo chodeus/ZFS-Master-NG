@@ -1,6 +1,5 @@
 <?php
-// Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy on another pool, here or on a trusted server
-// (include/ZFSMReplicaTarget.php), that each run brings up to date.
+// Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy, here or on a trusted server, that each run brings up to date.
 // The copy is received read-only (a filesystem's unmounted, a volume's with no device), and never with -F: a run only adds to it, so nothing there is rolled back or destroyed.
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
@@ -109,7 +108,6 @@ function zfsmReplicaMark($zdataset, $plan) {
 // The background run: one per dataset at a time, its progress on the row, a notification at the end, or saying why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
-// $server: a trusted server the copy lives on, '' for this one.
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '') {
 	$title = 'ZFS Replication';
 	$where = zfsmReplicaWhere($zdest, $server);
@@ -125,8 +123,8 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	if ($lock === null) return $not_started('its lock file could not be opened');
 	// Another run holds it: two starts at once leave one replication, and that one sends the notification.
 	if ($lock === false) return 0;
-	$target = zfsmReplicaTargetOpen($server);
 	try {
+		$target = zfsmReplicaTargetOpen($server);
 		// Before a snapshot is taken for a run that can't reach its copy.
 		if (isset($target['error'])) return $not_started($target['error']);
 		if ($take) {
@@ -167,7 +165,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		zfsnotify($title, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), '', $note === '' ? 'normal' : 'warning');
 		return 0;
 	} finally {
-		zfsmReplicaTargetClose($target);
+		zfsmReplicaTargetClose($target ?? array());
 		zfsmJobUnlock($lock);
 	}
 }

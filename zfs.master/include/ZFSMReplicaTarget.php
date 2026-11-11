@@ -11,12 +11,7 @@ function zfsmReplicaTargetOpen($server) {
 	$files = zfsmReplicaSshFiles($remote);
 	if ($files === null) return array('server' => $server, 'error' => 'This server has no key yet, or its RAM copy could not be made');
 	$target = array('server' => $server, 'remote' => $remote, 'files' => $files);
-	try {
-		$hello = zfsmReplicaTargetAsk($target, 'hello', '');
-	} catch (Throwable $timed_out) {
-		zfsmReplicaSshCleanup($files);
-		throw $timed_out;
-	}
+	$hello = zfsmReplicaTargetAsk($target, 'hello', '');
 	// runProcess trims the answer, so it ends at the area's name, which may hold spaces.
 	if (($hello['code'] ?? 1) === 0 && preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) === 1 && zfsmValidDatasetName($match[1])) {
 		return array_merge($target, array('area' => $match[1]));
@@ -33,13 +28,18 @@ function zfsmReplicaTargetClose($target) {
 function zfsmReplicaHello($server) {
 	$target = zfsmReplicaTargetOpen($server);
 	zfsmReplicaTargetClose($target);
-	return isset($target['error']) ? array('error' => $target['error']) : array('area' => $target['area']);
+	return isset($target['area']) ? array('area' => $target['area']) : array('error' => $target['error'] ?? 'Name one of the trusted servers');
 }
 
-// One verb where the copy lives, as runProcess answers it.
+// One verb where the copy lives, as runProcess answers it. A zfs hung there keeps ssh's keepalives going, so each question has the read limit.
 function zfsmReplicaTargetAsk($target, $verb, $name) {
 	if ($target['server'] === '') return runProcess('zfs', zfsmReplicaVerbArgs($verb, $name));
-	return runProcess('ssh', zfsmReplicaSshArgs($target['remote'], $target['files'], 'zfsm-replica 1 '.$verb.($name !== '' ? ' '.bin2hex($name) : '')));
+	$args = zfsmReplicaSshArgs($target['remote'], $target['files'], 'zfsm-replica 1 '.$verb.($name !== '' ? ' '.bin2hex($name) : ''));
+	try {
+		return zfsmWithReadLimit(function() use ($args) { return runProcess('ssh', $args); });
+	} catch (RuntimeException $timed_out) {
+		return array('code' => 124, 'output' => $timed_out->getMessage());
+	}
 }
 
 // A copy as messages name it: one on another server says which.
@@ -93,5 +93,5 @@ function zfsmReplicaTargetReceive($target, $plan) {
 // The receive as the log names it.
 function zfsmReplicaTargetReceiveText($target, $plan) {
 	if ($target['server'] === '') return 'zfs '.implode(' ', zfsmReplicateReceiveArgs($plan));
-	return 'ssh root@'.$target['remote']['host'].' zfsm-replica 1 receive '.$plan['dest'];
+	return 'ssh -p '.$target['remote']['port'].' root@'.$target['remote']['host'].' zfsm-replica 1 receive '.$plan['dest'];
 }

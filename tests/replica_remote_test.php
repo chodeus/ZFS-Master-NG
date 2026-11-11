@@ -172,12 +172,14 @@ putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();
 same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
-try {
-	zfsmWithDeadline(0, function() { return zfsmReplicaHello('nas'); });
-	same('timed out', 'answered', 'a hello past its time limit');
-} catch (RuntimeException $timed_out) {
-	same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'one that runs out of time leaves no copy either');
-}
+// Each question there has the read limit: a hung zfs keeps ssh's keepalives going, so ssh alone would wait for ever.
+putenv('ZFSM_TEST_SSH_HANG=8');
+$asked = microtime(true);
+same(array('error' => 'ssh timed out'), zfsmWithDeadline(1, function() { return zfsmReplicaHello('nas'); }), 'a server that doesn\'t answer in time says so');
+same(true, microtime(true) - $asked < 6, 'without waiting for it');
+putenv('ZFSM_TEST_SSH_HANG');
+same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and leaves no key copy either');
+same(array('error' => 'Name one of the trusted servers'), zfsmReplicaHello(''), 'Test without a name');
 putenv('ZFSM_TEST_ACCEPT=');
 same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello('nas'), 'a server that accepts nothing says so');
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
