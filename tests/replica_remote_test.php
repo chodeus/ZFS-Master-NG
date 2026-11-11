@@ -1,7 +1,6 @@
 <?php
-// Sending to other servers (include/ZFSMReplicaRemote.php): this server's key from the real ssh-keygen, the trusted servers and their
-// pinned host keys, the line the other server adds (read back by its real checker), ssh's options (the real ssh -G), and hello through
-// a fake ssh into the checker's real request handling on the fake zfs.
+// Sending to other servers (include/ZFSMReplicaRemote.php), with the real ssh-keygen and ssh -G; the fake ssh runs the checker's
+// real request handling (fixtures/fake_ssh_serve.php), so hello goes through it.
 
 error_reporting(E_ALL);
 set_error_handler(function($severity, $message, $file, $line) {
@@ -139,6 +138,12 @@ $saved[] = array('name' => 'broken', 'host' => '10.0.20.13', 'port' => '22', 'ke
 $saved[] = array('name' => 'smuggled', 'host' => '10.0.20.14', 'port' => 22, 'key' => $host_key."\n@cert-authority * ".$host_key);
 file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
 same(array('nas'), array_keys(zfsmReplicaRemotes()), 'an entry the file holds in another shape is left out');
+$kept = file_get_contents($work.'/flash/ssh/remotes.json');
+file_put_contents($work.'/flash/ssh/remotes.json', '{"name": "nas", "host"');
+same($work.'/flash/ssh/remotes.json could not be read as a list of servers; fix or remove it first', zfsmReplicaRemoteAdd('other', '10.0.20.12', 22, $host_key, $host_print), 'a file that can\'t be read is never written over');
+same('{"name": "nas", "host"', file_get_contents($work.'/flash/ssh/remotes.json'), 'it stays as it was');
+same(array(), zfsmReplicaRemotes(), 'and lists no servers');
+file_put_contents($work.'/flash/ssh/remotes.json', $kept);
 $nas = zfsmReplicaRemotes()['nas'];
 
 // The line the other server adds: from= the address this server sends from, the exact checker and this server's name.
@@ -207,6 +212,7 @@ putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 same('No server here is named other', zfsmReplicaRemoteRemove('other'), 'only a listed server can be removed');
 same('', zfsmReplicaRemoteRemove('nas'), 'a server is removed');
 same(array(), zfsmReplicaRemotes(), 'and is gone');
+same(array('broken', 'smuggled'), array_column(json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true), 'name'), 'the entries in other shapes are written back as they were');
 same('None yet', zfsmReplicaRemotesHtml(array()), 'Settings says when there are none');
 
 echo "replica remote tests passed\n";

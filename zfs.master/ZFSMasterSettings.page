@@ -295,6 +295,8 @@ $('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_asked++
 function zfsmSendAdd() {
 	if (!zfsm_send_found) return;
 	var ask = zfsm_send_asked;
+	// Off while it runs: a second click would answer "already a server here" for an Add that worked.
+	$('#zfsm-send-found input').prop('disabled', true);
 	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
 		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
 		// A host key read since keeps its fields and its Add.

@@ -99,24 +99,36 @@ function zfsmReplicaRemoteValid($remote) {
 
 // The trusted servers by name; an entry the file holds in any other shape is left out, never half-used.
 function zfsmReplicaRemotes() {
-	$list = json_decode((string)@file_get_contents(zfsmReplicaSshDir().'/remotes.json'), true);
-	$remotes = array();
-	foreach (is_array($list) ? $list : array() as $remote) {
-		if (zfsmReplicaRemoteValid($remote)) $remotes[$remote['name']] = array('name' => $remote['name'], 'host' => $remote['host'], 'port' => $remote['port'], 'key' => $remote['key']);
-	}
-	return $remotes;
+	return zfsmReplicaRemotesRead()['valid'] ?? array();
 }
 
-// $change gets the servers and returns them changed, or a string saying why not; under the settings lock, written whole.
+// remotes.json as 'valid' servers by name and 'other' entries, kept as they are for a write; null when it exists but isn't a list.
+function zfsmReplicaRemotesRead() {
+	$file = zfsmReplicaSshDir().'/remotes.json';
+	if (!file_exists($file)) return array('valid' => array(), 'other' => array());
+	$list = json_decode((string)@file_get_contents($file), true);
+	if (!is_array($list)) return null;
+	$read = array('valid' => array(), 'other' => array());
+	foreach ($list as $remote) {
+		if (zfsmReplicaRemoteValid($remote) && !isset($read['valid'][$remote['name']])) $read['valid'][$remote['name']] = array('name' => $remote['name'], 'host' => $remote['host'], 'port' => $remote['port'], 'key' => $remote['key']);
+		else $read['other'][] = $remote;
+	}
+	return $read;
+}
+
+// $change gets the servers and returns them changed, or a string saying why not; under the settings lock, written whole with the
+// entries in other shapes as they were. A file that can't be read is never written over: it holds the pinned host keys.
 function zfsmReplicaRemotesChange($change) {
 	$lock = zfsmReplicaSettingsLock();
 	if (is_string($lock)) return $lock;
 	try {
-		$remotes = $change(zfsmReplicaRemotes());
-		if (is_string($remotes)) return $remotes;
 		$dir = zfsmReplicaSshDir();
+		$read = zfsmReplicaRemotesRead();
+		if ($read === null) return $dir.'/remotes.json could not be read as a list of servers; fix or remove it first';
+		$remotes = $change($read['valid']);
+		if (is_string($remotes)) return $remotes;
 		if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return 'Could not make '.$dir;
-		$saved = zfsmWriteFileAtomic($dir.'/remotes.json', zfsmJson(array_values($remotes), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+		$saved = zfsmWriteFileAtomic($dir.'/remotes.json', zfsmJson(array_merge(array_values($remotes), $read['other']), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
 		return $saved ? '' : 'Could not save '.$dir.'/remotes.json';
 	} finally {
 		zfsmJobUnlock($lock);

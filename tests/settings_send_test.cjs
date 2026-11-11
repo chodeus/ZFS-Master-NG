@@ -56,6 +56,7 @@ const add = $('#zfsm-send-found input[type=button]');
 assert.equal(add.prop('disabled'), true, 'Add waits for the match box');
 $('#zfsm-send-found input[type=checkbox]').prop('checked', true).trigger('change');
 add.trigger('click');
+assert.deepEqual([add.prop('disabled'), $('#zfsm-send-found input[type=checkbox]').prop('disabled')], [true, true], 'Add and its box are off while it runs');
 // Copied out of jsdom's realm: strict deepEqual compares prototypes too.
 assert.deepEqual({...posts.pop().data}, {cmd: 'replicaadd', name: 'nas', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
 
