@@ -42,13 +42,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   /* Dataset rows join the first two cells, so alignment goes by class, not by position. */
   #zfs_master.zfs_table thead td:nth-child(-n+4),#zfs_master.zfs_table .zfsm-lead,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{text-align:left}
   #zfs_master.zfs_table thead td:nth-child(n+5),#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{text-align:right}
-  /* Long names and mounts wrap: Unraid's cells don't, so they would be cut off (7.x) or push the columns out of line (6.x). */
-  #zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount{white-space:normal;overflow-wrap:anywhere}
+  /* Unraid's cells cut what doesn't fit to an ellipsis (7.x) or push the columns out of line (6.x); ours wrap, so a long name, DEGRADED
+     or a count always shows, also where phones draw text wider than desktop browsers. */
+  #zfs_master.zfs_table thead td,#zfs_master.zfs_table .zfsm-pool,#zfs_master.zfs_table .zfsm-health,#zfs_master.zfs_table .zfsm-name,#zfs_master.zfs_table .zfsm-mount,#zfs_master.zfs_table .zfsm-refer,#zfs_master.zfs_table .zfsm-snaps{white-space:normal;overflow-wrap:anywhere}
   #zfs_master.zfs_table .zfsm-name-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-name-label{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .zfsm-name-row .zfs_compact{flex:none}
-  /* Narrower still (7.0/7.1 phones, a larger font, Loading…), the count drops under the camera rather than being cut. */
-  #zfs_master.zfs_table .zfsm-snaps{white-space:normal}
   #zfs_master.zfs_table .zfsm-snap-count{display:inline-block;min-width:3em;margin-left:6px;text-align:left}
   /* zfs_bar_button floats as a block elsewhere; here it would push the progress down */
   #zfs_master.zfs_table .zfsm-browse .zfs_bar_button{float:none;display:inline-block;padding:0}

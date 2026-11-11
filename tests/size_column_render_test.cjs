@@ -41,11 +41,12 @@ const texts = {decimal: ['13 GB', '3.03 GB', '9.97 GB'], binary: [12997000000, 3
 const ourTable = units => {
   context.zfsm_config = {size_units: units};
   context.zfsm_display = {number: '.,', scale: -1};
-  // The pool's count reads Loading… until it arrives: the widest text that cell shows.
+  // The pool's count reads Loading… until it arrives; the second pool has a long name, DEGRADED and a big count, wider than their columns.
   const rows = '<tr>'+context.generatePoolTableRows({Pool: 'flash', Health: 'ONLINE', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: null}, 'nvme0n1p3', true, display, root)+'</tr>'
     + context.generateDatasetRow('flash', {...root, name: 'flash/boot', mountpoint: '/boot'}, 'zdataset-flash', true, 0, 30, display)
     // A deep, long name and mount must wrap, not push the columns out of line or hide the name.
-    + context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display);
+    + context.generateDatasetRow('flash', {...root, name: longName, mountpoint: '/mnt/'+longName, origin: 'flash@s', keystatus: 'available', 'org.znapzend:enabled': 'on', referenced: 1073636966, child: {[longName+'/c']: {}}}, 'zdataset-flash', true, 0, 30, display)
+    + '<tr>'+context.generatePoolTableRows({Pool: 'fast-nvme-pool-01', Health: 'DEGRADED', Size: '12.5G', Used: '2.82G', Free: '9.68G', MountPoint: 'none', Refer: '', Snapshots: 12345}, 'nvme1n1p1', true, display, {...root, name: 'fast-nvme-pool-01'})+'</tr>';
   const [size, used, free] = texts[units];
   assert.ok(rows.includes('>'+size+'</td>') && rows.includes('>'+used+'<') && rows.includes('>'+free+'<'), `in ${units} units the pool row shows ${texts[units].join(', ')}`);
   return `<div id="zfs_master_div" class="TableContainer">${ourHead}<tbody>${rows}</tbody></table></div>`;
@@ -98,7 +99,7 @@ document.fonts.ready.then(() => {
     assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
-      const name = `${['pool', 'dataset', 'long dataset'][r]} ${['Size', 'Used', 'Free'][c]}`;
+      const name = `${['pool', 'dataset', 'long dataset', 'degraded pool'][r]} ${['Size', 'Used', 'Free'][c]}`;
       near(cell.cell[0], unraid[c].cell[0], name+' cell left');
       near(cell.cell[1], unraid[c].cell[1], name+' cell right');
       if (!unraid[c].disk) return;
