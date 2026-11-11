@@ -72,8 +72,9 @@ try {
   for (const theme of themes) for (const width of unraid7 ? [390, 1280, 1920] : [1280, 1920]) for (const units of ['decimal', 'binary']) {
     const css = [...base, theme].map(sheet).join('\n');
     const file = path.join(work, `table-${width}-${units}.html`);
+    // Headless Chrome keeps a window 500px wide at least: the tables sit in a frame of the width being checked.
     fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}\n${pageCss}</style></head><body>
-${unraidTable(texts[units])}${ourTable(units)}
+<div id="zfsm-frame" style="width:${width}px">${unraidTable(texts[units])}${ourTable(units)}</div>
 <script>
 document.fonts.ready.then(() => {
   const box = el => { const r = el.getBoundingClientRect(); return [r.left, r.right]; };
@@ -84,15 +85,16 @@ document.fonts.ready.then(() => {
   const tables = document.querySelectorAll('table');
   const out = document.createElement('pre'); out.id = 'zfsm-result';
   const clipped = [tables[1].tHead.rows[0], ...tables[1].tBodies[0].rows].flatMap((row, r) => [...row.cells].filter(td => td.scrollWidth > td.clientWidth + 1).map(td => (r ? r - 1 : 'head')+':'+(td.className || td.cellIndex)));
-  out.textContent = JSON.stringify({unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree), clipped});
+  out.textContent = JSON.stringify({viewport: document.getElementById('zfsm-frame').clientWidth, unraid: lastThree(tables[0].tBodies[0].rows[0]), ours: [...tables[1].tBodies[0].rows].map(lastThree), clipped});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
     const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
-      `--window-size=${width},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
+      `--window-size=${Math.max(width, 500)},800`, '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${theme} at ${width} in ${units}: the tables did not render`);
-    const {unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    const {viewport, unraid, ours, clipped} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.equal(viewport, width, `${theme} at ${width} in ${units}: the tables were laid out ${viewport}px wide`);
     assert.deepEqual(clipped, [], `${theme} at ${width} in ${units}: these cells (row:cell) hide part of their content`);
     const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.5, `${theme} at ${width} in ${units}: ${what} at ${a.toFixed(2)}, Unraid's at ${b.toFixed(2)}`);
     ours.forEach((row, r) => row.forEach((cell, c) => {
