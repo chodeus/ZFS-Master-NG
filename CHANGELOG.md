@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Replicate a dataset to another pool, in the background
+- The row shows how far it got; a notification says when it finishes
+- Each run sends only the changes since the last one
+- Copies stay read-only and unmounted; a volume's copy is no block device
+- Accept copies from other servers; sending to them comes in a later beta
+- Pool Info shows which Unraid versions can import the pool
+- Upgrade Pool turns on only what the pool's compatibility setting allows
+- The Main table lines up with Unraid's pool tables; new Size Units setting
+- Long names wrap instead of pushing the columns; row icons sit level
+- A setting holding a stray non-UTF-8 byte no longer empties the page
+
 ## 2026.11.08.1 (beta)
 
 - Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
