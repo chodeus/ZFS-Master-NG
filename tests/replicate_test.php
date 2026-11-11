@@ -316,6 +316,7 @@ putenv('ZFSM_TEST_SEND_CUT=1');
 same(1, zfsmRunReplicate('tank/data', 'd', $there, null, false, 'nas'), 'a run cut off part-way');
 putenv('ZFSM_TEST_SEND_CUT');
 same(true, strpos($read('notify-detail.log')[0] ?? '', $there.' on nas failed: cannot receive incremental stream: checksum mismatch or incomplete stream. Replicate it again to carry on from where it stopped.') !== false, 'says another run carries on: '.($read('notify-detail.log')[0] ?? ''));
+same(array('receive '.$there, 'token '.$there), array_slice($requests(), -2), 'from the token read there');
 $reset();
 $preview = zfsmReplicatePreview('tank/data', 'a', $there, $cfg, 'nas');
 same(array('resume', 'tank/data@d', 'tok:tank/data@d'), array($preview['mode'], $preview['snapshot'], $preview['token']), 'the next plan resumes it');
@@ -340,9 +341,10 @@ same('backup/replicas/tower must keep mountpoint=none, volmode=none, setuid=off,
 $fresh();
 file_put_contents($work.'/pool/datasets', "backup/replicas\tfilesystem\n", FILE_APPEND);
 $GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+$reset();
 same(array('succeeded' => array('tank/data' => 'Replication to '.$there.' on nas started; a notification says when it is done'), 'failed' => array()), zfsmStartReplicate('tank/data', 'b', $there, $cfg, 'nas'), 'a start to a trusted server');
 for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
-same(array($there.'@b'), $names($there, 'snapshot'), 'the job sent it there');
+same(array(array($there.'@b'), 'receive '.$there), array($names($there, 'snapshot'), array_slice($requests(), -1)[0] ?? ''), 'the job sent it there, through the checker');
 $GLOBALS['docroot'] = $work.'/docroot';
 
 echo "replication tests passed\n";
