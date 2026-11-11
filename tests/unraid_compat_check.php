@@ -234,7 +234,7 @@ switch ($check) {
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
 		if (strpos($html, 'name="exclusion"') === false) { fwrite(STDERR, "settings page did not render\n"); exit(1); }
 		// The version at the top is the installed one, as Unraid's own plugin script reads it.
-		$installed = trim((string)shell_exec(escapeshellarg($docroot.'/plugins/dynamix.plugin.manager/scripts/plugin').' version /var/log/plugins/zfs.master.plg 2>/dev/null'));
+		$installed = trim((string)shell_exec(escapeshellarg(PHP_BINARY).' -d display_errors=stderr '.escapeshellarg($docroot.'/plugins/dynamix.plugin.manager/scripts/plugin').' version /var/log/plugins/zfs.master.plg 2>/dev/null'));
 		if ($installed === '' || strpos($html, '<p class="zfsm-version">Version '.$installed.'</p>') === false) { fwrite(STDERR, "settings page does not show the installed version ($installed)\n"); exit(1); }
 		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
 		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';

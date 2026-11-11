@@ -10,7 +10,7 @@ require_once "$docroot/plugins/$plugin/include/ZFSMHelpers.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
-$zfsm_version = zfsmPluginVersion();
+$zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
 
 ?>
    

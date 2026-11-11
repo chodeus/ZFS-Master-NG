@@ -273,13 +273,21 @@ putenv('ZFSM_TEST_LIST_FAIL');
 $multi = commandAnswer('tank/a', array('code' => 1, 'output' => "cannot unmount 'a': busy\n  cannot unmount 'b': busy\n"));
 assertSameValue("cannot unmount 'a': busy; cannot unmount 'b': busy", $multi['failed']['tank/a'], 'A multi-line failure must read as one line');
 assertSameValue("cannot remove '/mnt/Åsa à': busy; try again", zfsmOneLine("cannot remove '/mnt/Åsa à': busy\r\ntry again"), 'Joining lines keeps UTF-8 characters whole');
-// Settings shows the installed version, read from the manifest's own entity; nothing when it can't be read.
-assertSameValue(1, preg_match('/^\d{4}\.\d{2}\.\d{2}\.\d+/', zfsmPluginVersion(__DIR__.'/../zfs.master.plg')), 'the version comes from the manifest: '.zfsmPluginVersion(__DIR__.'/../zfs.master.plg'));
-assertSameValue('', zfsmPluginVersion(sys_get_temp_dir().'/zfsm-no-such-manifest.plg'), 'no manifest, no version');
+// Settings shows the installed version: the PLUGIN element's, entities expanded; nothing when it can't be read.
+preg_match('/<!ENTITY version "([^"]+)">/', file_get_contents(__DIR__.'/../zfs.master.plg'), $manifest_entity);
+assertSameValue($manifest_entity[1], zfsmPluginVersion(__DIR__.'/../zfs.master.plg'), 'the repo manifest\'s own version');
 $fake_manifest = tempnam(sys_get_temp_dir(), 'zfsm-plg');
-file_put_contents($fake_manifest, '<!ENTITY version "<script>">');
-assertSameValue('', zfsmPluginVersion($fake_manifest), 'a version holding markup is not one');
+$manifest_with = function($version) use ($fake_manifest) {
+	file_put_contents($fake_manifest, '<?xml version="1.0" standalone="yes"?>'."\n".'<!DOCTYPE PLUGIN [<!ENTITY date "2026.11.20"><!ENTITY version "'.$version.'">]>'."\n".'<PLUGIN name="zfs.master" version="&version;"></PLUGIN>');
+	return zfsmPluginVersion($fake_manifest);
+};
+assertSameValue('2026.11.20', $manifest_with('&date;'), 'a stable release\'s three parts, through an entity');
+assertSameValue('2026.11.20.1', $manifest_with('&date;.1'), 'a beta\'s four');
+assertSameValue('', $manifest_with('&lt;script&gt;'), 'a version holding markup is not one');
+file_put_contents($fake_manifest, 'not a manifest');
+assertSameValue('', zfsmPluginVersion($fake_manifest), 'a manifest that isn\'t XML gives none');
 unlink($fake_manifest);
+assertSameValue('', zfsmPluginVersion(sys_get_temp_dir().'/zfsm-no-such-manifest.plg'), 'no manifest, no version');
 // A zfs killed by the inventory deadline, or failing silently, must still be reported. The fake answers name checks and fails -p reads.
 $silent_bin = sys_get_temp_dir().'/zfsm-silent-'.getmypid();
 mkdir($silent_bin);
