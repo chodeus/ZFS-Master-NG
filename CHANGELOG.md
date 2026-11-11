@@ -1,5 +1,45 @@
 # Changelog
 
+## Unreleased
+
+- fix: row icons sit level with the name, with room between them
+- fix: a compatibility set PCRE can't parse reads as unread
+- fix: review findings — block_cloning_endian can't turn on after a clone, unknown features Upgrade Pool turns on make the answer unknown, compatibility blamed only when it limits
+- refactor(pool): one step per function in the compatibility answer
+- fix(pool): Upgrade Pool turns on only what the pool's compatibility setting allows
+- feat(pool): Pool Info shows which Unraid can import the pool
+- fix: the Replicate dialog's labels name their controls, and a new plan is announced
+- fix: a resume token that can't be read keeps the run's snapshot and refuses the plan; typing a destination drops the plan in flight
+- refactor: replication's plan and run in two files
+- fix: audit findings — an existing bookmark of the same snapshot is no failure, send's own error wins, a taken snapshot nothing needs goes
+- fix: review findings — new snapshot taken under the job's lock, bookmark length checked for every run, one plan per start, per-job row progress
+- feat: Replicate dialog, row progress and the Actions entry
+- wip: replication engine (local), checked live on cache/zfsm-test
+- refactor: background jobs share one lock and start helper (include/ZFSMJobs.php)
+- fix: the Settings warning trims the accepting dataset as the saved setting is trimmed, so a stray space no longer reads as nothing accepted
+- fix: review round 1 — the checker keeps only the request and client address, the Settings page warns about an accepting dataset it won't use
+- refactor: one helper names a job's lock folder, for the receive slots too
+- fix: audit findings — key options matched whatever their case, from= must be exact IP addresses, the command must be exactly the installed checker, and a hello that loses a race to make the area still answers
+- fix: security review findings — a stream's first record is checked before zfs receive (no clones, no -R/-p packages), copies can't be block devices or run anything, four receives per area at most, key lines that undo restrict or widen from= show in red
+- fix: review findings — each sender gets its own unmounted area named in its key line, one receive whatever the stream's type, pool tops refused, settings flag a key line without restrict or from=
+- feat: accept replicas from other servers into one dataset, through a key that can only list, check and receive there
+- fix: review round 1 — a resumed volume run also says a device the copy has goes; the receive comment drops its test history
+- fix: every volume receive takes volmode=none, and an incremental says a device the copy has goes
+- fix: a volume's replica isn't a second block device of the same data (volmode=none)
+- fix: a command that ends before reading its input fails with its own error, not a PHP warning about the write
+- fix: review round 1 — the encoding helpers' comment keeps only the gotcha
+- fix: the replica settings and key list escape and encode through zfsmHtml and zfsmJson too
+- fix: review findings — a folder path holding U+FFFD is refused, zfsmJson never gives false, the CSRF fallback is JSON
+- fix: a byte that isn't UTF-8 no longer empties a page's value
+- fix: review findings — both units checked on every Unraid, quota in the chosen units, JS/PHP parity on null display settings
+- fix: ZFS units read the same in PHP and the browser; Settings says pools show usable space; no NaN bars
+- refactor: one ZFS-units formatter, in ZFSMSize.js
+- fix: Actions sits centred beside the name on every Unraid version
+- fix: long names and mounts wrap instead of clipping or pushing the columns
+- fix: a pool's usable space needs both figures as numbers
+- wip: size columns line up with Unraid's on 6.9 to 7.4
+- wip: main table alignment and size units
+
 ## 2026.11.08.1 (beta)
 
 - Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
