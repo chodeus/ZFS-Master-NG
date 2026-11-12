@@ -1,0 +1,5 @@
+#!/bin/sh
+# ps -eo pid=,etimes=,args= as diagnostics reads it: the lines of ZFSM_TEST_PS, or no processes.
+[ "${ZFSM_TEST_PS:-}" = fail ] && exit 1
+[ -n "${ZFSM_TEST_PS:-}" ] && cat "$ZFSM_TEST_PS"
+exit 0

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__.'/ZFSMLog.php';
 
 // A general setting as an integer, or $default when it isn't there.
 function zfsmSettingInt($general, $key, $default) {
@@ -106,6 +107,9 @@ function zfsmCommandPath($command) {
 	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
 }
 
+// A read that ran out of its time limit: still a RuntimeException to every catch that knows it as one.
+class ZFSMTimeout extends RuntimeException {}
+
 // Runs $read with every runProcess in it under one time limit; a sooner limit already set stays, and the old one comes back after.
 function zfsmWithDeadline($seconds, $read) {
 	$previous = $GLOBALS['zfsm_inventory_deadline'] ?? null;
@@ -115,6 +119,21 @@ function zfsmWithDeadline($seconds, $read) {
 	} finally {
 		if ($previous === null) unset($GLOBALS['zfsm_inventory_deadline']);
 		else $GLOBALS['zfsm_inventory_deadline'] = $previous;
+	}
+}
+
+// The seconds left of the limit a read now runs under; INF when it runs under none.
+function zfsmDeadlineLeft() {
+	return ($GLOBALS['zfsm_inventory_deadline'] ?? INF) - microtime(true);
+}
+
+// runProcess under a time limit of its own, never throwing: a read past it comes back with code null and why,
+// one that could not be started with runProcess's code for that.
+function zfsmReadWithin($seconds, $command, $args) {
+	try {
+		return zfsmWithDeadline($seconds, function() use ($command, $args) { return runProcess($command, $args); });
+	} catch (RuntimeException $error) {
+		return array('code' => $error instanceof ZFSMTimeout ? null : ZFSM_ERR_UNABLE_TO_CREATE_PROC, 'output' => $error->getMessage());
 	}
 }
 
@@ -137,7 +156,7 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	$inventory_deadline = $GLOBALS['zfsm_inventory_deadline'] ?? null;
 	if ($inventory_deadline !== null) {
 		$remaining = $inventory_deadline - microtime(true);
-		if ($remaining <= 0) throw new RuntimeException(basename($command).' timed out before it started');
+		if ($remaining <= 0) throw new ZFSMTimeout(basename($command).' timed out before it started');
 		$timeout = is_executable('/usr/bin/timeout') ? '/usr/bin/timeout' : '/bin/timeout';
 		if (!is_executable($timeout)) throw new RuntimeException('The system timeout utility is unavailable');
 		$duration = number_format(max(0.001, $remaining), 3, '.', '').'s';
@@ -167,9 +186,9 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	// proc_close can't report an exit that proc_get_status already collected.
 	if ($limit_code !== null) $code = $limit_code;
 	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
-	if ($code === null) throw new RuntimeException(basename($command).' timed out');
+	if ($code === null) throw new ZFSMTimeout(basename($command).' timed out');
 	// A command that ignored TERM is killed with KILL and comes back as 9, so any failure past the limit is the limit.
-	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new RuntimeException(basename($command).' timed out');
+	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new ZFSMTimeout(basename($command).' timed out');
 
 	$answer = array('code' => $code, 'output' => trim((string)$output));
 	if ($lines !== null) $answer['lines'] = $lines;
@@ -259,6 +278,13 @@ function zfsmJson($value, $flags = 0) {
 	return json_encode($value, $flags | JSON_INVALID_UTF8_SUBSTITUTE | ($flags & JSON_THROW_ON_ERROR ? 0 : JSON_PARTIAL_OUTPUT_ON_ERROR));
 }
 
+// A plugin's version as its manifest's PLUGIN element gives it, entities expanded as Unraid's plugin('version') reads it; '' when unreadable.
+function zfsmPluginVersion($manifest) {
+	$plugin = is_file($manifest) ? @simplexml_load_file($manifest, 'SimpleXMLElement', LIBXML_NOCDATA) : false;
+	$version = $plugin ? (string)$plugin['version'] : '';
+	return preg_match('/^[\w.+-]+$/D', $version) === 1 ? $version : '';
+}
+
 // File and process names are anyone's to choose, and these strings reach notifications and the log.
 function zfsmSafeText($text) {
 	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
@@ -276,10 +302,9 @@ function zfsmCommandError($result, $fallback) {
 	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
 }
 
-function zfsmLog($message, $priority = LOG_ERR) {
-	openlog('zfs.master', LOG_PID, LOG_USER);
-	syslog($priority, zfsmSafeText($message));
-	closelog();
+// A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
+function zfsmStatePath($path) {
+	return ($GLOBALS['zfsm_root'] ?? '').$path;
 }
 
 function commandAnswer($subject, $result) {

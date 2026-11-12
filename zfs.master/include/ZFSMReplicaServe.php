@@ -193,12 +193,17 @@ function zfsmReplicaKeyFrom($from) {
 	return true;
 }
 
+// Whether a key's line holds it to replication: restrict, a from= of exact addresses, and command= the checker with a sender's name.
+function zfsmReplicaKeyHeld($key) {
+	return $key['restrict'] && $key['from'] && zfsmReplicaSenderName($key['sender']);
+}
+
 // The settings' list of those keys, a key its line doesn't hold in red. The sender wrote the comment, valid UTF-8 or not.
 function zfsmReplicaKeysHtml($keys) {
 	if (!$keys) return 'None yet';
 	$html = '';
 	foreach ($keys as $key) {
-		$held = $key['restrict'] && $key['from'] && zfsmReplicaSenderName($key['sender']);
+		$held = zfsmReplicaKeyHeld($key);
 		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict with no limit turned back on after it, a from= of exact IP addresses, and command= exactly replica-serve.php and a name');
 		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.zfsmHtml($text).'</span>';
 	}

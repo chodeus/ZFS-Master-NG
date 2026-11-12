@@ -45,6 +45,10 @@ mkdir -p "$dest"
 cp -R "$root/zfs.master/." "$dest/"
 filecount=$(find "$work" -type f | wc -l | tr -d ' ')
 [ "$filecount" -ge 10 ] || { echo "ERROR: only $filecount files copied to the package (expected at least 10)"; exit 1; }
+# Every packaged file with its md5, so an install can be checked against the release; after the count above, and written
+# outside $dest, so it is never counted and never lists itself.
+(cd "$dest" && find . -type f | LC_ALL=C sort | while IFS= read -r file; do sum=$(md5_of "$file") && [ -n "$sum" ] || exit 1; printf '%s  %s\n' "$sum" "${file#./}"; done) > "$work/manifest.md5"
+mv "$work/manifest.md5" "$dest/manifest.md5"
 find "$work" -type d -exec chmod 0755 {} +
 find "$work" -type f -exec chmod 0644 {} +
 # Cron and the Settings page (#command) run these directly.

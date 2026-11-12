@@ -1,11 +1,12 @@
 #!/bin/sh
 
 if [ "$1" = "list" ]; then
+	[ "${ZFSM_TEST_POOL_HANG:-0}" = 1 ] && sleep 30
 	if [ "${ZFSM_TEST_POOL_FAIL:-0}" = 1 ]; then
 		printf 'simulated pool query failure\n' >&2
 		exit 1
 	fi
-	printf 'tank\t1.00T\t100G\t900G\tONLINE\n'
+	printf 'tank\t1.00T\t100G\t900G\t%s\n' "${ZFSM_TEST_POOL_HEALTH:-ONLINE}"
 	exit 0
 fi
 
