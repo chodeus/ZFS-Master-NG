@@ -640,12 +640,17 @@ file_put_contents($with_mount.'/summary.txt', 'names');
 $mount_in($with_mount);
 same(array(false, true, true), array(zfsmDiagRemove($with_mount), is_file($with_mount.'/summary.txt'), is_file($work.'/outside/keep')), 'a work folder with a mount in it is left whole, and so is what is mounted there');
 $unmount($with_mount.'/zfs');
+// The table this process reads, with $over mounted in its place: whether the folder was then removed, and whether it is still there.
+$with_table = function($over) use ($with_mount, $unmount) {
+	exec('mount --bind '.escapeshellarg($over).' /proc/'.getmypid().'/mountinfo 2>&1', $said, $code);
+	same(0, $code, 'the mount table is hidden: '.implode(' ', $said));
+	$refused = array(zfsmDiagRemove($with_mount), is_file($with_mount.'/summary.txt'));
+	$unmount('/proc/'.getmypid().'/mountinfo');
+	return $refused;
+};
 $GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$work.'/no-mounts');
-exec('mount --bind '.escapeshellarg($work.'/no-mounts').' /proc/'.getmypid().'/mountinfo 2>&1', $said, $code);
-same(0, $code, 'the mount table is hidden: '.implode(' ', $said));
-$refused = array(zfsmDiagRemove($with_mount), is_file($with_mount.'/summary.txt'));
-$unmount('/proc/'.getmypid().'/mountinfo');
-same(array(false, true), $refused, 'nor is a work folder removed while the mount table can\'t be read');
+same(array(false, true), $with_table($work.'/no-mounts'), 'nor is a work folder removed while the mount table can\'t be read');
+same(array(false, true), $with_table('/dev/null'), 'nor while the table reads as empty: an empty one was not read');
 same(array(true, false), array(zfsmDiagRemove($with_mount), file_exists($with_mount)), 'with the table read and no mount in it, the folder goes');
 // The plugin's removal has the same rule in the shell: its lines of zfs.master.plg, run as they are.
 same(1, preg_match('/^# A diagnostics work folder goes.*?^done$/ms', file_get_contents(__DIR__.'/../zfs.master.plg'), $step), 'the removal step\'s lines are in zfs.master.plg');
@@ -660,8 +665,20 @@ $mount_in($kept);
 exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
 same(array(0, '', true, true, false), array($code, implode("\n", $said), is_file($kept.'/summary.txt'), is_file($work.'/outside/keep'), file_exists($swept)), 'the plugin\'s removal leaves a work folder with a mount in it whole, and removes one without');
 $unmount($kept.'/zfs');
+// With no table to read, or an empty one, the step removes nothing; nor does it touch a name no run makes, whatever is mounted in it.
+file_put_contents($work.'/empty-table', '');
+foreach (array('a table that is not there' => $work.'/no-table', 'an empty table' => $work.'/empty-table') as $what => $table) {
+	exec('bash -c '.escapeshellarg(str_replace('/proc/self/mountinfo', $table, $step)).' 2>/dev/null', $said, $code);
+	same(true, is_file($kept.'/summary.txt'), 'the plugin\'s removal leaves a work folder alone with '.$what);
+}
+$spaced = '/tmp/zfs.master-diag.not a run';
+mkdir($spaced.'/zfs', 0700, true);
+$mount_in($spaced);
 exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
-same(array(0, false, true), array($code, file_exists($kept), is_file($work.'/outside/keep')), 'and that folder goes once the mount is gone');
+same(array(0, false, true, true), array($code, file_exists($kept), is_dir($spaced.'/zfs'), is_file($work.'/outside/keep')), 'that folder goes once the mount is gone; a folder with a name no run makes is not touched, nor what is mounted in it');
+$unmount($spaced.'/zfs');
+rmdir($spaced.'/zfs');
+rmdir($spaced);
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
