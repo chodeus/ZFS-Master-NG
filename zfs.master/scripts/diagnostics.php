@@ -16,7 +16,7 @@ if ($work === null) {
 	exit(1);
 }
 register_shutdown_function(function() use ($work) {
-	if (!zfsmDiagRemove($work)) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
+	if (is_dir($work) && !zfsmDiagRemove($work)) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
 });
 // Ctrl-C, a dropped session or a kill ends PHP without its shutdown functions: where it has pcntl, they end it with one.
 if (function_exists('pcntl_async_signals')) {

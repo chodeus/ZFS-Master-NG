@@ -78,6 +78,10 @@ function zfsmDiagSeconds($seconds) {
 // read something is noted in collectors.txt and the summary, and the rest still run.
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
+	if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return false;
+	// Kept open to the run's end: while it is, no other folder can take this one's inode.
+	$began_in = @fopen($dir, 'r');
+	if ($began_in === false) return false;
 	$report = "file\tresult\tseconds\n";
 	$unfinished = array('timed out' => array(), 'read failed' => array(), 'failed' => array());
 	$written = true;
@@ -95,15 +99,17 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 			$text = $result.': '.$error->getMessage();
 		}
 		if ($result !== 'ok') $unfinished[$result][] = $file;
-		$written = zfsmDiagWrite($dir.'/'.$file, $text) && $written;
+		// The run's lock is on the folder it began in: once that is gone, or another of its name is there, the run ends.
+		if (!zfsmDiagSameFolder($dir, $began_in)) return false;
+		$written = zfsmDiagWrite($dir, $file, $text) && $written;
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
 	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
 	if ($unfinished['read failed']) zfsmDiagFinding('a read failed, so these files are incomplete: '.implode(', ', $unfinished['read failed']));
 	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
-	$written = zfsmDiagWrite($dir.'/collectors.txt', $report) && $written;
-	$written = zfsmDiagWrite($dir.'/summary.txt', zfsmDiagSummary()) && $written;
-	return zfsmDiagWrite($dir.'/README.txt', zfsmDiagReadme()) && $written;
+	$written = zfsmDiagWrite($dir, 'collectors.txt', $report) && $written;
+	$written = zfsmDiagWrite($dir, 'summary.txt', zfsmDiagSummary()) && $written;
+	return zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme()) && $written;
 }
 
 // One screen: the versions and counts the collectors noted, then what they found wrong.
@@ -128,10 +134,20 @@ function zfsmDiagReadme() {
 	return $text;
 }
 
-function zfsmDiagWrite($file, $text) {
-	if (!is_dir(dirname($file)) && !@mkdir(dirname($file), 0700, true)) return false;
+// Whether the folder at $dir is still the one $open was opened on. lstat: the path itself, never what a link at it points to.
+function zfsmDiagSameFolder($dir, $open) {
+	clearstatcache(true, $dir);
+	$now = @lstat($dir);
+	$then = fstat($open);
+	return $now !== false && $now['dev'] === $then['dev'] && $now['ino'] === $then['ino'];
+}
+
+// Writes $file under a run's folder. It makes the file's own folder there, never the run's: one that went is not made again.
+function zfsmDiagWrite($dir, $file, $text) {
+	$folder = dirname($dir.'/'.$file);
+	if ($folder !== $dir && !is_dir($folder) && !@mkdir($folder, 0700)) return false;
 	$text = rtrim((string)$text, "\n")."\n";
-	return @file_put_contents($file, $text) === strlen($text);
+	return @file_put_contents($dir.'/'.$file, $text) === strlen($text);
 }
 
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
@@ -157,11 +173,7 @@ function zfsmDiagHold($dir, $wait = 0) {
 	// 'e': a command the run starts must not carry the lock on past the run's end.
 	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
 	if ($hold === false || !flock($hold, LOCK_EX | $wait)) return false;
-	clearstatcache(true, $dir);
-	// lstat: the path itself, never what a link at it points to.
-	$now = @lstat($dir);
-	$held = fstat($hold);
-	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] && $held['uid'] === 0 ? $hold : false;
+	return zfsmDiagSameFolder($dir, $hold) && fstat($hold)['uid'] === 0 ? $hold : false;
 }
 
 // Removes a work folder and says whether it did: only one zfsmDiagWorkDir made, never through a link, and never one that is

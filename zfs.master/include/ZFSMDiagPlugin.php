@@ -214,13 +214,14 @@ function zfsmDiagHostKey($file) {
 	return zfsmHostKeyFingerprint($file) ?? 'not an ed25519 key';
 }
 
-// The datasets one level under the accepting one that the receiver refuses requests into, by its own rule (zfsmReplicaAreaHolds):
-// each is a sender's area and must hold every one of zfsmReplicaAreaProps. $output is the read of them, name, property, value.
-function zfsmDiagAreasRefused($output, $accept) {
+// The senders' areas the receiver refuses requests into, by its own rule (zfsmReplicaAreaHolds): <accept>/<sender> must hold every one
+// of zfsmReplicaAreaProps. Another dataset under the accepting one is no area. $output is the read of them, name, property, value.
+function zfsmDiagAreasRefused($output, $accept, $senders) {
+	$areas = array_map(function($sender) use ($accept) { return zfsmReplicaArea($accept, $sender); }, $senders);
 	$found = array();
 	foreach (zfsmImpactRows($output) as $row) {
 		$field = explode("\t", $row);
-		if (count($field) >= 3 && $field[0] !== $accept) $found[$field[0]][$field[1]] = $field[2];
+		if (count($field) >= 3 && in_array($field[0], $areas, true)) $found[$field[0]][$field[1]] = $field[2];
 	}
 	return array_keys(array_filter($found, function($props) { return array_diff_assoc(zfsmReplicaAreaProps(), $props) !== array(); }));
 }
@@ -229,18 +230,19 @@ function zfsmDiagAreasRefused($output, $accept) {
 // Each key's own text stays out.
 function zfsmDiagReplicaReceive($ctx) {
 	$accept = $ctx['cfg']['replica_accept'];
+	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
+	$sender_keys = zfsmReplicaKeys($keys);
 	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
 	if ($accept !== '' && !zfsmReplicaAcceptValid($accept)) zfsmDiagFinding('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted');
 	elseif ($accept !== '') {
 		$wanted = zfsmReplicaAreaProps();
 		$read = zfsmDiagPoolRead(explode('/', $accept)[0], 'zfs', array('get', '-H', '-d', '1', '-t', 'filesystem,volume', '-o', 'name,property,value,source', implode(',', array_keys($wanted)), $accept));
 		if ($read['code'] !== 0) zfsmDiagFinding('the dataset Accept Replicas Into names could not be read');
-		foreach (zfsmDiagAreasRefused($read['output'], $accept) as $area) zfsmDiagFinding('a dataset under Accept Replicas Into does not keep '.implodeWithKeys(', ', $wanted, '=').', so requests into it are refused: '.$area);
-		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
+		foreach (zfsmDiagAreasRefused($read['output'], $accept, array_column($sender_keys, 'sender')) as $area) zfsmDiagFinding('a sender\'s area under Accept Replicas Into does not keep '.implodeWithKeys(', ', $wanted, '=').', so requests into it are refused: '.$area);
+		$text .= zfsmDiagShow('the accepting dataset and the datasets under it (a sender\'s area, named for the sender, needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
-	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
 	$senders = !file_exists($keys) ? '(the file is not there)' : (zfsmDiagWhole('file_get_contents', $keys) === false ? zfsmDiagUnread('(the file could not be read)') : '');
-	foreach (zfsmReplicaKeys($keys) as $key) {
+	foreach ($sender_keys as $key) {
 		$checks = array('restrict' => $key['restrict'], 'from' => $key['from'], 'name' => zfsmReplicaSenderName($key['sender']));
 		$senders .= ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.implodeWithKeys(', ', array_map(function($held) { return $held ? 'ok' : 'NOT OK'; }, $checks))."\n";
 		if (!zfsmReplicaKeyHeld($key)) zfsmDiagFinding('a sender key\'s line does not hold it to replication: '.($key['sender'] !== '' ? $key['sender'] : '?'));
@@ -258,8 +260,8 @@ function zfsmDiagInventory($ctx) {
 		return 'skipped, because '.implode(', ', $hung).' timed out on a pool';
 	}
 	$inventory = zfsmReadInventory($ctx['cfg'], false);
-	// A pool that read failed on is in its answer, not thrown.
-	if (!empty($inventory['data']['errors'])) zfsmDiagUnread();
+	// A pool that read failed on is in its answer, not thrown; one whose devices could not be read has none (getZFSPoolDevices).
+	if (!empty($inventory['data']['errors']) || in_array('', $inventory['data']['devices'] ?? array(), true)) zfsmDiagUnread();
 	return zfsmJson($inventory, JSON_UNESCAPED_SLASHES);
 }
 

@@ -326,11 +326,15 @@ putenv('ZFSM_TEST_PROPERTIES_FAIL=1');
 same(array('the dataset Accept Replicas Into names could not be read'), $receive(null), 'an accepting dataset that can\'t be read');
 putenv('ZFSM_TEST_PROPERTIES_FAIL');
 // A sender's area that lost one of its properties: the receiver refuses every request into it, so it is a finding.
+// A dataset under the accepting one that no sender key names is no area, whatever its properties.
+$area_rows = "tank/data\tmountpoint\t/mnt/tank/data\tdefault\ntank/data/media\texec\ton\tinherited from tank/data\n";
+foreach (zfsmReplicaAreaProps() as $property => $value) $area_rows .= "tank/data/nas2\t$property\t$value\tlocal\n";
+same(array(array(), array('tank/data/media')), array(zfsmDiagAreasRefused($area_rows, 'tank/data', array('nas2', '')), zfsmDiagAreasRefused($area_rows, 'tank/data', array('nas2', 'media'))), 'only a dataset named for a sender is judged as its area');
 has("tank/data/nas2\texec\toff\tlocal\n", $found('zfsmDiagReplicaReceive')[1], 'each sender\'s area is shown with its properties');
 putenv('ZFSM_TEST_AREA_EXEC=on');
 list($findings, $text) = $found('zfsmDiagReplicaReceive');
 putenv('ZFSM_TEST_AREA_EXEC');
-same(array('a dataset under Accept Replicas Into does not keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so requests into it are refused: tank/data/nas2'), $findings, 'an area whose properties the receiver refuses');
+same(array('a sender\'s area under Accept Replicas Into does not keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so requests into it are refused: tank/data/nas2'), $findings, 'an area whose properties the receiver refuses');
 has("tank/data/nas2\texec\ton\tlocal\n", $text, 'and the file shows which');
 list($findings, $text) = $found('zfsmDiagReplicaReceive', function($root) use ($good_key) { file_put_contents($root.'/boot/config/ssh/root/authorized_keys', str_replace('restrict,', '', $good_key)."\n".str_replace(array('10.0.0.5', 'nas2'), array('10.0.0.0/24', 'nas3'), $good_key)."\n"); });
 same(array('a sender key\'s line does not hold it to replication: nas2', 'a sender key\'s line does not hold it to replication: nas3'), $findings, 'a key its line does not hold');
@@ -545,6 +549,20 @@ has("- a read timed out, so these files are incomplete: plugin/inner.txt\n- a co
 // A folder that can't be written says so instead of passing.
 file_put_contents($work.'/a-file', '');
 same(false, zfsmDiagRun($work.'/a-file/inside', $context(), $mixed), 'files that could not be written are reported');
+// A run whose folder is removed under it ends there: one made again in its place would be under no lock of the run's.
+function zfsmTestLosesFolder($ctx) { exec('rm -rf '.escapeshellarg($GLOBALS['zfsm_test_lost'])); return 'first'; }
+function zfsmTestSwapsFolder($ctx) { zfsmTestLosesFolder($ctx); mkdir($GLOBALS['zfsm_test_lost'], 0700); return 'first'; }
+$GLOBALS['zfsm_test_lost'] = $work.'/lost';
+foreach (array('zfsmTestLosesFolder' => array(), 'zfsmTestSwapsFolder' => array('.', '..')) as $loses => $left) {
+	$lost_run = zfsmDiagRun($work.'/lost', $context(), array(array('plugin/first.txt', 5, $loses, array()), array('zfs/second.txt', 5, 'zfsmDiagSettingsSaved', array())));
+	same(array(false, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends and writes no more: '.$loses);
+}
+same(array(false, false, false), array(zfsmDiagWrite($work.'/never', 'plugin/first.txt', 'first'), zfsmDiagWrite($work.'/never', 'summary.txt', 'first'), file_exists($work.'/never')), 'a file\'s write makes its own folder, never the run\'s');
+// The Main tab's read gives a pool whose devices could not be read an empty list: in the file that is a read that failed.
+putenv('ZFSM_TEST_ZPOOL_STATUS_FAIL=1');
+zfsmDiagRun($work.'/no-devices', $context(), array(array('plugin/inventory.json.txt', 60, 'zfsmDiagInventory', array())));
+putenv('ZFSM_TEST_ZPOOL_STATUS_FAIL');
+has("plugin/inventory.json.txt\tread failed\t", file_get_contents($work.'/no-devices/collectors.txt'), 'a pool whose devices could not be read is not an ok inventory with none');
 
 // The work folder: root's alone, removed with all in it, and nothing else is ever removed.
 $build();
@@ -684,7 +702,15 @@ file_put_contents($theirs.'/summary.txt', 'theirs');
 chown($theirs, 1000);
 symlink($work.'/elsewhere', $a_link);
 exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
+// A folder whose run still holds its lock is that run's: it writes there until it ends, and removes the folder itself.
+$running = '/tmp/zfs.master-diag.00000000000000a5';
+mkdir($running, 0700);
+file_put_contents($running.'/summary.txt', 'names');
+$running_hold = zfsmDiagHold($running);
+exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
 same(array(0, '', true, true, false), array($code, implode("\n", $said), is_file($kept.'/summary.txt'), is_file($work.'/outside/keep'), file_exists($swept)), 'the plugin\'s removal leaves a work folder with a mount in it whole, and removes one without');
+same(array(true, true), array(is_resource($running_hold), is_file($running.'/summary.txt')), 'and it leaves a folder whose run still holds its lock');
+fclose($running_hold);
 same(array(true, true, true), array(is_file($theirs.'/summary.txt'), is_link($a_link), is_file($work.'/elsewhere/keep')), 'and it leaves another user\'s folder of that name, a link of that name, and what the link points to');
 unlink($a_link);
 unlink($theirs.'/summary.txt');
@@ -701,6 +727,7 @@ mkdir($spaced.'/zfs', 0700, true);
 $mount_in($spaced);
 exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
 same(array(0, false, true, true), array($code, file_exists($kept), is_dir($spaced.'/zfs'), is_file($work.'/outside/keep')), 'that folder goes once the mount is gone; a folder with a name no run makes is not touched, nor what is mounted in it');
+same(false, file_exists($running), 'and so does the folder whose run has ended');
 $unmount($spaced.'/zfs');
 rmdir($spaced.'/zfs');
 rmdir($spaced);
