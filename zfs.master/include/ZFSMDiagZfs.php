@@ -18,6 +18,7 @@ function zfsmDiagPools() {
 	}
 	if (is_array($diag['pools'])) return $diag['pools'];
 	if ($diag['pools'] instanceof ZFSMTimeout) $diag['timed_out'] = true;
+	else zfsmDiagUnread();
 	throw $diag['pools'];
 }
 
@@ -172,9 +173,9 @@ function zfsmDiagMounts($ctx) {
 	$list = @file_get_contents(zfsmStatePath('/proc/self/mountinfo'));
 	$mounts = array_filter(zfsmImpactRows($list), function($line) { return strpos($line, ' - zfs ') !== false; });
 	$unread = '(the mount list could not be read)';
-	$boot = zfsmBootPool();
-	return zfsmDiagSection('pool mounted at /boot', $boot === null ? $unread : ($boot !== '' ? $boot : '(none)'))
-		.zfsmDiagSection('zfs mounts in /proc/self/mountinfo', $list === false ? $unread : ($mounts ? implode("\n", $mounts) : '(none)'));
+	$boot = zfsmBootPool(zfsmStatePath('/proc/self/mounts'));
+	return zfsmDiagSection('pool mounted at /boot', $boot === null ? zfsmDiagUnread($unread) : ($boot !== '' ? $boot : '(none)'))
+		.zfsmDiagSection('zfs mounts in /proc/self/mountinfo', $list === false ? zfsmDiagUnread($unread) : ($mounts ? implode("\n", $mounts) : '(none)'));
 }
 
 // zfs, zpool and rsync commands and the plugin's scripts, by the command's own name: another command's arguments can hold a password.

@@ -76,6 +76,7 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 	$put('/etc/cron.d/root', "# Generated system monitoring schedule:\n*/1 * * * * /usr/local/emhttp/plugins/dynamix/scripts/monitor &> /dev/null\n".$cron_line);
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@Tower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
+	$put('/proc/self/mounts', "tank /mnt/tank zfs rw,xattr,posixacl 0 0\ntmpfs /tmp tmpfs rw 0 0\n");
 	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"Tower\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"cache\"]\nname=\"cache\"\ntype=\"Cache\"\nfsType=\"zfs\"\nfsStatus=\"Mounted\"\nstatus=\"DISK_OK\"\nluksState=\"0\"\n[\"disk1\"]\nname=\"disk1\"\ntype=\"Data\"\nfsType=\"xfs\"\n");
@@ -333,7 +334,7 @@ same(array('tank/a' => array(3, 50, 100, 2), 'tank/b' => array(1, 60, 60, 0)), z
 // Every limit runs at a fifteenth here, so each keeps its place among the others: a read's 30 seconds is 2.
 $GLOBALS['zfsm_diag_scale'] = 1 / 15;
 $states_of = function($dir) {
-	$states = array('ok' => array(), 'timed out' => array(), 'failed' => array());
+	$states = array('ok' => array(), 'read failed' => array(), 'timed out' => array(), 'failed' => array());
 	foreach (array_slice(file($dir.'/collectors.txt', FILE_IGNORE_NEW_LINES), 1) as $line) $states[explode("\t", $line)[1]][] = explode("\t", $line)[0];
 	return $states;
 };
@@ -404,6 +405,68 @@ zfsmDiagRun($work.'/badlist', $context(), array(array('zfs/zpool-status.txt', 60
 putenv('ZFSM_TEST_POOL_FAIL');
 same(array('zfs/zpool-status.txt'), $states_of($work.'/badlist')['failed'], 'a pool list that failed is a failure, not a timeout');
 has("FINDINGS (1)\n- a collector failed, so these files hold only its error: zfs/zpool-status.txt\n", file_get_contents($work.'/badlist/summary.txt'), 'and the summary names the file');
+
+// A read that failed is in its file, and also in what the run prints: the file's result is "read failed" and the summary names it.
+// Each case is one collector through the real runner; a change that sets a switch gives back what unsets it.
+$result_of = function($file, $change, $changed = array()) use ($build, $context, $root, $work) {
+	$build();
+	$undo = $change($root);
+	$collector = array_values(array_filter(zfsmDiagCollectors(), function($collector) use ($file) { return $collector[0] === $file; }));
+	zfsmDiagRun($work.'/unread', $context($changed), $collector);
+	if ($undo !== null) $undo();
+	$named = strpos(file_get_contents($work.'/unread/summary.txt'), '- a read failed, so these files are incomplete: '.$file."\n") !== false;
+	return array(explode("\t", file($work.'/unread/collectors.txt', FILE_IGNORE_NEW_LINES)[1])[1], $named);
+};
+$with = function($switch, $value, $after = false) {
+	return function() use ($switch, $value, $after) {
+		putenv($switch.'='.$value);
+		return function() use ($switch, $after) { putenv($after === false ? $switch : $switch.'='.$after); };
+	};
+};
+// The kernel's lock table can't be hidden by a path of this test's: a socket is mounted over it, in the test's own mount namespace.
+$no_lock_table = function() use ($work) {
+	$GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$work.'/no-locks');
+	exec('mount --bind '.escapeshellarg($work.'/no-locks').' /proc/locks 2>&1', $said, $code);
+	same(0, $code, 'the lock table is hidden: '.implode(' ', $said));
+	return function() {
+		exec('umount /proc/locks 2>&1', $said, $code);
+		same(0, $code, 'the lock table is back: '.implode(' ', $said));
+	};
+};
+$failed_reads = array(
+	'the settings file can\'t be opened' => array('plugin/settings-saved.cfg.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }),
+	'a system log can\'t be opened' => array('plugin/log.txt', function($root) use ($unopenable) { $unopenable($root.'/var/log/syslog.1'); }),
+	'a command ends with an error' => array('zfs/zpool-status.txt', $with('ZFSM_TEST_ZPOOL_STATUS_FAIL', '1')),
+	'the process list can\'t be read' => array('zfs/processes.txt', $with('ZFSM_TEST_PS', 'fail', $work.'/ps.txt')),
+	'the pool list fails and the collector goes on' => array('plugin/settings-effective.txt', $with('ZFSM_TEST_POOL_FAIL', '1')),
+	'the mount list is gone' => array('zfs/mounts.txt', function($root) { unlink($root.'/proc/self/mountinfo'); }),
+	'the list the boot pool is read from is gone' => array('zfs/mounts.txt', function($root) { unlink($root.'/proc/self/mounts'); }),
+	'the lock table can\'t be read' => array('plugin/jobs.txt', $no_lock_table),
+	'authorized_keys can\'t be opened' => array('plugin/replication-receive.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ssh/root/authorized_keys'); }),
+	'the host key file holds no key' => array('plugin/replication-receive.txt', function($root) { file_put_contents($root.'/etc/ssh/ssh_host_ed25519_key.pub', "not a key\n"); }),
+	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
+	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
+	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
+	'disks.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/disks.ini'); }),
+);
+foreach ($failed_reads as $what => $case) same(array('read failed', true), $result_of($case[0], $case[1]), 'a failed read is its file\'s result and in the summary when '.$what);
+same(true, zfsmDiagLockHeld($root.'/var/run/zfs.master.lock') !== null, 'the lock table is read again');
+// A file that need not be there is no failed read.
+same(array('ok', false), $result_of('plugin/settings-saved.cfg.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }), 'a settings file that is not there is not a failed read');
+same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { unlink($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }), 'nor is a host key that is not there');
+has("host key: not there\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is not there');
+// The file after one with a failed read starts clean.
+$build();
+$unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg');
+zfsmDiagRun($work.'/next', $context(), array_slice(zfsmDiagCollectors(), 0, 2));
+same(array(array('plugin/settings-saved.cfg.txt'), array('plugin/settings-effective.txt')), array($states_of($work.'/next')['read failed'], $states_of($work.'/next')['ok']), 'a failed read marks its own file and not the next');
+// A timeout stays one where a read also failed, and README.txt names every result collectors.txt can hold.
+$build();
+putenv('ZFSM_TEST_LIST_HANG=1');
+zfsmDiagRun($work.'/both', $context(), array(array('plugin/both.txt', 60, function($ctx) { return zfsmDiagUnread('(unreadable)').zfsmDiagShowAll(zfsmDiagPerPool('zfs', array('list', '-H', '-o', 'name', '-t', 'filesystem,volume', '-r'))); }, array())));
+putenv('ZFSM_TEST_LIST_HANG');
+same(array('plugin/both.txt'), $states_of($work.'/both')['timed out'], 'a file with a read that timed out and one that failed is timed out');
+foreach (array_keys($states_of($work.'/both')) as $state) has($state, implode('', preg_grep('/^collectors\.txt /', file($work.'/both/README.txt'))), 'README.txt names the result "'.$state.'"');
 
 // A collector that throws is noted and the rest still run.
 function zfsmTestThrows($ctx) { throw new LogicException('boom'); }
