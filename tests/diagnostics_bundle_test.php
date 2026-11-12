@@ -76,7 +76,7 @@ $log_lines = array(
 $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));
 	clearstatcache(true);
-	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\nCanaryValue two\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\"\n");
+	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\"\n");
 	$put('/boot/config/ssh/root/authorized_keys', 'restrict,from="203.0.113.77",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php canarysender" '.$public_key." Canary Laptop\n");
 	$put('/var/log/zfs.master.log', "2026-01-02 10:00:00 notice [41] ".implode("\n2026-01-02 10:00:01 notice [41] ", $log_lines)."\n".$private_key."\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
@@ -90,7 +90,7 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
 };
-$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost", 'replica_accept' => 'tank/CanaryDs One');
+$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost", 'replica_accept' => 'tank/CanaryDs One');
 // A run on that server, rewritten and packed: [the zip's path or null, why not, the folder its zip was unpacked into].
 $bundle = function($name, $unraid = true, $fresh = true) use ($work, $build, $settings) {
 	if ($fresh) $build();
@@ -145,7 +145,8 @@ has("tank\torg.example:role\t".$token('root@canaryhost:backup/CanaryRemote')."\t
 has("comment\t".$token('Canary Comment')."\tlocal\n", $files['zfs/zpool-get-all.txt'], 'a pool\'s comment is a token');
 $mount = $token('Canary Mount');
 has("\t/mnt/tank/$mount\trw\tshared:52\t-\tzfs\ttank/$mount\trw\n", $files['zfs/mounts.txt'], 'a mount whose name holds a space is one token, in its folder and its dataset');
-has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\ndirectory_listing=\"tank/$ds\n", $files['plugin/settings-saved.cfg.txt'], 'the saved settings keep a known setting, and give a pattern and an unknown setting\'s whole value a token');
+has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing=\"tank/$ds\n", $files['plugin/settings-saved.cfg.txt'], 'the saved settings keep a known setting, and give a pattern, a prefix and an unknown setting\'s whole value a token, past an empty line in it');
+has("snap_prefix\t\"".zfsmDiagToken('CanaryPrefix_')."\"\t\"\"\tsaved\n", $files['plugin/settings-effective.txt'], 'the prefix its owner wrote is a token where the settings are listed as used');
 has($token('canarysender').' ('.$token('Canary Laptop').'): restrict: ok, from: ok, name: ok', $files['plugin/replication-receive.txt'], 'a sender and its key\'s comment are tokens');
 has("tank/$ds/".zfsmDiagToken('canarysender')."\texec\toff\tlocal\n", $files['plugin/replication-receive.txt'], 'the same token in the sender\'s area');
 $log = $files['plugin/log.txt'];
@@ -191,6 +192,8 @@ same('Snapshot: gonepool/'.zfsmDiagToken('a').'@'.zfsmDiagToken('b').' failed: I
 same('/mnt/user/'.zfsmDiagToken('Share').'/'.zfsmDiagToken('x'), zfsmDiagAnonText('/mnt/user/Share/x'), 'Unraid\'s own folder under /mnt stays, a share does not');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
 same('{"tank/'.zfsmDiagToken('a').'": broken', zfsmDiagAnonJson('{"tank\/a": broken'), 'and text that is no JSON is still searched, its \\/ read as /');
+same(1, preg_match('/^\{"org\.example:host":"ip-[0-9a-f]{8}","org\.example:keep":"5"\}$/', (string)zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5"}')), 'a user property\'s value that stays as a number is still an address when it is one');
+same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', zfsmDiagToken('my media')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', 'my media')), 'of the values an owner can write, a switch, a plan and a number stay');
 same(array('2 characters, 3 bytes, non-ASCII, lower case', '2 bytes, not valid UTF-8, no letters', '3 characters, 3 bytes, upper case'), array_map('zfsmDiagShape', array("\xc3\xa9a", "\xff1", 'A-B')), 'a shape says what is not ASCII or not UTF-8, and the case');
 // Two names whose tokens would start alike get different ones.
@@ -261,12 +264,20 @@ file_put_contents($work.'/linked', 'kept');
 symlink($work.'/linked', $logs.'/zfs.master-diagnostics-20240101-000000.zip');
 touch($logs.'/zfs.master-diag.00000000000000aa.part', time() - 7200);
 touch($logs.'/zfs.master-diag.other.part', time() - 7200);
-zfsmDiagKeepNewest($logs, 3);
+zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip');
 $left = array_values(array_diff(scandir($logs), array('.', '..')));
 same(array('tower-diagnostics-20250101-0000.zip', 'zfs.master-diag.00000000000000bb.part', 'zfs.master-diag.other.part', 'zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-0000.zip', 'zfs.master-diagnostics-20250101-000002.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip'), $left, 'the newest three stay, with every file that is not the plugin\'s zip, a link, and a part less than an hour old');
 same('kept', file_get_contents($work.'/linked'), 'and what a link points to is not touched');
 list($zip, $why) = $bundle('fourth', false, false);
 same(array('zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip', basename((string)$zip)), array_values(preg_grep('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/', scandir($logs))), 'a new zip takes the oldest one\'s place: '.$why);
+// A clock that went back: the zip just written is kept though three have later names. A name another run took is not taken again.
+foreach (array('20990101-000001', '20990101-000002', '20990101-000003') as $later) file_put_contents($logs.'/zfs.master-diagnostics-'.$later.'.zip', 'later');
+list($zip, $why) = $bundle('clock', false, false);
+same(array(true, array('zfs.master-diagnostics-20990101-000002.zip', 'zfs.master-diagnostics-20990101-000003.zip')), array(is_file((string)$zip), array_values(preg_grep('/-2099/', scandir($logs)))), 'the zip just written stays, with the two newest others: '.$why);
+for ($second = time(); $second < time() + 30; $second++) touch($logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip');
+$taken = scandir($logs);
+list($zip, $why) = $bundle('taken', false, false);
+same(array(true, false, 1), array(is_file((string)$zip) && filesize((string)$zip) > 0, in_array(basename((string)$zip), $taken, true), preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', basename((string)$zip))), 'a run takes a name no zip has yet: '.$zip.$why);
 // A zip that can't be written: none is left, nor the part of one, and the run says why.
 mkdir($work.'/nozip');
 file_put_contents($work.'/nozip/zip', "#!/bin/sh\necho part > \"\$2\"\necho 'zip I/O error: No space left on device' >&2\nexit 14\n");
