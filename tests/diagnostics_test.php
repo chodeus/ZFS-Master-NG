@@ -252,6 +252,9 @@ same(array('manifest.md5 is missing, so the installed files could not be checked
 // What can't be read is not judged: an unreadable manifest, package or file is a read that failed, never a difference.
 list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master.plg'); });
 same(array(), $findings, 'a manifest that can\'t be read gives no finding about the version, the channel or the package');
+same('not read', $GLOBALS['zfsm_diag']['facts']['plugin'], 'and its version is not read');
+$found('zfsmDiagInstall', function($root) { unlink($root.'/var/log/plugins/zfs.master.plg'); });
+same('no version found', $GLOBALS['zfsm_diag']['facts']['plugin'], 'a manifest that is not there was read, and holds no version');
 has("zfs.master.plg\n(the manifest could not be read)\nflash folder writable: yes\n", $text, 'and the file says so');
 list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unreadable) { $unreadable($root.'/boot/config/plugins/zfs.master/zfs.master-2026.01.02-x86_64-1.txz'); });
 same(array(), $findings, 'a package whose read fails is not a package that differs');
@@ -340,8 +343,8 @@ has("== servers this one sends to (name, address, port, pinned host key)\n(none)
 same(array('this server\'s sending key has lost its public half; Make This Server\'s Key in Settings restores it'), $send(function($root) use ($ssh) { file_put_contents($root.$ssh.'/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }), 'a key whose public half is not a key');
 same(array('this server\'s name can\'t be a sender\'s name, so no server can be given its key line'), $send(function($root) { file_put_contents($root.'/boot/config/ident.cfg', "NAME=\"my tower\"\n"); }), 'a server name that can\'t be a sender\'s');
 list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh) { file_put_contents($root.$ssh.'/remotes.json', '{"name":"nas3"}'); });
-same(array('the list of servers to send to can\'t be read: '.$root.$ssh.'/remotes.json'), $findings, 'a server list that is not a list');
-has("== servers this one sends to (name, address, port, pinned host key)\n(remotes.json could not be read as a list)\n", $text, 'is not "no servers"');
+same(array('remotes.json is not a list of servers, so this server sends to none: '.$root.$ssh.'/remotes.json'), $findings, 'a server list that is not a list');
+has("== servers this one sends to (name, address, port, pinned host key)\n(remotes.json is not a list of servers)\n", $text, 'is not "no servers"');
 list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh, $ed25519) { file_put_contents($root.$ssh.'/remotes.json', json_encode(array(array('name' => 'nas3', 'host' => 'nas3.lan', 'port' => 22, 'key' => $ed25519('h')), array('name' => 'nas4', 'host' => '10.0.0.10', 'port' => 22, 'key' => $ed25519('i'))))); });
 same(array('1 record(s) in remotes.json are not servers the plugin can use'), $findings, 'a record the plugin does not use');
 has("records in remotes.json the plugin does not use: 1\n\n== servers this one sends to (name, address, port, pinned host key)\nnas4\t10.0.0.10\t22\t", $text, 'beside the servers it does');
@@ -356,12 +359,13 @@ $commands = "  700  900 zfs list -H -t snapshot\n  701 7200 zfs send -w tank/dat
 	."  705   10 mysqldump --password=hunter2 zfs\n  706   50 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n  707 9000 /usr/sbin/zfs get -H guid tank\n"
 	."  708   20 zfs receive -o keylocation=https://user:pw@keys.example/k tank/copy\n  709    5 /usr/sbin/zfs load-key -L file:///mnt/keys/x tank/enc\n"
 	."  710    3 curl -u user:hunter2 https://tower/plugins/zfs.master/scripts/x\n  711    9 sh -c /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n"
-	."  712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n";
+	."  712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n"
+	."  714    6 /usr/sbin/zpool create -O encryption=on -O keylocation=https://user:hunter2@keys.example/p tank2 sdc\n  715    7 zpool import -d /dev/disk/by-id tank3\n";
 list($findings, $text) = $found('zfsmDiagZfsProcesses', function() use ($work, $commands) { file_put_contents($work.'/ps.txt', $commands); });
 same(array('2 zfs or zpool read(s) have been running for more than 10 minutes'), $findings, 'a list or get still running after 10 minutes is stuck; a long send or copy is not');
 same("pid\tseconds\tcommand\n700\t900\tzfs list -H -t snapshot\n701\t7200\tzfs send -w tank/data@a\n702\t30\t/usr/sbin/zpool status -p tank\n703\t5000\trsync (its arguments are left out)\n"
 	."706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n707\t9000\t/usr/sbin/zfs get -H guid tank\n"
-	."708\t20\tzfs receive (its arguments are left out)\n709\t5\tzfs load-key (its arguments are left out)\n712\t4\tzfs create (its arguments are left out)\n713\t4\tzfs change-key (its arguments are left out)\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
+	."708\t20\tzfs receive (its arguments are left out)\n709\t5\tzfs load-key (its arguments are left out)\n712\t4\tzfs create (its arguments are left out)\n713\t4\tzfs change-key (its arguments are left out)\n714\t6\tzpool create (its arguments are left out)\n715\t7\tzpool import -d /dev/disk/by-id tank3\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
 same("tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\tlocal\ntank/b\tcom.example:keylocation\thttps://x\tlocal\n", zfsmDiagHideKeyLocation("tank/a\tkeylocation\thttps://user:pw@keys.example/a\tlocal\ntank/b\tkeylocation\tprompt\tlocal\ntank/b\tcom.example:keylocation\thttps://x\tlocal\n"), 'where a key is kept stays out; prompt and other properties stay');
 // Part of a received copy: its dataset is named, its token is not, and a read that failed is not "none".
 putenv('ZFSM_TEST_RESUME_TOKEN=1-e604ea4bf-e0-789c636064000310a500c4ec50360710e72765a5269740f80cd8');
@@ -420,6 +424,14 @@ putenv('ZFSM_TEST_LIST_HANG=1');
 $whole = zfsmDiagPoolRead('tank', 'zfs', $names);
 putenv('ZFSM_TEST_LIST_HANG');
 same(array(null, 'skipped, because zfs list timed out on this pool'), array($whole['code'], zfsmDiagPoolRead('tank', 'zfs', $names)['output']), 'a read that had its whole limit marks the pool, and zfs is not asked about it again');
+// A read given a moment less than its limit is cut short too, though its command's end takes it past the limit on the clock.
+zfsmDiagStart();
+putenv('ZFSM_TEST_LIST_HANG=1');
+$began = microtime(true);
+$nearly = zfsmWithDeadline(zfsmDiagSeconds(30) - 0.0001, function() use ($names) { return zfsmDiagPoolRead('tank', 'zfs', $names); });
+$took = microtime(true) - $began;
+putenv('ZFSM_TEST_LIST_HANG');
+same(array(null, true, 0), array($nearly['code'], $took >= zfsmDiagSeconds(30), zfsmDiagPoolRead('tank', 'zfs', $names)['code']), 'a read given less than its limit does not mark the pool: it took '.round($took, 3).' s');
 
 // A read that could not be started is a failure, not a timeout: the timeout command is hidden, in this test's own mount namespace.
 $timeouts = array_unique(array_filter(array_map('realpath', array('/usr/bin/timeout', '/bin/timeout'))));
@@ -499,10 +511,10 @@ $failed_reads = array(
 	'the list the boot pool is read from is gone' => array('zfs/mounts.txt', function($root) { unlink($root.'/proc/self/mounts'); }),
 	'the lock table can\'t be read' => array('plugin/jobs.txt', $no_lock_table),
 	'authorized_keys can\'t be opened' => array('plugin/replication-receive.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ssh/root/authorized_keys'); }),
-	'the host key file holds no key' => array('plugin/replication-receive.txt', function($root) { file_put_contents($root.'/etc/ssh/ssh_host_ed25519_key.pub', "not a key\n"); }),
-	'the list of servers to send to is no list' => array('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/remotes.json', '{"name":"nas3"}'); }),
+	'the host key file can\'t be opened' => array('plugin/replication-receive.txt', function($root) use ($unopenable) { $unopenable($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }),
+	'the list of servers to send to can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/ssh/remotes.json'); }),
 	'ident.cfg can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ident.cfg'); }),
-	'the sending key\'s public half holds no key' => array('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }),
+	'the sending key\'s public half can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub'); }),
 	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
 	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
 	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
@@ -515,11 +527,20 @@ same(true, zfsmDiagLockHeld($root.'/var/run/zfs.master.lock') !== null, 'the loc
 same(array('ok', false), $result_of('plugin/settings-saved.cfg.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }), 'a settings file that is not there is not a failed read');
 same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { unlink($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }), 'nor is a host key that is not there');
 has("host key: not there\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is not there');
+// What was read and holds no usable value is no failed read either: the file says what is wrong with it.
+same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { file_put_contents($root.'/etc/ssh/ssh_host_ed25519_key.pub', "not a key\n"); }), 'nor is a host key file that holds no key');
+has("host key: not an ed25519 key\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is no key');
+same(array('ok', false), $result_of('unraid/context.txt', function($root) { file_put_contents($root.'/etc/unraid-version', "branch=\"stable\"\n"); file_put_contents($root.'/var/local/emhttp/var.ini', "NAME=\"Tower\"\n"); }), 'nor are Unraid\'s files without the values the plugin reads');
+has("Unraid: not in the file\nPHP: ".PHP_VERSION."\narray: mdState=not in the file, fsState=not in the file\n", file_get_contents($work.'/unread/unraid/context.txt'), 'and the file says they are not in them');
 same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/ident.cfg', "NAME=\"my tower\"\n"); }), 'nor is a server name that can\'t be a sender\'s');
 has("this server's name as a sender: (none: the name in ident.cfg is not ".ZFSM_REPLICA_NAME_RULE.")\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says what is wrong with the name');
 same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519'); unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub'); }), 'nor is a server with no sending key');
 same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519'); }), 'nor is a public half left without its private one');
 has("private key: not there\npublic key: there, without its private half\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says so');
+same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }), 'nor is a public half that holds no key');
+has("public key: there, but not a usable key\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says so');
+same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/remotes.json', '{"name":"nas3"}'); }), 'nor is a list of servers that is no list');
+has("(remotes.json is not a list of servers)\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says so');
 // The file after one with a failed read starts clean.
 $build();
 $unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg');
@@ -658,6 +679,11 @@ has("zfs/timings.txt\tok\t", $printed, 'to the last one');
 has("\nOpenZFS: zfs-2.4.4-1; zfs-kmod-2.4.4-1\n", $printed, 'and the summary');
 has("\nFINDINGS (", $printed, 'with its findings');
 same(array(), glob('/tmp/zfs.master-diag.*'), 'and removes its work folder');
+// As a page the script does nothing: a request to its address starts no run.
+$cgi = dirname(PHP_BINARY).'/php-cgi';
+same(true, is_executable($cgi), 'php-cgi is beside the test\'s PHP: '.$cgi);
+exec(escapeshellarg($cgi).' -n -q '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' 2>&1', $served, $code);
+same(array(1, '', array()), array($code, implode("\n", $served), glob('/tmp/zfs.master-diag.*')), 'the script served as a page ends at once, with no output and no work folder');
 
 // Ctrl-C, a dropped session or a kill: where PHP has pcntl the folder goes then too. ZFSM_TEST_PCNTL names the extension to load.
 $pcntl = getenv('ZFSM_TEST_PCNTL');

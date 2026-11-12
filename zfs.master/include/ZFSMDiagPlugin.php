@@ -93,7 +93,7 @@ function zfsmDiagRelease($manifest, $flash) {
 	$records = array_map('basename', glob(zfsmStatePath('/var/log/packages/zfs.master-*')) ?: array());
 	// False for a package that can't be read: that is a read that failed, not a package that differs.
 	$md5 = is_file($flash.'/'.$package.'.txz') ? zfsmDiagWhole('md5_file', $flash.'/'.$package.'.txz') : 'not there';
-	zfsmDiagFact('plugin', $manifest['version'] !== '' ? $manifest['version'] : 'not read');
+	zfsmDiagFact('plugin', $manifest['version'] !== '' ? $manifest['version'] : 'no version found');
 	$wrong = array(
 		'updates do not come from this plugin\'s main or beta channel: '.$manifest['url'] => preg_match('#^https://raw\.githubusercontent\.com/chodeus/ZFS-Master-NG/(main|beta)/zfs\.master\.plg$#D', $manifest['url']) !== 1,
 		'the installed package is not the manifest\'s version' => $records !== array($package),
@@ -193,12 +193,18 @@ function zfsmDiagJobs($ctx) {
 	return $text."\n".zfsmDiagSection('running plugin scripts (pid, seconds, command)', $running !== '' ? $running : '(none)');
 }
 
+// The host key by its fingerprint, or why there is none: a file that can't be read is a read that failed, one that holds no key is not.
+function zfsmDiagHostKey($file) {
+	if (!file_exists($file)) return 'not there';
+	if (zfsmDiagWhole('file_get_contents', $file) === false) return zfsmDiagUnread('unreadable');
+	return zfsmHostKeyFingerprint($file) ?? 'not an ed25519 key';
+}
+
 // The receiving side: the dataset copies go into, its safety properties, and whether each sender's key is held to replication.
 // Each key's own text stays out.
 function zfsmDiagReplicaReceive($ctx) {
 	$accept = $ctx['cfg']['replica_accept'];
-	$host = zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub');
-	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.(zfsmHostKeyFingerprint($host) ?? (file_exists($host) ? zfsmDiagUnread('unreadable') : 'not there'))."\n\n";
+	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
 	if ($accept !== '' && !zfsmReplicaAcceptValid($accept)) zfsmDiagFinding('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted');
 	elseif ($accept !== '') {
 		$wanted = zfsmReplicaAreaProps();
@@ -224,30 +230,33 @@ function zfsmDiagReplicaSend($ctx) {
 	$public = zfsmReplicaPublicKey();
 	$name = zfsmReplicaThisName();
 	$read = zfsmReplicaRemotesRead();
+	// A list that can't be read is a read that failed; one that was read and is no list is a finding.
+	$unread = $read === null && zfsmDiagWhole('file_get_contents', $dir.'/remotes.json') === false;
 	$servers = '';
 	foreach ($read['valid'] ?? array() as $remote) $servers .= implode("\t", array($remote['name'], $remote['host'], $remote['port'], zfsmKeyFingerprint($remote['key'])))."\n";
 	$unused = count($read['other'] ?? array());
 	$wrong = array(
 		'this server\'s sending key has lost its public half; Make This Server\'s Key in Settings restores it' => $private && $public === null,
 		'this server\'s name can\'t be a sender\'s name, so no server can be given its key line' => $name === null && ($private || $servers !== ''),
-		'the list of servers to send to can\'t be read: '.$dir.'/remotes.json' => $read === null,
+		'remotes.json is not a list of servers, so this server sends to none: '.$dir.'/remotes.json' => $read === null && !$unread,
 		$unused.' record(s) in remotes.json are not servers the plugin can use' => $unused > 0,
 	);
 	array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
-	return 'this server\'s name as a sender: '.($name ?? (zfsmDiagWhole('parse_ini_file', zfsmReplicaIdentFile()) === false ? zfsmDiagUnread('(none: ident.cfg could not be read)') : '(none: the name in ident.cfg is not '.ZFSM_REPLICA_NAME_RULE.')'))."\n"
+	return 'this server\'s name as a sender: '.($name ?? (zfsmDiagWhole('file_get_contents', zfsmReplicaIdentFile()) === false ? zfsmDiagUnread('(none: ident.cfg could not be read)') : '(none: the name in ident.cfg is not '.ZFSM_REPLICA_NAME_RULE.')'))."\n"
 		.'private key: '.($private ? 'there' : 'not there')."\n"
 		.'public key: '.zfsmDiagPublicHalf($dir, $private, $public)."\n"
 		.'key copies in RAM: '.count(glob(zfsmJobDir('replica-send').'/ssh-*') ?: array())."\n"
 		.'records in remotes.json the plugin does not use: '.$unused."\n\n"
-		.zfsmDiagSection('servers this one sends to (name, address, port, pinned host key)', $read === null ? zfsmDiagUnread('(remotes.json could not be read as a list)') : ($servers !== '' ? $servers : '(none)'));
+		.zfsmDiagSection('servers this one sends to (name, address, port, pinned host key)', $read === null ? ($unread ? zfsmDiagUnread('(remotes.json could not be read)') : '(remotes.json is not a list of servers)') : ($servers !== '' ? $servers : '(none)'));
 }
 
-// The sending key's public half as its file shows it: its fingerprint, or why there is none. One that is there beside
-// the private half and holds no usable key is a read that failed.
+// The sending key's public half as its file shows it: its fingerprint, or why there is none. A file that can't be read is
+// a read that failed; one that holds no usable key is not.
 function zfsmDiagPublicHalf($dir, $private, $public) {
 	if ($public !== null) return zfsmKeyFingerprint($public);
 	if (!file_exists($dir.'/id_ed25519.pub')) return 'not there';
-	return $private ? zfsmDiagUnread('there, but not a usable key') : 'there, without its private half';
+	if (!$private) return 'there, without its private half';
+	return zfsmDiagWhole('file_get_contents', $dir.'/id_ed25519.pub') === false ? zfsmDiagUnread('unreadable') : 'there, but not a usable key';
 }
 
 // What the Main tab's first read returns, logging a failure as that read does. It asks about every pool, so it is skipped once
@@ -281,10 +290,15 @@ function zfsmDiagPhpErrors($ctx) {
 	return $text;
 }
 
+// One value of an ini file a collector read: a file that could not be read is a read that failed, a value it does not hold is not.
+function zfsmDiagIniValue($ini, $key) {
+	return is_array($ini) ? (string)($ini[$key] ?? 'not in the file') : zfsmDiagUnread('not read');
+}
+
 // What the plugin reads of Unraid: its version, the array's state, the display settings, the ZFS pools Unraid expects, the other plugins.
 function zfsmDiagUnraid($ctx) {
-	$version = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/etc/unraid-version'))['version'] ?? zfsmDiagUnread('not read');
-	$var = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/var.ini')) ?: array();
+	$version = zfsmDiagIniValue(zfsmDiagWhole('parse_ini_file', zfsmStatePath('/etc/unraid-version')), 'version');
+	$var = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/var.ini'));
 	$disks = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/disks.ini'), true);
 	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
 	zfsmDiagFact('Unraid', $version);
@@ -298,7 +312,7 @@ function zfsmDiagUnraid($ctx) {
 		$plugins[] = basename($manifest, '.plg').' '.(zfsmDiagWhole('file_get_contents', $manifest) === false ? zfsmDiagUnread('(unreadable)') : zfsmPluginVersion($manifest));
 	}
 	return 'Unraid: '.$version."\n".'PHP: '.PHP_VERSION."\n"
-		.'array: mdState='.($var['mdState'] ?? zfsmDiagUnread('not read')).', fsState='.($var['fsState'] ?? zfsmDiagUnread('not read'))."\n"
+		.'array: mdState='.zfsmDiagIniValue($var, 'mdState').', fsState='.zfsmDiagIniValue($var, 'fsState')."\n"
 		.'publishing paused: '.(is_file(zfsmStatePath('/tmp/publishPaused')) ? 'yes' : 'no')."\n\n"
 		.zfsmDiagSection('display settings', implodeWithKeys("\n", array_filter($display, 'is_scalar'), '='))
 		.zfsmDiagSection('ZFS pools and disks Unraid lists', is_array($disks) ? implode("\n", $pools) : zfsmDiagUnread('(disks.ini could not be read)'))

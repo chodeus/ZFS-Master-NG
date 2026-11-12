@@ -30,10 +30,11 @@ function zfsmDiagPoolRead($pool, $command, $args, $seconds = 30) {
 		$GLOBALS['zfsm_diag']['timed_out'] = true;
 		return array('code' => null, 'output' => 'skipped, because '.$hung.' timed out on this pool');
 	}
-	$began = microtime(true);
+	// Only a read that was given its whole limit says the pool hangs: one its collector's limit cuts short was not given the time,
+	// however long its command then takes to end.
+	$whole = zfsmDeadlineLeft() >= zfsmDiagSeconds($seconds);
 	$result = zfsmDiagRead($command, $args, $seconds);
-	// Only a read that ran its whole limit says the pool hangs: one its collector's limit cut short was not given the time.
-	if ($result['code'] === null && microtime(true) - $began >= zfsmDiagSeconds($seconds)) $hung = $command.' '.$args[0];
+	if ($result['code'] === null && $whole) $hung = $command.' '.$args[0];
 	return $result;
 }
 
@@ -179,14 +180,14 @@ function zfsmDiagMounts($ctx) {
 }
 
 // zfs, zpool and rsync commands and the plugin's scripts, by the command's own name: another command's arguments can hold a password.
-// rsync's arguments, and a zfs command's that say where a key is kept, are left out. A list or get still running after 10 minutes is stuck.
+// rsync's arguments, and a zfs or zpool command's that say where a key is kept, are left out. A list or get still running after 10 minutes is stuck.
 function zfsmDiagZfsProcesses($ctx) {
 	$processes = zfsmDiagProcesses('#^(\S*/)?(zfs|zpool|rsync)(\s|$)|'.zfsmDiagScriptPattern().'#');
 	if ($processes === null) return '(the process list could not be read)';
 	$text = "pid\tseconds\tcommand\n";
 	$stuck = 0;
 	foreach ($processes as $process) {
-		if (preg_match('#^(\S*/)?(rsync|zfs\s+load-key)(\s|$)|^(\S*/)?(zfs\s+\S+)\s.*keylocation=#', $process[2], $match) === 1) $process[2] = ($match[5] ?? $match[2]).' (its arguments are left out)';
+		if (preg_match('#^(\S*/)?(rsync|zfs\s+load-key)(\s|$)|^(\S*/)?((?:zfs|zpool)\s+\S+)\s.*keylocation=#', $process[2], $match) === 1) $process[2] = ($match[5] ?? $match[2]).' (its arguments are left out)';
 		$text .= implode("\t", $process)."\n";
 		if ($process[1] > 600 && preg_match('#^(\S*/)?(zfs (list|get)|zpool (list|status|get))(\s|$)#', $process[2]) === 1) $stuck++;
 	}
