@@ -70,6 +70,9 @@ putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
 $report = json_encode(array('userAgent' => 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36', 'kept' => array('zfsm-datasetsHidden' => '["tank/data"]')));
 same(array('state' => 'started', 'why' => ''), $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => $report)), 'the first start');
 same(array(array('state' => 'running', 'why' => ''), array('state' => 'running')), array($ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'another')), $state()), 'a second start while it runs starts nothing, and the state says running');
+// The job itself, started beside the one that runs: it ends at once, whoever started it.
+exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --job --no-unraid 2>&1', $beside, $code);
+same(array(1, '', array('state' => 'running')), array($code, implode("\n", $beside), $state()), 'a second job ends at once and leaves the first one\'s state');
 putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 $done = $finished();
 same(array('done', 1, 1), array($done['state'] ?? $done, preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $done['zip'] ?? ''), count($zips())), 'the run ends with its zip\'s name, and one zip is made: '.json_encode($done));

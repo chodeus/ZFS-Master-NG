@@ -24,7 +24,9 @@ function launch({interval = 30} = {}) {
       const element = {
         text(value) { if (value === undefined) return texts.get(selector); texts.set(selector, value); return this; },
         css() { return this; }, removeClass() { return this; }, addClass() { return this; },
-        click() { return this; }, on() { return this; }, remove() { return this; }, removeAttr() { return this; }, hide() { return this; }, attr() { return this; }, ajaxSuccess() { return this; }
+        click() { return this; }, on() { return this; }, remove() { return this; }, removeAttr() { return this; }, hide() { return this; }, attr() { return this; }, ajaxSuccess() { return this; },
+        // The table's header cells, for the record a diagnostics run sends.
+        length: 3, map() { return {get: () => ['Name', 'Activity']}; }
       };
       elements.set(selector, element);
     }
@@ -212,6 +214,19 @@ check('a pool that recovers in its own read is cached as complete', () => {
   s.requests[1].resolve(poolResult('tank', 1));
   s.requests[2].resolve(poolResult('cache', 2));
   assert.equal(s.storage.has('zfsm-cache'), true, 'a recovered pool left the cache unsaved');
+});
+
+// What the Main tab last showed is kept for a diagnostics run to send: the status, the render, and a script's error.
+check('record: the last status, render and script error are kept in the browser', () => {
+  const s = launch();
+  s.context.updateFullBodyTable = () => {};
+  s.requests[0].resolve(lazy());
+  s.requests[1].reject({status: 500}, 'error');
+  s.events.error({message: 'boom', filename: 'http://tower/plugins/zfs.master/frontend/ZFSMFrontEnd.js', lineno: 7});
+  const record = JSON.parse(s.storage.get('zfsm-diagnostics') || '{}');
+  assert.equal(record.status && record.status.text, s.status(), 'the last status is not in the record');
+  assert.deepEqual([record.render && record.render.pools, record.render && record.render.rows, record.render && record.render.headers], [2, 3, ['Name', 'Activity']], 'the last render is not in the record with its header cells');
+  assert.deepEqual(record.errors && [record.errors[0].text, record.errors[0].where], ['boom', 'ZFSMFrontEnd.js:7'], 'a script\'s error is not in the record');
 });
 
 console.log('inventory failure path tests passed');
