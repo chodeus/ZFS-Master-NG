@@ -234,7 +234,7 @@ function zfsmDiagReplicaSend($ctx) {
 		$unused.' record(s) in remotes.json are not servers the plugin can use' => $unused > 0,
 	);
 	array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
-	return 'this server\'s name as a sender: '.($name ?? (@parse_ini_file(zfsmReplicaIdentFile()) === false ? zfsmDiagUnread('(none: ident.cfg could not be read)') : '(none: the name in ident.cfg is not '.ZFSM_REPLICA_NAME_RULE.')'))."\n"
+	return 'this server\'s name as a sender: '.($name ?? (zfsmDiagWhole('parse_ini_file', zfsmReplicaIdentFile()) === false ? zfsmDiagUnread('(none: ident.cfg could not be read)') : '(none: the name in ident.cfg is not '.ZFSM_REPLICA_NAME_RULE.')'))."\n"
 		.'private key: '.($private ? 'there' : 'not there')."\n"
 		.'public key: '.zfsmDiagPublicHalf($dir, $private, $public)."\n"
 		.'key copies in RAM: '.count(glob(zfsmJobDir('replica-send').'/ssh-*') ?: array())."\n"
