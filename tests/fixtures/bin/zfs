@@ -129,6 +129,12 @@ if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = 1 ]; then sleep 30; fi
 if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = stubborn ]; then trap '' TERM; sleep 30; fi
 # One whose output stays open after it ends, as a zfs stuck in the kernel holds it: timeout's KILL can't reach the holder.
 if [ "$1" = "list" ] && [ "${ZFSM_TEST_LIST_HANG:-0}" = held ]; then setsid sleep 30 & exit 0; fi
+if [ "$1" = "version" ]; then printf 'zfs-2.4.4-1\nzfs-kmod-2.4.4-1\n'; exit 0; fi
+# Each snapshot's creation and holds, as diagnostics counts them per dataset: ZFSM_TEST_SNAPSHOT_COUNTS is a file of such lines.
+if [ "$1" = "list" ] && contains_arg 'name,creation,userrefs' "$@"; then
+	if [ -n "${ZFSM_TEST_SNAPSHOT_COUNTS:-}" ]; then cat "$ZFSM_TEST_SNAPSHOT_COUNTS"; else printf '%s@root\t1700000300\t0\n%s/data@daily\t1700000400\t1\n%s/data@hourly\t1700000500\t0\n' "$last_arg" "$last_arg" "$last_arg"; fi
+	exit 0
+fi
 # zfs rewrite (OpenZFS 2.4+): usage with no file; with -v, one line per file it rewrote.
 if [ "$1" = "rewrite" ]; then
 	[ "${ZFSM_TEST_NO_REWRITE:-0}" = 1 ] && { printf "unrecognized command 'rewrite'\n" >&2; exit 2; }
@@ -273,7 +279,16 @@ if [ "$1" = "list" ]; then
 	exit 0
 fi
 
+# The accepting dataset and a sender's area under it, as diagnostics reads them; ZFSM_TEST_AREA_EXEC is the area's exec.
+if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@" && contains_arg 'mountpoint,volmode,setuid,devices,exec' "$@"; then
+	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+	for property in mountpoint=/mnt/x volmode=default setuid=on devices=on exec=on; do printf '%s\t%s\t%s\tdefault\n' "$last_arg" "${property%%=*}" "${property#*=}"; done
+	for property in mountpoint=none volmode=none setuid=off devices=off "exec=${ZFSM_TEST_AREA_EXEC:-off}"; do printf '%s/nas2\t%s\t%s\tlocal\n' "$last_arg" "${property%%=*}" "${property#*=}"; done
+	exit 0
+fi
+
 if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
+	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
 	printf 'tank\torg.example:role\tstorage\tlocal\n'
 	printf 'tank/data\torg.example:role\tmedia\tlocal\n'
 	exit 0
@@ -282,6 +297,12 @@ fi
 if [ "$1" = "get" ] && [ -n "${ZFSM_TEST_GET_FAIL:-}" ] && [ "$last_arg" = "$ZFSM_TEST_GET_FAIL" ]; then
 	printf "cannot open '%s': permission denied\n" "$last_arg" >&2
 	exit 1
+fi
+
+# ZFSM_TEST_RESUME_TOKEN is the token tank/data holds of a copy that stopped part way.
+if [ "$1" = "get" ] && contains_arg 'receive_resume_token' "$@" && contains_arg 'name,value' "$@"; then
+	printf 'tank\t-\ntank/data\t%s\ntank/vol\t-\n' "${ZFSM_TEST_RESUME_TOKEN:--}"
+	exit 0
 fi
 
 if [ "$1" = "get" ] && contains_arg 'encryption' "$@"; then
