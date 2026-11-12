@@ -207,6 +207,17 @@ function zfsmDiagHostKey($file) {
 	return zfsmHostKeyFingerprint($file) ?? 'not an ed25519 key';
 }
 
+// The datasets one level under the accepting one that the receiver refuses requests into, by its own rule (zfsmReplicaAreaHolds):
+// each is a sender's area and must hold every one of zfsmReplicaAreaProps. $output is the read of them, name, property, value.
+function zfsmDiagAreasRefused($output, $accept) {
+	$found = array();
+	foreach (zfsmImpactRows($output) as $row) {
+		$field = explode("\t", $row);
+		if (count($field) >= 3 && $field[0] !== $accept) $found[$field[0]][$field[1]] = $field[2];
+	}
+	return array_keys(array_filter($found, function($props) { return array_diff_assoc(zfsmReplicaAreaProps(), $props) !== array(); }));
+}
+
 // The receiving side: the dataset copies go into, its safety properties, and whether each sender's key is held to replication.
 // Each key's own text stays out.
 function zfsmDiagReplicaReceive($ctx) {
@@ -217,6 +228,7 @@ function zfsmDiagReplicaReceive($ctx) {
 		$wanted = zfsmReplicaAreaProps();
 		$read = zfsmDiagPoolRead(explode('/', $accept)[0], 'zfs', array('get', '-H', '-d', '1', '-t', 'filesystem,volume', '-o', 'name,property,value,source', implode(',', array_keys($wanted)), $accept));
 		if ($read['code'] !== 0) zfsmDiagFinding('the dataset Accept Replicas Into names could not be read');
+		foreach (zfsmDiagAreasRefused($read['output'], $accept) as $area) zfsmDiagFinding('a dataset under Accept Replicas Into does not keep '.implodeWithKeys(', ', $wanted, '=').', so requests into it are refused: '.$area);
 		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
 	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');

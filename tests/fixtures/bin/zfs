@@ -279,6 +279,14 @@ if [ "$1" = "list" ]; then
 	exit 0
 fi
 
+# The accepting dataset and a sender's area under it, as diagnostics reads them; ZFSM_TEST_AREA_EXEC is the area's exec.
+if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@" && contains_arg 'mountpoint,volmode,setuid,devices,exec' "$@"; then
+	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+	for property in mountpoint=/mnt/x volmode=default setuid=on devices=on exec=on; do printf '%s\t%s\t%s\tdefault\n' "$last_arg" "${property%%=*}" "${property#*=}"; done
+	for property in mountpoint=none volmode=none setuid=off devices=off "exec=${ZFSM_TEST_AREA_EXEC:-off}"; do printf '%s/nas2\t%s\t%s\tlocal\n' "$last_arg" "${property%%=*}" "${property#*=}"; done
+	exit 0
+fi
+
 if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
 	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
 	printf 'tank\torg.example:role\tstorage\tlocal\n'
