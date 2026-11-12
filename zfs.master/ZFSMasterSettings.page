@@ -222,6 +222,7 @@ _(Servers)_:
 
 :zc_settings_send_servers_plug:
 > The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test makes this server's dataset there if it is missing, and shows its name.
+> The line's `from=` is the address this server reaches that server from. Where a router between them changes that address (source NAT), that server sees another one and refuses the key: set `from=` there to the exact address it sees.
 :end
 
 _(Add A Server)_:

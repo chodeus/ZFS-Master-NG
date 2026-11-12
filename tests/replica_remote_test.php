@@ -45,6 +45,7 @@ $script('ssh', implode("\n", array(
 	'cmp -s "$key" "$ZFSM_TEST_FLASH_KEY" && echo key-same >> "$ZFSM_TEST_SSH_LOG"',
 	'printf "known %s\n" "$(cat "$known")" >> "$ZFSM_TEST_SSH_LOG"',
 	'[ -n "${ZFSM_TEST_SSH_FAIL:-}" ] && { echo "$ZFSM_TEST_SSH_FAIL" >&2; exit 255; }',
+	'[ -n "${ZFSM_TEST_SSH_FLOOD:-}" ] && { head -c "$ZFSM_TEST_SSH_FLOOD" /dev/zero | tr "\\000" x; exit 0; }',
 	'SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"',
 	'')));
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
@@ -217,6 +218,12 @@ same(array('error' => 'This server does not accept replicas from this key'), zfs
 putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
 same(array('error' => 'Host key verification failed.'), zfsmReplicaHello($nas), 'ssh\'s own error comes through');
 putenv('ZFSM_TEST_SSH_FAIL');
+// A server that answers with far more than a hello: the answer is cut where it is read, not held whole.
+putenv('ZFSM_TEST_SSH_FLOOD=30000000');
+$held = memory_get_peak_usage();
+$flooded = zfsmReplicaHello($nas);
+putenv('ZFSM_TEST_SSH_FLOOD');
+same(array(true, true), array(isset($flooded['error']), memory_get_peak_usage() - $held < 5000000), 'an answer of 30 MB is no hello, and is not read into memory: '.(memory_get_peak_usage() - $held).' bytes more');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash3/ssh';
 same(array('error' => 'This server has no key yet, or its RAM copy could not be made'), zfsmReplicaHello($nas), 'no key, no ssh');
 $GLOBALS['zfsm_ssh_dir'] = $work.'/flash/ssh';

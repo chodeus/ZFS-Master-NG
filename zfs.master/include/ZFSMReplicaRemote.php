@@ -247,7 +247,8 @@ function zfsmReplicaHello($remote) {
 	$files = zfsmReplicaSshFiles($remote);
 	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
 	try {
-		$hello = runProcess('ssh', zfsmReplicaSshArgs($remote, $files, 'zfsm-replica 1 hello'));
+		// The other server decides how much it sends: no more than a hello's few lines is kept.
+		$hello = runProcess('ssh', zfsmReplicaSshArgs($remote, $files, 'zfsm-replica 1 hello'), null, 0, ZFSM_KEEP_OUTPUT);
 	} finally {
 		zfsmReplicaSshCleanup($files);
 	}
