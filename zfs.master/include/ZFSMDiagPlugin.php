@@ -218,12 +218,20 @@ function zfsmDiagReplicaSend($ctx) {
 		$unused.' record(s) in remotes.json are not servers the plugin can use' => $unused > 0,
 	);
 	array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
-	return 'this server\'s name as a sender: '.($name ?? '(none: ident.cfg could not be read, or its name is not '.ZFSM_REPLICA_NAME_RULE.')')."\n"
+	return 'this server\'s name as a sender: '.($name ?? (@parse_ini_file(zfsmReplicaIdentFile()) === false ? zfsmDiagUnread('(none: ident.cfg could not be read)') : '(none: the name in ident.cfg is not '.ZFSM_REPLICA_NAME_RULE.')'))."\n"
 		.'private key: '.($private ? 'there' : 'not there')."\n"
-		.'public key: '.($public === null ? 'not there or not usable' : zfsmKeyFingerprint($public))."\n"
+		.'public key: '.zfsmDiagPublicHalf($dir, $private, $public)."\n"
 		.'key copies in RAM: '.count(glob(zfsmJobDir('replica-send').'/ssh-*') ?: array())."\n"
 		.'records in remotes.json the plugin does not use: '.$unused."\n\n"
-		.zfsmDiagSection('servers this one sends to (name, address, port, pinned host key)', $read === null ? '(remotes.json could not be read as a list)' : ($servers !== '' ? $servers : '(none)'));
+		.zfsmDiagSection('servers this one sends to (name, address, port, pinned host key)', $read === null ? zfsmDiagUnread('(remotes.json could not be read as a list)') : ($servers !== '' ? $servers : '(none)'));
+}
+
+// The sending key's public half as its file shows it: its fingerprint, or why there is none. One that is there beside
+// the private half and holds no usable key is a read that failed.
+function zfsmDiagPublicHalf($dir, $private, $public) {
+	if ($public !== null) return zfsmKeyFingerprint($public);
+	if (!file_exists($dir.'/id_ed25519.pub')) return 'not there';
+	return $private ? zfsmDiagUnread('there, but not a usable key') : 'there, without its private half';
 }
 
 // What the Main tab's first read returns, logging a failure as that read does. It asks about every pool, so it is skipped once

@@ -10,8 +10,12 @@ function zfsmReplicaSshDir() {
 }
 
 // The sender name in the key line on the servers it sends to; null when Unraid's server name breaks the sender-name rules there.
+function zfsmReplicaIdentFile() {
+	return $GLOBALS['zfsm_ident_file'] ?? '/boot/config/ident.cfg';
+}
+
 function zfsmReplicaThisName() {
-	$ident = @parse_ini_file($GLOBALS['zfsm_ident_file'] ?? '/boot/config/ident.cfg');
+	$ident = @parse_ini_file(zfsmReplicaIdentFile());
 	$name = is_array($ident) ? (string)($ident['NAME'] ?? '') : '';
 	return zfsmReplicaSenderName($name) ? $name : null;
 }

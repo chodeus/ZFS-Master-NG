@@ -314,7 +314,7 @@ $ssh = '/boot/config/plugins/zfs.master/ssh';
 same(array(), $send(null), 'a good sending side has no findings');
 list($findings, $text) = $found('zfsmDiagReplicaSend', function($root) use ($ssh) { exec('rm -rf '.escapeshellarg($root.$ssh)); unlink($root.'/boot/config/ident.cfg'); });
 same(array(), $findings, 'nor a server that sends nothing, whatever its name');
-has("private key: not there\npublic key: not there or not usable\n", $text, 'which says it has no key');
+has("this server's name as a sender: (none: ident.cfg could not be read)\nprivate key: not there\npublic key: not there\n", $text, 'which says it has no key');
 has("== servers this one sends to (name, address, port, pinned host key)\n(none)\n", $text, 'and no servers');
 same(array('this server\'s sending key has lost its public half; Make This Server\'s Key in Settings restores it'), $send(function($root) use ($ssh) { file_put_contents($root.$ssh.'/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }), 'a key whose public half is not a key');
 same(array('this server\'s name can\'t be a sender\'s name, so no server can be given its key line'), $send(function($root) { file_put_contents($root.'/boot/config/ident.cfg', "NAME=\"my tower\"\n"); }), 'a server name that can\'t be a sender\'s');
@@ -473,6 +473,9 @@ $failed_reads = array(
 	'the lock table can\'t be read' => array('plugin/jobs.txt', $no_lock_table),
 	'authorized_keys can\'t be opened' => array('plugin/replication-receive.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ssh/root/authorized_keys'); }),
 	'the host key file holds no key' => array('plugin/replication-receive.txt', function($root) { file_put_contents($root.'/etc/ssh/ssh_host_ed25519_key.pub', "not a key\n"); }),
+	'the list of servers to send to is no list' => array('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/remotes.json', '{"name":"nas3"}'); }),
+	'ident.cfg can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ident.cfg'); }),
+	'the sending key\'s public half holds no key' => array('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', "ssh-ed25519 AAAA\n"); }),
 	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
 	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
 	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
@@ -484,6 +487,11 @@ same(true, zfsmDiagLockHeld($root.'/var/run/zfs.master.lock') !== null, 'the loc
 same(array('ok', false), $result_of('plugin/settings-saved.cfg.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }), 'a settings file that is not there is not a failed read');
 same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { unlink($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }), 'nor is a host key that is not there');
 has("host key: not there\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is not there');
+same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { file_put_contents($root.'/boot/config/ident.cfg', "NAME=\"my tower\"\n"); }), 'nor is a server name that can\'t be a sender\'s');
+has("this server's name as a sender: (none: the name in ident.cfg is not ".ZFSM_REPLICA_NAME_RULE.")\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says what is wrong with the name');
+same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519'); unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub'); }), 'nor is a server with no sending key');
+same(array('ok', false), $result_of('plugin/replication-send.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519'); }), 'nor is a public half left without its private one');
+has("private key: not there\npublic key: there, without its private half\n", file_get_contents($work.'/unread/plugin/replication-send.txt'), 'and the file says so');
 // The file after one with a failed read starts clean.
 $build();
 $unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg');
