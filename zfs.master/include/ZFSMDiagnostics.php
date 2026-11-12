@@ -5,6 +5,7 @@ require_once __DIR__.'/ZFSMDiagPlugin.php';
 require_once __DIR__.'/ZFSMDiagZfs.php';
 require_once __DIR__.'/ZFSMDiagNames.php';
 require_once __DIR__.'/ZFSMDiagBundle.php';
+require_once __DIR__.'/ZFSMDiagJob.php';
 
 // [file, time limit in seconds, collector, the paths it covers]. A path under /boot, /var, /etc or /tmp named anywhere in the plugin
 // must be here or in zfsmDiagNotCollected (tests/diagnostics_test.php), so a feature that keeps new state adds its line.
@@ -20,6 +21,7 @@ function zfsmDiagCollectors() {
 		array('plugin/inventory.json.txt', 60, 'zfsmDiagInventory', array()),
 		array('plugin/log.txt', 30, 'zfsmDiagLog', array('/var/log/zfs.master.log', '/var/log/syslog')),
 		array('plugin/php-errors.txt', 30, 'zfsmDiagPhpErrors', array('/var/log/phplog', '/var/log/nginx/error.log')),
+		array('plugin/browser.json.txt', 5, 'zfsmDiagBrowser', array()),
 		array('unraid/context.txt', 20, 'zfsmDiagUnraid', array('/etc/unraid-version', '/var/local/emhttp', '/var/local/emhttp/var.ini', '/var/local/emhttp/disks.ini', '/tmp/publishPaused', '/var/log/plugins/*.plg')),
 		array('zfs/versions.txt', 20, 'zfsmDiagZfsVersions', array()),
 		array('zfs/zpool-list.txt', 30, 'zfsmDiagZpoolList', array()),
@@ -45,11 +47,11 @@ function zfsmDiagNotCollected() {
 	);
 }
 
-// What every collector gets: the settings as saved and as the plugin uses them, the installed plugin's folder, and whether
-// Unraid's own diagnostics are wanted with the files.
-function zfsmDiagContext($config, $unraid = true) {
+// What every collector gets: the settings as saved and as the plugin uses them, the installed plugin's folder, whether
+// Unraid's own diagnostics are wanted with the files, and whether the Settings page started the run.
+function zfsmDiagContext($config, $unraid = true, $job = false) {
 	$saved = is_array($config) && is_array($config['general'] ?? null) ? $config['general'] : array();
-	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__), 'unraid' => $unraid);
+	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__), 'unraid' => $unraid, 'job' => $job);
 }
 
 // What the collectors note as they go: summary.txt's facts and findings, each read's time, and the pools a read timed out on.
@@ -131,7 +133,7 @@ function zfsmDiagReadme() {
 	$text = "ZFS Master NG diagnostics\n\n"
 		."summary.txt     versions, counts and the FINDINGS: what looks wrong with the plugin, its settings, the pools or this run's own reads\n"
 		."collectors.txt  each file: ok, read failed, timed out or failed, and the seconds it took\n"
-		."plugin/         settings, install, alert schedule, jobs, replication and the plugin's log\n"
+		."plugin/         settings, install, alert schedule, jobs, replication, the plugin's log and what the browser reported\n"
 		."zfs/            pools, datasets, snapshot counts, bookmarks, mounts and running commands\n"
 		."unraid/         the Unraid version, array state, display settings and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
 		."names.txt       each token in these files, and the shape of the name it stands for\n\n"

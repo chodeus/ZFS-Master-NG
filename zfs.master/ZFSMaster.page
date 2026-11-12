@@ -162,7 +162,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   function zfsmStatus(message, error = false) {
 	$('#zfsm-last-refresh').text(message).css('color', error ? '#e22828' : '');
 	$('#zfsm-loading td').text(message);
+	zfsmDiagRecord('status', function() { return {at: new Date().toISOString(), text: message, error: error}; });
   }
+
+  window.addEventListener('error', function(event) {
+	zfsmDiagRecord('errors', function() { return {at: new Date().toISOString(), text: String(event.message), where: String(event.filename).replace(/^.*\//, '') + ':' + event.lineno}; });
+  });
 
   function zfsmHandleMessage(data) {
 	var msg;
@@ -351,7 +356,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
+				const began = Date.now();
 				zfsmRender(data);
+				// The header cells as they are: another plugin's column in the table shows here.
+				zfsmDiagRecord('render', function() {
+					return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
+						headers: $('#zfs_master thead th').map(function() { return $(this).text().trim(); }).get()};
+				});
 				if (complete) saveCache(data);
 			}
 		});
