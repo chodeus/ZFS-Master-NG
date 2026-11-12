@@ -56,10 +56,13 @@ function zfsmDiagDatasetSettingProblems($cfg) {
 	return $problems;
 }
 
-// The manifest's version and update URL as Unraid reads them, and the md5 it wants of its package; '' for what can't be read.
+// The manifest's version and update URL as Unraid reads them, and the md5 it wants of its package ('' for one it does not give);
+// null when the file is there and can't be read.
 function zfsmDiagManifest($file) {
+	$text = zfsmDiagWhole('file_get_contents', $file);
+	if ($text === false && file_exists($file)) return null;
 	$plugin = is_file($file) ? @simplexml_load_file($file, 'SimpleXMLElement', LIBXML_NOCDATA) : false;
-	preg_match('/<!ENTITY\s+md5\s+"([0-9a-f]{32})">/', (string)@file_get_contents($file), $md5);
+	preg_match('/<!ENTITY\s+md5\s+"([0-9a-f]{32})">/', (string)$text, $md5);
 	return array('version' => zfsmPluginVersion($file), 'url' => $plugin ? (string)$plugin['pluginURL'] : '', 'md5' => $md5[1] ?? '');
 }
 
@@ -68,45 +71,58 @@ function zfsmDiagInstall($ctx) {
 	$link = zfsmStatePath('/var/log/plugins/zfs.master.plg');
 	$flash = zfsmStatePath('/boot/config/plugins/zfs.master');
 	$manifest = zfsmDiagManifest($link);
-	$package = 'zfs.master-'.$manifest['version'].'-x86_64-1';
-	$records = array_map('basename', glob(zfsmStatePath('/var/log/packages/zfs.master-*')) ?: array());
-	$md5 = is_file($flash.'/'.$package.'.txz') ? md5_file($flash.'/'.$package.'.txz') : 'not there';
+	// A manifest that can't be read says nothing of the version, the channel or the package: none of them is judged then.
+	list($release, $package) = $manifest === null ? array(zfsmDiagUnread("(the manifest could not be read)\n"), null) : zfsmDiagRelease($manifest, $flash);
 	$old = array_merge(glob($ctx['dir'].'/nchan') ?: array(), glob($ctx['dir'].'/scripts/zfs_*.lua') ?: array(), glob(zfsmStatePath('/tmp/zfsm_reload')) ?: array());
-	$old = array_merge($old, array_diff(glob($flash.'/zfs.master-*.t?z') ?: array(), array($flash.'/'.$package.'.txz')));
-	zfsmDiagFact('plugin', $manifest['version'] !== '' ? $manifest['version'] : 'not read');
+	if ($package !== null) $old = array_merge($old, array_diff(glob($flash.'/zfs.master-*.t?z') ?: array(), array($package)));
 	$wrong = array(
 		'the installed manifest is not the one on the flash drive' => realpath($link) === false || realpath($link) !== realpath(zfsmStatePath('/boot/config/plugins/zfs.master.plg')),
-		'updates do not come from this plugin\'s main or beta channel: '.$manifest['url'] => preg_match('#^https://raw\.githubusercontent\.com/chodeus/ZFS-Master-NG/(main|beta)/zfs\.master\.plg$#D', $manifest['url']) !== 1,
-		'the installed package is not the manifest\'s version' => $records !== array($package),
-		'the package on the flash drive is missing or not the manifest\'s, so the next boot can\'t install it' => $md5 !== $manifest['md5'],
 		'the plugin\'s folder on the flash drive can\'t be written, so settings can\'t be saved' => !is_writable($flash),
 		'files of an older version are left behind' => (bool)$old,
 	);
 	array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
-	return 'installed manifest: '.$link.' -> '.(realpath($link) ?: 'nothing')."\n"
-		.'version: '.$manifest['version']."\n"
-		.'updates from: '.$manifest['url']."\n"
-		.'package records: '.implode(', ', $records)."\n"
-		.'package on the flash drive: '.$package.'.txz, md5 '.$md5.' (the manifest wants '.$manifest['md5'].")\n"
+	return 'installed manifest: '.$link.' -> '.(realpath($link) ?: 'nothing')."\n".$release
 		.'flash folder writable: '.(is_writable($flash) ? 'yes' : 'no')."\n\n"
 		.zfsmDiagSection('files of an older version', $old ? implode("\n", $old) : '(none)')
 		.zfsmDiagFileCheck($ctx['dir']);
 }
 
+// The manifest against Unraid's package records and the package on the flash drive: [its lines of install.txt, that package's path].
+function zfsmDiagRelease($manifest, $flash) {
+	$package = 'zfs.master-'.$manifest['version'].'-x86_64-1';
+	$records = array_map('basename', glob(zfsmStatePath('/var/log/packages/zfs.master-*')) ?: array());
+	// False for a package that can't be read: that is a read that failed, not a package that differs.
+	$md5 = is_file($flash.'/'.$package.'.txz') ? zfsmDiagWhole('md5_file', $flash.'/'.$package.'.txz') : 'not there';
+	zfsmDiagFact('plugin', $manifest['version'] !== '' ? $manifest['version'] : 'not read');
+	$wrong = array(
+		'updates do not come from this plugin\'s main or beta channel: '.$manifest['url'] => preg_match('#^https://raw\.githubusercontent\.com/chodeus/ZFS-Master-NG/(main|beta)/zfs\.master\.plg$#D', $manifest['url']) !== 1,
+		'the installed package is not the manifest\'s version' => $records !== array($package),
+		'the package on the flash drive is missing or not the manifest\'s, so the next boot can\'t install it' => $md5 !== false && $md5 !== $manifest['md5'],
+	);
+	array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
+	return array('version: '.$manifest['version']."\n"
+		.'updates from: '.$manifest['url']."\n"
+		.'package records: '.implode(', ', $records)."\n"
+		.'package on the flash drive: '.$package.'.txz, md5 '.($md5 === false ? zfsmDiagUnread('could not be read') : $md5).' (the manifest wants '.$manifest['md5'].")\n", $flash.'/'.$package.'.txz');
+}
+
 // The installed files against the package's manifest.md5 (pkg_build.sh writes it), and whether the scripts can still run.
 function zfsmDiagFileCheck($dir) {
-	$listed = @file($dir.'/manifest.md5', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+	$listed = zfsmDiagWhole('file_get_contents', $dir.'/manifest.md5');
 	if ($listed === false) {
-		zfsmDiagFinding('manifest.md5 is missing, so the installed files could not be checked against the release');
-		return "manifest.md5: not there\n";
+		$there = file_exists($dir.'/manifest.md5');
+		zfsmDiagFinding('manifest.md5 '.($there ? 'could not be read' : 'is missing').', so the installed files could not be checked against the release');
+		return 'manifest.md5: '.($there ? zfsmDiagUnread('unreadable') : 'not there')."\n";
 	}
-	$wrong = array('changed' => array(), 'missing' => array(), 'not in the release' => array(), 'not executable' => array());
+	$wrong = array('changed' => array(), 'missing' => array(), 'not in the release' => array(), 'not executable' => array(), 'unreadable' => array());
 	$expected = array();
-	foreach ($listed as $line) {
+	foreach (preg_split('/\R/', $listed, -1, PREG_SPLIT_NO_EMPTY) as $line) {
 		list($md5, $file) = explode('  ', $line, 2) + array('', '');
 		$expected[$file] = true;
+		// A file that can't be read is not one that differs.
 		if (!is_file($dir.'/'.$file)) $wrong['missing'][] = $file;
-		elseif (md5_file($dir.'/'.$file) !== $md5) $wrong['changed'][] = $file;
+		elseif (($sum = zfsmDiagWhole('md5_file', $dir.'/'.$file)) === false) $wrong['unreadable'][] = zfsmDiagUnread($file);
+		elseif ($sum !== $md5) $wrong['changed'][] = $file;
 	}
 	foreach (zfsmDiagFilesUnder($dir) as $file) if (!isset($expected[$file]) && $file !== 'manifest.md5') $wrong['not in the release'][] = $file;
 	foreach (glob($dir.'/scripts/*') ?: array() as $script) if (!is_executable($script)) $wrong['not executable'][] = 'scripts/'.basename($script);
@@ -191,7 +207,7 @@ function zfsmDiagReplicaReceive($ctx) {
 		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
 	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
-	$senders = !file_exists($keys) ? '(the file is not there)' : (@file_get_contents($keys) === false ? zfsmDiagUnread('(the file could not be read)') : '');
+	$senders = !file_exists($keys) ? '(the file is not there)' : (zfsmDiagWhole('file_get_contents', $keys) === false ? zfsmDiagUnread('(the file could not be read)') : '');
 	foreach (zfsmReplicaKeys($keys) as $key) {
 		$checks = array('restrict' => $key['restrict'], 'from' => $key['from'], 'name' => zfsmReplicaSenderName($key['sender']));
 		$senders .= ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.implodeWithKeys(', ', array_map(function($held) { return $held ? 'ok' : 'NOT OK'; }, $checks))."\n";
@@ -267,9 +283,9 @@ function zfsmDiagPhpErrors($ctx) {
 
 // What the plugin reads of Unraid: its version, the array's state, the display settings, the ZFS pools Unraid expects, the other plugins.
 function zfsmDiagUnraid($ctx) {
-	$version = @parse_ini_file(zfsmStatePath('/etc/unraid-version'))['version'] ?? zfsmDiagUnread('not read');
-	$var = @parse_ini_file(zfsmStatePath('/var/local/emhttp/var.ini')) ?: array();
-	$disks = @parse_ini_file(zfsmStatePath('/var/local/emhttp/disks.ini'), true);
+	$version = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/etc/unraid-version'))['version'] ?? zfsmDiagUnread('not read');
+	$var = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/var.ini')) ?: array();
+	$disks = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/disks.ini'), true);
 	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
 	zfsmDiagFact('Unraid', $version);
 	zfsmDiagFact('PHP', PHP_VERSION);
@@ -278,7 +294,9 @@ function zfsmDiagUnraid($ctx) {
 		if (zfsmExpectedPools(array($disk))) $pools[] = implodeWithKeys(' ', array_intersect_key($disk, array_flip(array('name', 'type', 'fsType', 'fsStatus', 'status', 'luksState'))), '=');
 	}
 	$plugins = array();
-	foreach (glob(zfsmStatePath('/var/log/plugins/*.plg')) ?: array() as $manifest) $plugins[] = basename($manifest, '.plg').' '.zfsmPluginVersion($manifest);
+	foreach (glob(zfsmStatePath('/var/log/plugins/*.plg')) ?: array() as $manifest) {
+		$plugins[] = basename($manifest, '.plg').' '.(zfsmDiagWhole('file_get_contents', $manifest) === false ? zfsmDiagUnread('(unreadable)') : zfsmPluginVersion($manifest));
+	}
 	return 'Unraid: '.$version."\n".'PHP: '.PHP_VERSION."\n"
 		.'array: mdState='.($var['mdState'] ?? zfsmDiagUnread('not read')).', fsState='.($var['fsState'] ?? zfsmDiagUnread('not read'))."\n"
 		.'publishing paused: '.(is_file(zfsmStatePath('/tmp/publishPaused')) ? 'yes' : 'no')."\n\n"

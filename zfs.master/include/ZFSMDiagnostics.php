@@ -153,7 +153,7 @@ function zfsmDiagWorkDir() {
 }
 
 // The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),
-// and when the folder went, or was made again, before the lock was had.
+// when the folder went, or was made again, before the lock was had, and when it is not root's: its owner could swap it for a link.
 function zfsmDiagHold($dir, $wait = 0) {
 	// 'e': a command the run starts must not carry the lock on past the run's end.
 	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
@@ -161,7 +161,7 @@ function zfsmDiagHold($dir, $wait = 0) {
 	clearstatcache(true, $dir);
 	$now = @stat($dir);
 	$held = fstat($hold);
-	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] ? $hold : false;
+	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] && $held['uid'] === 0 ? $hold : false;
 }
 
 // Removes a work folder: only one zfsmDiagWorkDir made, and never through a link.
@@ -176,10 +176,18 @@ function zfsmDiagRemove($dir) {
 	@rmdir($dir);
 }
 
+// What a read of a whole file gives ($read is file_get_contents, md5_file or parse_ini_file); false when the file can't be opened,
+// and when its read failed part-way: PHP then answers with the part it had.
+function zfsmDiagWhole($read, ...$args) {
+	error_clear_last();
+	$got = @$read(...$args);
+	return error_get_last() === null ? $got : false;
+}
+
 // A file's text; one that isn't there or can't be read says so instead of reading as empty.
 function zfsmDiagFile($file) {
 	if (!file_exists($file)) return '(not there)';
-	$text = @file_get_contents($file);
+	$text = zfsmDiagWhole('file_get_contents', $file);
 	return $text === false ? zfsmDiagUnread('(unreadable)') : $text;
 }
 
@@ -187,7 +195,7 @@ function zfsmDiagSection($title, $text) {
 	return '== '.$title."\n".rtrim((string)$text, "\n")."\n\n";
 }
 
-// [the last $keep lines of $files that hold $needle, the files that are there but can't be opened], a line at a time:
+// [the last $keep lines of $files that hold $needle, the files that are there but can't be read to their end], a line at a time:
 // a syslog can fill /var/log's 128 MB.
 function zfsmDiagMatchingLines($files, $needle, $keep) {
 	$lines = array();
@@ -198,11 +206,14 @@ function zfsmDiagMatchingLines($files, $needle, $keep) {
 			if (file_exists($file)) $unread[] = zfsmDiagUnread($file);
 			continue;
 		}
-		while (($line = fgets($handle)) !== false) {
+		error_clear_last();
+		while (($line = @fgets($handle)) !== false) {
 			if (strpos($line, $needle) === false) continue;
 			$lines[] = rtrim($line, "\r\n");
 			if (count($lines) >= 2 * $keep) $lines = array_slice($lines, -$keep);
 		}
+		// A read that failed ends the loop as the end of the file does: only the error tells them apart.
+		if (error_get_last() !== null) $unread[] = zfsmDiagUnread($file);
 		fclose($handle);
 	}
 	return array(array_slice($lines, -$keep), $unread);
@@ -237,7 +248,7 @@ function zfsmDiagShow($title, $result) {
 // Null when the table can't be read.
 function zfsmDiagLockHeld($lock) {
 	$stat = @stat($lock);
-	$table = @file_get_contents('/proc/locks');
+	$table = zfsmDiagWhole('file_get_contents', '/proc/locks');
 	if ($stat === false || !is_string($table)) return null;
 	$device = sprintf('%02x:%02x', (($stat['dev'] >> 8) & 0xfff) | (($stat['dev'] >> 32) & ~0xfff), ($stat['dev'] & 0xff) | (($stat['dev'] >> 12) & ~0xff));
 	return preg_match('/^\d+: FLOCK\s+\S+\s+\S+\s+-?\d+\s+'.$device.':'.$stat['ino'].'\s/m', $table) === 1;

@@ -107,6 +107,11 @@ $unopenable = function($path) {
 	unlink($path);
 	$GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$path);
 };
+// A file that opens and whose read then fails: the kernel answers a read of this process's memory at address 0 with an I/O error.
+$unreadable = function($path) {
+	unlink($path);
+	symlink('/proc/self/mem', $path);
+};
 // What one collector finds on that server after $change, as [findings, its file's text].
 $found = function($collector, $change = null, $changed = array()) use ($build, $context, $root) {
 	$build();
@@ -141,7 +146,8 @@ has("directory_listing\t[\"tank/data\"]\t[]\tsaved\n", $read('plugin/settings-ef
 has('installed manifest: '.$root.'/var/log/plugins/zfs.master.plg -> '.$root."/boot/config/plugins/zfs.master.plg\nversion: 2026.01.02\nupdates from: https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg\npackage records: zfs.master-2026.01.02-x86_64-1\n", $read('plugin/install.txt'), 'Unraid\'s records of the install');
 has('zfs.master-2026.01.02-x86_64-1.txz, md5 '.md5('package').' (the manifest wants '.md5('package').")\nflash folder writable: yes\n", $read('plugin/install.txt'), 'the package the next boot installs');
 has("files in the release: 2\nchanged: none\nmissing: none\nnot in the release: none\nnot executable: none\n", $read('plugin/install.txt'), 'the installed files match the release');
-same(1, preg_match('/^alerts: every 60 minutes\nlast check: [0-5] seconds ago\n/', $read('plugin/schedule.txt')), 'the schedule and its last check: '.$read('plugin/schedule.txt'));
+same(1, preg_match('/^alerts: every 60 minutes\nlast check: (\d+) seconds ago\n/', $read('plugin/schedule.txt'), $age), 'the schedule and its last check: '.$read('plugin/schedule.txt'));
+same(true, (int)$age[1] <= time() - filemtime($root.'/var/run/zfs.master.alerts.json'), 'the last check\'s age is the state file\'s: '.$age[1]);
 has("== its lines in the live crontab\n".$cron_line, $read('plugin/schedule.txt'), 'only the plugin\'s crontab lines');
 same(false, strpos($read('plugin/schedule.txt'), 'dynamix/scripts/monitor'), 'no other plugin\'s crontab line');
 same("{\"problems\":[]}\n", $read('plugin/alerts-state.json.txt'), 'the alerts state as written');
@@ -163,6 +169,8 @@ has('== zfs.master lines in '.$root."/var/log/nginx/error.log\n(not there)\n", $
 same(array('(not there)', '(no lines)'), array(zfsmDiagPluginLines(array($root.'/var/log/missing'), 5), zfsmDiagPluginLines(array($root.'/etc/unraid-version'), 5)), 'a log that is not there is not a quiet one');
 $unopenable($root.'/var/log/syslog.1');
 same(array('(unreadable: '.$root.'/var/log/syslog.1)', "Jan  2 10:00:00 Tower zfs.master[41]: newer line\n(unreadable: ".$root.'/var/log/syslog.1)'), array(zfsmDiagPluginLines(array($root.'/var/log/syslog.1'), 5), zfsmDiagPluginLines(array($root.'/var/log/syslog.1', $root.'/var/log/syslog'), 5)), 'nor is one that can\'t be opened, and the logs that can are still read');
+$unreadable($root.'/var/log/syslog.1');
+same("Jan  2 10:00:00 Tower zfs.master[41]: newer line\n(unreadable: ".$root.'/var/log/syslog.1)', zfsmDiagPluginLines(array($root.'/var/log/syslog.1', $root.'/var/log/syslog'), 5), 'nor is one that opens and can\'t be read');
 has("Unraid: 7.4.0\nPHP: ".PHP_VERSION."\narray: mdState=STARTED, fsState=Started\npublishing paused: no\n", $read('unraid/context.txt'), 'Unraid\'s version and array state');
 has("== ZFS pools and disks Unraid lists\nname=cache type=Cache fsType=zfs fsStatus=Mounted status=DISK_OK luksState=0\n\n", $read('unraid/context.txt'), 'only the ZFS entries of disks.ini');
 has("== installed plugins\nother 2025.05.05\nzfs.master 2026.01.02\n", $read('unraid/context.txt'), 'the installed plugins');
@@ -241,6 +249,19 @@ zfsmDiagStart();
 unlink($plugin_dir.'/manifest.md5');
 same("manifest.md5: not there\n", zfsmDiagFileCheck($plugin_dir), 'a package without its file list');
 same(array('manifest.md5 is missing, so the installed files could not be checked against the release'), $GLOBALS['zfsm_diag']['findings'], 'is a finding, not a pass');
+// What can't be read is not judged: an unreadable manifest, package or file is a read that failed, never a difference.
+list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master.plg'); });
+same(array(), $findings, 'a manifest that can\'t be read gives no finding about the version, the channel or the package');
+has("zfs.master.plg\n(the manifest could not be read)\nflash folder writable: yes\n", $text, 'and the file says so');
+list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unreadable) { $unreadable($root.'/boot/config/plugins/zfs.master/zfs.master-2026.01.02-x86_64-1.txz'); });
+same(array(), $findings, 'a package whose read fails is not a package that differs');
+has('zfs.master-2026.01.02-x86_64-1.txz, md5 could not be read (the manifest wants '.md5('package').")\n", $text, 'and the file says so');
+list($findings, $text) = $found('zfsmDiagInstall', function() use ($unopenable, $plugin_dir) { $unopenable($plugin_dir.'/manifest.md5'); });
+same(array('manifest.md5 could not be read, so the installed files could not be checked against the release'), $findings, 'a file list that can\'t be read is not one that is missing');
+has("manifest.md5: unreadable\n", $text, 'and the file says so');
+list($findings, $text) = $found('zfsmDiagInstall', function() use ($unreadable, $plugin_dir) { $unreadable($plugin_dir.'/page.php'); });
+same(array('1 installed file(s) unreadable: page.php'), $findings, 'an installed file whose read fails is not a changed one');
+has("changed: none\nmissing: none\nnot in the release: none\nnot executable: none\nunreadable: page.php\n", $text, 'and the file lists it apart');
 
 // The alert schedule.
 $schedule = function($change, $changed = array()) use ($found) { return $found('zfsmDiagSchedule', $change, $changed)[0]; };
@@ -465,6 +486,12 @@ $no_lock_table = function() use ($work) {
 $failed_reads = array(
 	'the settings file can\'t be opened' => array('plugin/settings-saved.cfg.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }),
 	'a system log can\'t be opened' => array('plugin/log.txt', function($root) use ($unopenable) { $unopenable($root.'/var/log/syslog.1'); }),
+	'the settings file opens and its read fails' => array('plugin/settings-saved.cfg.txt', function($root) use ($unreadable) { $unreadable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }),
+	'a system log opens and its read fails' => array('plugin/log.txt', function($root) use ($unreadable) { $unreadable($root.'/var/log/syslog.1'); }),
+	'the installed manifest can\'t be opened' => array('plugin/install.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master.plg'); }),
+	'the package\'s read fails' => array('plugin/install.txt', function($root) use ($unreadable) { $unreadable($root.'/boot/config/plugins/zfs.master/zfs.master-2026.01.02-x86_64-1.txz'); }),
+	'manifest.md5 can\'t be opened' => array('plugin/install.txt', function() use ($unopenable, $plugin_dir) { $unopenable($plugin_dir.'/manifest.md5'); }),
+	'an installed file\'s read fails' => array('plugin/install.txt', function() use ($unreadable, $plugin_dir) { $unreadable($plugin_dir.'/page.php'); }),
 	'a command ends with an error' => array('zfs/zpool-status.txt', $with('ZFSM_TEST_ZPOOL_STATUS_FAIL', '1')),
 	'the process list can\'t be read' => array('zfs/processes.txt', $with('ZFSM_TEST_PS', 'fail', $work.'/ps.txt')),
 	'the pool list fails and the collector goes on' => array('plugin/settings-effective.txt', $with('ZFSM_TEST_POOL_FAIL', '1')),
@@ -479,6 +506,7 @@ $failed_reads = array(
 	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
 	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
 	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
+	'another plugin\'s manifest can\'t be opened' => array('unraid/context.txt', function($root) use ($unopenable) { $unopenable($root.'/var/log/plugins/other.plg'); }),
 	'disks.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/disks.ini'); }),
 );
 foreach ($failed_reads as $what => $case) same(array('read failed', true), $result_of($case[0], $case[1]), 'a failed read is its file\'s result and in the summary when '.$what);
@@ -551,7 +579,8 @@ $stale = $root.'/tmp/zfs.master-diag.00000000000000aa';
 $busy = $root.'/tmp/zfs.master-diag.00000000000000bb';
 $fresh = $root.'/tmp/zfs.master-diag.00000000000000cc';
 $plain = $root.'/tmp/zfs.master-diag.00000000000000dd';
-foreach (array($stale, $busy, $fresh) as $folder) {
+$foreign = $root.'/tmp/zfs.master-diag.00000000000000ff';
+foreach (array($stale, $busy, $fresh, $foreign) as $folder) {
 	mkdir($folder);
 	file_put_contents($folder.'/summary.txt', 'names');
 }
@@ -559,6 +588,9 @@ file_put_contents($plain, 'a file');
 touch($stale, time() - 120);
 touch($busy, time() - 7200);
 touch($plain, time() - 120);
+// Not root's: its owner could swap it for a link while it is removed.
+chown($foreign, 1000);
+touch($foreign, time() - 120);
 $GLOBALS['zfsm_busy'] = fopen($busy, 'r');
 flock($GLOBALS['zfsm_busy'], LOCK_EX);
 try {
@@ -567,6 +599,7 @@ try {
 	same(null, get_class($error).': '.$error->getMessage(), 'a file named like a work folder is left alone');
 }
 same(array(false, true, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_file($plain), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so do one just made and a file of that name');
+same(true, is_file($foreign.'/summary.txt'), 'a folder that is not root\'s is left alone, however old');
 unlink($plain);
 same(true, zfsmDiagLockHeld($second), 'a run holds its own work folder');
 // The lock ends with the run, whatever the run leaves running: a command it starts gets no handle on the folder.

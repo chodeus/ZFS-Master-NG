@@ -170,7 +170,7 @@ function zfsmDiagHideKeyLocation($output) {
 }
 
 function zfsmDiagMounts($ctx) {
-	$list = @file_get_contents(zfsmStatePath('/proc/self/mountinfo'));
+	$list = zfsmDiagWhole('file_get_contents', zfsmStatePath('/proc/self/mountinfo'));
 	$mounts = array_filter(zfsmImpactRows($list), function($line) { return strpos($line, ' - zfs ') !== false; });
 	$unread = '(the mount list could not be read)';
 	$boot = zfsmBootPool(zfsmStatePath('/proc/self/mounts'));
