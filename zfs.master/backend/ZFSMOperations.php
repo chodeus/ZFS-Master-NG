@@ -731,7 +731,8 @@ function moveDirectory($directory, $new_name) {
 // The reason to refuse work on a directory that is a mount point or holds one; '' when there is none.
 function zfsmNestedMountProblem($path) {
 	$table = @file('/proc/self/mountinfo', FILE_IGNORE_NEW_LINES);
-	if ($table === false) return 'Unable to read the mount table';
+	// An empty table is one that was not read: every process has its root's mount in it.
+	if (!$table) return 'Unable to read the mount table';
 	foreach ($table as $line) {
 		$mount = zfsmUnescapeMount(explode(' ', $line)[4] ?? '');
 		if ($mount === rtrim($path, '/')) return 'This directory is itself a mount point, so its contents belong to another filesystem; destroy or unmount that instead.';

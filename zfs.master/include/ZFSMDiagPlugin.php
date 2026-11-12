@@ -87,13 +87,20 @@ function zfsmDiagInstall($ctx) {
 		.zfsmDiagFileCheck($ctx['dir']);
 }
 
-// The manifest against Unraid's package records and the package on the flash drive: [its lines of install.txt, that package's path].
+// The manifest against Unraid's package records and the package on the flash drive: [its lines of install.txt, that package's path,
+// null when the manifest names none].
 function zfsmDiagRelease($manifest, $flash) {
+	// A manifest with no version names no package: there is nothing to hold the records or the flash drive against.
+	if ($manifest['version'] === '') {
+		zfsmDiagFact('plugin', 'no version found');
+		zfsmDiagFinding('the installed manifest gives no version, so the channel, the package records and the package were not checked');
+		return array("version: (none in the manifest)\n", null);
+	}
 	$package = 'zfs.master-'.$manifest['version'].'-x86_64-1';
 	$records = array_map('basename', glob(zfsmStatePath('/var/log/packages/zfs.master-*')) ?: array());
 	// False for a package that can't be read: that is a read that failed, not a package that differs.
 	$md5 = is_file($flash.'/'.$package.'.txz') ? zfsmDiagWhole('md5_file', $flash.'/'.$package.'.txz') : 'not there';
-	zfsmDiagFact('plugin', $manifest['version'] !== '' ? $manifest['version'] : 'no version found');
+	zfsmDiagFact('plugin', $manifest['version']);
 	$wrong = array(
 		'updates do not come from this plugin\'s main or beta channel: '.$manifest['url'] => preg_match('#^https://raw\.githubusercontent\.com/chodeus/ZFS-Master-NG/(main|beta)/zfs\.master\.plg$#D', $manifest['url']) !== 1,
 		'the installed package is not the manifest\'s version' => $records !== array($package),

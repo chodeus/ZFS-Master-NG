@@ -66,7 +66,8 @@ grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid && fail 'old da
 grep -q 'plugins/other/nchan/zfs_master:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
 
 # Real plugin removal; the plugin's log and a diagnostics run's work folder are in RAM, outside the package.
-diag=$(mktemp -d /tmp/zfs.master-diag.XXXXXXXXXXXXXXXX) && mkdir "$diag/plugin" || fail 'no diagnostics work folder to remove'
+diag=/tmp/zfs.master-diag.$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+mkdir -m 700 "$diag" "$diag/plugin" || fail 'no diagnostics work folder to remove'
 touch /var/log/zfs.master.log /var/log/zfs.master.log.1 "$diag/plugin/log.txt"
 $plugin remove zfs.master.plg > "$work/remove.log" 2>&1 || { cat "$work/remove.log"; fail 'remove failed'; }
 [ ! -e "$live" ] && [ ! -e "$flash" ] && [ ! -e /var/log/plugins/zfs.master.plg ] || fail 'remove left files behind'

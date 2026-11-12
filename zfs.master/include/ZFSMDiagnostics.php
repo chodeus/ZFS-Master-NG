@@ -165,16 +165,18 @@ function zfsmDiagHold($dir, $wait = 0) {
 	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] && $held['uid'] === 0 ? $hold : false;
 }
 
-// Removes a work folder: only one zfsmDiagWorkDir made, and never through a link.
+// Removes a work folder and says whether it did: only one zfsmDiagWorkDir made, never through a link, and never one that is
+// or holds a mount point (zfsmNestedMountProblem): what is mounted there is not the run's to remove.
 function zfsmDiagRemove($dir) {
 	$name = substr((string)$dir, -16);
-	if ($dir !== zfsmStatePath('/tmp/zfs.master-diag.').$name || !ctype_xdigit($name) || is_link($dir) || realpath($dir) !== $dir) return;
+	if ($dir !== zfsmStatePath('/tmp/zfs.master-diag.').$name || !ctype_xdigit($name) || is_link($dir) || realpath($dir) !== $dir || zfsmNestedMountProblem($dir) !== '') return false;
 	$entries = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
 	foreach ($entries as $entry) {
 		if ($entry->isDir() && !$entry->isLink()) @rmdir($entry->getPathname());
 		else @unlink($entry->getPathname());
 	}
 	@rmdir($dir);
+	return !is_dir($dir);
 }
 
 // What a read of a whole file gives ($read is file_get_contents, md5_file or parse_ini_file); false when the file can't be opened,
