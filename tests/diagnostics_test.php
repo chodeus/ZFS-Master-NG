@@ -269,7 +269,7 @@ has($root."/var/run/zfs.master.lock: free\n".$root."/var/run/zfs.master.alerts.j
 fclose($GLOBALS['zfsm_alerts_held']);
 // Asking never takes a lock: the alert check and a job's start take theirs without waiting, and would lose their turn.
 foreach (array('ZFSMDiagnostics.php', 'ZFSMDiagPlugin.php', 'ZFSMDiagZfs.php') as $file) {
-	same(0, preg_match('/\bflock\((?!\$hold, LOCK_EX\))|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock but its own work folder\'s');
+	same(0, preg_match('/\bflock\((?!\$hold, LOCK_EX \| \$wait\))|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock but a work folder\'s');
 }
 has("== running plugin scripts (pid, seconds, command)\n812\t40\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n\n", $text, 'only the plugin\'s scripts are listed');
 putenv('ZFSM_TEST_PS=fail');
@@ -446,24 +446,62 @@ zfsmDiagRemove($root.'/tmp/zfs.master-diag.0123456789abcdef');
 same(true, is_file($work.'/elsewhere/keep'), 'a link named like a work folder is not followed');
 unlink($root.'/tmp/zfs.master-diag.0123456789abcdef');
 // A killed run leaves its folder: the next run removes it once no run holds it. One a run still holds stays, however old,
-// and so does one just made, whose run may not hold it yet.
+// and so does one just made, whose run may not hold it yet. A file of that name is no work folder.
 $stale = $root.'/tmp/zfs.master-diag.00000000000000aa';
 $busy = $root.'/tmp/zfs.master-diag.00000000000000bb';
 $fresh = $root.'/tmp/zfs.master-diag.00000000000000cc';
+$plain = $root.'/tmp/zfs.master-diag.00000000000000dd';
 foreach (array($stale, $busy, $fresh) as $folder) {
 	mkdir($folder);
 	file_put_contents($folder.'/summary.txt', 'names');
 }
+file_put_contents($plain, 'a file');
 touch($stale, time() - 120);
 touch($busy, time() - 7200);
+touch($plain, time() - 120);
 $GLOBALS['zfsm_busy'] = fopen($busy, 'r');
 flock($GLOBALS['zfsm_busy'], LOCK_EX);
-$second = zfsmDiagWorkDir();
-same(array(false, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so does one just made');
+try {
+	$second = zfsmDiagWorkDir();
+} catch (Throwable $error) {
+	same(null, get_class($error).': '.$error->getMessage(), 'a file named like a work folder is left alone');
+}
+same(array(false, true, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_file($plain), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so do one just made and a file of that name');
+unlink($plain);
 same(true, zfsmDiagLockHeld($second), 'a run holds its own work folder');
+// The lock ends with the run, whatever the run leaves running: a command it starts gets no handle on the folder.
+exec('ls -l /proc/self/fd', $handles);
+same(array(), preg_grep('~'.preg_quote(basename($second), '~').'~', $handles), 'a command the run starts does not hold the run\'s lock');
 fclose($GLOBALS['zfsm_busy']);
 zfsmDiagWorkDir();
 same(array(false, true), array(file_exists($busy), is_dir($second)), 'once its run has ended that folder goes too, and this run\'s stays');
+// A run stopped between making its folder and holding it can lose the folder to a later run: it must end there, not write on.
+$late = function($made_again) use ($root) {
+	$dir = $root.'/tmp/zfs.master-diag.00000000000000ee';
+	mkdir($dir, 0700);
+	$path = realpath($dir);
+	$remover = fopen($dir, 're');
+	flock($remover, LOCK_EX);
+	$load = 'require '.var_export(dirname(__DIR__).'/zfs.master/backend/ZFSMOperations.php', true).'; require '.var_export(dirname(__DIR__).'/zfs.master/include/ZFSMDiagnostics.php', true).';';
+	$run = proc_open(array(PHP_BINARY, '-n', '-r', $load.' echo "loaded\n"; echo zfsmDiagHold($argv[1]) === false ? "ended" : "held";', '--', $dir), array(1 => array('pipe', 'w')), $pipes);
+	$pid = proc_get_status($run)['pid'];
+	// Until it has loaded, the new process may still show this one's handles.
+	same("loaded\n", fgets($pipes[1]), 'the stopped run has started');
+	$opened = function() use ($pid, $path) {
+		foreach (glob('/proc/'.$pid.'/fd/*') ?: array() as $fd) if (@readlink($fd) === $path) return true;
+		return false;
+	};
+	for ($waited = 0; !$opened() && $waited < 100; $waited++) usleep(100000);
+	same(true, $opened(), 'the stopped run has its folder open, and waits for the lock');
+	rmdir($dir);
+	if ($made_again) mkdir($dir, 0700);
+	fclose($remover);
+	$said = stream_get_contents($pipes[1]);
+	proc_close($run);
+	if ($made_again) rmdir($dir);
+	return $said;
+};
+same(array('ended', 'ended'), array($late(false), $late(true)), 'a run whose folder went before it held it ends, also when a folder of that name is there again');
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
 $docroot = getenv('ZFSM_TEST_DOCROOT');

@@ -126,16 +126,32 @@ function zfsmDiagWrite($file, $text) {
 }
 
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
-// to its end, however it ends. A killed run's folder is one no lock holds, a minute after it was made: those go first.
+// to its end, however it ends. A killed run's folder is one whose lock is free a minute after it was made: those go first.
 function zfsmDiagWorkDir() {
 	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');
-	foreach (glob($prefix.'*') ?: array() as $old) if (zfsmDiagLockHeld($old) === false && time() - (int)@filemtime($old) > 60) zfsmDiagRemove($old);
+	foreach (glob($prefix.'*') ?: array() as $old) {
+		// Kept in a variable: the lock must last through the removal.
+		$mine = time() - (int)@filemtime($old) > 60 ? zfsmDiagHold($old, LOCK_NB) : false;
+		if ($mine !== false) zfsmDiagRemove($old);
+	}
 	$dir = $prefix.bin2hex(random_bytes(8));
-	$hold = @mkdir($dir, 0700) ? @fopen($dir, 'r') : false;
-	if ($hold === false || !flock($hold, LOCK_EX)) return null;
+	$hold = @mkdir($dir, 0700) ? zfsmDiagHold($dir) : false;
+	if ($hold === false) return null;
 	$holds[] = $hold;
 	return $dir;
+}
+
+// The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),
+// and when the folder went, or was made again, before the lock was had.
+function zfsmDiagHold($dir, $wait = 0) {
+	// 'e': a command the run starts must not carry the lock on past the run's end.
+	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
+	if ($hold === false || !flock($hold, LOCK_EX | $wait)) return false;
+	clearstatcache(true, $dir);
+	$now = @stat($dir);
+	$held = fstat($hold);
+	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] ? $hold : false;
 }
 
 // Removes a work folder: only one zfsmDiagWorkDir made, and never through a link.
