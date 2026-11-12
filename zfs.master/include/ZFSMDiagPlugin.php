@@ -149,21 +149,28 @@ function zfsmDiagFilesUnder($dir) {
 	return $files;
 }
 
+// Whether a crontab's lines hold the alert check as zfsmAlertCron writes it, not commented out: another of the plugin's jobs
+// is not the alert check.
+function zfsmDiagAlertLine($lines) {
+	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/alerts\.php check(\s|$)~', $lines);
+}
+
 // The alert schedule: Unraid builds the live crontab from the cron file, and each check rewrites the state file.
 function zfsmDiagSchedule($ctx) {
 	$cron = zfsmStatePath('/boot/config/plugins/zfs.master/alerts.cron');
 	$state = zfsmStatePath('/var/run/zfs.master.alerts.json');
 	list($live, $unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'zfs.master', 20);
-	// The line zfsmAlertCron writes, not commented out: another of the plugin's jobs in the crontab is not the alert check.
-	$scheduled = preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/alerts\.php check(\s|$)~', $live);
+	list($kept, $unkept) = zfsmDiagMatchingLines(array($cron), 'zfs.master', 20);
 	$interval = (int)$ctx['cfg']['alert_interval'];
 	$checked = is_file($state) ? time() - filemtime($state) : null;
 	// A schedule just saved, or a server just started, has not had its first check yet: the cron file's time and the start count as one.
 	$uptime = zfsmUptime();
 	$quiet = time() - max((int)@filemtime($state), (int)@filemtime($cron), $uptime > 0 ? time() - $uptime : 0);
 	if ($interval > 0 && $unread) zfsmDiagFinding('alerts are on, but the crontab could not be read');
-	elseif ($interval > 0 && !$scheduled) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
+	elseif ($interval > 0 && !zfsmDiagAlertLine($live)) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
 	elseif ($interval > 0 && $quiet > 120 * $interval) zfsmDiagFinding('alerts are on every '.$interval.' minutes, but the last check was '.(int)($quiet / 60).' minutes ago');
+	// A restart builds the crontab from the flash drive's file: without the line there, the checks stop then.
+	if ($interval > 0 && !$unkept && !zfsmDiagAlertLine($kept)) zfsmDiagFinding('alerts are on, but the schedule file on the flash drive has no line for them, so they stop at the next restart');
 	return 'alerts: '.($interval > 0 ? 'every '.$interval.' minutes' : 'off')."\n"
 		.'last check: '.($checked === null ? 'never' : $checked.' seconds ago')."\n\n"
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))

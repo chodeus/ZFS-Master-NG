@@ -273,6 +273,12 @@ has("== its lines in the live crontab\n(unreadable)\n", $text, 'and the file say
 same(array('alerts are on every 60 minutes, but the last check was 180 minutes ago'), $schedule(function($root) use ($old) { touch($root.'/var/run/zfs.master.alerts.json', $old); touch($root.'/boot/config/plugins/zfs.master/alerts.cron', $old); }), 'checks that stopped');
 same(array(), $schedule(function($root) use ($old) { touch($root.'/var/run/zfs.master.alerts.json', $old); }), 'a schedule saved since the last check is waiting for its first one');
 same(array(), $schedule(function($root) use ($old) { unlink($root.'/etc/cron.d/root'); touch($root.'/var/run/zfs.master.alerts.json', $old); }, array('alert_interval' => '0')), 'alerts that are off need no crontab line');
+// The flash drive's file is what a restart builds the crontab from: without the alert check's line there, the checks stop then.
+$not_kept = array('alerts are on, but the schedule file on the flash drive has no line for them, so they stop at the next restart');
+same($not_kept, $schedule(function($root) { unlink($root.'/boot/config/plugins/zfs.master/alerts.cron'); }), 'alerts on with their schedule missing from the flash drive, while the live crontab still has it');
+same($not_kept, $schedule(function($root) use ($cron_line) { file_put_contents($root.'/boot/config/plugins/zfs.master/alerts.cron', '#'.$cron_line); }), 'or with its line commented out there');
+same(array(), $schedule(function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/alerts.cron'); }), 'a schedule file that can\'t be read is a read that failed, not a missing line');
+same(array(), $schedule(function($root) { unlink($root.'/boot/config/plugins/zfs.master/alerts.cron'); }, array('alert_interval' => '0')), 'alerts that are off need no schedule file');
 // After a start the state file is gone and the schedule on the flash drive keeps its old time.
 $no_state = function($root) use ($old) { unlink($root.'/var/run/zfs.master.alerts.json'); touch($root.'/boot/config/plugins/zfs.master/alerts.cron', $old); };
 file_put_contents($work.'/uptime', "600.00 500.00\n");
