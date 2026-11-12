@@ -242,9 +242,11 @@ same(array('manifest.md5 is missing, so the installed files could not be checked
 list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master.plg'); });
 same(array(), $findings, 'a manifest that can\'t be read gives no finding about the version, the channel or the package');
 same('not read', $GLOBALS['zfsm_diag']['facts']['plugin'], 'and its version is not read');
-$found('zfsmDiagInstall', function($root) { unlink($root.'/var/log/plugins/zfs.master.plg'); });
-same('no version found', $GLOBALS['zfsm_diag']['facts']['plugin'], 'a manifest that is not there was read, and holds no version');
 has("zfs.master.plg\n(the manifest could not be read)\nflash folder writable: yes\n", $text, 'and the file says so');
+list($findings, $text) = $found('zfsmDiagInstall', function($root) { unlink($root.'/var/log/plugins/zfs.master.plg'); });
+same('no version found', $GLOBALS['zfsm_diag']['facts']['plugin'], 'a manifest that is not there gives no version');
+same(array('the installed manifest gives no version, so the channel, the package records and the package were not checked', 'the installed manifest is not the one on the flash drive'), $findings, 'and nothing is judged against a version it does not give: the package on the flash drive is not an older one');
+has("-> nothing\nversion: (none in the manifest)\nflash folder writable: yes\n\n== files of an older version\n(none)\n", $text, 'and the file says so');
 list($findings, $text) = $found('zfsmDiagInstall', function($root) use ($unreadable) { $unreadable($root.'/boot/config/plugins/zfs.master/zfs.master-2026.01.02-x86_64-1.txz'); });
 same(array(), $findings, 'a package whose read fails is not a package that differs');
 has('zfs.master-2026.01.02-x86_64-1.txz, md5 could not be read (the manifest wants '.md5('package').")\n", $text, 'and the file says so');
@@ -540,12 +542,11 @@ file_put_contents($work.'/outside/keep', 'keep');
 mkdir($first.'/plugin');
 file_put_contents($first.'/plugin/log.txt', 'names');
 symlink($work.'/outside', $first.'/link');
-zfsmDiagRemove($first);
+same(true, zfsmDiagRemove($first), 'a removed work folder is reported as removed');
 same(array(false, 'keep'), array(file_exists($first), file_get_contents($work.'/outside/keep')), 'the folder goes, and a link in it is removed, not followed');
 foreach (array($work.'/outside', $root.'/tmp', $root.'/tmp/zfs.master-diag.zzzzzzzzzzzzzzzz') as $other) {
 	if (!is_dir($other)) mkdir($other);
-	zfsmDiagRemove($other);
-	same(true, is_dir($other), 'only a work folder is removed: '.$other);
+	same(array(false, true), array(zfsmDiagRemove($other), is_dir($other)), 'only a work folder is removed: '.$other);
 }
 mkdir($work.'/elsewhere');
 file_put_contents($work.'/elsewhere/keep', 'keep');
@@ -623,6 +624,44 @@ $late = function($made_again) use ($root) {
 	return $said;
 };
 same(array('ended', 'ended'), array($late(false), $late(true)), 'a run whose folder went before it held it ends, also when a folder of that name is there again');
+
+// A filesystem mounted in a work folder is not the run's: the folder is left whole, and also while the mount table can't be read.
+$mount_in = function($folder) use ($work) {
+	exec('mount --bind '.escapeshellarg($work.'/outside').' '.escapeshellarg($folder.'/zfs').' 2>&1', $said, $code);
+	same(0, $code, 'a folder is mounted inside '.$folder.': '.implode(' ', $said));
+};
+$unmount = function($point) {
+	exec('umount '.escapeshellarg($point).' 2>&1', $said, $code);
+	same(0, $code, $point.' is unmounted: '.implode(' ', $said));
+};
+$with_mount = zfsmDiagWorkDir();
+mkdir($with_mount.'/zfs');
+file_put_contents($with_mount.'/summary.txt', 'names');
+$mount_in($with_mount);
+same(array(false, true, true), array(zfsmDiagRemove($with_mount), is_file($with_mount.'/summary.txt'), is_file($work.'/outside/keep')), 'a work folder with a mount in it is left whole, and so is what is mounted there');
+$unmount($with_mount.'/zfs');
+$GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$work.'/no-mounts');
+exec('mount --bind '.escapeshellarg($work.'/no-mounts').' /proc/'.getmypid().'/mountinfo 2>&1', $said, $code);
+same(0, $code, 'the mount table is hidden: '.implode(' ', $said));
+$refused = array(zfsmDiagRemove($with_mount), is_file($with_mount.'/summary.txt'));
+$unmount('/proc/'.getmypid().'/mountinfo');
+same(array(false, true), $refused, 'nor is a work folder removed while the mount table can\'t be read');
+same(array(true, false), array(zfsmDiagRemove($with_mount), file_exists($with_mount)), 'with the table read and no mount in it, the folder goes');
+// The plugin's removal has the same rule in the shell: its lines of zfs.master.plg, run as they are.
+same(1, preg_match('/^# A diagnostics work folder goes.*?^done$/ms', file_get_contents(__DIR__.'/../zfs.master.plg'), $step), 'the removal step\'s lines are in zfs.master.plg');
+$step = str_replace('&name;', 'zfs.master', $step[0]);
+$kept = '/tmp/zfs.master-diag.00000000000000a1';
+$swept = '/tmp/zfs.master-diag.00000000000000a2';
+foreach (array($kept, $swept) as $folder) {
+	mkdir($folder.'/zfs', 0700, true);
+	file_put_contents($folder.'/summary.txt', 'names');
+}
+$mount_in($kept);
+exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
+same(array(0, '', true, true, false), array($code, implode("\n", $said), is_file($kept.'/summary.txt'), is_file($work.'/outside/keep'), file_exists($swept)), 'the plugin\'s removal leaves a work folder with a mount in it whole, and removes one without');
+$unmount($kept.'/zfs');
+exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
+same(array(0, false, true), array($code, file_exists($kept), is_file($work.'/outside/keep')), 'and that folder goes once the mount is gone');
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
