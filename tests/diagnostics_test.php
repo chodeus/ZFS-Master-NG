@@ -319,6 +319,13 @@ same(array('Accept Replicas Into is not a dataset inside a pool, so nothing is a
 putenv('ZFSM_TEST_PROPERTIES_FAIL=1');
 same(array('the dataset Accept Replicas Into names could not be read'), $receive(null), 'an accepting dataset that can\'t be read');
 putenv('ZFSM_TEST_PROPERTIES_FAIL');
+// A sender's area that lost one of its properties: the receiver refuses every request into it, so it is a finding.
+has("tank/data/nas2\texec\toff\tlocal\n", $found('zfsmDiagReplicaReceive')[1], 'each sender\'s area is shown with its properties');
+putenv('ZFSM_TEST_AREA_EXEC=on');
+list($findings, $text) = $found('zfsmDiagReplicaReceive');
+putenv('ZFSM_TEST_AREA_EXEC');
+same(array('a dataset under Accept Replicas Into does not keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so requests into it are refused: tank/data/nas2'), $findings, 'an area whose properties the receiver refuses');
+has("tank/data/nas2\texec\ton\tlocal\n", $text, 'and the file shows which');
 list($findings, $text) = $found('zfsmDiagReplicaReceive', function($root) use ($good_key) { file_put_contents($root.'/boot/config/ssh/root/authorized_keys', str_replace('restrict,', '', $good_key)."\n".str_replace(array('10.0.0.5', 'nas2'), array('10.0.0.0/24', 'nas3'), $good_key)."\n"); });
 same(array('a sender key\'s line does not hold it to replication: nas2', 'a sender key\'s line does not hold it to replication: nas3'), $findings, 'a key its line does not hold');
 has("nas2 (root@nas2): restrict: NOT OK, from: ok, name: ok\nnas3 (root@nas3): restrict: ok, from: NOT OK, name: ok\n", $text, 'and which check it fails');
@@ -662,8 +669,20 @@ foreach (array($kept, $swept) as $folder) {
 	file_put_contents($folder.'/summary.txt', 'names');
 }
 $mount_in($kept);
+// Another user's folder of that name, and a link of that name to a folder of root's: neither is the plugin's to remove.
+// The link is root's own: the kernel already stops root from following another user's link in /tmp.
+$theirs = '/tmp/zfs.master-diag.00000000000000a3';
+$a_link = '/tmp/zfs.master-diag.00000000000000a4';
+mkdir($theirs, 0700);
+file_put_contents($theirs.'/summary.txt', 'theirs');
+chown($theirs, 1000);
+symlink($work.'/elsewhere', $a_link);
 exec('bash -c '.escapeshellarg($step).' 2>&1', $said, $code);
 same(array(0, '', true, true, false), array($code, implode("\n", $said), is_file($kept.'/summary.txt'), is_file($work.'/outside/keep'), file_exists($swept)), 'the plugin\'s removal leaves a work folder with a mount in it whole, and removes one without');
+same(array(true, true, true), array(is_file($theirs.'/summary.txt'), is_link($a_link), is_file($work.'/elsewhere/keep')), 'and it leaves another user\'s folder of that name, a link of that name, and what the link points to');
+unlink($a_link);
+unlink($theirs.'/summary.txt');
+rmdir($theirs);
 $unmount($kept.'/zfs');
 // With no table to read, or an empty one, the step removes nothing; nor does it touch a name no run makes, whatever is mounted in it.
 file_put_contents($work.'/empty-table', '');
