@@ -122,6 +122,11 @@ function zfsmWithDeadline($seconds, $read) {
 	}
 }
 
+// The seconds left of the limit a read now runs under; INF when it runs under none.
+function zfsmDeadlineLeft() {
+	return ($GLOBALS['zfsm_inventory_deadline'] ?? INF) - microtime(true);
+}
+
 // runProcess under a time limit of its own, never throwing: a read past it comes back with code null and why,
 // one that could not be started with runProcess's code for that.
 function zfsmReadWithin($seconds, $command, $args) {
