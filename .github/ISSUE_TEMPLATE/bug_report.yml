@@ -28,6 +28,14 @@ body:
       required: false
 
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics zip
+      description: "Settings, ZFS Master NG, Diagnostics, Generate, then drag the zip here. Dataset, snapshot and folder names in it are replaced by tokens. If the page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal; the zip is in `/boot/logs`."
+    validations:
+      required: false
+
+  - type: textarea
     id: description
     attributes:
       label: What happened?

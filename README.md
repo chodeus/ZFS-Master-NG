@@ -52,6 +52,10 @@ Renaming, editing, destroying, converting and deleting folders need **Destructiv
 
 GPL, version 2 or later, the same as the original ZFS Master. See [LICENSE](LICENSE).
 
+## Diagnostics
+
+Settings, ZFS Master NG, Diagnostics, **Generate** makes one zip for a bug report: the plugin's settings, install and log, the pools and datasets as it reads them, and what it finds wrong. Dataset, snapshot and folder names, addresses and keys are replaced by tokens; pool names stay. Unraid's own diagnostics zip goes in as Unraid made it unless you untick the box. The zip is kept in `/boot/logs`. If the page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal.
+
 ## Development
 
 - `bash pkg_build.sh --version 0000.00.00 --out /tmp/zfsm` builds a package. It also rewrites the manifest's version and md5, so restore that file afterwards.
