@@ -154,7 +154,7 @@ function zfsmDiagAlertsState($ctx) {
 function zfsmDiagLockState($lock) {
 	if (!file_exists($lock)) return 'not there';
 	$held = zfsmDiagLockHeld($lock);
-	return $held === null ? 'there (the lock table could not be read)' : ($held ? 'held' : 'free');
+	return $held === null ? zfsmDiagUnread('there (the lock table could not be read)') : ($held ? 'held' : 'free');
 }
 
 // The locks and who could hold them: a job's lock held while its script is not running is a job that died badly.
@@ -181,7 +181,8 @@ function zfsmDiagJobs($ctx) {
 // Each key's own text stays out.
 function zfsmDiagReplicaReceive($ctx) {
 	$accept = $ctx['cfg']['replica_accept'];
-	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.(zfsmHostKeyFingerprint(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub')) ?? 'unreadable')."\n\n";
+	$host = zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub');
+	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.(zfsmHostKeyFingerprint($host) ?? (file_exists($host) ? zfsmDiagUnread('unreadable') : 'not there'))."\n\n";
 	if ($accept !== '' && !zfsmReplicaAcceptValid($accept)) zfsmDiagFinding('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted');
 	elseif ($accept !== '') {
 		$wanted = zfsmReplicaAreaProps();
@@ -190,7 +191,7 @@ function zfsmDiagReplicaReceive($ctx) {
 		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
 	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
-	$senders = !file_exists($keys) ? '(the file is not there)' : (@file_get_contents($keys) === false ? '(the file could not be read)' : '');
+	$senders = !file_exists($keys) ? '(the file is not there)' : (@file_get_contents($keys) === false ? zfsmDiagUnread('(the file could not be read)') : '');
 	foreach (zfsmReplicaKeys($keys) as $key) {
 		$checks = array('restrict' => $key['restrict'], 'from' => $key['from'], 'name' => zfsmReplicaSenderName($key['sender']));
 		$senders .= ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.implodeWithKeys(', ', array_map(function($held) { return $held ? 'ok' : 'NOT OK'; }, $checks))."\n";
@@ -234,7 +235,10 @@ function zfsmDiagInventory($ctx) {
 		$GLOBALS['zfsm_diag']['timed_out'] = true;
 		return 'skipped, because '.implode(', ', $hung).' timed out on a pool';
 	}
-	return zfsmJson(zfsmReadInventory($ctx['cfg'], false), JSON_UNESCAPED_SLASHES);
+	$inventory = zfsmReadInventory($ctx['cfg'], false);
+	// A pool that read failed on is in its answer, not thrown.
+	if (!empty($inventory['data']['errors'])) zfsmDiagUnread();
+	return zfsmJson($inventory, JSON_UNESCAPED_SLASHES);
 }
 
 // The plugin's own log, then every line of the system log and its older files that names the plugin.
@@ -255,7 +259,7 @@ function zfsmDiagPhpErrors($ctx) {
 
 // What the plugin reads of Unraid: its version, the array's state, the display settings, the ZFS pools Unraid expects, the other plugins.
 function zfsmDiagUnraid($ctx) {
-	$version = @parse_ini_file(zfsmStatePath('/etc/unraid-version'))['version'] ?? 'not read';
+	$version = @parse_ini_file(zfsmStatePath('/etc/unraid-version'))['version'] ?? zfsmDiagUnread('not read');
 	$var = @parse_ini_file(zfsmStatePath('/var/local/emhttp/var.ini')) ?: array();
 	$disks = @parse_ini_file(zfsmStatePath('/var/local/emhttp/disks.ini'), true);
 	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
@@ -268,9 +272,9 @@ function zfsmDiagUnraid($ctx) {
 	$plugins = array();
 	foreach (glob(zfsmStatePath('/var/log/plugins/*.plg')) ?: array() as $manifest) $plugins[] = basename($manifest, '.plg').' '.zfsmPluginVersion($manifest);
 	return 'Unraid: '.$version."\n".'PHP: '.PHP_VERSION."\n"
-		.'array: mdState='.($var['mdState'] ?? 'not read').', fsState='.($var['fsState'] ?? 'not read')."\n"
+		.'array: mdState='.($var['mdState'] ?? zfsmDiagUnread('not read')).', fsState='.($var['fsState'] ?? zfsmDiagUnread('not read'))."\n"
 		.'publishing paused: '.(is_file(zfsmStatePath('/tmp/publishPaused')) ? 'yes' : 'no')."\n\n"
 		.zfsmDiagSection('display settings', implodeWithKeys("\n", array_filter($display, 'is_scalar'), '='))
-		.zfsmDiagSection('ZFS pools and disks Unraid lists', is_array($disks) ? implode("\n", $pools) : '(disks.ini could not be read)')
+		.zfsmDiagSection('ZFS pools and disks Unraid lists', is_array($disks) ? implode("\n", $pools) : zfsmDiagUnread('(disks.ini could not be read)'))
 		.zfsmDiagSection('installed plugins', implode("\n", $plugins));
 }

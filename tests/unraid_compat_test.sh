@@ -66,11 +66,11 @@ grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid && fail 'old da
 grep -q 'plugins/other/nchan/zfs_master:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
 
 # Real plugin removal; the plugin's log and a diagnostics run's work folder are in RAM, outside the package.
-mkdir -p /tmp/zfs.master-diag.0123abcd/plugin
-touch /var/log/zfs.master.log /var/log/zfs.master.log.1 /tmp/zfs.master-diag.0123abcd/plugin/log.txt
+diag=$(mktemp -d /tmp/zfs.master-diag.XXXXXXXXXXXXXXXX) && mkdir "$diag/plugin" || fail 'no diagnostics work folder to remove'
+touch /var/log/zfs.master.log /var/log/zfs.master.log.1 "$diag/plugin/log.txt"
 $plugin remove zfs.master.plg > "$work/remove.log" 2>&1 || { cat "$work/remove.log"; fail 'remove failed'; }
 [ ! -e "$live" ] && [ ! -e "$flash" ] && [ ! -e /var/log/plugins/zfs.master.plg ] || fail 'remove left files behind'
-[ ! -e /var/log/zfs.master.log ] && [ ! -e /var/log/zfs.master.log.1 ] && [ ! -e /tmp/zfs.master-diag.0123abcd ] || fail 'remove left the plugin log or a diagnostics work folder behind'
+[ ! -e /var/log/zfs.master.log ] && [ ! -e /var/log/zfs.master.log.1 ] && [ ! -e "$diag" ] || fail 'remove left the plugin log or a diagnostics work folder behind'
 ls /var/log/packages/zfs.master-* >/dev/null 2>&1 && fail 'remove left a package record'
 
 # A download that fails must leave the old install and the archive its next boot needs.

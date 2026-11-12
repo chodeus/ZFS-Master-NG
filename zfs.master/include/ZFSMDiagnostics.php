@@ -52,7 +52,7 @@ function zfsmDiagContext($config) {
 // What the collectors note as they go: summary.txt's facts and findings, each read's time, and the pools a read timed out on.
 function zfsmDiagStart() {
 	$facts = array_fill_keys(array('plugin', 'Unraid', 'PHP', 'OpenZFS', 'pools', 'datasets', 'snapshots', 'settings changed from default'), 'not read');
-	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false);
+	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false, 'unread' => false);
 }
 
 function zfsmDiagFact($name, $value) {
@@ -63,26 +63,34 @@ function zfsmDiagFinding($text) {
 	$GLOBALS['zfsm_diag']['findings'][] = $text;
 }
 
+// Marks the file being collected as one with a read that failed, and gives back the text that says so in it:
+// its result is then "read failed", not ok, and the summary names it.
+function zfsmDiagUnread($text = '') {
+	$GLOBALS['zfsm_diag']['unread'] = true;
+	return $text;
+}
+
 // A time limit as it is used: tests shrink them all by one factor, so each keeps its place among the others.
 function zfsmDiagSeconds($seconds) {
 	return $seconds * ($GLOBALS['zfsm_diag_scale'] ?? 1);
 }
 
-// Writes every file into $dir; false when one could not be written. A collector that throws or runs out of time is noted in
-// collectors.txt, and the rest still run.
+// Writes every file into $dir; false when one could not be written. A collector that throws, runs out of time or could not
+// read something is noted in collectors.txt and the summary, and the rest still run.
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
 	$report = "file\tresult\tseconds\n";
-	$unfinished = array('timed out' => array(), 'failed' => array());
+	$unfinished = array('timed out' => array(), 'read failed' => array(), 'failed' => array());
 	$written = true;
 	foreach ($collectors ?? zfsmDiagCollectors() as $collector) {
 		list($file, $seconds, $collect) = $collector;
 		$seconds = zfsmDiagSeconds($seconds);
 		$GLOBALS['zfsm_diag']['timed_out'] = false;
+		$GLOBALS['zfsm_diag']['unread'] = false;
 		$began = microtime(true);
 		try {
 			$text = zfsmWithDeadline($seconds, function() use ($collect, $ctx) { return $collect($ctx); });
-			$result = $GLOBALS['zfsm_diag']['timed_out'] ? 'timed out' : 'ok';
+			$result = $GLOBALS['zfsm_diag']['timed_out'] ? 'timed out' : ($GLOBALS['zfsm_diag']['unread'] ? 'read failed' : 'ok');
 		} catch (Throwable $error) {
 			$result = $error instanceof ZFSMTimeout ? 'timed out' : 'failed';
 			$text = $result.': '.$error->getMessage();
@@ -92,6 +100,7 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
 	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
+	if ($unfinished['read failed']) zfsmDiagFinding('a read failed, so these files are incomplete: '.implode(', ', $unfinished['read failed']));
 	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
 	$written = zfsmDiagWrite($dir.'/collectors.txt', $report) && $written;
 	$written = zfsmDiagWrite($dir.'/summary.txt', zfsmDiagSummary()) && $written;
@@ -110,8 +119,8 @@ function zfsmDiagSummary() {
 
 function zfsmDiagReadme() {
 	$text = "ZFS Master NG diagnostics\n\n"
-		."summary.txt     versions, counts and the FINDINGS: what the plugin found wrong with itself\n"
-		."collectors.txt  each file: ok, failed or timed out, and the seconds it took\n"
+		."summary.txt     versions, counts and the FINDINGS: what looks wrong with the plugin, its settings, the pools or this run's own reads\n"
+		."collectors.txt  each file: ok, read failed, timed out or failed, and the seconds it took\n"
 		."plugin/         settings, install, alert schedule, jobs, replication and the plugin's log\n"
 		."zfs/            pools, datasets, snapshot counts, bookmarks, mounts and running commands\n"
 		."unraid/         the Unraid version, array state, display settings and installed plugins\n\n"
@@ -127,16 +136,32 @@ function zfsmDiagWrite($file, $text) {
 }
 
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
-// to its end, however it ends. A killed run's folder is one no lock holds, a minute after it was made: those go first.
+// to its end, however it ends. A killed run's folder is one whose lock is free a minute after it was made: those go first.
 function zfsmDiagWorkDir() {
 	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');
-	foreach (glob($prefix.'*') ?: array() as $old) if (zfsmDiagLockHeld($old) === false && time() - (int)@filemtime($old) > 60) zfsmDiagRemove($old);
+	foreach (glob($prefix.'*') ?: array() as $old) {
+		// Kept in a variable: the lock must last through the removal.
+		$mine = time() - (int)@filemtime($old) > 60 ? zfsmDiagHold($old, LOCK_NB) : false;
+		if ($mine !== false) zfsmDiagRemove($old);
+	}
 	$dir = $prefix.bin2hex(random_bytes(8));
-	$hold = @mkdir($dir, 0700) ? @fopen($dir, 'r') : false;
-	if ($hold === false || !flock($hold, LOCK_EX)) return null;
+	$hold = @mkdir($dir, 0700) ? zfsmDiagHold($dir) : false;
+	if ($hold === false) return null;
 	$holds[] = $hold;
 	return $dir;
+}
+
+// The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),
+// and when the folder went, or was made again, before the lock was had.
+function zfsmDiagHold($dir, $wait = 0) {
+	// 'e': a command the run starts must not carry the lock on past the run's end.
+	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
+	if ($hold === false || !flock($hold, LOCK_EX | $wait)) return false;
+	clearstatcache(true, $dir);
+	$now = @stat($dir);
+	$held = fstat($hold);
+	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] ? $hold : false;
 }
 
 // Removes a work folder: only one zfsmDiagWorkDir made, and never through a link.
@@ -155,7 +180,7 @@ function zfsmDiagRemove($dir) {
 function zfsmDiagFile($file) {
 	if (!file_exists($file)) return '(not there)';
 	$text = @file_get_contents($file);
-	return $text === false ? '(unreadable)' : $text;
+	return $text === false ? zfsmDiagUnread('(unreadable)') : $text;
 }
 
 function zfsmDiagSection($title, $text) {
@@ -170,7 +195,7 @@ function zfsmDiagMatchingLines($files, $needle, $keep) {
 	foreach ($files as $file) {
 		$handle = @fopen($file, 'r');
 		if ($handle === false) {
-			if (file_exists($file)) $unread[] = $file;
+			if (file_exists($file)) $unread[] = zfsmDiagUnread($file);
 			continue;
 		}
 		while (($line = fgets($handle)) !== false) {
@@ -191,11 +216,13 @@ function zfsmDiagPluginLines($files, $keep) {
 	return $lines ? implode("\n", $lines) : '(no lines)';
 }
 
-// A read for a file: runProcess's answer, its time kept for zfs/timings.txt. A read past its limit comes back with code null.
+// A read for a file: runProcess's answer, its time kept for zfs/timings.txt. A read past its limit comes back with code null,
+// and one that failed marks its file.
 function zfsmDiagRead($command, $args, $seconds = 30) {
 	$began = microtime(true);
 	$result = zfsmReadWithin(zfsmDiagSeconds($seconds), $command, $args);
 	if ($result['code'] === null) $GLOBALS['zfsm_diag']['timed_out'] = true;
+	elseif ($result['code'] !== 0) zfsmDiagUnread();
 	$GLOBALS['zfsm_diag']['timings'][] = number_format(microtime(true) - $began, 2, '.', '')."\t".($result['code'] === null ? 'timed out' : 'exit '.$result['code'])."\t".$command.' '.implode(' ', $args);
 	return $result;
 }

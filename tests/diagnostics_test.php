@@ -84,6 +84,7 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $ed25519('p')." zfs.master@Tower\n");
 	$put('/boot/config/plugins/zfs.master/ssh/remotes.json', json_encode(array(array('name' => 'nas3', 'host' => '10.0.0.9', 'port' => 2222, 'key' => $ed25519('h')))));
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
+	$put('/proc/self/mounts', "tank /mnt/tank zfs rw,xattr,posixacl 0 0\ntmpfs /tmp tmpfs rw 0 0\n");
 	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"Tower\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"cache\"]\nname=\"cache\"\ntype=\"Cache\"\nfsType=\"zfs\"\nfsStatus=\"Mounted\"\nstatus=\"DISK_OK\"\nluksState=\"0\"\n[\"disk1\"]\nname=\"disk1\"\ntype=\"Data\"\nfsType=\"xfs\"\n");
@@ -280,7 +281,7 @@ has($root."/var/run/zfs.master.lock: free\n".$root."/var/run/zfs.master.alerts.j
 fclose($GLOBALS['zfsm_alerts_held']);
 // Asking never takes a lock: the alert check and a job's start take theirs without waiting, and would lose their turn.
 foreach (array('ZFSMDiagnostics.php', 'ZFSMDiagPlugin.php', 'ZFSMDiagZfs.php') as $file) {
-	same(0, preg_match('/\bflock\((?!\$hold, LOCK_EX\))|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock but its own work folder\'s');
+	same(0, preg_match('/\bflock\((?!\$hold, LOCK_EX \| \$wait\))|\bzfsmJob(Running|Lock)\(/', file_get_contents(__DIR__.'/../zfs.master/include/'.$file)), $file.' reads the lock table and takes no lock but a work folder\'s');
 }
 has("== running plugin scripts (pid, seconds, command)\n812\t40\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n\n", $text, 'only the plugin\'s scripts are listed');
 putenv('ZFSM_TEST_PS=fail');
@@ -362,7 +363,7 @@ same(array('tank/a' => array(3, 50, 100, 2), 'tank/b' => array(1, 60, 60, 0)), z
 // Every limit runs at a fifteenth here, so each keeps its place among the others: a read's 30 seconds is 2.
 $GLOBALS['zfsm_diag_scale'] = 1 / 15;
 $states_of = function($dir) {
-	$states = array('ok' => array(), 'timed out' => array(), 'failed' => array());
+	$states = array('ok' => array(), 'read failed' => array(), 'timed out' => array(), 'failed' => array());
 	foreach (array_slice(file($dir.'/collectors.txt', FILE_IGNORE_NEW_LINES), 1) as $line) $states[explode("\t", $line)[1]][] = explode("\t", $line)[0];
 	return $states;
 };
@@ -434,6 +435,68 @@ putenv('ZFSM_TEST_POOL_FAIL');
 same(array('zfs/zpool-status.txt'), $states_of($work.'/badlist')['failed'], 'a pool list that failed is a failure, not a timeout');
 has("FINDINGS (1)\n- a collector failed, so these files hold only its error: zfs/zpool-status.txt\n", file_get_contents($work.'/badlist/summary.txt'), 'and the summary names the file');
 
+// A read that failed is in its file, and also in what the run prints: the file's result is "read failed" and the summary names it.
+// Each case is one collector through the real runner; a change that sets a switch gives back what unsets it.
+$result_of = function($file, $change, $changed = array()) use ($build, $context, $root, $work) {
+	$build();
+	$undo = $change($root);
+	$collector = array_values(array_filter(zfsmDiagCollectors(), function($collector) use ($file) { return $collector[0] === $file; }));
+	zfsmDiagRun($work.'/unread', $context($changed), $collector);
+	if ($undo !== null) $undo();
+	$named = strpos(file_get_contents($work.'/unread/summary.txt'), '- a read failed, so these files are incomplete: '.$file."\n") !== false;
+	return array(explode("\t", file($work.'/unread/collectors.txt', FILE_IGNORE_NEW_LINES)[1])[1], $named);
+};
+$with = function($switch, $value, $after = false) {
+	return function() use ($switch, $value, $after) {
+		putenv($switch.'='.$value);
+		return function() use ($switch, $after) { putenv($after === false ? $switch : $switch.'='.$after); };
+	};
+};
+// The kernel's lock table can't be hidden by a path of this test's: a socket is mounted over it, in the test's own mount namespace.
+$no_lock_table = function() use ($work) {
+	$GLOBALS['zfsm_sockets'][] = stream_socket_server('unix://'.$work.'/no-locks');
+	exec('mount --bind '.escapeshellarg($work.'/no-locks').' /proc/locks 2>&1', $said, $code);
+	same(0, $code, 'the lock table is hidden: '.implode(' ', $said));
+	return function() {
+		exec('umount /proc/locks 2>&1', $said, $code);
+		same(0, $code, 'the lock table is back: '.implode(' ', $said));
+	};
+};
+$failed_reads = array(
+	'the settings file can\'t be opened' => array('plugin/settings-saved.cfg.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }),
+	'a system log can\'t be opened' => array('plugin/log.txt', function($root) use ($unopenable) { $unopenable($root.'/var/log/syslog.1'); }),
+	'a command ends with an error' => array('zfs/zpool-status.txt', $with('ZFSM_TEST_ZPOOL_STATUS_FAIL', '1')),
+	'the process list can\'t be read' => array('zfs/processes.txt', $with('ZFSM_TEST_PS', 'fail', $work.'/ps.txt')),
+	'the pool list fails and the collector goes on' => array('plugin/settings-effective.txt', $with('ZFSM_TEST_POOL_FAIL', '1')),
+	'the mount list is gone' => array('zfs/mounts.txt', function($root) { unlink($root.'/proc/self/mountinfo'); }),
+	'the list the boot pool is read from is gone' => array('zfs/mounts.txt', function($root) { unlink($root.'/proc/self/mounts'); }),
+	'the lock table can\'t be read' => array('plugin/jobs.txt', $no_lock_table),
+	'authorized_keys can\'t be opened' => array('plugin/replication-receive.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ssh/root/authorized_keys'); }),
+	'the host key file holds no key' => array('plugin/replication-receive.txt', function($root) { file_put_contents($root.'/etc/ssh/ssh_host_ed25519_key.pub', "not a key\n"); }),
+	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
+	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
+	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
+	'disks.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/disks.ini'); }),
+);
+foreach ($failed_reads as $what => $case) same(array('read failed', true), $result_of($case[0], $case[1]), 'a failed read is its file\'s result and in the summary when '.$what);
+same(true, zfsmDiagLockHeld($root.'/var/run/zfs.master.lock') !== null, 'the lock table is read again');
+// A file that need not be there is no failed read.
+same(array('ok', false), $result_of('plugin/settings-saved.cfg.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }), 'a settings file that is not there is not a failed read');
+same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { unlink($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }), 'nor is a host key that is not there');
+has("host key: not there\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is not there');
+// The file after one with a failed read starts clean.
+$build();
+$unopenable($root.'/boot/config/plugins/zfs.master/zfs.master.cfg');
+zfsmDiagRun($work.'/next', $context(), array_slice(zfsmDiagCollectors(), 0, 2));
+same(array(array('plugin/settings-saved.cfg.txt'), array('plugin/settings-effective.txt')), array($states_of($work.'/next')['read failed'], $states_of($work.'/next')['ok']), 'a failed read marks its own file and not the next');
+// A timeout stays one where a read also failed, and README.txt names every result collectors.txt can hold.
+$build();
+putenv('ZFSM_TEST_LIST_HANG=1');
+zfsmDiagRun($work.'/both', $context(), array(array('plugin/both.txt', 60, function($ctx) { return zfsmDiagUnread('(unreadable)').zfsmDiagShowAll(zfsmDiagPerPool('zfs', array('list', '-H', '-o', 'name', '-t', 'filesystem,volume', '-r'))); }, array())));
+putenv('ZFSM_TEST_LIST_HANG');
+same(array('plugin/both.txt'), $states_of($work.'/both')['timed out'], 'a file with a read that timed out and one that failed is timed out');
+foreach (array_keys($states_of($work.'/both')) as $state) has($state, implode('', preg_grep('/^collectors\.txt /', file($work.'/both/README.txt'))), 'README.txt names the result "'.$state.'"');
+
 // A collector that throws is noted and the rest still run.
 function zfsmTestThrows($ctx) { throw new LogicException('boom'); }
 function zfsmTestWrongType($ctx) { return strlen(array()); }
@@ -475,24 +538,62 @@ zfsmDiagRemove($root.'/tmp/zfs.master-diag.0123456789abcdef');
 same(true, is_file($work.'/elsewhere/keep'), 'a link named like a work folder is not followed');
 unlink($root.'/tmp/zfs.master-diag.0123456789abcdef');
 // A killed run leaves its folder: the next run removes it once no run holds it. One a run still holds stays, however old,
-// and so does one just made, whose run may not hold it yet.
+// and so does one just made, whose run may not hold it yet. A file of that name is no work folder.
 $stale = $root.'/tmp/zfs.master-diag.00000000000000aa';
 $busy = $root.'/tmp/zfs.master-diag.00000000000000bb';
 $fresh = $root.'/tmp/zfs.master-diag.00000000000000cc';
+$plain = $root.'/tmp/zfs.master-diag.00000000000000dd';
 foreach (array($stale, $busy, $fresh) as $folder) {
 	mkdir($folder);
 	file_put_contents($folder.'/summary.txt', 'names');
 }
+file_put_contents($plain, 'a file');
 touch($stale, time() - 120);
 touch($busy, time() - 7200);
+touch($plain, time() - 120);
 $GLOBALS['zfsm_busy'] = fopen($busy, 'r');
 flock($GLOBALS['zfsm_busy'], LOCK_EX);
-$second = zfsmDiagWorkDir();
-same(array(false, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so does one just made');
+try {
+	$second = zfsmDiagWorkDir();
+} catch (Throwable $error) {
+	same(null, get_class($error).': '.$error->getMessage(), 'a file named like a work folder is left alone');
+}
+same(array(false, true, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_file($plain), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so do one just made and a file of that name');
+unlink($plain);
 same(true, zfsmDiagLockHeld($second), 'a run holds its own work folder');
+// The lock ends with the run, whatever the run leaves running: a command it starts gets no handle on the folder.
+exec('ls -l /proc/self/fd', $handles);
+same(array(), preg_grep('~'.preg_quote(basename($second), '~').'~', $handles), 'a command the run starts does not hold the run\'s lock');
 fclose($GLOBALS['zfsm_busy']);
 zfsmDiagWorkDir();
 same(array(false, true), array(file_exists($busy), is_dir($second)), 'once its run has ended that folder goes too, and this run\'s stays');
+// A run stopped between making its folder and holding it can lose the folder to a later run: it must end there, not write on.
+$late = function($made_again) use ($root) {
+	$dir = $root.'/tmp/zfs.master-diag.00000000000000ee';
+	mkdir($dir, 0700);
+	$path = realpath($dir);
+	$remover = fopen($dir, 're');
+	flock($remover, LOCK_EX);
+	$load = 'require '.var_export(dirname(__DIR__).'/zfs.master/backend/ZFSMOperations.php', true).'; require '.var_export(dirname(__DIR__).'/zfs.master/include/ZFSMDiagnostics.php', true).';';
+	$run = proc_open(array(PHP_BINARY, '-n', '-r', $load.' echo "loaded\n"; echo zfsmDiagHold($argv[1]) === false ? "ended" : "held";', '--', $dir), array(1 => array('pipe', 'w')), $pipes);
+	$pid = proc_get_status($run)['pid'];
+	// Until it has loaded, the new process may still show this one's handles.
+	same("loaded\n", fgets($pipes[1]), 'the stopped run has started');
+	$opened = function() use ($pid, $path) {
+		foreach (glob('/proc/'.$pid.'/fd/*') ?: array() as $fd) if (@readlink($fd) === $path) return true;
+		return false;
+	};
+	for ($waited = 0; !$opened() && $waited < 100; $waited++) usleep(100000);
+	same(true, $opened(), 'the stopped run has its folder open, and waits for the lock');
+	rmdir($dir);
+	if ($made_again) mkdir($dir, 0700);
+	fclose($remover);
+	$said = stream_get_contents($pipes[1]);
+	proc_close($run);
+	if ($made_again) rmdir($dir);
+	return $said;
+};
+same(array('ended', 'ended'), array($late(false), $late(true)), 'a run whose folder went before it held it ends, also when a folder of that name is there again');
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
 $docroot = getenv('ZFSM_TEST_DOCROOT');
