@@ -136,7 +136,7 @@ function zfsmDiagWrite($file, $text) {
 }
 
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
-// to its end, however it ends. A killed run's folder is one whose lock is free a minute after it was made: those go first.
+// to its end. A killed run's folder has a free lock a minute after it was made: a new run first tries to remove those (zfsmDiagRemove).
 function zfsmDiagWorkDir() {
 	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');

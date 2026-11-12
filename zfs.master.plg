@@ -346,9 +346,8 @@ done
 rm -rf /boot/config/plugins/&name;
 rm -rf &plugdir;
 rm -f /tmp/zfsm_reload /var/log/&name;.log /var/log/&name;.log.1
-# A diagnostics work folder goes, unless a filesystem is mounted in it or the mount table can't be read (an empty one was not read):
-# that one's files are not the plugin's. Only root's own folders with the names a run makes, 16 hex digits: the mount table writes
-# no such name another way, and another user's folder or link is not the plugin's to remove.
+# A diagnostics work folder goes only when it is root's own, has a name a run makes (16 hex digits) and holds no mount.
+# An unread or empty mount table removes nothing: what is mounted in a folder is not the plugin's.
 for d in /tmp/&name;-diag.[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]; do
   [ -d "$d" ] || continue
   [ ! -L "$d" ] || continue

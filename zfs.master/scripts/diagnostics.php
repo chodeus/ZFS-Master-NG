@@ -1,7 +1,8 @@
 #!/usr/bin/php -q
 <?php
 // Collects the diagnostics files (include/ZFSMDiagnostics.php) and prints what they show. Must stay executable: pkg_build.sh.
-// The files hold real names, in a folder that is root's alone. It goes when this ends; one a killed run leaves goes with a later run.
+// Their folder holds real names and is root's alone. The end of the run tries to remove it and says so when it can't; a later run tries again.
+
 // From a terminal only: as a page, any request to its address would start a run.
 if (PHP_SAPI !== 'cli') exit(1);
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
