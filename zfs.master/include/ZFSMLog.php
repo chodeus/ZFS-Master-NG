@@ -15,6 +15,18 @@ function zfsmLog($message, $priority = LOG_ERR) {
 	zfsmLogKeep($text, $priority);
 }
 
+// A debug line: in the plugin's own log only, and only while Debug Log is on in the settings, read once for each run.
+function zfsmDebug($message) {
+	if (!isset($GLOBALS['zfsm_debug'])) $GLOBALS['zfsm_debug'] = function_exists('parse_plugin_cfg') && (int)(parse_plugin_cfg('zfs.master', true)['general']['debug_log'] ?? 0) === 1;
+	if ($GLOBALS['zfsm_debug']) zfsmLogKeep(zfsmSafeText($message), LOG_DEBUG);
+}
+
+// A command the plugin ran, for the debug log: what it was, how it ended and how long it took. Where a key is kept is left out.
+function zfsmDebugCommand($command, $args, $result, $began) {
+	$secret = basename((string)$command) === 'zfs' && (($args[0] ?? '') === 'load-key' || preg_grep('/keylocation=/', $args));
+	zfsmDebug(basename((string)$command).' '.($secret ? ($args[0] ?? '').' (its arguments are left out)' : implode(' ', $args)).': '.$result.' in '.number_format(microtime(true) - $began, 3, '.', '').' s');
+}
+
 // At ZFSM_LOG_BYTES the file becomes .1, replacing the last one, so the two never pass about 1 MB. A line that can't be written
 // is dropped: syslog has it.
 function zfsmLogKeep($text, $priority) {

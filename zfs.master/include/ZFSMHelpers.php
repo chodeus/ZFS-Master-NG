@@ -30,6 +30,7 @@ function loadConfig($config) {
 		'alert_interval' => zfsmSettingInt($general, 'alert_interval', 0),
 		'alert_stale' => zfsmSettingInt($general, 'alert_stale', 0),
 		'size_units' => ($general['size_units'] ?? '') === 'decimal' ? 'decimal' : 'binary',
+		'debug_log' => zfsmSettingInt($general, 'debug_log', 0),
 		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
@@ -140,9 +141,25 @@ function zfsmReadWithin($seconds, $command, $args) {
 // How much a command that can print a line per file keeps of its output: enough for its first errors.
 define('ZFSM_KEEP_OUTPUT', 4096);
 
+// Every command the plugin runs goes through here: with Debug Log on, each is a line in the plugin's log (zfsmDebugCommand).
+function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
+	$began = microtime(true);
+	$result = 'not run';
+	try {
+		$answer = zfsmRunCommand($command, $args, $stdin, $max_lines, $keep_bytes);
+		$result = 'exit '.$answer['code'];
+		return $answer;
+	} catch (ZFSMTimeout $timeout) {
+		$result = 'timed out';
+		throw $timeout;
+	} finally {
+		zfsmDebugCommand($command, $args, $result, $began);
+	}
+}
+
 // With $max_lines, stops the command after that many lines; when it had more, sets 'truncated' and the line after them, 'next_line'.
 // With $keep_bytes, lets the command run to its end but keeps only that much of its output, and counts its lines in 'lines'.
-function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
+function zfsmRunCommand($command, $args, $stdin, $max_lines, $keep_bytes) {
 	$command = zfsmCommandPath($command);
 	if ($command === null) return array('code' => 127, 'output' => 'zfs and zpool must come from ZFSM_TEST_BIN_DIR in a test');
 	$descriptor_spec = array(
