@@ -2,7 +2,6 @@
 <?php
 // Collects the diagnostics files (include/ZFSMDiagnostics.php), replaces the names in them, prints what they show and packs them
 // into a zip in /boot/logs (include/ZFSMDiagBundle.php). --no-unraid leaves Unraid's own diagnostics out. Must stay executable: pkg_build.sh.
-// Their folder holds real names and is root's alone. The end of the run tries to remove it and says so when it can't; a later run tries again.
 
 // From a terminal only: as a page, any request to its address would start a run.
 if (PHP_SAPI !== 'cli') exit(1);
@@ -16,6 +15,7 @@ if ($work === null) {
 	fwrite(STDERR, "Unable to make a work folder in /tmp\n");
 	exit(1);
 }
+// The folder holds real names and is root's alone: the run's end tries to remove it, and a later run tries again.
 register_shutdown_function(function() use ($work) {
 	if (is_dir($work) && !zfsmDiagRemove($work)) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
 });

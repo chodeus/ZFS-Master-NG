@@ -168,13 +168,22 @@ function zfsmDiagBookmarks($ctx) {
 // Properties set on a dataset itself or received with it: ZnapZend's plans and other tools' marks are among them.
 function zfsmDiagUserProperties($ctx) {
 	$results = zfsmDiagPerPool('zfs', array('get', '-H', '-p', '-r', '-t', 'filesystem,volume', '-s', 'local,received', '-o', 'name,property,value,source', 'all'));
-	foreach ($results as $title => $result) $results[$title]['output'] = zfsmDiagHideFreeValues(zfsmDiagHideKeyLocation($result['output']));
+	// A read that failed holds its error, not rows.
+	foreach ($results as $title => $result) if ($result['code'] === 0) $results[$title]['output'] = zfsmDiagHideFreeValues(zfsmDiagHideKeyLocation($result['output']));
 	return zfsmDiagShowAll($results);
 }
 
 // The value of a user property (its name holds a colon) and of a share's options is its owner's to write (zfsmDiagFreeValue).
+// One with a tab or a line break in it comes as more fields, or more rows, than a row has: they are that value too.
 function zfsmDiagHideFreeValues($output) {
-	return preg_replace_callback('/^([^\t]*\t(?:[^\t]*:[^\t]*|sharenfs|sharesmb)\t)([^\t]*)/m', function($row) { return $row[1].zfsmDiagFreeValue($row[2]); }, $output);
+	$rows = array();
+	foreach (explode("\n", $output) as $row) {
+		$field = explode("\t", $row);
+		if (count($field) < 3) $rows[] = $row === '' ? '' : '(more of the value above, left out)';
+		elseif (strpos($field[1], ':') === false && !in_array($field[1], array('sharenfs', 'sharesmb'), true)) $rows[] = $row;
+		else $rows[] = $field[0]."\t".$field[1]."\t".zfsmDiagFreeValue(implode("\t", array_slice($field, 2, max(1, count($field) - 3))))."\t".(count($field) > 3 ? end($field) : '');
+	}
+	return implode("\n", $rows);
 }
 
 // keylocation can be a URL or the path of a key file: only that it is set goes in.
