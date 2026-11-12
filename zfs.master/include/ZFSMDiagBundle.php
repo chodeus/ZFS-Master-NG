@@ -43,27 +43,28 @@ function zfsmDiagPack($dir) {
 	if ($unraid !== null && !@copy($unraid, $dir.'/unraid/'.basename($unraid))) return array(null, 'Unraid\'s own diagnostics could not be copied in from '.$unraid);
 	$part = $logs.'/'.basename($dir).'.part';
 	$packed = runProcess('sh', array('-c', 'cd "$1" && exec zip -qr "$2" .', 'sh', $dir, $part));
-	$zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His').'.zip';
+	// Another run's zip of this second keeps its name: this one takes the next second's.
+	for ($second = time(); file_exists($zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip'); $second++);
 	if (($packed['code'] ?? 1) !== 0 || !@rename($part, $zip)) {
 		@unlink($part);
 		return array(null, zfsmCommandError($packed, 'the zip could not be written to '.$logs));
 	}
 	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough.
 	if ($unraid !== null) @unlink($unraid);
-	zfsmDiagKeepNewest($logs, 3);
+	zfsmDiagKeepNewest($logs, 3, basename($zip));
 	return array($zip, '');
 }
 
-// Removes the plugin's own zips in $logs but for the newest $keep, and what a run that was killed while packing left there.
-// Only names this file makes are touched, never a link.
-function zfsmDiagKeepNewest($logs, $keep) {
+// Removes the plugin's own zips in $logs but for $made, the one just written, and the newest of the others, $keep in all; and what
+// a run that was killed while packing left there. Only names this file makes are touched, never a link.
+function zfsmDiagKeepNewest($logs, $keep, $made) {
 	$zips = array();
 	foreach (scandir($logs) ?: array() as $name) {
 		if (is_link($logs.'/'.$name) || !is_file($logs.'/'.$name)) continue;
-		if (preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1) $zips[] = $name;
+		if (preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1 && $name !== $made) $zips[] = $name;
 		elseif (preg_match('/^zfs\.master-diag\.[0-9a-f]{16}\.part$/D', $name) === 1 && time() - (int)filemtime($logs.'/'.$name) > 3600) @unlink($logs.'/'.$name);
 	}
-	// The name holds the time, so the names sort by age.
+	// The name holds the time, so the names sort by age; a clock that went back must not cost the zip just written.
 	sort($zips);
-	foreach (array_slice($zips, 0, max(0, count($zips) - $keep)) as $name) @unlink($logs.'/'.$name);
+	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) @unlink($logs.'/'.$name);
 }

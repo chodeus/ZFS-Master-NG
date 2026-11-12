@@ -118,8 +118,11 @@ function zfsmDiagAnonMatch($text, $match) {
 	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
 	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
 	if ($match['query'][0] !== null) return array(($found[0] === '?' ? '?' : explode(':', $found, 2)[0].': ').'(left out)', $end);
-	// A request names its dataset as hex (include/ZFSMReplicaServe.php); a log line may hold only the first of it.
-	if ($match['hex'][0] !== null) return array($match['request'][0].'(as hex) '.zfsmDiagAnonText((string)hex2bin(substr($match['hex'][0], 0, strlen($match['hex'][0]) & ~1))), $end);
+	// A request names its dataset as hex (include/ZFSMReplicaServe.php), of any pool; a log line may hold only the first of it.
+	if ($match['hex'][0] !== null) {
+		$named = explode('/', (string)hex2bin(substr($match['hex'][0], 0, strlen($match['hex'][0]) & ~1)), 2);
+		return array($match['request'][0].'(as hex) '.$named[0].zfsmDiagNameTokens(isset($named[1]) ? '/'.$named[1] : ''), $end);
+	}
 	if ($match['since'][0] !== null) return array($found[0].zfsmDiagToken(substr($found, 1)), $end);
 	if ($match['word'][0] !== null) return array(zfsmDiagToken($found), $end);
 	if ($match['host'][0] !== null) return array(zfsmDiagToken($found, 'host'), $end);
@@ -146,8 +149,12 @@ function zfsmDiagAnonPath($text, $at) {
 		// One of this run's own files, where a pool is named as their folder is.
 		if (isset($names['files'][$name])) return array($name, $at + strlen($name));
 	}
-	$tokens = preg_replace_callback('~[^/@#]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, (string)substr($name, strlen($kept[0])));
-	return array($kept[0].$tokens, $at + strlen($name));
+	return array($kept[0].zfsmDiagNameTokens((string)substr($name, strlen($kept[0]))), $at + strlen($name));
+}
+
+// The part of a path after what stays, each name in it a token.
+function zfsmDiagNameTokens($rest) {
+	return preg_replace_callback('~[^/@#]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, $rest);
 }
 
 // Where a dataset's name ends in $run: after a known name with spaces; else at the first space that one of the plugin's own words,
@@ -183,7 +190,8 @@ function zfsmDiagAnonJson($text) {
 // value, as the Main tab's read gives them (zfsmDiagFreeValue).
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
-		$clean = $free ? zfsmDiagFreeValue($value) : zfsmDiagAnonText($value);
+		// A value that stays as a number can still be an address.
+		$clean = zfsmDiagAnonText($free ? zfsmDiagFreeValue($value) : $value);
 		$failed = $failed || $clean === null;
 		return $clean;
 	}

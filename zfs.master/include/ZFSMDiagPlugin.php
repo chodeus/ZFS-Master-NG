@@ -2,18 +2,24 @@
 // Diagnostics collectors for the plugin's own state and Unraid's (include/ZFSMDiagnostics.php lists them).
 // Each returns its file's text and notes what looks wrong with zfsmDiagFinding.
 
-// The file as saved, but for what its owner wrote freely and no path marks as a name: the exclusion pattern and the value of
-// a setting this version does not know become tokens, with any further lines such a value runs on to.
+// The settings whose text is their owner's to write and that no path marks as a name: only a token for each goes in.
+function zfsmDiagFreeSettings() {
+	return array('exclusion', 'snap_prefix', 'snap_pattern');
+}
+
+// The file as saved, but for those settings and any this version does not know: each one's value is a token, and the further
+// lines it runs on to, up to the one that closes its quote, are left out.
 function zfsmDiagSettingsSaved($ctx) {
-	$shown = array_diff(array_map('zfsmDiagSavedName', array_keys($ctx['cfg'])), array('exclusion'));
-	$hidden = false;
+	$shown = array_diff(array_map('zfsmDiagSavedName', array_keys($ctx['cfg'])), zfsmDiagFreeSettings());
+	$open = false;
 	$lines = array();
 	foreach (explode("\n", zfsmDiagFile(zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg'))) as $line) {
-		if (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1) {
-			$hidden = !in_array($set[1], $shown, true);
-			$lines[] = $hidden ? $set[1].' = '.zfsmDiagToken(trim($set[2], " \t\r\"")) : $line;
-		} elseif (!$hidden || trim($line) === '' || $line[0] === '[') {
-			$hidden = false;
+		if ($open) {
+			$open = substr_count($line, '"') % 2 === 0;
+		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1 && !in_array($set[1], $shown, true)) {
+			$lines[] = $set[1].' = '.zfsmDiagToken(trim($set[2], " \t\r\""));
+			$open = substr_count($set[2], '"') % 2 === 1;
+		} else {
 			$lines[] = $line;
 		}
 	}
@@ -36,8 +42,7 @@ function zfsmDiagSettingsEffective($ctx) {
 		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
 		$differs = zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key]);
 		if ($differs) $changed[] = $name;
-		// A pattern its owner wrote can name anything: only a token for it goes in.
-		if ($differs && $key === 'dataset_exclusion') $value = zfsmDiagToken($value);
+		if ($differs && in_array($name, zfsmDiagFreeSettings(), true)) $value = zfsmDiagToken($value);
 		$text .= $name."\t".zfsmJson($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".zfsmJson($defaults[$key], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".$source."\n";
 	}
 	zfsmDiagFact('settings changed from default', $changed ? implode(', ', $changed) : 'none');
@@ -56,7 +61,7 @@ function zfsmDiagSettingProblems($ctx) {
 		elseif (is_string($value) && zfsmConfigValueUnsafe($value)) $problems[] = $name.' holds text that a save would refuse';
 	}
 	$snapshot = zfsmNewSnapshotName($cfg, time());
-	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.$snapshot;
+	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($snapshot);
 	$pattern = $cfg['dataset_exclusion'];
 	if (!zfsmExclusionIsValid($pattern)) $problems[] = 'the exclusion pattern is invalid, so it is ignored';
 	elseif (strpos($pattern, '%') !== false) $problems[] = 'the exclusion pattern is a Lua pattern, the format older versions used';
