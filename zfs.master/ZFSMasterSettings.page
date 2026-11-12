@@ -270,7 +270,8 @@ function zfsmCheckAccept(value) {
 $('input[name="replica_accept"]').on('change', function() { zfsmCheckAccept($(this).val()); });
 zfsmCheckAccept($('input[name="replica_accept"]').val());
 
-// Replicate To Other Servers: each answer carries the refreshed HTML (include/ZFSMReplicaRemote.php) or why not.
+// Replicate To Other Servers: each answer carries what its action gives (the refreshed HTML, a host key and its fingerprint,
+// or the area a test found) or, as error, why not. Unraid's page adds the token to every post ($.ajaxPrefilter, DefaultPageLayout.php).
 var zfsm_send_found = null;
 var zfsm_send_asked = 0;
 function zfsmSendPost(data, done) {

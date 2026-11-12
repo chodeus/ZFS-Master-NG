@@ -9,11 +9,12 @@ function zfsmReplicaSshDir() {
 	return $GLOBALS['zfsm_ssh_dir'] ?? '/boot/config/plugins/zfs.master/ssh';
 }
 
-// The sender name in the key line on the servers it sends to; null when Unraid's server name breaks the sender-name rules there.
+// Unraid's own settings file, which holds this server's name.
 function zfsmReplicaIdentFile() {
 	return $GLOBALS['zfsm_ident_file'] ?? '/boot/config/ident.cfg';
 }
 
+// The sender name in the key line on the servers it sends to; null when Unraid's server name breaks the sender-name rules there.
 function zfsmReplicaThisName() {
 	$ident = @parse_ini_file(zfsmReplicaIdentFile());
 	$name = is_array($ident) ? (string)($ident['NAME'] ?? '') : '';
@@ -108,7 +109,9 @@ function zfsmReplicaRemotes() {
 }
 
 // One trusted server, or a string saying why there is none: a file that can't be read is not "no such server".
+// Only a name a server can have is looked up, or said back.
 function zfsmReplicaRemote($name) {
+	if (!zfsmReplicaSenderName($name)) return 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE;
 	$remotes = zfsmReplicaRemotes();
 	if ($remotes === null) return zfsmReplicaRemotesUnreadable();
 	return $remotes[$name] ?? 'No server here is named '.$name;
@@ -183,6 +186,7 @@ function zfsmReplicaRemoteAdd($name, $host, $port, $key, $fingerprint) {
 }
 
 function zfsmReplicaRemoteRemove($name) {
+	if (!zfsmReplicaSenderName($name)) return 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE;
 	return zfsmReplicaRemotesChange(function($remotes) use ($name) {
 		if (!isset($remotes[$name])) return 'No server here is named '.$name;
 		unset($remotes[$name]);

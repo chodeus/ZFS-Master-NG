@@ -215,7 +215,8 @@ function zfsmHostKeyFingerprint($file = '/etc/ssh/ssh_host_ed25519_key.pub') {
 	return zfsmKeyFingerprint((string)@file_get_contents($file));
 }
 
-// "ssh-ed25519 <base64> [comment]" as ssh-keygen -l prints it; null for any other type, or a blob that isn't an ed25519 public key.
+// The fingerprint of a public-key line, "ssh-ed25519 <base64> [comment]", as ssh-keygen -l prints one; null for any other type,
+// or a blob that isn't an ed25519 public key.
 function zfsmKeyFingerprint($key) {
 	$fields = is_string($key) ? preg_split('/\s+/', trim($key)) : array();
 	$blob = count($fields) >= 2 && $fields[0] === 'ssh-ed25519' ? base64_decode($fields[1], true) : false;

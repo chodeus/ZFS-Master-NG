@@ -243,6 +243,8 @@ file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
 same('', zfsmReplicaRemoteAdd('spare', '10.0.20.12', 22, $host_key, $host_print), 'another server is added');
 same(array(array('nas', 'spare', 'broken', 'smuggled', 'nas'), '10.0.20.11'), array($names(), zfsmReplicaRemote('nas')['host']), 'a second record under a listed name is written back, and the first stays the one in use');
 same('No server here is named other', zfsmReplicaRemoteRemove('other'), 'only a listed server can be removed');
+$no_name = 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE;
+same(array($no_name, $no_name, $no_name), array(zfsmReplicaRemote("nas\n<b>"), zfsmReplicaRemoteRemove('../nas'), zfsmReplicaRemote(array('nas'))), 'a name no server can have is neither looked up nor said back');
 same('', zfsmReplicaRemoteRemove('nas'), 'a server is removed');
 same(array('spare'), array_keys(zfsmReplicaRemotes()), 'and is gone: its second record does not bring it back');
 same(array('spare', 'broken', 'smuggled'), $names(), 'the entries in other shapes are written back as they were');
