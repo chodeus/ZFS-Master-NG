@@ -591,6 +591,12 @@ touch($plain, time() - 120);
 // Not root's: its owner could swap it for a link while it is removed.
 chown($foreign, 1000);
 touch($foreign, time() - 120);
+// Another user's link to a folder of root's: the folder passes every check, the path does not.
+$linked = $root.'/tmp/zfs.master-diag.00000000000000ab';
+symlink($work.'/elsewhere', $linked);
+lchown($linked, 1000);
+touch($work.'/elsewhere', time() - 120);
+same(false, zfsmDiagHold($linked, LOCK_NB), 'a link to a folder of root\'s is never held, so never removed');
 $GLOBALS['zfsm_busy'] = fopen($busy, 'r');
 flock($GLOBALS['zfsm_busy'], LOCK_EX);
 try {
@@ -600,6 +606,8 @@ try {
 }
 same(array(false, true, true, true, true), array(file_exists($stale), is_file($busy.'/summary.txt'), is_dir($fresh), is_file($plain), is_dir($second)), 'a folder no run holds goes; one a run holds stays however old, and so do one just made and a file of that name');
 same(true, is_file($foreign.'/summary.txt'), 'a folder that is not root\'s is left alone, however old');
+same(array(true, true), array(is_link($linked), is_file($work.'/elsewhere/keep')), 'and so are a link and the folder it points to');
+unlink($linked);
 unlink($plain);
 same(true, zfsmDiagLockHeld($second), 'a run holds its own work folder');
 // The lock ends with the run, whatever the run leaves running: a command it starts gets no handle on the folder.

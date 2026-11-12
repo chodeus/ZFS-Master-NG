@@ -153,13 +153,14 @@ function zfsmDiagWorkDir() {
 }
 
 // The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),
-// when the folder went, or was made again, before the lock was had, and when it is not root's: its owner could swap it for a link.
+// and when the path is not, or is no longer, that folder and root's own: a link or another user's folder can be swapped under a removal.
 function zfsmDiagHold($dir, $wait = 0) {
 	// 'e': a command the run starts must not carry the lock on past the run's end.
 	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
 	if ($hold === false || !flock($hold, LOCK_EX | $wait)) return false;
 	clearstatcache(true, $dir);
-	$now = @stat($dir);
+	// lstat: the path itself, never what a link at it points to.
+	$now = @lstat($dir);
 	$held = fstat($hold);
 	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] && $held['uid'] === 0 ? $hold : false;
 }
