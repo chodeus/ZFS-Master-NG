@@ -1,0 +1,16 @@
+#!/bin/sh
+# Unraid's own diagnostics script, as the plugin's run starts it: a zip in ZFSM_TEST_DIAG_LOGS, named on the last line.
+# ZFSM_TEST_DIAG: hang (does not end), fail (exit 1), silent (names no zip), elsewhere (its zip is outside that folder),
+# link (what it names in that folder is a link to a zip outside it).
+case "${ZFSM_TEST_DIAG:-}" in
+hang) sleep 60 ;;
+fail) echo 'Starting diagnostics collection... no flash drive'; exit 1 ;;
+silent) echo 'Starting diagnostics collection... done.'; exit 0 ;;
+esac
+logs=${ZFSM_TEST_DIAG_LOGS:?}
+[ "${ZFSM_TEST_DIAG:-}" = elsewhere ] && logs=$(dirname "$logs")
+mkdir -p "$logs"
+zip="$logs/canarytower-diagnostics-20260102-1000.zip"
+printf 'Unraid made this, and its syslog names tank/CanaryDs One\n' > "$zip"
+if [ "${ZFSM_TEST_DIAG:-}" = link ]; then mv "$zip" "$(dirname "$logs")/"; ln -s "$(dirname "$logs")/$(basename "$zip")" "$zip"; fi
+printf "Starting diagnostics collection... done.\nZIP file '%s' created.\n" "$zip"

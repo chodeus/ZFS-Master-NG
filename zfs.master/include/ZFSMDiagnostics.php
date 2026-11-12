@@ -3,6 +3,8 @@
 // the rest. A time limit covers the commands a collector runs; a file read that stalls, as on a failing flash drive, has none.
 require_once __DIR__.'/ZFSMDiagPlugin.php';
 require_once __DIR__.'/ZFSMDiagZfs.php';
+require_once __DIR__.'/ZFSMDiagNames.php';
+require_once __DIR__.'/ZFSMDiagBundle.php';
 
 // [file, time limit in seconds, collector, the paths it covers]. A path under /boot, /var, /etc or /tmp named anywhere in the plugin
 // must be here or in zfsmDiagNotCollected (tests/diagnostics_test.php), so a feature that keeps new state adds its line.
@@ -30,6 +32,7 @@ function zfsmDiagCollectors() {
 		array('zfs/processes.txt', 20, 'zfsmDiagZfsProcesses', array()),
 		// The slowest read, so last of the pool reads: a pool it times out on costs no other file.
 		array('zfs/snapshots-summary.txt', 150, 'zfsmDiagSnapshots', array()),
+		array('unraid/diagnostics.txt', 310, 'zfsmDiagUnraidZip', array('/boot/logs')),
 		array('zfs/timings.txt', 5, 'zfsmDiagTimings', array()),
 	);
 }
@@ -42,16 +45,18 @@ function zfsmDiagNotCollected() {
 	);
 }
 
-// What every collector gets: the settings as saved and as the plugin uses them, and the installed plugin's folder.
-function zfsmDiagContext($config) {
+// What every collector gets: the settings as saved and as the plugin uses them, the installed plugin's folder, and whether
+// Unraid's own diagnostics are wanted with the files.
+function zfsmDiagContext($config, $unraid = true) {
 	$saved = is_array($config) && is_array($config['general'] ?? null) ? $config['general'] : array();
-	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__));
+	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__), 'unraid' => $unraid);
 }
 
 // What the collectors note as they go: summary.txt's facts and findings, each read's time, and the pools a read timed out on.
 function zfsmDiagStart() {
 	$facts = array_fill_keys(array('plugin', 'Unraid', 'PHP', 'OpenZFS', 'pools', 'datasets', 'snapshots', 'settings changed from default'), 'not read');
-	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false, 'unread' => false);
+	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false, 'unread' => false, 'unraid_zip' => null);
+	zfsmDiagNamesStart();
 }
 
 function zfsmDiagFact($name, $value) {
@@ -128,7 +133,15 @@ function zfsmDiagReadme() {
 		."collectors.txt  each file: ok, read failed, timed out or failed, and the seconds it took\n"
 		."plugin/         settings, install, alert schedule, jobs, replication and the plugin's log\n"
 		."zfs/            pools, datasets, snapshot counts, bookmarks, mounts and running commands\n"
-		."unraid/         the Unraid version, array state, display settings and installed plugins\n\n"
+		."unraid/         the Unraid version, array state, display settings and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
+		."names.txt       each token in these files, and the shape of the name it stands for\n\n"
+		."In these files a dataset's, snapshot's, bookmark's or folder's name is a token (name-...), the same token wherever that name is.\n"
+		."So are this server's and a sender's name, a key's comment, and a pattern or a value its owner wrote; a user at a host (host-...);\n"
+		."and an address (ip-...). A key is only its fingerprint. A pool's name stays.\n"
+		."A folder's path in a line of text takes the rest of that line with it, because a folder's name can hold any character.\n"
+		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
+		."names one of its datasets, the name stays.\n"
+		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n\n"
 		."Left out, and why:\n";
 	foreach (zfsmDiagNotCollected() as $path => $why) $text .= $path.': '.$why."\n";
 	return $text;

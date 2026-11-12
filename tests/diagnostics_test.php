@@ -29,13 +29,14 @@ $root = $work.'/root';
 $plugin_dir = $work.'/plugin';
 mkdir($work.'/bin', 0700, true);
 register_shutdown_function(function() use ($work) { exec('rm -rf '.escapeshellarg($work)); });
-// The guard has checked zfs and zpool; ps joins them in a folder of this test's own.
-foreach (array(getenv('ZFSM_TEST_BIN_DIR').'/zfs', getenv('ZFSM_TEST_BIN_DIR').'/zpool', __DIR__.'/fixtures/bin/ps') as $fake) {
+// The guard has checked zfs and zpool; ps and Unraid's diagnostics join them in a folder of this test's own.
+foreach (array(getenv('ZFSM_TEST_BIN_DIR').'/zfs', getenv('ZFSM_TEST_BIN_DIR').'/zpool', __DIR__.'/fixtures/bin/ps', __DIR__.'/fixtures/bin/diagnostics') as $fake) {
 	copy($fake, $work.'/bin/'.basename($fake));
 	chmod($work.'/bin/'.basename($fake), 0755);
 }
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
 putenv('ZFSM_TEST_JOB_DIR='.$work.'/jobs');
+putenv('ZFSM_TEST_DIAG_LOGS='.$root.'/boot/logs');
 putenv('ZFSM_TEST_PS='.$work.'/ps.txt');
 $GLOBALS['zfsm_root'] = $root;
 // Up for ten days, unless a case says the server has just started.
@@ -171,9 +172,9 @@ has("volblocksize\tguid\tmounted\tcanmount\tvolmode\tencryptionroot\n", $read('z
 has("tank/vol\tvolume\t", $read('zfs/datasets.txt'), 'each dataset');
 same("dataset\tsnapshots\toldest\tnewest\theld\ntank\t1\t".date('Y-m-d H:i', 1700000300)."\t".date('Y-m-d H:i', 1700000300)."\t0\ntank/data\t2\t".date('Y-m-d H:i', 1700000400)."\t".date('Y-m-d H:i', 1700000500)."\t1\n", $read('zfs/snapshots-summary.txt'), 'snapshots are counted per dataset, never named');
 has("== datasets holding part of a received copy\n(none)\n", $read('zfs/bookmarks.txt'), 'no resume token');
-has("== zfs mounts in /proc/self/mountinfo\n102 1 0:45 / /mnt/tank rw,noatime shared:50 - zfs tank rw,xattr,posixacl\n", $read('zfs/mounts.txt'), 'the ZFS mounts');
+has("== zfs mounts in /proc/self/mountinfo\n102\t1\t0:45\t/\t/mnt/tank\trw,noatime\tshared:50\t-\tzfs\ttank\trw,xattr,posixacl\n", $read('zfs/mounts.txt'), 'the ZFS mounts, a tab between their fields');
 same(false, strpos($read('zfs/mounts.txt'), 'tmpfs'), 'and no other mount');
-has("tank/data\torg.example:role\tmedia\tlocal\n", $read('zfs/user-properties.txt'), 'properties set on a dataset');
+same(1, preg_match('/^tank\/data\torg\.example:role\tname-[0-9a-f]{8}\tlocal$/m', $read('zfs/user-properties.txt')), 'properties set on a dataset, a value its owner wrote as a token: '.$read('zfs/user-properties.txt'));
 has("== pool mounted at /boot\n(none)\n", $read('zfs/mounts.txt'), 'the boot pool');
 has("\texit 0\tzfs list -H -p -r -t filesystem,volume -o ", $read('zfs/timings.txt'), 'each read with its time and result');
 same(1, preg_match('/^\d+\.\d\d\texit 0\tzpool status -p tank$/m', $read('zfs/timings.txt')), 'a pool read\'s line in the timings');
@@ -214,7 +215,7 @@ same(array('Directory Listing names a dataset that does not exist: tank/gone'), 
 putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
 same(array('the datasets could not be listed, so the exclusion pattern and Directory Listing were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL');
-has("exclusion\t\"/docker%-old\"\t\"\"\tsaved as exclussion\n", $found('zfsmDiagSettingsEffective', null, array('exclussion' => '/docker%-old'))[1], 'the old name is shown as the source');
+same(1, preg_match('/^exclusion\t"name-[0-9a-f]{8}"\t""\tsaved as exclussion$/m', $found('zfsmDiagSettingsEffective', null, array('exclussion' => '/docker%-old'))[1]), 'the old name is shown as the source, and the pattern, which its owner wrote, as a token');
 
 // The install.
 $install = function($change) use ($found) { return $found('zfsmDiagInstall', $change)[0]; };

@@ -1,0 +1,203 @@
+<?php
+// Diagnostics privacy: include/ZFSMDiagBundle.php rewrites every file with these before it packs them. Dataset, snapshot, bookmark
+// and folder names, addresses, hosts and keys become tokens. A pool's own name stays, as in Unraid's diagnostics.
+
+// Top folders whose paths name the system or the plugin, never the user's data.
+define('ZFSM_DIAG_SYSTEM', 'bin|boot|etc|lib|lib64|proc|root|run|sbin|sys|tmp|usr|var|plugins|webGui|dev(?!/zvol/)');
+// What Unraid itself mounts under /mnt beside the pools.
+define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
+// What the plugin's log lines put after a dataset's name: their own words, or a pipe.
+define('ZFSM_DIAG_AFTER', '(?:succeeded|failed|started|finished|received|refused|not started|is not inside)(?=[\s:,.;]|$)|\((?:in full|changes since|carried on)|\| ');
+
+// A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
+function zfsmDiagNamesStart() {
+	$GLOBALS['zfsm_diag_names'] = array('salt' => random_bytes(16), 'tokens' => array(), 'shapes' => array(), 'pools' => array(), 'spaced' => array(), 'words' => array());
+}
+
+// The token that stands for $name in this run's files, the same wherever the name is; a token stands for itself.
+function zfsmDiagToken($name, $kind = 'name') {
+	$names = &$GLOBALS['zfsm_diag_names'];
+	$name = (string)$name;
+	if ($name === '' || isset($names['shapes'][$name])) return $name;
+	if (!isset($names['tokens'][$name])) {
+		$hash = hash_hmac('sha256', $name, $names['salt']);
+		// Longer when two names share their first digits.
+		for ($length = 8; isset($names['shapes'][$kind.'-'.substr($hash, 0, $length)]); $length += 2);
+		$names['tokens'][$name] = $kind.'-'.substr($hash, 0, $length);
+		$names['shapes'][$names['tokens'][$name]] = zfsmDiagShape($name);
+	}
+	return $names['tokens'][$name];
+}
+
+// What names.txt keeps of a name: the things about it that break code, never the name.
+function zfsmDiagShape($name) {
+	$valid = preg_match('//u', $name) === 1;
+	$shape = array(($valid ? preg_match_all('/./su', $name).' characters, ' : '').strlen($name).' bytes');
+	if (!$valid) $shape[] = 'not valid UTF-8';
+	elseif (preg_match('/[^\x00-\x7F]/', $name) === 1) $shape[] = 'non-ASCII';
+	if (strpos($name, ' ') !== false) $shape[] = substr_count($name, ' ').' space(s)';
+	$upper = preg_match('/[A-Z]/', $name) === 1;
+	$lower = preg_match('/[a-z]/', $name) === 1;
+	$shape[] = $upper && $lower ? 'mixed case' : ($upper ? 'upper case' : ($lower ? 'lower case' : 'no letters'));
+	return implode(', ', $shape);
+}
+
+function zfsmDiagKnowPool($pool) {
+	if (zfsmValidPoolName((string)$pool)) $GLOBALS['zfsm_diag_names']['pools'][(string)$pool] = true;
+}
+
+// A dataset or snapshot a collector read or a setting names: its pool marks where names start in running text, and one with
+// a space is known whole, so the words after it are not taken for more of it.
+function zfsmDiagKnow($name) {
+	$name = (string)$name;
+	zfsmDiagKnowPool(preg_split('~[/@#]~', $name)[0]);
+	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][$name] = true;
+}
+
+// A value its owner or another tool wrote freely, such as a user property's, can name anything, and no path marks it:
+// a number, a switch or a ZnapZend plan stays, and anything else becomes a token.
+function zfsmDiagFreeValue($value) {
+	return preg_match('/^(?:-|on|off|yes|no|true|false|\d[\d.]*[A-Za-z]{0,3}|[0-9a-z]+=>[0-9a-z=>,]+)$/Di', (string)$value) === 1 ? $value : zfsmDiagToken($value);
+}
+
+// A name with no path to mark it, such as another server's: it becomes a token wherever it stands as a word.
+function zfsmDiagKnowWord($word) {
+	if (trim((string)$word) !== '') $GLOBALS['zfsm_diag_names']['words'][trim((string)$word)] = true;
+}
+
+// This server's name, as it is set and as Unraid writes it in file names.
+function zfsmDiagKnowServer($name) {
+	array_map('zfsmDiagKnowWord', array((string)$name, strtolower((string)$name)));
+}
+
+// An alternation of $list's strings for a pattern, the longest first; one that matches nothing when the list is empty.
+function zfsmDiagAnyOf($list) {
+	usort($list, function($left, $right) { return strlen($right) <=> strlen($left); });
+	return $list ? implode('|', array_map(function($one) { return preg_quote($one, '~'); }, $list)) : '(?!)';
+}
+
+// Everything the rewrite looks for, in one pattern, so that what one rule wrote is never read by another.
+function zfsmDiagNamePattern() {
+	$names = &$GLOBALS['zfsm_diag_names'];
+	if (!isset($names['pattern'])) {
+		$read = $GLOBALS['zfsm_diag']['pools'] ?? null;
+		$names['pool'] = zfsmDiagAnyOf(array_map('strval', array_keys($names['pools'] + (is_array($read) ? $read : array()))));
+		$names['files'] = array_flip(array_column(zfsmDiagCollectors(), 0));
+		uksort($names['spaced'], function($left, $right) { return strlen($right) <=> strlen($left); });
+		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z))'
+			.'|(?<key>\b(?:ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-[\w-]+|sk-[\w-]+@openssh\.com)[ \t]+(?<blob>AAAA[0-9A-Za-z+/]+=*))'
+			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
+			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
+			.'|(?<since>(?<=changes since )[@#][^)\t\r\n]*)'
+			// Last, a dataset of a pool nothing here knows, such as one exported since, where the plugin's own log lines and zfs name one.
+			.'|(?<path>(?<![A-Za-z0-9_.:/-])/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].')(?=[/@#])'
+			.'|(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9]))'
+			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
+			.'|(?<host>(?<![\w.+-])(?!feature@|unsupported@)[\w.+-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s"\',]+)?)'
+			.'|(?<ip>(?<![\w.])\d{1,3}(?:\.\d{1,3}){3}(?![\w]|\.\d)|(?<![\w:.])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f:]*::[0-9A-Fa-f:.]*)(?![\w:]))~s';
+	}
+	return $names['pattern'];
+}
+
+// $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
+function zfsmDiagAnonText($text) {
+	$pattern = zfsmDiagNamePattern();
+	$clean = '';
+	for ($at = 0; ($found = preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $at)) === 1; $at = $end) {
+		list($put, $end) = zfsmDiagAnonMatch($text, $match);
+		$clean .= substr($text, $at, $match[0][1] - $at).$put;
+	}
+	return $found === 0 ? $clean.substr($text, $at) : null;
+}
+
+// What one find becomes, and where the search goes on: [its replacement, the offset after what it stands for].
+function zfsmDiagAnonMatch($text, $match) {
+	list($found, $at) = $match[0];
+	$end = $at + strlen($found);
+	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at);
+	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
+	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
+	if ($match['query'][0] !== null) return array(($found[0] === '?' ? '?' : explode(':', $found, 2)[0].': ').'(left out)', $end);
+	// A request names its dataset as hex (include/ZFSMReplicaServe.php); a log line may hold only the first of it.
+	if ($match['hex'][0] !== null) return array($match['request'][0].'(as hex) '.zfsmDiagAnonText((string)hex2bin(substr($match['hex'][0], 0, strlen($match['hex'][0]) & ~1))), $end);
+	if ($match['since'][0] !== null) return array($found[0].zfsmDiagToken(substr($found, 1)), $end);
+	if ($match['word'][0] !== null) return array(zfsmDiagToken($found), $end);
+	if ($match['host'][0] !== null) return array(zfsmDiagToken($found, 'host'), $end);
+	// Sentence punctuation after an address is not part of it; what is no address stays as it is.
+	for ($ip = $found; $ip !== '' && filter_var($ip, FILTER_VALIDATE_IP) === false && strpos('.:', substr($ip, -1)) !== false; $ip = substr($ip, 0, -1));
+	return filter_var($ip, FILTER_VALIDATE_IP) === false ? array($found, $end) : array(zfsmDiagToken($ip, 'ip').substr($found, strlen($ip)), $end);
+}
+
+// A path at $at. A system path stays. A dataset's is its pool's name, which stays, and names of the few characters ZFS allows,
+// so it ends where they do. A folder's may hold any character: it runs to the next tab or the line's end, and under /mnt the pool's
+// or Unraid's own folder stays. Each name in it becomes a token.
+function zfsmDiagAnonPath($text, $at) {
+	$names = &$GLOBALS['zfsm_diag_names'];
+	$run = substr($text, $at, strcspn($text, "\t\r\n", $at));
+	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
+	if ($run[0] === '/') {
+		preg_match('~^/(?:mnt|dev/zvol)(?=[/\s]|$)(?:/(?:'.$names['pool'].'|'.ZFSM_DIAG_MOUNTS.')(?=[/\s]|$))?|^~', $run, $kept);
+		$name = $run;
+	} else {
+		preg_match('~^(?:'.$names['pool'].'|[A-Za-z][A-Za-z0-9_.:-]*)(?=[/@#])~', $run, $kept);
+		$run = substr($run, 0, strspn($run, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:%- /@#'));
+		// Punctuation and spaces that end a sentence, not a name.
+		$name = rtrim(substr($run, 0, zfsmDiagNameEnd($run)), '.: ');
+		if (strlen($name) < strlen($kept[0])) $name = $kept[0];
+		// One of this run's own files, where a pool is named as their folder is.
+		if (isset($names['files'][$name])) return array($name, $at + strlen($name));
+	}
+	$tokens = preg_replace_callback('~[^/@#]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, (string)substr($name, strlen($kept[0])));
+	return array($kept[0].$tokens, $at + strlen($name));
+}
+
+// Where a dataset's name ends in $run, the text from its start to the first character no name can hold: after a known name with
+// spaces; else at the first space that one of the plugin's own words, another path or a user@host follows; else at the run's end,
+// because a name can hold spaces and what is not known to follow one may be part of it.
+function zfsmDiagNameEnd($run) {
+	$names = &$GLOBALS['zfsm_diag_names'];
+	$from = 0;
+	foreach ($names['spaced'] as $known => $is) {
+		$known = (string)$known;
+		$next = (string)substr($run, strlen($known), 1);
+		if (strncmp($run, $known, strlen($known)) !== 0 || ($next !== '' && strpos(' /@#', $next) === false)) continue;
+		$from = strlen($known);
+		break;
+	}
+	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
+	for ($space = strpos($run, ' ', $from); $space !== false; $space = strpos($run, ' ', $space + 1)) {
+		if (preg_match($after, $run, $unused, 0, $space) === 1) return $space;
+	}
+	return strlen($run);
+}
+
+// A JSON file's text with the names in its keys and values replaced; text that is no JSON is rewritten as text, its \/ read as /.
+// null when a string in it could not be searched.
+function zfsmDiagAnonJson($text) {
+	$data = json_decode($text, true);
+	if ($data === null && trim($text) !== 'null') return zfsmDiagAnonText(str_replace('\\/', '/', $text));
+	$failed = false;
+	$clean = zfsmDiagAnonValue($data, $failed);
+	return $failed ? null : zfsmJson($clean, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+// A decoded JSON value with the strings in it rewritten, keys too. The text under a key with a colon in it is a user property's
+// value, as the Main tab's read gives them (zfsmDiagFreeValue).
+function zfsmDiagAnonValue($value, &$failed, $free = false) {
+	if (is_string($value)) {
+		$clean = $free ? zfsmDiagFreeValue($value) : zfsmDiagAnonText($value);
+		$failed = $failed || $clean === null;
+		return $clean;
+	}
+	if (!is_array($value)) return $value;
+	$clean = array();
+	foreach ($value as $key => $inner) $clean[is_string($key) ? zfsmDiagAnonValue($key, $failed) : $key] = zfsmDiagAnonValue($inner, $failed, is_string($key) && strpos($key, ':') !== false);
+	return $clean;
+}
+
+// names.txt: each token and the shape of the name it stands for.
+function zfsmDiagNamesTable() {
+	$text = "token\tthe shape of the name it stands for\n";
+	foreach ($GLOBALS['zfsm_diag_names']['shapes'] as $token => $shape) $text .= $token."\t".$shape."\n";
+	return $text;
+}

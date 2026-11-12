@@ -58,6 +58,7 @@ function zfsmDiagAllRows($results) {
 		if ($result['code'] !== 0) return null;
 		$rows = array_merge($rows, zfsmImpactRows($result['output']));
 	}
+	foreach ($rows as $row) zfsmDiagKnow(explode("\t", $row, 2)[0]);
 	return $rows;
 }
 
@@ -92,8 +93,13 @@ function zfsmDiagZpoolStatus($ctx) {
 	return zfsmDiagShowAll(zfsmDiagPerPool('zpool', array('status', '-p')));
 }
 
+// A pool's comment is what its owner wrote: only a token for it goes in.
 function zfsmDiagZpoolGetAll($ctx) {
-	return zfsmDiagShowAll(zfsmDiagPerPool('zpool', array('get', '-H', '-o', 'property,value,source', 'all')));
+	$results = zfsmDiagPerPool('zpool', array('get', '-H', '-o', 'property,value,source', 'all'));
+	foreach ($results as $title => $result) {
+		$results[$title]['output'] = preg_replace_callback('/^(comment\t)(?!-\t)([^\t]*)/m', function($row) { return $row[1].zfsmDiagToken($row[2]); }, $result['output']);
+	}
+	return zfsmDiagShowAll($results);
 }
 
 // Every property the Main tab reads, and the ones that say why a dataset is not where it should be.
@@ -131,6 +137,7 @@ function zfsmDiagSnapshotCounts($output) {
 	for ($line = strtok($output, "\n"); $line !== false; $line = strtok("\n")) {
 		$field = explode("\t", $line);
 		if (count($field) < 3 || strpos($field[0], '@') === false) continue;
+		if (strpos($field[0], ' ') !== false) zfsmDiagKnow($field[0]);
 		$dataset = explode('@', $field[0], 2)[0];
 		$count = $counts[$dataset] ?? array(0, PHP_INT_MAX, 0, 0);
 		$counts[$dataset] = array($count[0] + 1, min($count[1], (int)$field[1]), max($count[2], (int)$field[1]), $count[3] + ((int)$field[2] > 0 ? 1 : 0));
@@ -161,8 +168,13 @@ function zfsmDiagBookmarks($ctx) {
 // Properties set on a dataset itself or received with it: ZnapZend's plans and other tools' marks are among them.
 function zfsmDiagUserProperties($ctx) {
 	$results = zfsmDiagPerPool('zfs', array('get', '-H', '-p', '-r', '-t', 'filesystem,volume', '-s', 'local,received', '-o', 'name,property,value,source', 'all'));
-	foreach ($results as $title => $result) $results[$title]['output'] = zfsmDiagHideKeyLocation($result['output']);
+	foreach ($results as $title => $result) $results[$title]['output'] = zfsmDiagHideFreeValues(zfsmDiagHideKeyLocation($result['output']));
 	return zfsmDiagShowAll($results);
+}
+
+// The value of a user property (its name holds a colon) and of a share's options is its owner's to write (zfsmDiagFreeValue).
+function zfsmDiagHideFreeValues($output) {
+	return preg_replace_callback('/^([^\t]*\t(?:[^\t]*:[^\t]*|sharenfs|sharesmb)\t)([^\t]*)/m', function($row) { return $row[1].zfsmDiagFreeValue($row[2]); }, $output);
 }
 
 // keylocation can be a URL or the path of a key file: only that it is set goes in.
@@ -170,9 +182,16 @@ function zfsmDiagHideKeyLocation($output) {
 	return preg_replace('/^([^\t]*\tkeylocation\t)(?!prompt\t)[^\t]*/m', '$1(set)', $output);
 }
 
+// The table's fields end at a space, and it writes a space inside one as \040: here a tab ends each field and the space is itself,
+// so a name is whole in its field.
 function zfsmDiagMounts($ctx) {
 	$list = zfsmDiagWhole('file_get_contents', zfsmStatePath('/proc/self/mountinfo'));
-	$mounts = array_filter(zfsmImpactRows($list), function($line) { return strpos($line, ' - zfs ') !== false; });
+	$mounts = array();
+	foreach (zfsmImpactRows($list) as $line) {
+		if (preg_match('/ - zfs (\S+)/', $line, $source) !== 1) continue;
+		zfsmDiagKnow(str_replace('\\040', ' ', $source[1]));
+		$mounts[] = str_replace(array(' ', '\\040'), array("\t", ' '), $line);
+	}
 	$unread = '(the mount list could not be read)';
 	$boot = zfsmBootPool(zfsmStatePath('/proc/self/mounts'));
 	return zfsmDiagSection('pool mounted at /boot', $boot === null ? zfsmDiagUnread($unread) : ($boot !== '' ? $boot : '(none)'))
