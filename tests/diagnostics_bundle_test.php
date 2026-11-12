@@ -1,7 +1,6 @@
 <?php
-// The diagnostics zip through the real collectors, rewrite, zip and scripts/diagnostics.php: no name, address, host or key of a
-// made-up server is in it, Unraid's own zip is in it as Unraid made it, and nothing is packed when a file could not be rewritten.
-// Every private thing on that server holds "canary" in some case, so one search of the unpacked files finds a leak.
+// The diagnostics zip through the real collectors, rewrite, zip and scripts/diagnostics.php, on a made-up server whose every
+// private name holds "canary" in some case: one search of the unpacked zip finds a leak.
 
 error_reporting(E_ALL);
 set_error_handler(function($severity, $message, $file, $line) {

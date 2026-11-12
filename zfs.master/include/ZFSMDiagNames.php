@@ -128,9 +128,8 @@ function zfsmDiagAnonMatch($text, $match) {
 	return filter_var($ip, FILTER_VALIDATE_IP) === false ? array($found, $end) : array(zfsmDiagToken($ip, 'ip').substr($found, strlen($ip)), $end);
 }
 
-// A path at $at. A system path stays. A dataset's is its pool's name, which stays, and names of the few characters ZFS allows,
-// so it ends where they do. A folder's may hold any character: it runs to the next tab or the line's end, and under /mnt the pool's
-// or Unraid's own folder stays. Each name in it becomes a token.
+// A path at $at, each name in it a token. A system path stays. A dataset's pool stays, and its names end where ZFS's few characters do.
+// A folder's name may hold any character: its path runs to the next tab or the line's end, after /mnt and the pool's or Unraid's own folder.
 function zfsmDiagAnonPath($text, $at) {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = substr($text, $at, strcspn($text, "\t\r\n", $at));
@@ -151,9 +150,8 @@ function zfsmDiagAnonPath($text, $at) {
 	return array($kept[0].$tokens, $at + strlen($name));
 }
 
-// Where a dataset's name ends in $run, the text from its start to the first character no name can hold: after a known name with
-// spaces; else at the first space that one of the plugin's own words, another path or a user@host follows; else at the run's end,
-// because a name can hold spaces and what is not known to follow one may be part of it.
+// Where a dataset's name ends in $run: after a known name with spaces; else at the first space that one of the plugin's own words,
+// another path or a user@host follows; else at the run's end, because a name can hold spaces and the words after it may be part of it.
 function zfsmDiagNameEnd($run) {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$from = 0;
