@@ -1,7 +1,7 @@
 #!/usr/bin/php -q
 <?php
 // Collects the diagnostics files (include/ZFSMDiagnostics.php) and prints what they show. Must stay executable: pkg_build.sh.
-// Their folder holds real names, is root's alone, and is removed at the end unless something is mounted in it; a later run removes one left behind.
+// Their folder holds real names and is root's alone. The end of the run tries to remove it and says so when it can't; a later run tries again.
 
 // From a terminal only: as a page, any request to its address would start a run.
 if (PHP_SAPI !== 'cli') exit(1);
