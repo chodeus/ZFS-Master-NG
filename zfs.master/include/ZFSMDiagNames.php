@@ -6,8 +6,8 @@
 define('ZFSM_DIAG_SYSTEM', 'bin|boot|etc|lib|lib64|proc|root|run|sbin|sys|tmp|usr|var|plugins|webGui|dev(?!/zvol/)');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
-// What the plugin's log lines put after a dataset's name: their own words, or a pipe.
-define('ZFSM_DIAG_AFTER', '(?:succeeded|failed|started|finished|received|refused|not started|is not inside)(?=[\s:,.;]|$)|\((?:in full|changes since|carried on)|\| ');
+// What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
+define('ZFSM_DIAG_AFTER', '(?:succeeded|received)$|failed(?:: | after | with exit code |$)|(?:not )?started: |finished(?:: |\.| \(|$)|is not inside |\((?:in full|changes since|carried on)|\| ');
 
 // A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
 function zfsmDiagNamesStart() {
@@ -51,7 +51,14 @@ function zfsmDiagKnowPool($pool) {
 function zfsmDiagKnow($name) {
 	$name = (string)$name;
 	zfsmDiagKnowPool(preg_split('~[/@#]~', $name)[0]);
-	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][$name] = true;
+	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][strstr($name, ' ', true)][$name] = true;
+}
+
+// A pool nothing here knows, such as one exported since, is known once the plugin's own log lines or zfs's messages name one
+// of its datasets: after ": ", "of ", "to ", "into " or a quote. Then it marks its datasets wherever they are.
+function zfsmDiagLearnPools($text) {
+	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $text, $found);
+	array_map('zfsmDiagKnowPool', array_unique($found[0]));
 }
 
 // A value its owner or another tool wrote freely, such as a user property's, can name anything, and no path marks it:
@@ -83,15 +90,15 @@ function zfsmDiagNamePattern() {
 		$read = $GLOBALS['zfsm_diag']['pools'] ?? null;
 		$names['pool'] = zfsmDiagAnyOf(array_map('strval', array_keys($names['pools'] + (is_array($read) ? $read : array()))));
 		$names['files'] = array_flip(array_column(zfsmDiagCollectors(), 0));
-		uksort($names['spaced'], function($left, $right) { return strlen($right) <=> strlen($left); });
-		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z))'
+		// A key runs to its END line; one whose end was cut off is the rest of its line and the lines of key text after it, no more.
+		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\s;]*-----END [A-Z0-9 ]*PRIVATE KEY-----|[^\r\n]*(?:\r?\n[A-Za-z0-9+/=]{16,}(?=\r?\n|\z))*))'
+			// zfs send -t: the token of a copy that stopped names its snapshot to anyone who asks zfs.
+			.'|(?<resume>(?<= -t )\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
 			.'|(?<key>\b(?:ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-[\w-]+|sk-[\w-]+@openssh\.com)[ \t]+(?<blob>AAAA[0-9A-Za-z+/]+=*))'
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[@#][^)\t\r\n]*)'
-			// Last, a dataset of a pool nothing here knows, such as one exported since, where the plugin's own log lines and zfs name one.
-			.'|(?<path>(?<![A-Za-z0-9_.:/-])/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].')(?=[/@#])'
-			.'|(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9]))'
+			.'|(?<path>(?<![A-Za-z0-9_.:/-])/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].')(?=[/@#]))'
 			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
 			.'|(?<host>(?<![\w.+-])(?!feature@|unsupported@)[\w.+-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s"\',]+)?)'
 			.'|(?<ip>(?<![\w.])(?<![A-Za-z]/)\d{1,3}(?:\.\d{1,3}){3}(?![\w]|\.\d)|(?<![\w:.])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f:]*::[0-9A-Fa-f:.]*)(?![\w:]))~s';
@@ -116,6 +123,7 @@ function zfsmDiagAnonMatch($text, $match) {
 	$end = $at + strlen($found);
 	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at);
 	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
+	if ($match['resume'][0] !== null) return array('(a resume token, left out)', $end);
 	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
 	if ($match['query'][0] !== null) return array(($found[0] === '?' ? '?' : explode(':', $found, 2)[0].': ').'(left out)', $end);
 	// A request names its dataset as hex (include/ZFSMReplicaServe.php), of any pool; a log line may hold only the first of it.
@@ -139,10 +147,15 @@ function zfsmDiagAnonPath($text, $at) {
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
 	if ($run[0] === '/') {
 		preg_match('~^/(?:mnt|dev/zvol)(?=[/\s]|$)(?:/(?:'.$names['pool'].'|'.ZFSM_DIAG_MOUNTS.')(?=[/\s]|$))?|^~', $run, $kept);
-		$name = $run;
+		// PHP ends an error with where it was raised: that is no part of the folder's name.
+		$name = preg_replace('~ in /usr/local/emhttp/\S+ on line \d+$~', '', $run);
 	} else {
-		preg_match('~^(?:'.$names['pool'].'|[A-Za-z][A-Za-z0-9_.:-]*)(?=[/@#])~', $run, $kept);
-		$run = substr($run, 0, strspn($run, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:%- /@#'));
+		preg_match('~^(?:'.$names['pool'].')(?=[/@#])~', $run, $kept);
+		$chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.:%- /@#';
+		$length = strspn($run, $chars);
+		// zfs and the plugin write a dataset's snapshots as one list, tank/data@a,b,c.
+		while (strpos(substr($run, 0, $length), '@') !== false && preg_match('~\G,[A-Za-z0-9_.:%-]~', $run, $more, 0, $length) === 1) $length += 1 + strspn($run, $chars, $length + 1);
+		$run = substr($run, 0, $length);
 		// Punctuation and spaces that end a sentence, not a name.
 		$name = rtrim(substr($run, 0, zfsmDiagNameEnd($run)), '.: ');
 		if (strlen($name) < strlen($kept[0])) $name = $kept[0];
@@ -154,20 +167,21 @@ function zfsmDiagAnonPath($text, $at) {
 
 // The part of a path after what stays, each name in it a token.
 function zfsmDiagNameTokens($rest) {
-	return preg_replace_callback('~[^/@#]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, $rest);
+	return preg_replace_callback('~[^/@#,]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, $rest);
 }
 
 // Where a dataset's name ends in $run: after a known name with spaces; else at the first space that one of the plugin's own words,
 // another path or a user@host follows; else at the run's end, because a name can hold spaces and the words after it may be part of it.
 function zfsmDiagNameEnd($run) {
 	$names = &$GLOBALS['zfsm_diag_names'];
+	$first = strstr($run, ' ', true);
+	if ($first === false) return strlen($run);
 	$from = 0;
-	foreach ($names['spaced'] as $known => $is) {
+	// The longest known name with spaces that $run starts with: they are kept by the text before their first space.
+	foreach ($names['spaced'][$first] ?? array() as $known => $is) {
 		$known = (string)$known;
 		$next = (string)substr($run, strlen($known), 1);
-		if (strncmp($run, $known, strlen($known)) !== 0 || ($next !== '' && strpos(' /@#', $next) === false)) continue;
-		$from = strlen($known);
-		break;
+		if (strlen($known) > $from && strncmp($run, $known, strlen($known)) === 0 && ($next === '' || strpos(' /@#,', $next) !== false)) $from = strlen($known);
 	}
 	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
 	for ($space = strpos($run, ' ', $from); $space !== false; $space = strpos($run, ' ', $space + 1)) {

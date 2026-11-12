@@ -298,6 +298,8 @@ function zfsmDiagLog($ctx) {
 	// A system log's line names the server after its time: "Jan  2 10:00:00 Tower ident[pid]: ...".
 	preg_match_all('/^[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d (\S+) /m', $lines, $hosts);
 	array_map('zfsmDiagKnowServer', array_unique($hosts[1]));
+	$own = zfsmDiagFile(zfsmLogFile().'.1').zfsmDiagFile(zfsmLogFile());
+	zfsmDiagLearnPools($own.$lines);
 	return zfsmDiagSection(zfsmLogFile().'.1', zfsmDiagFile(zfsmLogFile().'.1'))
 		.zfsmDiagSection(zfsmLogFile(), zfsmDiagFile(zfsmLogFile()))
 		.zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines);

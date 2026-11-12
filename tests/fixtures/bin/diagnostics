@@ -1,7 +1,6 @@
 #!/bin/sh
 # Unraid's own diagnostics script, as the plugin's run starts it: a zip in ZFSM_TEST_DIAG_LOGS, named on the last line.
-# ZFSM_TEST_DIAG: hang (does not end), fail (exit 1), silent (names no zip), elsewhere (its zip is outside that folder),
-# link (what it names in that folder is a link to a zip outside it).
+# ZFSM_TEST_DIAG: hang, fail (exit 1), silent (names no zip), elsewhere (zip outside that folder), link (a link there to a zip outside).
 case "${ZFSM_TEST_DIAG:-}" in
 hang) sleep 60 ;;
 fail) echo 'Starting diagnostics collection... no flash drive'; exit 1 ;;
