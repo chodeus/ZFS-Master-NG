@@ -177,8 +177,9 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
-	// One of the plugin's own paths, to its first space; any other path under a shared top folder is a folder's, names and all.
-	$whole = rtrim(substr($run, 0, strcspn($run, ' ')), ':,;');
+	// One of the plugin's own paths, whole: in a row's field or a value the whole field, in running text up to its first space (the second
+	// net takes the words after it). Any other path under a shared top folder is a folder's, names and all.
+	$whole = rtrim(strpos($ends, "\t") !== false || $ends === '' ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
 	if (zfsmDiagOwnName($whole)) return array($whole, $at + strlen($whole));
 	foreach ($names['own'] as $own) {
 		// A listed path itself, or a log of it that was turned over (syslog.1): what is in or beside it is not, unless zfsmDiagOwnName says so.

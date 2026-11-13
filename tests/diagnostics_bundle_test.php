@@ -96,7 +96,7 @@ $log_lines = array(
 $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));
 	clearstatcache(true);
-	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos\"\nsize_units=\"Canary Customer\"\nCanary stray note\n");
+	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos\"\nsize_units=\"Canary Customer\"\nCanary stray note\nCanaryOwnSetting=\"1\"\n[CanarySection]\n");
 	$put('/boot/config/ssh/root/authorized_keys', 'restrict,from="203.0.113.77",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php canarysender" '.$public_key." Canary Laptop\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
 	// Through the plugin's own writer, so each line is as the plugin's log holds it: one line, its quotes replaced, cut at its limit.
@@ -107,7 +107,7 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@CanaryTower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
 	$put('/proc/self/mounts', "tank /mnt/tank zfs rw 0 0\n");
-	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n");
+	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n106 1 0:49 / /var/run/zfs.master.rewrite\\040CanaryRunMount rw shared:54 - zfs tank/CanaryRunMount rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"CanaryNas\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
@@ -170,7 +170,7 @@ has('"com.'.zfsmDiagToken('canaryclient').':'.zfsmDiagToken('canary').'_plan":',
 has("comment\t".$token('Canary Comment')."\tlocal\n", $files['zfs/zpool-get-all.txt'], 'a pool\'s comment is a token');
 $mount = $token('Canary Mount');
 has("\t/mnt/tank/$mount\trw\tshared:52\t-\tzfs\ttank/$mount\trw\n", $files['zfs/mounts.txt'], 'a mount whose name holds a space is one token, in its folder and its dataset');
-has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing = ".$token('tank/CanaryDs One')."\nsize_units = ".$token('Canary Customer')."\n".$token('Canary stray note')."\n", $files['plugin/settings-saved.cfg.txt'],
+has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\n".$token('mystery')." = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing = ".$token('tank/CanaryDs One')."\nsize_units = ".$token('Canary Customer')."\n".$token('Canary stray note')."\n".$token('CanaryOwnSetting')." = ".$token('1')."\n".$token('[CanarySection]')."\n", $files['plugin/settings-saved.cfg.txt'],
 	'the saved settings keep a known setting at the value the plugin uses; a pattern, a prefix, a list of datasets, an unknown setting, a value the plugin corrects and a line that sets nothing are each one token, with the lines a value runs on to left out');
 has("snap_prefix\t\"".zfsmDiagToken('CanaryPrefix_')."\"\t\"\"\tsaved\n", $files['plugin/settings-effective.txt'], 'the prefix its owner wrote is a token where the settings are listed as used');
 has($token('canarysender').' ('.$token('Canary Laptop').'): restrict: ok, from: ok, name: ok', $files['plugin/replication-receive.txt'], 'a sender and its key\'s comment are tokens');
@@ -267,7 +267,9 @@ same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/lo
 	array_map('zfsmDiagAnonText', $private), 'only the paths the plugin makes are its own, whole: not a name that only starts as one of them, nor another name inside one of its folders');
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
 	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock';
-same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay');
+same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
+// In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
+same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');
 // Every job folder the source names (zfsmJobDir, zfsmJobLockFile) is one of the names the plugin makes: a new job is added there too.
 preg_match_all("~zfsmJob(?:Dir\\('|LockFile\\(\\$\\w+, ')([a-z-]+)'~", implode('', array_map('file_get_contents', glob(dirname(__DIR__).'/zfs.master/{include,backend,scripts}/*.php', GLOB_BRACE))), $jobs);
 $job_dirs = array_map(function($job) { return '/var/run/zfs.master.'.$job.'/123.lock'; }, array_unique($jobs[1]));
@@ -280,7 +282,8 @@ $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
 $kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/x.php /dev/null';
-same($kept, zfsmDiagAnonText($kept), 'a path the collectors list, and what its name starts, stays as it is');
+same(explode(' ', $kept), array_map('zfsmDiagAnonText', explode(' ', $kept)), 'a path the collectors list, a log of it that was turned over and a system path stay as they are, each a field of its own');
+same($kept, zfsmDiagAnonText($kept, "\r\n"), 'and so in running text, where a space ends one');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
 same('{"tank/'.zfsmDiagToken('a').'": broken', zfsmDiagAnonJson('{"tank\/a": broken'), 'and text that is no JSON is still searched, its \\/ read as /');
 same('{"org.example:host":"'.zfsmDiagToken('10.0.20.11').'","org.example:keep":"5","org.example:size":"10G","org.example:who":"'.zfsmDiagToken('123Bob').'"}', zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5","org.example:size":"10G","org.example:who":"123Bob"}'),
