@@ -66,11 +66,11 @@ function zfsmDiagPack($dir) {
 	}
 	list($zip, $failed) = ($packed['code'] ?? 1) !== 0 ? array(null, zfsmCommandError($packed, 'the zip could not be written to '.$logs)) : zfsmDiagPublish($part, $logs);
 	if ($zip === null) {
-		@unlink($part);
+		zfsmDiagRemoveLog($logs, basename($part));
 		return array(null, $failed);
 	}
-	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough. Only a file of its own in the folder itself, never through a link.
-	if ($unraid !== null && realpath(dirname($unraid)) === $logs && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
+	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough.
+	if ($unraid !== null && dirname($unraid) === $logs) zfsmDiagRemoveLog($logs, basename($unraid));
 	$twice = $unraid !== null && (is_link($unraid) || file_exists($unraid)) ? 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well' : '';
 	return array($zip, implode("\n", array_filter(array($twice, zfsmDiagKeepNewest($logs, 3, basename($zip))))));
 }
@@ -92,19 +92,38 @@ function zfsmDiagPublish($part, $logs) {
 // a run that was killed while packing left there. Only names this file makes are touched, never a link. Says what it could not do, '' when nothing.
 function zfsmDiagKeepNewest($logs, $keep, $made) {
 	// A folder reached through a link is another folder: nothing is removed there.
-	$real = realpath($logs);
+	$real = zfsmDiagRealNow($logs);
 	if ($real !== $logs) return $real === false ? 'older zips could not be looked for in '.$logs.', so none were removed' : 'older zips were not removed: '.$logs.' is reached through a link';
 	$listed = @scandir($logs);
 	if ($listed === false) return 'older zips could not be looked for in '.$logs.', so none were removed';
-	$zips = array();
+	$zips = $parts = array();
 	foreach ($listed as $name) {
 		if (is_link($logs.'/'.$name) || !is_file($logs.'/'.$name)) continue;
 		if (preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1 && $name !== $made) $zips[] = $name;
-		elseif (preg_match('/^zfs\.master-diag\.[0-9a-f]{16}\.part$/D', $name) === 1 && time() - (int)filemtime($logs.'/'.$name) > 3600) @unlink($logs.'/'.$name);
+		elseif (preg_match('/^zfs\.master-diag\.[0-9a-f]{16}\.part$/D', $name) === 1 && time() - (int)filemtime($logs.'/'.$name) > 3600) $parts[] = $name;
 	}
 	// The name holds the time, so the names sort by age; a clock that went back must not cost the zip just written.
 	sort($zips);
+	$moved = 'older zips were not all removed: '.$logs.' is gone or reached through a link now';
+	foreach ($parts as $name) if (zfsmDiagRemoveLog($logs, $name) === null) return $moved;
 	$left = array();
-	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) if (!@unlink($logs.'/'.$name)) $left[] = $name;
+	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) {
+		$removed = zfsmDiagRemoveLog($logs, $name);
+		if ($removed === null) return $moved;
+		if (!$removed) $left[] = $name;
+	}
 	return $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '';
+}
+
+// Removes $name from $logs, checked right before: true, false when it could not, null when $logs is no longer the folder itself
+// (gone, or reached through a link). Never through a link of its own.
+function zfsmDiagRemoveLog($logs, $name) {
+	if (zfsmDiagRealNow($logs) !== $logs) return null;
+	return !is_link($logs.'/'.$name) && is_file($logs.'/'.$name) && @unlink($logs.'/'.$name);
+}
+
+// $path resolved now: PHP keeps a resolution for minutes, and another process can swap a folder for a link in that time.
+function zfsmDiagRealNow($path) {
+	clearstatcache(true, $path);
+	return realpath($path);
 }

@@ -495,6 +495,21 @@ symlink($logs, $work.'/logs-link');
 same(array('older zips were not removed: '.$work.'/logs-link is reached through a link', true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')),
 	'a folder reached through a link is not this one: nothing is removed there, and that is said');
 unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
+// Another process swaps the folder for a link after this one resolved it (PHP keeps that): retention and each removal check again.
+mkdir($work.'/swap-target');
+foreach (array('000001', '000002', '000003', '000004') as $at) file_put_contents($work.'/swap-target/zfs.master-diagnostics-20220101-'.$at.'.zip', 'elsewhere');
+$swapped = function ($run) use ($logs, $work) {
+	clearstatcache(true, $logs);
+	realpath($logs);
+	exec('mv '.escapeshellarg($logs).' '.escapeshellarg($work.'/logs-real').' && ln -s '.escapeshellarg($work.'/swap-target').' '.escapeshellarg($logs));
+	$said = $run();
+	exec('rm '.escapeshellarg($logs).' && mv '.escapeshellarg($work.'/logs-real').' '.escapeshellarg($logs));
+	clearstatcache(true);
+	return $said;
+};
+same(array('older zips were not removed: '.$logs.' is reached through a link', null, 4),
+	array($swapped(fn() => zfsmDiagKeepNewest($logs, 3, 'none')), $swapped(fn() => zfsmDiagRemoveLog($logs, 'zfs.master-diagnostics-20220101-000001.zip')), count(glob($work.'/swap-target/*.zip'))),
+	'a folder swapped for a link by another process after this one resolved it: nothing there is removed');
 // Naming is one run at a time: while another run holds the lock, a zip waits as its .part, and takes its name once it is let go.
 $pack_lock = zfsmJobDir('diagnostics').'/pack.lock';
 if (!is_dir(dirname($pack_lock))) mkdir(dirname($pack_lock), 0700, true);
