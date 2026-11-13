@@ -71,8 +71,7 @@ function zfsmDiagPack($dir) {
 	}
 	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough. Still the file it was, never a link.
 	if ($unraid !== null && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
-	$left = zfsmDiagKeepNewest($logs, 3, basename($zip));
-	return array($zip, $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '');
+	return array($zip, zfsmDiagKeepNewest($logs, 3, basename($zip)));
 }
 
 // Gives the packed zip its name, [the zip, ''] or [null, why]. One run at a time from picking the name to the rename, so two never
@@ -89,12 +88,14 @@ function zfsmDiagPublish($part, $logs) {
 }
 
 // Removes the plugin's own zips in $logs but for $made, the one just written, and the newest of the others, $keep in all; and what
-// a run that was killed while packing left there. Only names this file makes are touched, never a link. Gives the names it could not remove.
+// a run that was killed while packing left there. Only names this file makes are touched, never a link. Says what it could not do, '' when nothing.
 function zfsmDiagKeepNewest($logs, $keep, $made) {
 	// A folder reached through a link is another folder: nothing is removed there.
-	if (realpath($logs) !== $logs) return array();
+	if (realpath($logs) !== $logs) return '';
+	$listed = @scandir($logs);
+	if ($listed === false) return 'older zips could not be looked for in '.$logs.', so none were removed';
 	$zips = array();
-	foreach (scandir($logs) ?: array() as $name) {
+	foreach ($listed as $name) {
 		if (is_link($logs.'/'.$name) || !is_file($logs.'/'.$name)) continue;
 		if (preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1 && $name !== $made) $zips[] = $name;
 		elseif (preg_match('/^zfs\.master-diag\.[0-9a-f]{16}\.part$/D', $name) === 1 && time() - (int)filemtime($logs.'/'.$name) > 3600) @unlink($logs.'/'.$name);
@@ -103,5 +104,5 @@ function zfsmDiagKeepNewest($logs, $keep, $made) {
 	sort($zips);
 	$left = array();
 	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) if (!@unlink($logs.'/'.$name)) $left[] = $name;
-	return $left;
+	return $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '';
 }

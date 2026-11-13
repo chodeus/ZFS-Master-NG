@@ -307,6 +307,14 @@ same(json_encode(array('e' => "failed\t/tmp/".implode('/', array_map('zfsmDiagTo
 	zfsmDiagAnonJson(json_encode(array('e' => "failed\t$own\tCanaryClient"), JSON_UNESCAPED_SLASHES)), 'and one with a tab is too: the path runs to the line\'s end, a tab and all');
 same('{"encryption":"aes-256-gcm","devices":"raidz1-0\nsda","'.$own.'":1}', zfsmDiagAnonJson(json_encode(array('encryption' => 'aes-256-gcm', 'devices' => "raidz1-0\nsda", $own => 1), JSON_UNESCAPED_SLASHES)),
 	'a value with no space is one field: zfs\'s own words in it stay, and the plugin\'s own path, whole');
+// A path after a colon or in a file URI is a path; a link's // and an IPv6 prefix start none.
+same(array('{"errors":["failed:/mnt/tank/'.zfsmDiagToken('ClientA').'"],"u":"file:///mnt/tank/'.zfsmDiagToken('ClientB').'"}',
+		"failed:/mnt/tank/".zfsmDiagToken('ClientA')."\tfile:///usr/local/emhttp/x.php\thttps://example.org/a/b\t".zfsmDiagToken('fe80::', 'ip')."/10"),
+	array(zfsmDiagAnonJson('{"errors":["failed:/mnt/tank/ClientA"],"u":"file:///mnt/tank/ClientB"}'), zfsmDiagAnonText("failed:/mnt/tank/ClientA\tfile:///usr/local/emhttp/x.php\thttps://example.org/a/b\tfe80::/10")),
+	'a folder after a colon or file:// is a token; a system path in a file URI, a link and an IPv6 prefix stay');
+mkdir($work.'/colon');
+zfsmDiagWrite($work.'/colon', 'e.json.txt', '{"errors":["failed:/mnt/tank/ClientA"]}');
+same(array(true, '{"errors":["failed:/mnt/tank/'.zfsmDiagToken('ClientA').'"]}'."\n"), array(zfsmDiagAnonymizeDir($work.'/colon'), file_get_contents($work.'/colon/e.json.txt')), 'and so in a run\'s JSON file');
 same(null, zfsmDiagFilesUnder($work.'/not-there'), 'a folder that can\'t be listed has no files: it is no empty folder');
 // The word list is read once a run, so a failed read is tried in a PHP of its own, on a copy of the plugin with one file unreadable.
 $words_in = function($plugin, $as = '') {
@@ -438,7 +446,7 @@ file_put_contents($work.'/linked', 'kept');
 symlink($work.'/linked', $logs.'/zfs.master-diagnostics-20240101-000000.zip');
 touch($logs.'/zfs.master-diag.00000000000000aa.part', time() - 7200);
 touch($logs.'/zfs.master-diag.other.part', time() - 7200);
-same(array(), zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip'), 'every zip that had to go went');
+same('', zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip'), 'every zip that had to go went');
 $left = array_values(array_diff(scandir($logs), array('.', '..')));
 same(array('tower-diagnostics-20250101-0000.zip', 'zfs.master-diag.00000000000000bb.part', 'zfs.master-diag.other.part', 'zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-0000.zip', 'zfs.master-diagnostics-20250101-000002.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip'), $left, 'the newest three stay, with every file that is not the plugin\'s zip, a link, and a part less than an hour old');
 same('kept', file_get_contents($work.'/linked'), 'and what a link points to is not touched');
@@ -447,10 +455,12 @@ same(array('zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics
 // A zip that can't be removed is named, not passed over: here another file is mounted over it. Through a link, nothing is removed.
 file_put_contents($logs.'/zfs.master-diagnostics-20230101-000000.zip', 'stuck');
 exec('mount --bind '.escapeshellarg($work.'/linked').' '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
-same(array('zfs.master-diagnostics-20230101-000000.zip'), zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
+same('older zips could not be removed from '.$logs.': zfs.master-diagnostics-20230101-000000.zip', zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
 exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
+// A folder that can't be listed (here a file in its place) is said to be, not taken for one with nothing to remove.
+same('older zips could not be looked for in '.$work.'/linked, so none were removed', zfsmDiagKeepNewest($work.'/linked', 3, basename((string)$zip)), 'a failed look for older zips is said');
 symlink($logs, $work.'/logs-link');
-same(array(array(), true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
+same(array('', true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
 unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
 // Naming is one run at a time: while another run holds the lock, a zip waits as its .part, and takes its name once it is let go.
 $pack_lock = zfsmJobDir('diagnostics').'/pack.lock';
@@ -526,11 +536,19 @@ list($code, $printed) = $run('-d pcre.jit=0 -d pcre.backtrack_limit=1', '--no-un
 same(array(1, false, array()), array($code, strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*')), 'a rewrite that fails shows no file and makes no zip: '.substr($printed, 0, 400));
 has('The names in the files could not all be replaced', $printed, 'and says so');
 $clear_logs();
+// A run held in its slow zpool status: by then its work folder is made and locked, which the folder alone does not show.
+$slow_run = function($name) use ($script, $work) {
+	putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
+	putenv('ZFSM_TEST_ZPOOL_STATUS_STARTED='.$work.'/'.$name.'.started');
+	$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/'.$name.'.out', 'w'), 2 => array('file', $work.'/'.$name.'.out', 'a')), $pipes);
+	putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
+	putenv('ZFSM_TEST_ZPOOL_STATUS_STARTED');
+	for ($waited = 0; $waited < 200 && !is_file($work.'/'.$name.'.started'); $waited++) usleep(50000);
+	same(true, is_file($work.'/'.$name.'.started'), 'the run reached its collectors before its work folder is touched');
+	return $going;
+};
 // The work folder goes under the run: the script rewrites, shows and packs nothing.
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
-$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/vanished.out', 'w'), 2 => array('file', $work.'/vanished.out', 'a')), $pipes);
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
-for ($waited = 0; $waited < 200 && !glob('/tmp/zfs.master-diag.*'); $waited++) usleep(50000);
+$going = $slow_run('vanished');
 exec('rm -rf /tmp/zfs.master-diag.*');
 do {
 	usleep(100000);
@@ -541,10 +559,7 @@ $printed = file_get_contents($work.'/vanished.out');
 same(array(1, false, array(), array()), array($status['exitcode'], strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*'), glob('/tmp/zfs.master-diag.*')), 'a run whose work folder went under it rewrites, shows and packs nothing, and leaves no work folder: '.substr($printed, 0, 600));
 has('The work folder changed under the run, so nothing was rewritten, shown or packed', $printed, 'and says so');
 // A folder put in place of the run's under it: the run leaves it as it is, and says so.
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
-$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/swapped.out', 'w'), 2 => array('file', $work.'/swapped.out', 'a')), $pipes);
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
-for ($waited = 0; $waited < 200 && !glob('/tmp/zfs.master-diag.*'); $waited++) usleep(50000);
+$going = $slow_run('swapped');
 $swapped = (string)(glob('/tmp/zfs.master-diag.*')[0] ?? '');
 same(true, $swapped !== '', 'the run made its work folder');
 exec('rm -rf '.escapeshellarg($swapped));

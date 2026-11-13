@@ -125,7 +125,8 @@ function zfsmDiagNamePattern() {
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
-			.'|(?<path>(?<![A-Za-z0-9_.:/-])/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
+			// A path starts after a colon (failed:/mnt/...) and after file://; not inside a link's //, nor at an IPv6 prefix (fe80::/10).
+			.'|(?<path>(?:(?<![A-Za-z0-9_./-]|::)|(?<=file://))/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
 			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
 			.'|(?<host>(?<![\w.+-])(?!feature@|unsupported@)[\w.+-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s"\',]+)?)'
 			.'|(?<ip>(?<![\w.])\d{1,3}(?:\.\d{1,3}){3}(?![\w]|\.\d)|(?<![\w:.])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f:]*::[0-9A-Fa-f:.]*)(?![\w:]))~s';
