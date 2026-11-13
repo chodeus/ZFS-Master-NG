@@ -34,13 +34,16 @@ function zfsmDiagRunningText() {
 // Rewrites every file of a run with its names replaced, then adds names.txt and writes README.txt again, which holds no name.
 // False when a file could not be read, searched or written: its names are still in it, so nothing may be shown or packed.
 function zfsmDiagAnonymizeDir($dir) {
+	// PHP keeps the last stat it read: from before the folder went, on PHP 8.2 (tests/diagnostics_bundle_test.php, 'a folder that is gone').
+	clearstatcache(true, $dir);
 	if (!is_dir($dir)) return false;
 	unset($GLOBALS['zfsm_diag_names']['pattern']);
 	foreach (zfsmDiagFilesUnder($dir) as $file) {
 		$text = zfsmDiagWhole('file_get_contents', $dir.'/'.$file);
 		if ($text === false) return false;
-		$clean = $file === 'plugin/browser.json.txt' ? zfsmDiagAnonBrowser($text) : (substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text));
-		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean);
+		$running = in_array($file, zfsmDiagRunningText(), true);
+		$clean = $file === 'plugin/browser.json.txt' ? zfsmDiagAnonBrowser($text) : (substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text, $running ? "\r\n" : "\t\r\n"));
+		if ($clean !== null && $running) $clean = zfsmDiagKnownWords($clean);
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());

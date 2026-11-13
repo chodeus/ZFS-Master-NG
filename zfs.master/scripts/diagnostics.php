@@ -40,7 +40,11 @@ $work = zfsmDiagWorkDir();
 if ($work === null) $end(null, 'Unable to make a work folder in /tmp');
 // The folder holds real names and is root's alone: the run's end tries to remove it, and a later run tries again.
 register_shutdown_function(function() use ($work, $job, &$ended) {
-	if (is_dir($work) && !zfsmDiagRemove($work) && !$job) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
+	if (is_dir($work) && !zfsmDiagStillOurs($work)) {
+		if (!$job) fwrite(STDERR, "The work folder is not this run's any more, so it was left as it is: $work\n");
+	} elseif (is_dir($work) && !zfsmDiagRemove($work) && !$job) {
+		fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
+	}
 	// A run stopped before its end (Ctrl-C, a signal, a fatal error) says so on the page; the browser's report goes on every exit.
 	if (!$ended) zfsmDiagJobSet(array('state' => 'failed', 'why' => 'The run was stopped before it ended'));
 	if ($job && file_exists(zfsmDiagJobFile('browser.json')) && !@unlink(zfsmDiagJobFile('browser.json'))) zfsmLog('Diagnostics: the browser\'s report could not be removed from '.dirname(zfsmDiagJobFile('browser.json')));
@@ -51,8 +55,9 @@ if (function_exists('pcntl_async_signals')) {
 	foreach (array(SIGINT, SIGHUP, SIGTERM) as $signal) pcntl_signal($signal, function() { exit(130); });
 }
 $written = zfsmDiagRun($work, zfsmDiagContext(parse_plugin_cfg('zfs.master', true), !in_array('--no-unraid', $argv, true), $job));
+if ($written === null || !zfsmDiagStillOurs($work)) $end(null, 'The work folder changed under the run, so nothing was rewritten, shown or packed');
 // Nothing is shown or packed with a real name in it.
 if (!zfsmDiagAnonymizeDir($work)) $end(null, 'The names in the files could not all be replaced, so the files are not shown and no zip was made');
 if (!$job) echo zfsmDiagFile($work.'/collectors.txt'), "\n", zfsmDiagFile($work.'/summary.txt');
-list($zip, $why) = $written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work");
+list($zip, $why) = !zfsmDiagStillOurs($work) ? array(null, 'the work folder changed under the run') : ($written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work"));
 $end($zip, $zip === null ? 'No zip was made: '.$why : $why);
