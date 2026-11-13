@@ -272,6 +272,10 @@ same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay
 preg_match_all("~zfsmJob(?:Dir\\('|LockFile\\(\\$\\w+, ')([a-z-]+)'~", implode('', array_map('file_get_contents', glob(dirname(__DIR__).'/zfs.master/{include,backend,scripts}/*.php', GLOB_BRACE))), $jobs);
 $job_dirs = array_map(function($job) { return '/var/run/zfs.master.'.$job.'/123.lock'; }, array_unique($jobs[1]));
 same(array(true, $job_dirs), array(count($job_dirs) >= 4, array_map('zfsmDiagAnonText', $job_dirs)), 'each job\'s folder stays: '.implode(' ', $job_dirs));
+// And each file the Settings page's run keeps in its folder (zfsmDiagJobFile).
+preg_match_all("~zfsmDiagJobFile\\('([a-z.]+)'\\)~", implode('', array_map('file_get_contents', glob(dirname(__DIR__).'/zfs.master/{include,backend,scripts}/*.php', GLOB_BRACE))), $job_files);
+$job_files = array_map(function($file) { return '/var/run/zfs.master.diagnostics/'.$file; }, array_unique($job_files[1]));
+same(array(true, $job_files), array(count($job_files) >= 4, array_map('zfsmDiagAnonText', $job_files)), 'each file of the page\'s run stays: '.implode(' ', $job_files));
 $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));

@@ -212,7 +212,7 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 // Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
 // the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$jobs = '(?:rewrite|replicate|replica-serve|diagnostics)(?:/(?:\d+|[0-9a-f]{64}\.\d+|pack)\.lock)?';
+	$jobs = '(?:rewrite|replicate|replica-serve|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start)\.lock|state\.json(?:\.tmp)?|browser\.json))?';
 	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
 	$names = array(
 		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
