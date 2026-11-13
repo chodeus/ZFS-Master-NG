@@ -7,9 +7,8 @@ function zfsmDiagFreeSettings() {
 	return array('exclusion', 'snap_prefix', 'snap_pattern', 'directory_listing', 'replica_accept');
 }
 
-// The file as saved. A setting's line stays only when its value is the one the plugin uses (loadConfig), a value it would
-// correct, of those settings and any this version does not know is a token, and the further lines it runs on to, up to the one
-// that closes its quote, are left out. Of any other line only a section's name and an empty line stay.
+// The file as saved: a line stays only at the value loadConfig uses, else its value is a token and the lines it runs on to are
+// left out. Of a line that sets nothing, only a section's name and an empty line stay.
 function zfsmDiagSettingsSaved($ctx) {
 	$effective = array();
 	foreach ($ctx['cfg'] as $key => $value) {
