@@ -135,7 +135,7 @@ function zfsmDiagNamePattern() {
 
 // $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
 // $ends: what ends a folder's path in $text: a tab or a line break in a file's tab-separated rows, only a line break in running text
-// (zfsmDiagRunningText) and in a message, nothing in a value that is a path itself (zfsmDiagAnonValue).
+// (zfsmDiagAnonRunning, the only caller that passes it), nothing in a JSON value that is a path itself (zfsmDiagAnonValue).
 function zfsmDiagAnonText($text, $ends = "\t\r\n") {
 	$pattern = zfsmDiagNamePattern();
 	$clean = '';
@@ -177,8 +177,8 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
-	// One of the plugin's own paths, whole: in a row's field or a value the whole field, in running text up to its first space (the second
-	// net takes the words after it). Any other path under a shared top folder is a folder's, names and all.
+	// One of the plugin's own paths, whole: in a field (a row's, a JSON value's) the whole field, in running text up to its first space
+	// (zfsmDiagAnonRunning's second net takes the words after it). Any other path under a shared top folder is a folder's, names and all.
 	$whole = rtrim(strpos($ends, "\t") !== false || $ends === '' ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
 	if (zfsmDiagOwnName($whole)) return array($whole, $at + strlen($whole));
 	foreach ($names['own'] as $own) {
@@ -267,8 +267,9 @@ function zfsmDiagAnonJson($text) {
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
 		// A value that stays as a number can still be an address.
-		// One value is one field: a path that is the whole value runs to its end, and a message's path to its line's end.
-		$clean = zfsmDiagAnonText($free ? zfsmDiagFreeValue($value) : $value, $value !== '' && $value[0] === '/' ? '' : "\r\n");
+		// A path that is the whole value runs to its end; a value with a space is running text; any other is one field, as in a row.
+		$value = $free ? zfsmDiagFreeValue($value) : $value;
+		$clean = $value !== '' && $value[0] === '/' ? zfsmDiagAnonText($value, '') : (strpos($value, ' ') !== false ? zfsmDiagAnonRunning($value) : zfsmDiagAnonText($value));
 		$failed = $failed || $clean === null;
 		return $clean;
 	}

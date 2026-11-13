@@ -33,12 +33,16 @@ function zfsmDiagAnonymizeDir($dir) {
 	clearstatcache(true, $dir);
 	if (!is_dir($dir)) return false;
 	unset($GLOBALS['zfsm_diag_names']['pattern']);
-	foreach (zfsmDiagFilesUnder($dir) as $file) {
+	$files = zfsmDiagFilesUnder($dir);
+	if ($files === null) return false;
+	foreach ($files as $file) {
 		$text = zfsmDiagWhole('file_get_contents', $dir.'/'.$file);
 		if ($text === false) return false;
 		$running = in_array($file, zfsmDiagRunningText(), true);
-		$clean = substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text, $running ? "\r\n" : "\t\r\n");
-		if ($clean !== null && $running) $clean = zfsmDiagKnownWords($clean);
+		$json = substr($file, -9) === '.json.txt';
+		$clean = $json ? zfsmDiagAnonJson($text) : ($running ? zfsmDiagAnonRunning($text) : zfsmDiagAnonText($text));
+		// A JSON file's messages passed the second net already; in one of running text its keys and paths pass it too.
+		if ($clean !== null && $json && $running) $clean = zfsmDiagKnownWords($clean);
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());

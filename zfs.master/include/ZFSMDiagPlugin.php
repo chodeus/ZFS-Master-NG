@@ -181,7 +181,10 @@ function zfsmDiagFileCheck($dir) {
 		elseif (($sum = zfsmDiagWhole('md5_file', $dir.'/'.$file)) === false) $wrong['unreadable'][] = zfsmDiagUnread($file);
 		elseif ($sum !== $md5) $wrong['changed'][] = $file;
 	}
-	foreach (zfsmDiagFilesUnder($dir) as $file) if (!isset($expected[$file]) && $file !== 'manifest.md5') $wrong['not in the release'][] = $file;
+	$installed = zfsmDiagFilesUnder($dir);
+	// zfsmDiagRun notes the collector as failed.
+	if ($installed === null) throw new RuntimeException('the installed files could not all be listed in '.$dir);
+	foreach ($installed as $file) if (!isset($expected[$file]) && $file !== 'manifest.md5') $wrong['not in the release'][] = $file;
 	foreach (glob($dir.'/scripts/*') ?: array() as $script) if (!is_executable($script)) $wrong['not executable'][] = 'scripts/'.basename($script);
 	$text = 'files in the release: '.count($expected)."\n";
 	foreach ($wrong as $what => $files) {
@@ -191,10 +194,14 @@ function zfsmDiagFileCheck($dir) {
 	return $text;
 }
 
-// Every file under $dir, as a path from it.
+// Every file under $dir, as a path from it; null when a folder in it could not be listed, such as one removed during the walk.
 function zfsmDiagFilesUnder($dir) {
 	$files = array();
-	foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $entry) $files[] = substr($entry->getPathname(), strlen($dir) + 1);
+	try {
+		foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $entry) $files[] = substr($entry->getPathname(), strlen($dir) + 1);
+	} catch (UnexpectedValueException $error) {
+		return null;
+	}
 	sort($files);
 	return $files;
 }

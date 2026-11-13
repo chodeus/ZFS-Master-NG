@@ -33,7 +33,8 @@ function has($needle, $text, $message) {
 	exit(1);
 }
 
-$work = sys_get_temp_dir().'/zfsm-bundle-test-'.getmypid().'-'.bin2hex(random_bytes(4));
+// Words and digits only: the second net keeps the plugin's own paths under it as they are on a server.
+$work = sys_get_temp_dir().'/zfsm-test-'.getmypid().'-'.random_int(100000, 999999);
 $root = $work.'/root';
 mkdir($work.'/bin', 0700, true);
 $made = array('/boot/logs/canarytower-diagnostics-20260102-1000.zip');
@@ -292,6 +293,45 @@ $message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/x.
 same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/x.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 	zfsmDiagAnonJson(json_encode(array('e' => $message), JSON_UNESCAPED_SLASHES)),
 	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay');
+// A message is running text in any JSON file: the second net takes the words after the plugin's own path, as in an inventory's error.
+$own = zfsmStatePath('/var/run/zfs.master.rewrite');
+same('{"data":{"errors":{"tank":"failed '.$own.' '.zfsmDiagToken('CanaryClient').' busy"}}}',
+	zfsmDiagAnonJson(json_encode(array('data' => array('errors' => array('tank' => 'failed '.$own.' CanaryClient busy'))), JSON_UNESCAPED_SLASHES)),
+	'in a JSON file of no running text, a message\'s word after the plugin\'s own path is a token');
+same('{"encryption":"aes-256-gcm","devices":"raidz1-0\nsda","'.$own.'":1}', zfsmDiagAnonJson(json_encode(array('encryption' => 'aes-256-gcm', 'devices' => "raidz1-0\nsda", $own => 1), JSON_UNESCAPED_SLASHES)),
+	'a value with no space is one field: zfs\'s own words in it stay, and the plugin\'s own path, whole');
+same(null, zfsmDiagFilesUnder($work.'/not-there'), 'a folder that can\'t be listed has no files: it is no empty folder');
+// The word list is read once a run, so a failed read is tried in a PHP of its own, on a copy of the plugin with one file unreadable.
+$words_in = function($plugin, $as = '') {
+	$php = 'require "'.$plugin.'/backend/ZFSMOperations.php"; require "'.$plugin.'/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
+		.' echo json_encode(array(zfsmDiagVocabulary() === null, zfsmDiagKnownWords("failed busy"), zfsmDiagAnonJson("{\"e\":\"failed busy\"}")));';
+	exec($as.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+	return array($code, implode("\n", $said));
+};
+exec('cp -a '.escapeshellarg(__DIR__.'/../zfs.master').' '.escapeshellarg($work.'/vocab').' && chmod -R a+rX '.escapeshellarg($work.'/vocab'), $unused, $copied);
+file_put_contents($work.'/vocab/include/ZZEmpty.php', '');
+same(array(0, array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]')), array($copied, $words_in($work.'/vocab')), 'a copy of the plugin reads its words, an empty file of it too');
+symlink('/proc/self/mem', $work.'/vocab/include/ZZUnreadable.php');
+same(array(0, '[true,null,null]'), $words_in($work.'/vocab'), 'a file of the plugin\'s that can\'t be read leaves no word list, so no running text can be searched');
+// Root lists any folder: as nobody, a folder of mode 000 can't be. Each case first shows nobody gets in while nothing is locked.
+chmod($work, 0711);
+$nobody = 'setpriv --reuid=65534 --regid=65534 --clear-groups ';
+unlink($work.'/vocab/include/ZZUnreadable.php');
+same(array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]'), $words_in($work.'/vocab', $nobody), 'nobody reads the copy\'s words');
+mkdir($work.'/vocab/include/ZZLocked', 0000);
+same(array(0, '[true,null,null]'), $words_in($work.'/vocab', $nobody), 'a folder of the plugin\'s that can\'t be listed leaves no word list either');
+$rewrite = function() use ($work, $nobody) {
+	$php = 'require "'.__DIR__.'/../zfs.master/backend/ZFSMOperations.php"; require "'.__DIR__.'/../zfs.master/include/ZFSMDiagnostics.php"; zfsmDiagStart(); var_export(zfsmDiagAnonymizeDir("'.$work.'/unlisted"));';
+	exec($nobody.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+	return array($code, implode("\n", $said), is_file($work.'/unlisted/names.txt'));
+};
+mkdir($work.'/unlisted/plugin', 0700, true);
+file_put_contents($work.'/unlisted/summary.txt', "kept\n");
+exec('chown -R 65534:65534 '.escapeshellarg($work.'/unlisted'));
+same(array(0, 'true', true), $rewrite(), 'nobody rewrites a work folder it can list');
+unlink($work.'/unlisted/names.txt');
+chmod($work.'/unlisted/plugin', 0000);
+same(array(0, 'false', false), $rewrite(), 'a work folder that can\'t be listed to its end is not rewritten, and no names.txt is written');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
