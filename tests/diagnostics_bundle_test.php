@@ -298,6 +298,8 @@ $own = zfsmStatePath('/var/run/zfs.master.rewrite');
 same('{"data":{"errors":{"tank":"failed '.$own.' '.zfsmDiagToken('CanaryClient').' busy"}}}',
 	zfsmDiagAnonJson(json_encode(array('data' => array('errors' => array('tank' => 'failed '.$own.' CanaryClient busy'))), JSON_UNESCAPED_SLASHES)),
 	'in a JSON file of no running text, a message\'s word after the plugin\'s own path is a token');
+same(json_encode(array('e' => "failed\t/tmp/".implode('/', array_map('zfsmDiagToken', explode('/', substr($own, 5)."\tCanaryClient")))), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+	zfsmDiagAnonJson(json_encode(array('e' => "failed\t$own\tCanaryClient"), JSON_UNESCAPED_SLASHES)), 'and one with a tab is too: the path runs to the line\'s end, a tab and all');
 same('{"encryption":"aes-256-gcm","devices":"raidz1-0\nsda","'.$own.'":1}', zfsmDiagAnonJson(json_encode(array('encryption' => 'aes-256-gcm', 'devices' => "raidz1-0\nsda", $own => 1), JSON_UNESCAPED_SLASHES)),
 	'a value with no space is one field: zfs\'s own words in it stay, and the plugin\'s own path, whole');
 same(null, zfsmDiagFilesUnder($work.'/not-there'), 'a folder that can\'t be listed has no files: it is no empty folder');
@@ -313,10 +315,13 @@ file_put_contents($work.'/vocab/include/ZZEmpty.php', '');
 same(array(0, array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]')), array($copied, $words_in($work.'/vocab')), 'a copy of the plugin reads its words, an empty file of it too');
 symlink('/proc/self/mem', $work.'/vocab/include/ZZUnreadable.php');
 same(array(0, '[true,null,null]'), $words_in($work.'/vocab'), 'a file of the plugin\'s that can\'t be read leaves no word list, so no running text can be searched');
+$php = 'require "'.$work.'/vocab/backend/ZFSMOperations.php"; require "'.$work.'/vocab/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
+	.' $first = zfsmDiagVocabulary() === null; unlink("'.$work.'/vocab/include/ZZUnreadable.php"); echo json_encode(array($first, zfsmDiagVocabulary() === null));';
+exec(escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+same(array(0, '[true,true]'), array($code, implode("\n", $said)), 'a failed read of the word list stays failed for the run, once the file can be read again too');
 // Root lists any folder: as nobody, a folder of mode 000 can't be. Each case first shows nobody gets in while nothing is locked.
 chmod($work, 0711);
 $nobody = 'setpriv --reuid=65534 --regid=65534 --clear-groups ';
-unlink($work.'/vocab/include/ZZUnreadable.php');
 same(array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]'), $words_in($work.'/vocab', $nobody), 'nobody reads the copy\'s words');
 mkdir($work.'/vocab/include/ZZLocked', 0000);
 same(array(0, '[true,null,null]'), $words_in($work.'/vocab', $nobody), 'a folder of the plugin\'s that can\'t be listed leaves no word list either');

@@ -194,7 +194,7 @@ function zfsmDiagFileCheck($dir) {
 	return $text;
 }
 
-// Every file under $dir, as a path from it; null when a folder in it could not be listed, such as one removed during the walk.
+// Every file under $dir, as a path from it; null when $dir or a folder in it could not be listed, such as one removed during the walk.
 function zfsmDiagFilesUnder($dir) {
 	$files = array();
 	try {

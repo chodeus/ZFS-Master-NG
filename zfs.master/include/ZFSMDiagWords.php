@@ -15,11 +15,12 @@ define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon t
 	.' fastcgi sent stderr message while reading response header upstream client server request host referrer get post http unix sock fpm'
 	.' kmod rc online degraded faulted offline unavail removed ssh connect port');
 
-// Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run.
+// Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run, a failure too.
 // null when its files could not all be listed and read: a list with words missing is not kept.
 function zfsmDiagVocabulary() {
 	static $words = null;
-	if ($words !== null) return $words;
+	if ($words !== null) return $words ?: null;
+	$words = false;
 	$files = zfsmDiagFilesUnder(dirname(__DIR__));
 	if ($files === null) return null;
 	$read = array_flip(explode(' ', ZFSM_DIAG_WORDS));
@@ -34,7 +35,7 @@ function zfsmDiagVocabulary() {
 	return $words = $read;
 }
 
-// Running text, a file of it or a JSON value with a space: the rules, a folder's path ending at its line's end, then the second net for
+// Running text, a file of it or a JSON value with a space or a tab: the rules, a folder's path ending at its line's end, then the second net for
 // the words after a path's first space and the rest. null when it could not be searched.
 function zfsmDiagAnonRunning($text) {
 	$clean = zfsmDiagAnonText($text, "\r\n");

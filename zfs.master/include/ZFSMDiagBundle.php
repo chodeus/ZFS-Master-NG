@@ -41,7 +41,7 @@ function zfsmDiagAnonymizeDir($dir) {
 		$running = in_array($file, zfsmDiagRunningText(), true);
 		$json = substr($file, -9) === '.json.txt';
 		$clean = $json ? zfsmDiagAnonJson($text) : ($running ? zfsmDiagAnonRunning($text) : zfsmDiagAnonText($text));
-		// A JSON file's messages passed the second net already; in one of running text its keys and paths pass it too.
+		// A JSON file's values with a space or a tab passed the second net already; in a file of running text all of it passes.
 		if ($clean !== null && $json && $running) $clean = zfsmDiagKnownWords($clean);
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}

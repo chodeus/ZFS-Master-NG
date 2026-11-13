@@ -267,9 +267,9 @@ function zfsmDiagAnonJson($text) {
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
 		// A value that stays as a number can still be an address.
-		// A path that is the whole value runs to its end; a value with a space is running text; any other is one field, as in a row.
+		// A path that is the whole value runs to its end; a value with a space or a tab is running text; any other is one field.
 		$value = $free ? zfsmDiagFreeValue($value) : $value;
-		$clean = $value !== '' && $value[0] === '/' ? zfsmDiagAnonText($value, '') : (strpos($value, ' ') !== false ? zfsmDiagAnonRunning($value) : zfsmDiagAnonText($value));
+		$clean = $value !== '' && $value[0] === '/' ? zfsmDiagAnonText($value, '') : (strpbrk($value, " \t") !== false ? zfsmDiagAnonRunning($value) : zfsmDiagAnonText($value));
 		$failed = $failed || $clean === null;
 		return $clean;
 	}
