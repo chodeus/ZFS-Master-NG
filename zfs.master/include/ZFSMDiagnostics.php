@@ -142,6 +142,7 @@ function zfsmDiagReadme() {
 		."So are this server's and a sender's name, a key's comment, a pattern or a value its owner wrote and the words of a user property's\nname that the plugin does not use; a user at a host (host-...);\n"
 		."and an address (ip-...). A key is only its fingerprint. A pool's name stays.\n"
 		."A folder's path in a line of text takes the rest of that line with it, because a folder's name can hold any character.\n"
+		."In a file's rows it ends at the next tab. A name that holds a tab or a line break can be cut there, and what follows it can stay.\n"
 		."In the logs, the command lines and the findings, any other word that the plugin itself does not use is a token too, numbers aside.\n"
 		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
 		."names one of its datasets, the name stays.\n"
