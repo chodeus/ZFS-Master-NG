@@ -16,7 +16,11 @@ function zfsmDiagSettingsSaved($ctx) {
 	}
 	$open = false;
 	$lines = array();
-	foreach (explode("\n", zfsmDiagFile(zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg'))) as $line) {
+	$file = zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg');
+	$saved = zfsmDiagFile($file);
+	// zfsmDiagFile's own words for a file that is not there or not read whole, which name nothing.
+	if (!is_file($file) || $saved === '(unreadable)') return $saved;
+	foreach (explode("\n", $saved) as $line) {
 		if ($open) {
 			$open = substr_count($line, '"') % 2 === 0;
 		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1) {

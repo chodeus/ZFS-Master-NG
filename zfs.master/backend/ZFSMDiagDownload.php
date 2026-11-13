@@ -7,7 +7,8 @@ require_once $docroot.'/plugins/zfs.master/include/ZFSMDiagBundle.php';
 
 $name = is_string($_GET['file'] ?? null) ? $_GET['file'] : '';
 $file = zfsmStatePath('/boot/logs').'/'.$name;
-$served = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && zfsmDiagIsZip($name) && !is_link($file) && is_file($file);
+// realpath: neither the zip nor the folder it is in may be reached through a link.
+$served = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && zfsmDiagIsZip($name) && is_file($file) && realpath($file) === $file;
 if (!$served) {
 	http_response_code(404);
 	exit;

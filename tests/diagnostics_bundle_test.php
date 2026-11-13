@@ -88,6 +88,7 @@ $log_lines = array(
 	// Names with nothing to mark them: a container and a process in the busy text, a refusal's example, a name that was refused.
 	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container canarycontainer has it mounted; process canary_backup.sh (pid 9) may be using it through /mnt/user"),
 	$action('ZFS Replication', 'tank/CanaryDs One', 'The copy needs a dataset name inside a pool, such as backup/CanaryLeaf'),
+	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container chrome has it mounted"),
 	$action('ZFS Replication', 'tank/CanaryDs One', "The copy goes inside bakup/CanaryTyped, which doesn't exist"),
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
@@ -194,6 +195,7 @@ same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} ref
 // No rule marks these names: they are tokens because they are no words of the plugin's.
 has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');
 has('such as backup/'.$token('CanaryLeaf')."\n", $log, 'the name in a refusal\'s example is a token');
+has('Using it now: container '.$token('chrome')." has it mounted\n", $log, 'a word of a browser\'s report is a name in the log: only that report takes those words');
 has('The copy goes inside '.$token('bakup').'/'.$token('CanaryTyped').', which doesn?t exist'."\n", $log, 'a dataset the user typed, of a pool there is not, is tokens');
 has('ZFS Dataset Creation: tank/'.$token('Canary').'?s '.$token('CanaryFiles').' ('.$token('CanarySmith').' 2024) failed: Invalid dataset name'."\n", $log, 'a name that was refused is tokens past the character that ended it for the rules');
 has("ZFS Master NG backend exception: (a private key, left out)\n", $log, 'a private key is left out');
@@ -253,12 +255,19 @@ same(array('/tmp/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/boot/'
 $test_root = $GLOBALS['zfsm_root'];
 $GLOBALS['zfsm_root'] = '';
 zfsmDiagStart();
-$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient');
+$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient',
+	'/tmp/zfs.master-diag.ClientA/notes', '/var/run/zfs.master.ClientA', '/var/log/packages/zfs.master-ClientA');
 $tokens = function($path) { return preg_replace_callback('~[^/]+~', function($part) { return zfsmDiagToken($part[0]); }, $path); };
-same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient')),
+same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient'),
+	'/tmp'.$tokens('/zfs.master-diag.ClientA/notes'), '/var'.$tokens('/run/zfs.master.ClientA'), '/var'.$tokens('/log/packages/zfs.master-ClientA')),
 	array_map('zfsmDiagAnonText', $private), 'a path under a folder the collectors list is not the plugin\'s own for that: only the listed path, a log that was turned over, and what is inside the plugin\'s own; a name that only starts as the plugin\'s does is not');
-$plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs';
+$plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
+	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock';
 same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay');
+// Every job folder the source names (zfsmJobDir, zfsmJobLockFile) is one of the names the plugin makes: a new job is added there too.
+preg_match_all("~zfsmJob(?:Dir\\('|LockFile\\(\\$\\w+, ')([a-z-]+)'~", implode('', array_map('file_get_contents', glob(dirname(__DIR__).'/zfs.master/{include,backend,scripts}/*.php', GLOB_BRACE))), $jobs);
+$job_dirs = array_map(function($job) { return '/var/run/zfs.master.'.$job.'/x.lock'; }, array_unique($jobs[1]));
+same(array(true, $job_dirs), array(count($job_dirs) >= 4, array_map('zfsmDiagAnonText', $job_dirs)), 'each job\'s folder stays: '.implode(' ', $job_dirs));
 $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
@@ -280,6 +289,8 @@ same(array($pooled, zfsmDiagToken('xzzvault').'-'.zfsmDiagToken('zzbackup')), ar
 // The second net, for running text: a word the plugin itself does not use is a token; numbers, tokens and fingerprints pass.
 $sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:'.str_repeat('Ab+/', 10).'xyz d41d8cd98f00b204e9800998ecf8427e';
 same(str_replace('plexserver42', zfsmDiagToken('plexserver42'), $sentence), zfsmDiagKnownWords($sentence), 'a word that is no word of the plugin\'s is a token; its own words, numbers, tokens and checksums stay');
+same(array('container '.zfsmDiagToken('safari').' has it mounted', 'Mozilla/5.0 Safari/537.36'), array(zfsmDiagKnownWords('container safari has it mounted'), zfsmDiagKnownWords('Mozilla/5.0 Safari/537.36', ZFSM_DIAG_BROWSER_WORDS)),
+	'a browser\'s words pass only in the browser\'s report: a container named for one is a token elsewhere');
 same(zfsmDiagToken('name-0123abcd').' SHA256:'.zfsmDiagToken('Zebra77'), zfsmDiagKnownWords('name-0123abcd SHA256:Zebra77'), 'text that only looks like a token or a fingerprint is not one: a token is one this run made, a fingerprint has its length');
 same(array('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') '.zfsmDiagToken('canaryuser@canaryhost'), "cut short (a private key, left out)\nthe next line", 'at backup:tank/'.zfsmDiagToken('Colon')),
 	array(zfsmDiagAnonText('key '.$public_key.' canaryuser@canaryhost'), zfsmDiagAnonText("cut short -----BEGIN OPENSSH PRIVATE KEY-----; CutKeyBody\nthe next line"), zfsmDiagAnonText('at backup:tank/Colon')),

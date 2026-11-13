@@ -166,15 +166,23 @@ function loadFromLocalStorage(key, decode=true) {
 
 // What the Main tab last showed, kept in the browser for a diagnostics run to send (ZFSMDiagnostics.js): its last status, its
 // last render and the newest twenty script errors. make() gives the part's value; one that throws is not worth a broken page.
-// Bounded where it is written: twenty errors, and each part within 2,000 characters, or only its time and that it was cut.
+// Bounded where it is written: the newest twenty errors, each string of a part cut to 500 characters and each list to 40 entries.
 function zfsmDiagRecord(part, make) {
 	try {
 		const record = loadFromLocalStorage('zfsm-diagnostics') || {};
-		let entry = make();
-		if (JSON.stringify(entry).length > 2000) entry = {at: entry.at, cut: JSON.stringify(entry).slice(0, 1900)};
+		const entry = zfsmDiagBounded(make());
 		record[part] = part === 'errors' ? (record.errors || []).concat([entry]).slice(-20) : entry;
 		saveToLocalStorage('zfsm-diagnostics', record);
 	} catch (error) {}
+}
+
+function zfsmDiagBounded(value) {
+	if (typeof value === 'string') return value.slice(0, 500);
+	if (Array.isArray(value)) return value.slice(0, 40).map(zfsmDiagBounded);
+	if (value === null || typeof value !== 'object') return value;
+	const bounded = {};
+	for (const key of Object.keys(value)) bounded[key] = zfsmDiagBounded(value[key]);
+	return bounded;
 }
 
 function removeFromLocalStorage(key) {

@@ -358,10 +358,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			render: function(data, complete) {
 				const began = Date.now();
 				zfsmRender(data);
-				// The header cells as they are: another plugin's column in the table shows here.
+				// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here.
 				zfsmDiagRecord('render', function() {
 					return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
-						headers: $('#zfs_master thead th').map(function() { return $(this).text().trim(); }).get()};
+						headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get()};
 				});
 				if (complete) saveCache(data);
 			}

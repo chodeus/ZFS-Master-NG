@@ -31,7 +31,8 @@ function zfsmDiagJobSet($state) {
 function zfsmStartDiagnostics($unraid, $report) {
 	$lock = zfsmDiagJobFile('run.lock');
 	// Check, keep the report and start as one step: a start meanwhile is told a run is going, and never replaces this report.
-	$start = zfsmJobLock(zfsmDiagJobFile('start.lock'));
+	// Not passed to the job: a job whose start went wrong must not hold it for every later start.
+	$start = zfsmJobLock(zfsmDiagJobFile('start.lock'), false);
 	if ($start === null) return array('failed', 'The diagnostics lock could not be opened in '.dirname($lock));
 	if ($start === false) return array('running', '');
 	if (zfsmJobRunning($lock)) $started = array('running', '');
@@ -39,6 +40,18 @@ function zfsmStartDiagnostics($unraid, $report) {
 	else $started = zfsmStartJob('diagnostics.php', array_merge(array('--job'), $unraid ? array() : array('--no-unraid')), $lock);
 	zfsmJobUnlock($start);
 	return $started;
+}
+
+// The lock one run holds to its end, from the page or a terminal, or why it can't be had. Its commands do not hold it, and it is
+// asked for again for two seconds: a status read holds it shared for a moment (zfsmJobRunning).
+function zfsmDiagRunLock() {
+	for ($try = 0; $try < 20; $try++) {
+		$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'), false);
+		if ($lock === null) return 'The diagnostics lock could not be opened in '.dirname(zfsmDiagJobFile('run.lock'));
+		if ($lock !== false) return $lock;
+		usleep(100000);
+	}
+	return 'Another diagnostics run is going: wait for it to end, then try again';
 }
 
 // What the browser said of itself when it asked for the run; a run from a terminal has none.

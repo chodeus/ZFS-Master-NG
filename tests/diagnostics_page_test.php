@@ -73,9 +73,18 @@ $report = json_encode(array('userAgent' => 'Mozilla/5.0 (X11; Linux x86_64) Chro
 	'kept' => array('zfsm-datasetsHidden' => '["tank/data"]', 'zfsm-diagnostics' => '{"status":{"text":"Loading CanaryShare failed"}}')));
 same(array('state' => 'started', 'why' => ''), $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => $report)), 'the first start');
 same(array(array('state' => 'running', 'why' => ''), array('state' => 'running')), array($ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'another')), $state()), 'a second start while it runs starts nothing, and the state says running');
-// The job itself, started beside the one that runs: it ends at once, whoever started it.
+// The job itself, started beside the one that runs, and a run from a terminal: each ends, says why, and leaves the first one's state.
+// The job's own descriptors hold its run.lock and not the start's start.lock.
+$job_fds = array();
+foreach (glob('/proc/[0-9]*/cmdline') ?: array() as $file) {
+	if (strpos((string)@file_get_contents($file), '--job') === false) continue;
+	foreach (glob(dirname($file).'/fd/*') ?: array() as $fd) $job_fds[] = basename((string)@readlink($fd));
+}
+same(array(true, false), array(in_array('run.lock', $job_fds, true), in_array('start.lock', $job_fds, true)), 'the job holds its run\'s lock, and not the start\'s: '.implode(' ', $job_fds));
+$busy = 'Another diagnostics run is going: wait for it to end, then try again';
 exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --job --no-unraid 2>&1', $beside, $code);
-same(array(1, '', array('state' => 'running')), array($code, implode("\n", $beside), $state()), 'a second job ends at once and leaves the first one\'s state');
+exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --no-unraid 2>&1', $terminal, $terminal_code);
+same(array(1, $busy, 1, $busy, array('state' => 'running')), array($code, implode("\n", $beside), $terminal_code, implode("\n", $terminal), $state()), 'a second job and a terminal run end, say why, and leave the first one\'s state');
 putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 $done = $finished();
 same(array('done', 1, 1), array($done['state'] ?? $done, preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $done['zip'] ?? ''), count($zips())), 'the run ends with its zip\'s name, and one zip is made: '.json_encode($done));
@@ -126,6 +135,31 @@ putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 $kill();
 for ($waited = 0; $waited < 40 && $state() === array('state' => 'running'); $waited++) usleep(250000);
 same(array('state' => 'failed', 'why' => 'The run ended without a result'), $state(), 'a killed run is a failed one');
+
+// A run whose state can't be kept does not start, and says why: the page could never show its result.
+$clear();
+mkdir($work.'/jobs/diagnostics/state.json.tmp', 0700, true);
+$unkept = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '{}'));
+rmdir($work.'/jobs/diagnostics/state.json.tmp');
+same(array('failed', 'The run\'s state could not be kept in '.$work.'/jobs/diagnostics', array()), array($unkept['state'] ?? $unkept, $unkept['why'] ?? null, $zips()), 'a run whose state can\'t be kept does not start, and says why');
+
+// A start while a status read holds the run's lock shared for a moment: the job asks again, and the run starts.
+$clear();
+@mkdir($work.'/jobs/diagnostics', 0700, true);
+$reading = fopen($work.'/jobs/diagnostics/run.lock', 'c');
+flock($reading, LOCK_SH);
+$post = json_encode(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '{}'));
+$admin = 'error_reporting(E_ALL); $_POST = json_decode(getenv("ZFSM_TEST_POST"), true); $_GET = array(); $docroot = getenv("ZFSM_TEST_DOCROOT"); '
+	.'$_SERVER["DOCUMENT_ROOT"] = $docroot; $GLOBALS["zfsm_php"] = PHP_BINARY; require $docroot."/plugins/zfs.master/backend/ZFSMAdmin.php";';
+$starting = proc_open('ZFSM_TEST_POST='.escapeshellarg($post).' '.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($admin).' 2>&1', array(1 => array('pipe', 'w')), $pipes);
+usleep(500000);
+flock($reading, LOCK_UN);
+fclose($reading);
+$answer = json_decode((string)stream_get_contents($pipes[1]), true);
+proc_close($starting);
+same('started', $answer['state'] ?? $answer, 'a start beside a status read starts: '.json_encode($answer));
+$finished();
+$clear();
 
 // A command the run started and left behind holds none of its locks: once the run is done, the page says so and starts another.
 $clear();
