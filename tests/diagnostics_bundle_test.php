@@ -313,6 +313,16 @@ foreach (array('fail' => array('read failed', 'its script ended with exit code 1
 	same(array(), $leaks($ours($out)), 'no name of the server leaks through what Unraid\'s script printed');
 }
 
+// A dataset a setting names on a pool that does not exist, where a collector writes it as zfs answers: its first word is a token
+// there too, the one the settings list gives it.
+$build();
+$elsewhere = array_values(array_filter(zfsmDiagCollectors(), function($collector) { return in_array($collector[0], array('plugin/settings-effective.txt', 'plugin/replication-receive.txt'), true); }));
+zfsmDiagRun($work.'/elsewhere', zfsmDiagContext(array('general' => array('replica_accept' => 'CanaryClient/photos') + $settings), false), $elsewhere);
+same(true, zfsmDiagAnonymizeDir($work.'/elsewhere'), 'the files of a setting on no pool are rewritten');
+$received = file_get_contents($work.'/elsewhere/plugin/replication-receive.txt');
+same(array(false, true, true), array(stripos($received, 'canary'), strpos($received, 'accept replicas into: '.zfsmDiagToken('CanaryClient').'/'.zfsmDiagToken('photos')."\n") !== false,
+	strpos($received, zfsmDiagToken('CanaryClient').'/'.zfsmDiagToken('photos')."\tmountpoint\t") !== false), 'it is tokens in the settings and in zfs\'s rows alike: '.$received);
+
 // A file that can't be rewritten: nothing is packed. One whose read fails, one that can't be written, text that can't be searched.
 $unpacked = function($break) use ($work, $build, $settings) {
 	$build();

@@ -47,7 +47,9 @@ function zfsmDiagSettingsEffective($ctx) {
 	} catch (RuntimeException $error) {
 	}
 	foreach (array_merge($ctx['cfg']['directory_listing'], array($ctx['cfg']['replica_accept'])) as $named) {
-		if (isset(zfsmDiagKnownPools()[preg_split('~[/@#]~', $named)[0]])) zfsmDiagKnow($named);
+		$first = preg_split('~[/@#]~', $named)[0];
+		if (isset(zfsmDiagKnownPools()[$first])) zfsmDiagKnow($named);
+		elseif ($first !== $named) zfsmDiagKnowRoot($first);
 	}
 	foreach ($ctx['cfg'] as $key => $value) {
 		$name = zfsmDiagSavedName($key);
