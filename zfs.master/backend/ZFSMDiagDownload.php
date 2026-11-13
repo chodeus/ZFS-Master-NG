@@ -3,10 +3,11 @@
 // scripts/diagnostics.php makes is served, and only a file of that name in that folder itself, never through a link.
 $docroot = $docroot ?? ($_SERVER['DOCUMENT_ROOT'] ?? '/usr/local/emhttp');
 require_once $docroot.'/plugins/zfs.master/include/ZFSMHelpers.php';
+require_once $docroot.'/plugins/zfs.master/include/ZFSMDiagBundle.php';
 
 $name = is_string($_GET['file'] ?? null) ? $_GET['file'] : '';
 $file = zfsmStatePath('/boot/logs').'/'.$name;
-$served = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1 && !is_link($file) && is_file($file);
+$served = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && zfsmDiagIsZip($name) && !is_link($file) && is_file($file);
 if (!$served) {
 	http_response_code(404);
 	exit;

@@ -4,6 +4,7 @@
 require_once __DIR__.'/ZFSMDiagPlugin.php';
 require_once __DIR__.'/ZFSMDiagZfs.php';
 require_once __DIR__.'/ZFSMDiagNames.php';
+require_once __DIR__.'/ZFSMDiagWords.php';
 require_once __DIR__.'/ZFSMDiagBundle.php';
 require_once __DIR__.'/ZFSMDiagJob.php';
 
@@ -138,9 +139,10 @@ function zfsmDiagReadme() {
 		."unraid/         the Unraid version, array state, display settings and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
 		."names.txt       each token in these files, and the shape of the name it stands for\n\n"
 		."In these files a dataset's, snapshot's, bookmark's or folder's name is a token (name-...), the same token wherever that name is.\n"
-		."So are this server's and a sender's name, a key's comment, and a pattern or a value its owner wrote; a user at a host (host-...);\n"
+		."So are this server's and a sender's name, a key's comment, a pattern or a value its owner wrote and the words of a user property's\nname that the plugin does not use; a user at a host (host-...);\n"
 		."and an address (ip-...). A key is only its fingerprint. A pool's name stays.\n"
 		."A folder's path in a line of text takes the rest of that line with it, because a folder's name can hold any character.\n"
+		."In the logs, the command lines and the findings, any other word that the plugin itself does not use is a token too, numbers aside.\n"
 		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
 		."names one of its datasets, the name stays.\n"
 		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n\n"

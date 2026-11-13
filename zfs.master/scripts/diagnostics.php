@@ -13,16 +13,18 @@ require_once "$docroot/plugins/zfs.master/include/ZFSMDiagnostics.php";
 $job = in_array('--job', $argv, true);
 if ($job) {
 	// One run for the page at a time: the lock is held to the run's end, and the page is answered once it is held.
-	$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'));
+	// The run only reads: a command it started and left behind must not keep the page saying "running".
+	$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'), false);
 	if (!$lock) exit(1);
 	zfsmDiagJobSet(array('state' => 'running'));
 	zfsmJobStarted();
 }
-// How a run ends: a terminal is told, the page reads the state. A job has no terminal to write to.
+// How a run ends: a terminal is told, the page reads the state. A job has no terminal to write to. A zip that was made can
+// still come with something to say.
 $end = function($zip, $why) use ($job) {
-	if ($job) zfsmDiagJobSet($zip !== null ? array('state' => 'done', 'zip' => basename($zip)) : array('state' => 'failed', 'why' => $why));
+	if ($job) zfsmDiagJobSet($zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why));
 	elseif ($zip !== null) echo "\nDiagnostics zip: $zip\n";
-	else fwrite(STDERR, $why."\n");
+	if (!$job && $why !== '') fwrite(STDERR, $why."\n");
 	exit($zip === null ? 1 : 0);
 };
 
@@ -42,4 +44,4 @@ $written = zfsmDiagRun($work, zfsmDiagContext(parse_plugin_cfg('zfs.master', tru
 if (!zfsmDiagAnonymizeDir($work)) $end(null, 'The names in the files could not all be replaced, so the files are not shown and no zip was made');
 if (!$job) echo zfsmDiagFile($work.'/collectors.txt'), "\n", zfsmDiagFile($work.'/summary.txt');
 list($zip, $why) = $written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work");
-$end($zip, $zip === null ? 'No zip was made: '.$why : '');
+$end($zip, $zip === null ? 'No zip was made: '.$why : $why);
