@@ -569,7 +569,7 @@ $ours = zfsmDiagWorkDir();
 $was_ours = zfsmDiagStillOurs($ours);
 exec('rm -rf '.escapeshellarg($ours));
 mkdir($ours, 0700);
-same(array(true, false, false), array($was_ours, zfsmDiagStillOurs($ours), zfsmDiagStillOurs($work)), 'a work folder is the run\'s only while it is the one it locked');
+same(array(true, false, false), array($was_ours, zfsmDiagStillOurs($ours), zfsmDiagStillOurs($work)), 'a work folder is the run\'s only while it is the one it locked; a folder it never made is not');
 rmdir($ours);
 same(array(false, false, false), array(zfsmDiagWrite($work.'/never', 'plugin/first.txt', 'first'), zfsmDiagWrite($work.'/never', 'summary.txt', 'first'), file_exists($work.'/never')), 'a file\'s write makes its own folder, never the run\'s');
 // The Main tab's read gives a pool whose devices could not be read an empty list: in the file that is a read that failed.

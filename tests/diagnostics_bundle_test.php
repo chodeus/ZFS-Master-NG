@@ -491,13 +491,14 @@ $going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => a
 putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 for ($waited = 0; $waited < 200 && !glob('/tmp/zfs.master-diag.*'); $waited++) usleep(50000);
 $swapped = (string)(glob('/tmp/zfs.master-diag.*')[0] ?? '');
+same(true, $swapped !== '', 'the run made its work folder');
 exec('rm -rf '.escapeshellarg($swapped));
 mkdir($swapped, 0700);
 file_put_contents($swapped.'/theirs', 'not the run\'s');
 while (proc_get_status($going)['running']) usleep(100000);
 proc_close($going);
-same(array(true, true), array(strpos((string)file_get_contents($work.'/swapped.out'), "The work folder is not this run's any more, so it was left as it is: $swapped") !== false, is_file($swapped.'/theirs')),
-	'a folder put in place of the run\'s is left as it is, and the run says so: '.substr((string)file_get_contents($work.'/swapped.out'), 0, 300));
+same(array(true, array('.', '..', 'theirs')), array(strpos((string)file_get_contents($work.'/swapped.out'), "The work folder is not this run's any more, so it was left as it is: $swapped") !== false, scandir($swapped)),
+	'a folder put in place of the run\'s gets nothing of the run\'s, is left as it is, and the run says so: '.substr((string)file_get_contents($work.'/swapped.out'), 0, 300));
 exec('rm -rf '.escapeshellarg($swapped));
 unlink('/var/log/syslog');
 $clear_logs();

@@ -85,8 +85,8 @@ function zfsmDiagSeconds($seconds) {
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
 	if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return false;
-	// Kept open to the run's end: while it is, no other folder can take this one's inode.
-	$began_in = @fopen($dir, 'r');
+	// The folder zfsmDiagWorkDir locked, else one opened now and kept to the run's end: while it is, no other can take its inode.
+	$began_in = zfsmDiagWorkHold($dir) ?? @fopen($dir, 'r');
 	if ($began_in === false) return false;
 	$report = "file\tresult\tseconds\n";
 	$unfinished = array('timed out' => array(), 'read failed' => array(), 'failed' => array());
@@ -113,6 +113,7 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
 	if ($unfinished['read failed']) zfsmDiagFinding('a read failed, so these files are incomplete: '.implode(', ', $unfinished['read failed']));
 	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
+	if (!zfsmDiagSameFolder($dir, $began_in)) return null;
 	$written = zfsmDiagWrite($dir, 'collectors.txt', $report) && $written;
 	$written = zfsmDiagWrite($dir, 'summary.txt', zfsmDiagSummary()) && $written;
 	$written = zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme()) && $written;
