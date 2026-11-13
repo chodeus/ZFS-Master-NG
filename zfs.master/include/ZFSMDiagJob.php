@@ -31,8 +31,9 @@ function zfsmDiagJobSet($state) {
 function zfsmStartDiagnostics($unraid, $report) {
 	$lock = zfsmDiagJobFile('run.lock');
 	// Check, keep the report and start as one step: a start meanwhile is told a run is going, and never replaces this report.
-	// Not passed to the job: a job whose start went wrong must not hold it for every later start.
-	$start = zfsmJobLock(zfsmDiagJobFile('start.lock'), false);
+	// Not passed to the job: a job whose start went wrong must not hold it for every later start. A start that finds another under way
+	// waits for it, up to five seconds, so it then sees that run instead of the last one's state.
+	for ($try = 0; ($start = zfsmJobLock(zfsmDiagJobFile('start.lock'), false)) === false && $try < 50; $try++) usleep(100000);
 	if ($start === null) return array('failed', 'The diagnostics lock could not be opened in '.dirname($lock));
 	if ($start === false) return array('running', '');
 	if (zfsmJobRunning($lock)) $started = array('running', '');

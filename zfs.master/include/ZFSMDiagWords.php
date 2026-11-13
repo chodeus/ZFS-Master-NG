@@ -15,9 +15,12 @@ define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon t
 	.' fastcgi sent stderr message while reading response header upstream client server request host referrer get post http unix sock fpm'
 	.' kmod rc online degraded faulted offline unavail removed ssh connect port');
 
+// The names a browser puts before its versions, for the address rule of include/ZFSMDiagNames.php. Here, so no other file names them.
+define('ZFSM_DIAG_BROWSER_NAMES', 'Chrome/|Chromium/|Safari/|Firefox/|Version/|AppleWebKit/|Edg/|OPR/|CriOS/|FxiOS/');
+
 // Only in a browser's report (plugin/browser.json.txt): what its user agent and Unraid's themes are made of.
 define('ZFSM_DIAG_BROWSER_WORDS', 'mozilla windows nt win64 x64 x86_64 x11 wow64 applewebkit khtml like gecko chrome chromium safari edg edge firefox opr'
-	.' macintosh intel mac os linux ubuntu android iphone ipad cpu version mobile headlesschrome crios fxios theme black white azure gray page');
+	.' macintosh intel mac os linux ubuntu android iphone ipad cpu version mobile headlesschrome crios fxios rv trident msie wv theme black white azure gray page');
 
 // Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run.
 function zfsmDiagVocabulary() {
@@ -53,7 +56,7 @@ function zfsmDiagPropertyName($property) {
 	return $shown ?? zfsmDiagToken($property);
 }
 
-// A number, alone, with a unit of size, time or ratio, or as an ordinal; or a checksum: 12, 10G, 512KiB, 30s, 2x, 2nd, an md5.
+// A number, alone, with a unit of size, time or ratio, as an ordinal or as a version's parts; or a checksum: 12, 10G, 30s, 2nd, 10_15_7.
 function zfsmDiagIsNumber($word) {
-	return preg_match('/^(?:\d+(?:[KMGTPE]i?B?|B|[smhdwy]|x|st|nd|rd|th)?|[0-9a-f]{32,})$/D', $word) === 1;
+	return preg_match('/^(?:\d+(?:[KMGTPE]i?B?|B|[smhdwy]|x|st|nd|rd|th)?|\d+(?:_\d+)+|[0-9a-f]{32,})$/D', $word) === 1;
 }

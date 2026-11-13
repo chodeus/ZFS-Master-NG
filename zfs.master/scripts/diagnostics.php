@@ -14,7 +14,8 @@ $job = in_array('--job', $argv, true);
 // One run at a time, from the page or a terminal, held to its end (zfsmDiagRunLock). A job says why it did not start on its output,
 // which the page's start reads (zfsmStartJob); the page is answered once the job holds the lock and has said so.
 $lock = zfsmDiagRunLock();
-$kept = $job && is_resource($lock) && zfsmDiagJobSet(array('state' => 'running'));
+// A run from a terminal keeps its state too, so the page follows whichever run is last; only the page's own job needs it kept.
+$kept = is_resource($lock) && zfsmDiagJobSet(array('state' => 'running'));
 if (!is_resource($lock) || $job && !$kept) {
 	$why = is_resource($lock) ? 'The run\'s state could not be kept in '.dirname(zfsmDiagJobFile('state.json')) : $lock;
 	if ($job) echo $why, "\n";
@@ -27,8 +28,8 @@ if ($job) zfsmJobStarted();
 $end = function($zip, $why) use ($job) {
 	$state = $zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why);
 	// The page reads the run's state: one that can't be kept leaves it on the last one, so the log says so.
-	if ($job && !zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of the run started from Settings could not be kept in '.dirname(zfsmDiagJobFile('state.json')));
-	elseif (!$job && $zip !== null) echo "\nDiagnostics zip: $zip\n";
+	if (!zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of a run could not be kept in '.dirname(zfsmDiagJobFile('state.json')).', so Settings shows an older one');
+	if (!$job && $zip !== null) echo "\nDiagnostics zip: $zip\n";
 	if (!$job && $why !== '') fwrite(STDERR, $why."\n");
 	exit($zip === null ? 1 : 0);
 };
@@ -45,6 +46,9 @@ if (function_exists('pcntl_async_signals')) {
 	foreach (array(SIGINT, SIGHUP, SIGTERM) as $signal) pcntl_signal($signal, function() { exit(130); });
 }
 $written = zfsmDiagRun($work, zfsmDiagContext(parse_plugin_cfg('zfs.master', true), !in_array('--no-unraid', $argv, true), $job));
+// The browser's report names datasets: once collected into the work folder, it is not kept beside the run's state.
+$report = zfsmDiagJobFile('browser.json');
+if ($job && file_exists($report) && !@unlink($report)) zfsmLog('Diagnostics: the browser\'s report could not be removed from '.dirname($report));
 // Nothing is shown or packed with a real name in it.
 if (!zfsmDiagAnonymizeDir($work)) $end(null, 'The names in the files could not all be replaced, so the files are not shown and no zip was made');
 if (!$job) echo zfsmDiagFile($work.'/collectors.txt'), "\n", zfsmDiagFile($work.'/summary.txt');
