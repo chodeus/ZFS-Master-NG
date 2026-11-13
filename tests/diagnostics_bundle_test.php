@@ -9,11 +9,11 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
-// This test's script runs write zips into /boot/logs: only on the tmpfs the runner mounts there (tests/run_http_inventory_tests.sh),
-// and only while it is empty, so nothing there is another's. The test removes the zips it made, by their names.
-$own_logs = preg_match('~^\S+ \S+ \S+ \S+ /boot/logs \S+(?: \S+)* - tmpfs ~m', (string)@file_get_contents('/proc/self/mountinfo')) === 1;
-if (is_file('/etc/unraid-version') || !$own_logs || array_diff(scandir('/boot/logs'), array('.', '..'))) {
-	fwrite(STDERR, "FAILED: /boot/logs must be an empty tmpfs mounted for this test\n");
+// This test's script runs write zips into /boot/logs, and only while it is empty, so nothing there is another's. The test removes the
+// zips it made, by their names.
+zfsmTestScratch('/boot/logs');
+if (array_diff(scandir('/boot/logs'), array('.', '..'))) {
+	fwrite(STDERR, "FAILED: /boot/logs must be empty\n");
 	exit(1);
 }
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
@@ -571,9 +571,12 @@ if (!is_string($docroot) || !is_file($docroot.'/plugins/zfs.master/scripts/diagn
 }
 $script = $docroot.'/plugins/zfs.master/scripts/diagnostics.php';
 file_put_contents('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".implode("\nJan  2 10:00:01 CanaryTower zfs.master[41]: ", array_map('zfsmSafeText', $log_lines))."\n");
+// Unraid's display settings: a time and a theme written by hand, and a setting the plugin does not use.
+putenv('ZFSM_TEST_DISPLAY='.json_encode(array('date' => '%A, %d.%m.%Y', 'time' => 'CanaryClock %R', 'number' => ', ', 'theme' => 'canarytheme', 'background' => 'CanaryBackground.png')));
 $clear_logs();
-$run = function($options, $arguments = '') use ($script) {
-	exec('ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($script).' '.$arguments.' 2>&1', $printed, $code);
+$run = function($options, $arguments = '', $at = null) use ($docroot) {
+	$at = $at ?? $docroot;
+	exec('ZFSM_TEST_DOCROOT='.escapeshellarg($at).' ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($at.'/plugins/zfs.master/scripts/diagnostics.php').' '.$arguments.' 2>&1', $printed, $code);
 	return array($code, implode("\n", $printed));
 };
 list($code, $printed) = $run('');
@@ -585,6 +588,8 @@ $made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-script').' 2>&1', $unzipped, $code);
 same(array(0, array(), true), array($code, $leaks($ours($work.'/from-script')), is_file($work.'/from-script/unraid/canarytower-diagnostics-20260102-1000.zip')), 'the script\'s zip unpacks, holds no name, and has Unraid\'s zip: '.implode(' ', $unzipped));
 has('Rewrite of tank/name-', file_get_contents($work.'/from-script/plugin/log.txt'), 'the system log\'s lines are in it, rewritten');
+has("== display settings the plugin uses\ndate=%A, %d.%m.%Y\ntime=(not shown: not in the shape of Unraid's choices)\nnumber=, \nscale=(not set)\ntheme=(not shown: not in the shape of Unraid's choices)\n\n",
+	file_get_contents($work.'/from-script/unraid/context.txt'), 'only the display settings the plugin uses, and none written by hand');
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the work folder is removed');
 $clear_logs();
 list($code, $printed) = $run('', '--no-unraid');
@@ -592,6 +597,28 @@ same(array(0, 1), array($code, preg_match('~\nDiagnostics zip: (\S+)$~D', $print
 $made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/without-unraid'));
 same(array("Unraid's own diagnostics were not asked for.\n", array()), array(file_get_contents($work.'/without-unraid/unraid/diagnostics.txt'), glob($work.'/without-unraid/unraid/*.zip')), '--no-unraid leaves Unraid\'s script unrun');
+$clear_logs();
+// A file the owner added to an installed release, and a PHP error in it: the file's words are not the plugin's, so its name is a token.
+$added = $work.'/added';
+mkdir($added.'/webGui/include', 0700, true);
+mkdir($added.'/plugins');
+foreach (array('Helpers.php', 'publish.php') as $file) symlink(realpath($docroot.'/webGui/include/'.$file), $added.'/webGui/include/'.$file);
+exec('cp -R '.escapeshellarg($docroot.'/plugins/zfs.master/.').' '.escapeshellarg($added.'/plugins/zfs.master'), $copied, $code);
+same(0, $code, 'the plugin is copied: '.implode(' ', $copied));
+$sums = '';
+foreach (zfsmDiagFilesUnder($added.'/plugins/zfs.master') as $file) $sums .= md5_file($added.'/plugins/zfs.master/'.$file).'  '.$file."\n";
+file_put_contents($added.'/plugins/zfs.master/manifest.md5', $sums);
+file_put_contents($added.'/plugins/zfs.master/include/CanaryAdded.php', "<?php\nclass CanaryAdded {}\n");
+file_put_contents('/var/log/phplog', "[02-Jan-2026] PHP Warning: x in /usr/local/emhttp/plugins/zfs.master/include/CanaryAdded.php on line 2\n");
+list($code, $printed) = $run('', '--no-unraid', $added);
+unlink('/var/log/phplog');
+same(array(0, false, 1), array($code, stripos($printed, 'canary'), preg_match('~\nDiagnostics zip: (\S+)$~D', $printed, $said)), 'the script ends well and prints no name of an added file: '.$printed);
+$made[] = $said[1];
+exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-added'));
+$from_added = $ours($work.'/from-added');
+same(array(array(), 1, 1), array($leaks($from_added), preg_match('~^not in the release: include/name-[0-9a-f]{8,}\.php$~m', $from_added['plugin/install.txt']),
+	preg_match('~^\[02-Jan-2026\] PHP Warning: x in /usr/local/emhttp/plugins/zfs\.master/include/name-[0-9a-f]{8,} on line 2$~m', $from_added['plugin/php-errors.txt'])),
+	'an added file is a token in the file check and in a PHP error, and is nowhere else: '.$from_added['plugin/install.txt'].$from_added['plugin/php-errors.txt']);
 $clear_logs();
 // Text that can't be searched (PCRE gives up at once): the script shows no file and makes no zip, and says why.
 list($code, $printed) = $run('-d pcre.jit=0 -d pcre.backtrack_limit=1', '--no-unraid');

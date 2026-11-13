@@ -21,7 +21,7 @@ function zfsmDiagVocabulary() {
 	static $words = null;
 	if ($words !== null) return $words ?: null;
 	$words = false;
-	$files = zfsmDiagFilesUnder(dirname(__DIR__));
+	$files = zfsmDiagPluginFiles();
 	if ($files === null) return null;
 	$read = array_flip(explode(' ', ZFSM_DIAG_WORDS));
 	foreach ($files as $file) {

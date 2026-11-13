@@ -136,7 +136,7 @@ function zfsmDiagReadme() {
 		."collectors.txt  each file: ok, read failed, timed out or failed, and the seconds it took\n"
 		."plugin/         settings, install, alert schedule, jobs, replication and the plugin's log\n"
 		."zfs/            pools, datasets, snapshot counts, bookmarks, mounts and running commands\n"
-		."unraid/         the Unraid version, array state, display settings and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
+		."unraid/         the Unraid version, array state, the display settings the plugin uses and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
 		."names.txt       each token in these files, and the shape of the name it stands for\n\n"
 		."In these files a dataset's, snapshot's, bookmark's or folder's name is a token (name-...), the same token wherever that name is.\n"
 		."So are this server's and a sender's name, a key's comment, a pattern or a value its owner wrote and the words of a user property's\nname that the plugin does not use; a user at a host (host-...);\n"

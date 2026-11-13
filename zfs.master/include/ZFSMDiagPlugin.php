@@ -165,17 +165,13 @@ function zfsmDiagRelease($manifest, $flash) {
 
 // The installed files against the package's manifest.md5 (pkg_build.sh writes it), and whether the scripts can still run.
 function zfsmDiagFileCheck($dir) {
-	$listed = zfsmDiagWhole('file_get_contents', $dir.'/manifest.md5');
-	if ($listed === false) {
-		$there = file_exists($dir.'/manifest.md5');
-		zfsmDiagFinding('manifest.md5 '.($there ? 'could not be read' : 'is missing').', so the installed files could not be checked against the release');
-		return 'manifest.md5: '.($there ? zfsmDiagUnread('unreadable') : 'not there')."\n";
+	$expected = zfsmDiagReleaseSums($dir);
+	if (!is_array($expected)) {
+		zfsmDiagFinding('manifest.md5 '.($expected === false ? 'could not be read' : 'is missing').', so the installed files could not be checked against the release');
+		return 'manifest.md5: '.($expected === false ? zfsmDiagUnread('unreadable') : 'not there')."\n";
 	}
 	$wrong = array('changed' => array(), 'missing' => array(), 'not in the release' => array(), 'not executable' => array(), 'unreadable' => array());
-	$expected = array();
-	foreach (preg_split('/\R/', $listed, -1, PREG_SPLIT_NO_EMPTY) as $line) {
-		list($md5, $file) = explode('  ', $line, 2) + array('', '');
-		$expected[$file] = true;
+	foreach ($expected as $file => $md5) {
 		// A file that can't be read is not one that differs.
 		if (!is_file($dir.'/'.$file)) $wrong['missing'][] = $file;
 		elseif (($sum = zfsmDiagWhole('md5_file', $dir.'/'.$file)) === false) $wrong['unreadable'][] = zfsmDiagUnread($file);
@@ -204,6 +200,28 @@ function zfsmDiagFilesUnder($dir) {
 	}
 	sort($files);
 	return $files;
+}
+
+// $dir/manifest.md5, which pkg_build.sh writes, as file => md5: null when it is not there, false when it could not be read.
+function zfsmDiagReleaseSums($dir) {
+	if (!file_exists($dir.'/manifest.md5')) return null;
+	$listed = zfsmDiagWhole('file_get_contents', $dir.'/manifest.md5');
+	if ($listed === false) return false;
+	$sums = array();
+	foreach (preg_split('/\R/', $listed, -1, PREG_SPLIT_NO_EMPTY) as $line) {
+		list($md5, $file) = explode('  ', $line, 2) + array('', '');
+		$sums[$file] = $md5;
+	}
+	return $sums;
+}
+
+// The plugin's own files there now: those its manifest.md5 lists, so a file the owner added is not one; with no manifest.md5
+// (a copy pkg_build.sh did not make), every file. null when they could not be read.
+function zfsmDiagPluginFiles() {
+	$dir = dirname(__DIR__);
+	$sums = zfsmDiagReleaseSums($dir);
+	if ($sums === null) return zfsmDiagFilesUnder($dir);
+	return $sums === false ? null : array_values(array_filter(array_keys($sums), function($file) use ($dir) { return is_file($dir.'/'.$file); }));
 }
 
 // Whether a crontab's lines hold the alert check as zfsmAlertCron writes it, not commented out: another of the plugin's jobs
@@ -350,7 +368,7 @@ function zfsmDiagIniValue($ini, $key) {
 	return is_array($ini) ? (string)($ini[$key] ?? 'not in the file') : zfsmDiagUnread('not read');
 }
 
-// What the plugin reads of Unraid: its version, the array's state, the display settings, the ZFS pools Unraid expects, the other plugins.
+// What the plugin reads of Unraid: its version, the array's state, the display settings it uses, the ZFS pools Unraid expects, the other plugins.
 function zfsmDiagUnraid($ctx) {
 	$version = zfsmDiagIniValue(zfsmDiagWhole('parse_ini_file', zfsmStatePath('/etc/unraid-version')), 'version');
 	$var = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/var.ini'));
@@ -371,7 +389,19 @@ function zfsmDiagUnraid($ctx) {
 	return 'Unraid: '.$version."\n".'PHP: '.PHP_VERSION."\n"
 		.'array: mdState='.zfsmDiagIniValue($var, 'mdState').', fsState='.zfsmDiagIniValue($var, 'fsState')."\n"
 		.'publishing paused: '.(is_file(zfsmStatePath('/tmp/publishPaused')) ? 'yes' : 'no')."\n\n"
-		.zfsmDiagSection('display settings', implodeWithKeys("\n", array_filter($display, 'is_scalar'), '='))
+		.zfsmDiagSection('display settings the plugin uses', zfsmDiagDisplay($display))
 		.zfsmDiagSection('ZFS pools and disks Unraid lists', is_array($disks) ? implode("\n", $pools) : zfsmDiagUnread('(disks.ini could not be read)'))
 		.zfsmDiagSection('installed plugins', implode("\n", $plugins));
+}
+
+// The display settings the plugin reads, each value shown only in the shape Unraid's own choices take: another may be written by hand.
+function zfsmDiagDisplay($display) {
+	$shapes = array('date' => '~^(?:%[A-Za-z]|[ ,./-])*$~D', 'time' => '~^(?:%[A-Za-z]|[ :])*$~D', 'number' => '~^[., ]{1,2}$~D', 'scale' => '~^-?\d$~D',
+		'theme' => '~^(?:black|white|azure|gray)$~D');
+	$rows = array();
+	foreach ($shapes as $key => $shape) {
+		$value = $display[$key] ?? null;
+		$rows[] = $key.'='.(!is_scalar($value) ? '(not set)' : (preg_match($shape, (string)$value) === 1 ? $value : '(not shown: not in the shape of Unraid\'s choices)'));
+	}
+	return implode("\n", $rows);
 }

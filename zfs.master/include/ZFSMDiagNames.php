@@ -245,12 +245,12 @@ function zfsmDiagSystemPath($top, $rest) {
 }
 
 // The system paths the plugin uses, with the folders on the way to each: tests/diagnostics_bundle_test.php checks every one its code
-// names is here. null when the plugin's files could not be listed.
+// names is here. null when the plugin's files could not be listed or read.
 function zfsmDiagSystemKnown() {
 	static $known = null;
 	if ($known !== null) return $known ?: null;
 	$known = false;
-	$files = zfsmDiagFilesUnder(dirname(__DIR__));
+	$files = zfsmDiagPluginFiles();
 	if ($files === null) return null;
 	$web = array('webGui/include/Helpers.php', 'webGui/include/publish.php', 'webGui/scripts/diagnostics', 'webGui/javascript/dynamix.js', 'webGui/styles/default-base.css',
 		'webGui/styles/default-color-palette.css', 'webGui/styles/default-fonts.css', 'webGui/styles/default-popup.css', 'webGui/styles/font-awesome.css', 'plugins/dynamix/scripts/notify');
