@@ -107,7 +107,9 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@CanaryTower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
 	$put('/proc/self/mounts', "tank /mnt/tank zfs rw 0 0\n");
-	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n106 1 0:49 / /var/run/zfs.master.rewrite\\040CanaryRunMount rw shared:54 - zfs tank/CanaryRunMount rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n");
+	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n106 1 0:49 / /var/run/zfs.master.rewrite\\040CanaryRunMount rw shared:54 - zfs tank/CanaryRunMount rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n"
+		// The kernel writes a carriage return in a path as it is.
+		."107 102 0:50 / /mnt/tank/CanaryCR\rCanaryTail rw shared:56 - zfs tank/CanaryCR rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"CanaryNas\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
@@ -234,6 +236,11 @@ same(array('/usr/local/'.zfsmDiagToken('ClientA')."\t/usr/bin/php\t/usr/local/em
 		zfsmDiagAnonJson('{"m":"/usr/local/Client A","n":"/usr/local/12345"}'), zfsmDiagAnonRunning('/usr/local/ClientA failed, /usr/local/client too, zpool import -d /dev/disk/by-id/ata-ClientF tank'),
 		zfsmDiagAnonRunning('include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed'), zfsmDiagAnonText('/plugins/zfs.master/backend/ZFSMAdmin.php?csrf_token=ClientD')),
 	'a folder under a system folder is a token, a word or a number too, in a row, a JSON value and running text; the system\'s and the plugin\'s own paths stay, a page\'s query is left out');
+// A name can hold a carriage return: in a row it is no line's end, so the name after it is in the token too.
+same(array('tank/'.zfsmDiagToken('a')."\tmountpoint\t/mnt/tank/".zfsmDiagToken("Client\rSecret")."\tlocal\n", 'tank/'.zfsmDiagToken('a')."\t/mnt/tank/".zfsmDiagToken("Client\rSecret")."\tlz4", 1),
+	array(zfsmDiagAnonText(zfsmDiagFreeRows("tank/a\tmountpoint\t/mnt/tank/Client\rSecret\tlocal\n", "tank/a\tmountpoint\n")), zfsmDiagAnonText("tank/a\t/mnt/tank/Client\rSecret\tlz4"),
+		count(zfsmDiagAllRows(array('tank' => array('code' => 0, 'output' => "tank/a\t/mnt/tank/Client\rSecret\tlz4\n"))))),
+	'a carriage return in a property\'s value or a dataset\'s mountpoint is part of its name, and its row is one row');
 // Every system path the plugin's own code names stays whole: zfsmDiagSystemKnown has them all.
 $named = array();
 foreach (zfsmDiagFilesUnder(__DIR__.'/../zfs.master') as $file) {

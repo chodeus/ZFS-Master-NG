@@ -135,9 +135,9 @@ function zfsmDiagNamePattern() {
 }
 
 // $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
-// $ends: what ends a folder's path in $text: a tab or a line break in a file's tab-separated rows, only a line break in running text
+// $ends: what ends a folder's path in $text: a tab or a line feed in a file's tab-separated rows (a name can hold a carriage return), a line break in running text
 // (zfsmDiagAnonRunning, the only caller that passes it), nothing in a JSON value that is a path itself (zfsmDiagAnonValue).
-function zfsmDiagAnonText($text, $ends = "\t\r\n") {
+function zfsmDiagAnonText($text, $ends = "\t\n") {
 	$pattern = zfsmDiagNamePattern();
 	$clean = '';
 	for ($at = 0; ($found = preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $at)) === 1; $at = $end) {
@@ -150,7 +150,7 @@ function zfsmDiagAnonText($text, $ends = "\t\r\n") {
 }
 
 // What one find becomes, and where the search goes on: [its replacement, the offset after what it stands for].
-function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
+function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 	list($found, $at) = $match[0];
 	$end = $at + strlen($found);
 	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at, $ends);
@@ -174,7 +174,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
 
 // A path at $at, each name in it a token. A system path keeps the system's own folders (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
 // A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end.
-function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
+function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
 	$field = strpos($ends, "\t") !== false || $ends === '';

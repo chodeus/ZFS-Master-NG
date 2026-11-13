@@ -56,10 +56,15 @@ function zfsmDiagAllRows($results) {
 	$rows = array();
 	foreach ($results as $result) {
 		if ($result['code'] !== 0) return null;
-		$rows = array_merge($rows, zfsmImpactRows($result['output']));
+		$rows = array_merge($rows, zfsmDiagLines($result['output']));
 	}
 	foreach ($rows as $row) zfsmDiagKnow(explode("\t", $row, 2)[0]);
 	return $rows;
+}
+
+// A read's lines, split only at a line feed: a value in zfs's rows and a path in mountinfo can hold a carriage return.
+function zfsmDiagLines($text) {
+	return preg_split('/\n/', (string)$text, -1, PREG_SPLIT_NO_EMPTY);
 }
 
 // Every dataset's name, those the exclusion pattern hides too; null when they can't all be listed.
@@ -181,8 +186,8 @@ function zfsmDiagPropertyRows($command, $args, $head) {
 // The rows of $output: the $heads, each with its value and source after it. Only when every line of one is a row of the other is it
 // known which text is a value. If not, a value holds a line break or a property changed between the reads, and no value is shown.
 function zfsmDiagFreeRows($output, $heads) {
-	$lines = $output === '' ? array() : explode("\n", substr($output, -1) === "\n" ? substr($output, 0, -1) : $output);
-	$heads = $heads === '' ? array() : explode("\n", substr($heads, -1) === "\n" ? substr($heads, 0, -1) : $heads);
+	$lines = zfsmDiagLines($output);
+	$heads = zfsmDiagLines($heads);
 	$exact = count($lines) === count($heads);
 	$rows = array();
 	foreach ($exact ? $heads : array() as $at => $head) {
@@ -229,7 +234,7 @@ function zfsmDiagFreeRow($head, $value, $source) {
 function zfsmDiagMounts($ctx) {
 	$list = zfsmDiagWhole('file_get_contents', zfsmStatePath('/proc/self/mountinfo'));
 	$mounts = array();
-	foreach (zfsmImpactRows($list) as $line) {
+	foreach (zfsmDiagLines($list) as $line) {
 		if (preg_match('/ - zfs (\S+)/', $line, $source) !== 1) continue;
 		zfsmDiagKnow(str_replace('\\040', ' ', $source[1]));
 		$mounts[] = str_replace(array(' ', '\\040'), array("\t", ' '), $line);
