@@ -209,6 +209,10 @@ $seen = $log();
 file_put_contents($work.'/pool/datasets', "backup/My Replicas\tfilesystem\n", FILE_APPEND);
 putenv('ZFSM_TEST_ACCEPT=backup/My Replicas');
 same(array('area' => 'backup/My Replicas/tower'), zfsmReplicaHello($nas), 'an area whose name holds a space');
+// This server renamed since the key line there was made: that line still names the old one, so it is not ready.
+file_put_contents($work.'/ident.cfg', "NAME=\"newtower\"\n");
+same(array('error' => 'The key line on nas names this server tower, but it is newtower now: put the line this page gives in its place'), zfsmReplicaHello($nas), 'an area for another name than this server\'s is no hello');
+file_put_contents($work.'/ident.cfg', "NAME=\"tower\"\n");
 putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();
 same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
