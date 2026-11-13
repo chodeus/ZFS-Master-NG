@@ -82,13 +82,13 @@ function zfsmDiagSeconds($seconds) {
 	return $seconds * ($GLOBALS['zfsm_diag_scale'] ?? 1);
 }
 
-// Writes every file into $dir; false when one could not be written. A collector that throws, runs out of time or could not
-// read something is noted in collectors.txt and the summary, and the rest still run.
+// Writes every file into $dir: false when one could not be written, null when the folder went under the run at any point. A collector
+// that throws, runs out of time or could not read is noted in collectors.txt and the summary.
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
 	if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return false;
-	// Kept open to the run's end: while it is, no other folder can take this one's inode.
-	$began_in = @fopen($dir, 'r');
+	// The folder zfsmDiagWorkDir locked, else one opened now and kept to the run's end: while it is, no other can take its inode.
+	$began_in = zfsmDiagWorkHold($dir) ?? @fopen($dir, 'r');
 	if ($began_in === false) return false;
 	$report = "file\tresult\tseconds\n";
 	$unfinished = array('timed out' => array(), 'read failed' => array(), 'failed' => array());
@@ -108,16 +108,18 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 		}
 		if ($result !== 'ok') $unfinished[$result][] = $file;
 		// The run's lock is on the folder it began in: once that is gone, or another of its name is there, the run ends.
-		if (!zfsmDiagSameFolder($dir, $began_in)) return false;
+		if (!zfsmDiagSameFolder($dir, $began_in)) return null;
 		$written = zfsmDiagWrite($dir, $file, $text) && $written;
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
 	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
 	if ($unfinished['read failed']) zfsmDiagFinding('a read failed, so these files are incomplete: '.implode(', ', $unfinished['read failed']));
 	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
+	if (!zfsmDiagSameFolder($dir, $began_in)) return null;
 	$written = zfsmDiagWrite($dir, 'collectors.txt', $report) && $written;
 	$written = zfsmDiagWrite($dir, 'summary.txt', zfsmDiagSummary()) && $written;
-	return zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme()) && $written;
+	$written = zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme()) && $written;
+	return zfsmDiagSameFolder($dir, $began_in) ? $written : null;
 }
 
 // One screen: the versions and counts the collectors noted, then what they found wrong.
@@ -170,7 +172,6 @@ function zfsmDiagWrite($dir, $file, $text) {
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
 // to its end. A killed run's folder has a free lock a minute after it was made: a new run first tries to remove those (zfsmDiagRemove).
 function zfsmDiagWorkDir() {
-	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');
 	foreach (glob($prefix.'*') ?: array() as $old) {
 		// Kept in a variable: the lock must last through the removal.
@@ -180,8 +181,21 @@ function zfsmDiagWorkDir() {
 	$dir = $prefix.bin2hex(random_bytes(8));
 	$hold = @mkdir($dir, 0700) ? zfsmDiagHold($dir) : false;
 	if ($hold === false) return null;
-	$holds[] = $hold;
+	zfsmDiagWorkHold($dir, $hold);
 	return $dir;
+}
+
+// The lock zfsmDiagWorkDir holds on each folder it made, kept to the run's end.
+function zfsmDiagWorkHold($dir, $hold = null) {
+	static $holds = array();
+	if ($hold !== null) $holds[$dir] = $hold;
+	return $holds[$dir] ?? null;
+}
+
+// Whether $dir is still the folder zfsmDiagWorkDir made and locks: every step after the collectors asks before it reads or removes.
+function zfsmDiagStillOurs($dir) {
+	$hold = zfsmDiagWorkHold($dir);
+	return $hold !== null && zfsmDiagSameFolder($dir, $hold);
 }
 
 // The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),

@@ -94,7 +94,8 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 };
 $settings = array('refresh_interval' => '60', 'directory_listing' => 'tank/data', 'alert_interval' => '60', 'replica_accept' => 'tank/data');
 $context = function($changed = array()) use ($settings, $plugin_dir) {
-	return array('dir' => $plugin_dir) + zfsmDiagContext(array('general' => $changed + $settings));
+	// Unraid's own diagnostics left out: they run its real script, which the leak test (diagnostics_bundle_test.php) stands in for.
+	return array('dir' => $plugin_dir) + zfsmDiagContext(array('general' => $changed + $settings), false);
 };
 // A file that is there and that even root can't open: a socket in its place.
 $unopenable = function($path) {
@@ -563,8 +564,15 @@ function zfsmTestSwapsFolder($ctx) { zfsmTestLosesFolder($ctx); mkdir($GLOBALS['
 $GLOBALS['zfsm_test_lost'] = $work.'/lost';
 foreach (array('zfsmTestLosesFolder' => array(), 'zfsmTestSwapsFolder' => array('.', '..')) as $loses => $left) {
 	$lost_run = zfsmDiagRun($work.'/lost', $context(), array(array('plugin/first.txt', 5, $loses, array()), array('zfs/second.txt', 5, 'zfsmDiagSettingsSaved', array())));
-	same(array(false, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends and writes no more: '.$loses);
+	same(array(null, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends, writes no more and says so apart from a failed write: '.$loses);
 }
+// Only the folder zfsmDiagWorkDir made and still locks is the run's: not one made in its place, nor any other.
+$ours = zfsmDiagWorkDir();
+$was_ours = zfsmDiagStillOurs($ours);
+exec('rm -rf '.escapeshellarg($ours));
+mkdir($ours, 0700);
+same(array(true, false, false), array($was_ours, zfsmDiagStillOurs($ours), zfsmDiagStillOurs($work)), 'a work folder is the run\'s only while it is the one it locked; a folder it never made is not');
+rmdir($ours);
 same(array(false, false, false), array(zfsmDiagWrite($work.'/never', 'plugin/first.txt', 'first'), zfsmDiagWrite($work.'/never', 'summary.txt', 'first'), file_exists($work.'/never')), 'a file\'s write makes its own folder, never the run\'s');
 // The Main tab's read gives a pool whose devices could not be read an empty list: in the file that is a read that failed.
 putenv('ZFSM_TEST_ZPOOL_STATUS_FAIL=1');
@@ -778,7 +786,7 @@ foreach ($pcntl ? array('INT' => 2, 'HUP' => 1, 'TERM' => 15) : array() as $name
 	proc_terminate($stopped, $signal);
 	for ($wait = 0; $wait < 100 && proc_get_status($stopped)['running']; $wait++) usleep(50000);
 	proc_close($stopped);
-	same(array(), glob('/tmp/zfs.master-diag.*'), 'a run ended by SIG'.$name.' removes its work folder');
+	same(array(array(), array('state' => 'failed', 'why' => 'The run was stopped before it ended')), array(glob('/tmp/zfs.master-diag.*'), zfsmDiagJobState()), 'a run ended by SIG'.$name.' removes its work folder, and the page reads it as stopped');
 }
 if (!$pcntl) echo "diagnostics: the three signal cases were not run (no ZFSM_TEST_PCNTL)\n";
 

@@ -281,4 +281,6 @@ var zfsm_diagnostics = createZFSMDiagnostics({url: '/plugins/zfs.master/backend/
 $('#zfsm-diag-start').on('click', zfsm_diagnostics.start);
 zfsm_diagnostics.poll();
 window.addEventListener('pagehide', zfsm_diagnostics.stop);
+// A page brought back from the browser's cache asks again: what it showed was stopped when it was left.
+window.addEventListener('pageshow', function(event) { if (event.persisted) zfsm_diagnostics.poll(); });
 </script>

@@ -10,7 +10,8 @@ function zfsmDiagJobFile($name) {
 
 // What the page shows: array('state' => 'none', 'running', 'done' with 'zip', its name, or 'failed' with 'why').
 function zfsmDiagJobState() {
-	if (zfsmJobRunning(zfsmDiagJobFile('run.lock'))) return array('state' => 'running');
+	// A start under way is a run already: its job takes the run's lock before the start lets go of its own.
+	if (zfsmJobRunning(zfsmDiagJobFile('run.lock')) || zfsmJobRunning(zfsmDiagJobFile('start.lock'))) return array('state' => 'running');
 	$state = json_decode((string)@file_get_contents(zfsmDiagJobFile('state.json')), true);
 	if (!is_array($state) || !is_string($state['state'] ?? null)) return array('state' => 'none');
 	// Still "running" with no run holding the lock: the run was killed.
@@ -30,14 +31,18 @@ function zfsmDiagJobSet($state) {
 // browser says of itself, kept as text for the run to put among its files: no more than 64 KB of it.
 function zfsmStartDiagnostics($unraid, $report) {
 	$lock = zfsmDiagJobFile('run.lock');
-	// Check, keep the report and start as one step: a start meanwhile is told a run is going, and never replaces this report.
-	// Not passed to the job: a job whose start went wrong must not hold it for every later start.
+	// Check, keep the report and start as one step, under a lock its job does not inherit; a start meanwhile is told a run is going.
 	$start = zfsmJobLock(zfsmDiagJobFile('start.lock'), false);
 	if ($start === null) return array('failed', 'The diagnostics lock could not be opened in '.dirname($lock));
 	if ($start === false) return array('running', '');
 	if (zfsmJobRunning($lock)) $started = array('running', '');
 	elseif (@file_put_contents(zfsmDiagJobFile('browser.json'), substr((string)$report, 0, 65536)) === false) $started = array('failed', 'The browser\'s report could not be kept');
 	else $started = zfsmStartJob('diagnostics.php', array_merge(array('--job'), $unraid ? array() : array('--no-unraid')), $lock);
+	// A start that failed is the page's latest result, so a page that was left or another tab reads why; its report goes with it.
+	if ($started[0] === 'failed') {
+		@unlink(zfsmDiagJobFile('browser.json'));
+		zfsmDiagJobSet(array('state' => 'failed', 'why' => $started[1]));
+	}
 	zfsmJobUnlock($start);
 	return $started;
 }
@@ -52,6 +57,21 @@ function zfsmDiagRunLock() {
 		usleep(100000);
 	}
 	return 'Another diagnostics run is going: wait for it to end, then try again';
+}
+
+// The browser's report rewritten: its user agent by its own grammar (zfsmDiagUserAgent), the rest as any running text. Text that is
+// not a report (a terminal run's sentence, a report cut at 64 KB) is running text whole.
+function zfsmDiagAnonBrowser($text) {
+	$report = json_decode($text, true);
+	if (!is_array($report) || !is_string($report['userAgent'] ?? null)) {
+		$clean = zfsmDiagAnonText($text);
+		return $clean === null ? null : zfsmDiagKnownWords($clean, ZFSM_DIAG_THEME_WORDS);
+	}
+	$agent = zfsmDiagUserAgent($report['userAgent']);
+	unset($report['userAgent']);
+	$rest = zfsmDiagAnonJson(zfsmJson($report));
+	$rest = $rest === null ? null : json_decode((string)zfsmDiagKnownWords($rest, ZFSM_DIAG_THEME_WORDS), true);
+	return is_array($rest) ? zfsmJson(array('userAgent' => $agent) + $rest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 }
 
 // What the browser said of itself when it asked for the run; a run from a terminal has none.

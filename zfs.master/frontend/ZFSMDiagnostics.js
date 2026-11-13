@@ -6,12 +6,15 @@ function zfsmDiagReport(win) {
 	const kept = {};
 	let room = 50000, leftOut = 0;
 	try {
-		for (let index = 0; index < win.localStorage.length; index++) {
-			const key = win.localStorage.key(index);
+		const keys = [];
+		for (let index = 0; index < win.localStorage.length; index++) keys.push(win.localStorage.key(index));
+		// The Main tab's record first, as itself: it is what the report is for, and it is bounded where it is written (zfsmDiagRecord).
+		keys.sort((one, other) => (other === 'zfsm-diagnostics') - (one === 'zfsm-diagnostics'));
+		for (const key of keys) {
 			if (!/^(zfsm-|zdataset-)/.test(key)) continue;
 			const value = String(win.localStorage.getItem(key));
-			// The cache is the whole inventory, which the run reads for itself; the record is bounded where it is written.
-			const shown = key === 'zfsm-cache' ? value.length + ' characters' : key === 'zfsm-diagnostics' ? value : value.slice(0, 2000);
+			// The cache is the whole inventory, which the run reads for itself.
+			const shown = key === 'zfsm-cache' ? value.length + ' characters' : key === 'zfsm-diagnostics' ? zfsmDiagParsed(value) : value.slice(0, 2000);
 			const size = zfsmDiagBytes(JSON.stringify(shown));
 			if (size > room) leftOut++;
 			else {
@@ -24,6 +27,15 @@ function zfsmDiagReport(win) {
 	}
 	return JSON.stringify({userAgent: String(win.navigator.userAgent).slice(0, 500), window: [win.innerWidth, win.innerHeight], pixelRatio: win.devicePixelRatio,
 		theme: (win.document.documentElement.className + ' ' + win.document.body.className).trim().slice(0, 200), kept: kept, leftOut: leftOut});
+}
+
+// The record as the object it is; one that is not JSON is text like any other value.
+function zfsmDiagParsed(value) {
+	try {
+		return JSON.parse(value);
+	} catch (error) {
+		return value.slice(0, 2000);
+	}
 }
 
 // A text's size in UTF-8 bytes, as it is sent; a text that can't be sent as UTF-8 (a lone surrogate) has no size that fits.

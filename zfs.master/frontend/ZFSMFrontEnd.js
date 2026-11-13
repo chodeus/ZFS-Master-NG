@@ -164,20 +164,21 @@ function loadFromLocalStorage(key, decode=true) {
 	}
 }
 
-// What the Main tab last showed, kept in the browser for a diagnostics run to send (ZFSMDiagnostics.js): its last status, its
-// last render and the newest twenty script errors. make() gives the part's value; one that throws is not worth a broken page.
-// Bounded where it is written: the newest twenty errors, each string of a part cut to 500 characters and each list to 40 entries.
+// What the Main tab last showed, for a diagnostics run to send (ZFSMDiagnostics.js). Its JSON stays under 13,000 characters, 40 KB
+// at three bytes a character (the report keeps 50 KB): strings cut to 200, lists to 40, errors to 8,000 oldest first, the render 3,000.
 function zfsmDiagRecord(part, make) {
 	try {
-		const record = loadFromLocalStorage('zfsm-diagnostics') || {};
+		const record = zfsmDiagBounded(loadFromLocalStorage('zfsm-diagnostics') || {});
 		const entry = zfsmDiagBounded(make());
 		record[part] = part === 'errors' ? (record.errors || []).concat([entry]).slice(-20) : entry;
+		while (JSON.stringify(record.errors || []).length > 8000) record.errors.shift();
+		while (record.render && JSON.stringify(record.render).length > 3000 && (record.render.headers || []).length) record.render.headers.pop();
 		saveToLocalStorage('zfsm-diagnostics', record);
 	} catch (error) {}
 }
 
 function zfsmDiagBounded(value) {
-	if (typeof value === 'string') return value.slice(0, 500);
+	if (typeof value === 'string') return value.slice(0, 200);
 	if (Array.isArray(value)) return value.slice(0, 40).map(zfsmDiagBounded);
 	if (value === null || typeof value !== 'object') return value;
 	const bounded = {};

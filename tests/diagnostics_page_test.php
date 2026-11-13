@@ -95,10 +95,14 @@ same(array(true, true, false, false, array()), array(strpos($browser, 'Mozilla/5
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the job removes its work folder');
 
 // With the box on, Unraid's zip is in it; a report longer than 64 KB is kept to that.
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
 same('started', $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '1', 'report' => str_repeat('x', 100000)))['state'] ?? null, 'a start with the box on');
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
+$kept_report = filesize($work.'/jobs/diagnostics/browser.json');
 $second = $finished();
 exec('unzip -q '.escapeshellarg('/boot/logs/'.($second['zip'] ?? '')).' -d '.escapeshellarg($work.'/second'));
-same(array('done', 1, 65536), array($second['state'] ?? $second, count(glob($work.'/second/unraid/*.zip')), filesize($work.'/jobs/diagnostics/browser.json')), 'Unraid\'s zip is in, and the report is cut at 64 KB');
+same(array('done', 1, 65536, false), array($second['state'] ?? $second, count(glob($work.'/second/unraid/*.zip')), $kept_report, file_exists($work.'/jobs/diagnostics/browser.json')),
+	'Unraid\'s zip is in, the report is cut at 64 KB while the run goes, and it is removed once the run has it');
 
 // The download: the plugin's zips by their own names, byte for byte, and nothing else.
 $cgi = dirname(PHP_BINARY).'/php-cgi';
@@ -136,6 +140,26 @@ $kill();
 for ($waited = 0; $waited < 40 && $state() === array('state' => 'running'); $waited++) usleep(250000);
 same(array('state' => 'failed', 'why' => 'The run ended without a result'), $state(), 'a killed run is a failed one');
 
+// A start under way is a run already: another start is told so at once, and the page reads it as running.
+$clear();
+@mkdir($work.'/jobs/diagnostics', 0700, true);
+$starting = fopen($work.'/jobs/diagnostics/start.lock', 'c');
+flock($starting, LOCK_EX);
+$began = microtime(true);
+$meanwhile = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'late'));
+same(array(array('state' => 'running', 'why' => ''), true, array('state' => 'running')), array($meanwhile, microtime(true) - $began < 2, $state()), 'a start while another start is under way is told a run is going, and so is the page');
+flock($starting, LOCK_UN);
+fclose($starting);
+same(true, $state() !== array('state' => 'running'), 'and once that start lets go with no run, the page no longer reads a run');
+
+// A start that fails is the page's latest result, so another tab, or this one after it was left, reads why.
+$clear();
+@unlink($work.'/jobs/diagnostics/browser.json');
+mkdir($work.'/jobs/diagnostics/browser.json', 0700, true);
+$refused = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '{}'));
+rmdir($work.'/jobs/diagnostics/browser.json');
+same(array(array('state' => 'failed', 'why' => 'The browser\'s report could not be kept'), array('state' => 'failed', 'why' => 'The browser\'s report could not be kept')), array($refused, $state()), 'a start that fails says why, and the page reads it later');
+
 // A run whose state can't be kept does not start, and says why: the page could never show its result.
 $clear();
 mkdir($work.'/jobs/diagnostics/state.json.tmp', 0700, true);
@@ -159,6 +183,21 @@ $answer = json_decode((string)stream_get_contents($pipes[1]), true);
 proc_close($starting);
 same('started', $answer['state'] ?? $answer, 'a start beside a status read starts: '.json_encode($answer));
 $finished();
+$clear();
+
+// A run from a terminal that is killed reads failed on the page, as the page's own does, not as the last run's zip.
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
+$terminal_run = proc_open(array(PHP_BINARY, '-n', $docroot.'/plugins/zfs.master/scripts/diagnostics.php', '--no-unraid'), array(1 => array('file', '/dev/null', 'w'), 2 => array('file', '/dev/null', 'w')), $no_pipes);
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
+for ($waited = 0; $waited < 40 && $state() !== array('state' => 'running'); $waited++) usleep(100000);
+proc_terminate($terminal_run, 9);
+proc_close($terminal_run);
+same(array('state' => 'failed', 'why' => 'The run ended without a result'), $state(), 'a killed run from a terminal is a failed one on the page');
+$clear();
+
+// A run from a terminal keeps its state too: the page shows its zip once it ends.
+exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --no-unraid 2>&1', $from_terminal, $terminal_code);
+same(array(0, 1, 'done'), array($terminal_code, preg_match('~^Diagnostics zip: /boot/logs/'.preg_quote((string)($state()['zip'] ?? '-'), '~').'$~m', implode("\n", $from_terminal)), $state()['state'] ?? null), 'a run from a terminal shows on the page as done, with its zip');
 $clear();
 
 // A command the run started and left behind holds none of its locks: once the run is done, the page says so and starts another.
