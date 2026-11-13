@@ -564,6 +564,13 @@ foreach (array('zfsmTestLosesFolder' => array(), 'zfsmTestSwapsFolder' => array(
 	$lost_run = zfsmDiagRun($work.'/lost', $context(), array(array('plugin/first.txt', 5, $loses, array()), array('zfs/second.txt', 5, 'zfsmDiagSettingsSaved', array())));
 	same(array(null, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends, writes no more and says so apart from a failed write: '.$loses);
 }
+// Only the folder zfsmDiagWorkDir made and still locks is the run's: not one made in its place, nor any other.
+$ours = zfsmDiagWorkDir();
+$was_ours = zfsmDiagStillOurs($ours);
+exec('rm -rf '.escapeshellarg($ours));
+mkdir($ours, 0700);
+same(array(true, false, false), array($was_ours, zfsmDiagStillOurs($ours), zfsmDiagStillOurs($work)), 'a work folder is the run\'s only while it is the one it locked');
+rmdir($ours);
 same(array(false, false, false), array(zfsmDiagWrite($work.'/never', 'plugin/first.txt', 'first'), zfsmDiagWrite($work.'/never', 'summary.txt', 'first'), file_exists($work.'/never')), 'a file\'s write makes its own folder, never the run\'s');
 // The Main tab's read gives a pool whose devices could not be read an empty list: in the file that is a read that failed.
 putenv('ZFSM_TEST_ZPOOL_STATUS_FAIL=1');

@@ -17,7 +17,8 @@ if ($work === null) {
 }
 // The folder holds real names and is root's alone: the run's end tries to remove it, and a later run tries again.
 register_shutdown_function(function() use ($work) {
-	if (is_dir($work) && !zfsmDiagRemove($work)) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
+	if (is_dir($work) && !zfsmDiagStillOurs($work)) fwrite(STDERR, "The work folder is not this run's any more, so it was left as it is: $work\n");
+	elseif (is_dir($work) && !zfsmDiagRemove($work)) fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
 });
 // Ctrl-C, a dropped session or a kill ends PHP without its shutdown functions: where it has pcntl, they end it with one.
 if (function_exists('pcntl_async_signals')) {
@@ -25,8 +26,7 @@ if (function_exists('pcntl_async_signals')) {
 	foreach (array(SIGINT, SIGHUP, SIGTERM) as $signal) pcntl_signal($signal, function() { exit(130); });
 }
 $written = zfsmDiagRun($work, zfsmDiagContext(parse_plugin_cfg('zfs.master', true), !in_array('--no-unraid', $argv, true)));
-// A folder that is not the run's any more is not rewritten either: nothing in it is the run's.
-if ($written === null) {
+if ($written === null || !zfsmDiagStillOurs($work)) {
 	fwrite(STDERR, "The work folder changed under the run, so nothing was rewritten, shown or packed\n");
 	exit(1);
 }
@@ -36,7 +36,7 @@ if (!zfsmDiagAnonymizeDir($work)) {
 	exit(1);
 }
 echo zfsmDiagFile($work.'/collectors.txt'), "\n", zfsmDiagFile($work.'/summary.txt');
-list($zip, $why) = $written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work");
+list($zip, $why) = !zfsmDiagStillOurs($work) ? array(null, 'the work folder changed under the run') : ($written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work"));
 if ($zip === null) fwrite(STDERR, "No zip was made: $why\n");
 else echo "\nDiagnostics zip: $zip\n";
 // A zip that was made can still come with something to say.
