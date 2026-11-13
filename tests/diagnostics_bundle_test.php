@@ -95,7 +95,7 @@ $log_lines = array(
 $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));
 	clearstatcache(true);
-	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\"\n");
+	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos\"\nsize_units=\"Canary Customer\"\nCanary stray note\n");
 	$put('/boot/config/ssh/root/authorized_keys', 'restrict,from="203.0.113.77",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php canarysender" '.$public_key." Canary Laptop\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
 	// Through the plugin's own writer, so each line is as the plugin's log holds it: one line, its quotes replaced, cut at its limit.
@@ -110,7 +110,7 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
 };
-$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare", 'replica_accept' => 'tank/CanaryDs One');
+$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos", 'replica_accept' => 'tank/CanaryDs One', 'size_units' => 'Canary Customer');
 // A run on that server, rewritten and packed: [the zip's path or null, why not, the folder its zip was unpacked into].
 $bundle = function($name, $unraid = true, $fresh = true) use ($work, $build, $settings) {
 	if ($fresh) $build();
@@ -153,9 +153,10 @@ $ds = $token('CanaryDs One');
 same(true, strpos($files['names.txt'], $ds."\t12 characters, 12 bytes, 1 space(s), mixed case\n") !== false, 'a name\'s shape is its length, its spaces and its case');
 has("tank/$ds\tfilesystem\t", $files['zfs/datasets.txt'], 'a dataset is its pool and a token');
 has("\t/mnt/tank/$ds\t", $files['zfs/datasets.txt'], 'the same token in its mount point');
-has('["tank/'.$ds.'","tank/'.$token('CanaryGone Two').'","ghostpool/'.$token('CanaryGhost').'","'.$token('CanaryBare').'"]', $files['plugin/settings-effective.txt'], 'and in the settings that name it; an entry of one word, which is no pool, is a token');
+has('["tank/'.$ds.'","tank/'.$token('CanaryGone Two').'","'.$token('ghostpool').'/'.$token('CanaryGhost').'","'.$token('CanaryBare').'","'.$token('CanaryClient').'/'.$token('photos').'"]', $files['plugin/settings-effective.txt'],
+	'and in the settings that name it; a first word that is no pool this run knows is a token, alone or before a slash');
 has('Directory Listing names a dataset that does not exist: '.zfsmDiagToken('CanaryBare')."\n", $files['summary.txt'], 'as it is in its finding');
-has('Directory Listing names a dataset that does not exist: ghostpool/'.zfsmDiagToken('CanaryGhost')."\n", $files['summary.txt'], 'a pool only a setting names marks its datasets');
+has('Directory Listing names a dataset that does not exist: '.$token('ghostpool').'/'.$token('CanaryGhost')."\n", $files['summary.txt'], 'a pool only a setting names is no pool: its name is a token too');
 has("\t-\tzfs\tmountedpool/".$token('CanaryMounted')."\trw\n", $files['zfs/mounts.txt'], 'and so does a pool only a mount names');
 has("4243\t5\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/$ds\n", $files['plugin/jobs.txt'], 'a system path stays as it is, and the dataset after it is a token');
 has('Directory Listing names a dataset that does not exist: tank/'.zfsmDiagToken('CanaryGone Two')."\n", $files['summary.txt'], 'a finding names a dataset by its token');
@@ -167,7 +168,8 @@ has('"com.'.zfsmDiagToken('canaryclient').':'.zfsmDiagToken('canary').'_plan":',
 has("comment\t".$token('Canary Comment')."\tlocal\n", $files['zfs/zpool-get-all.txt'], 'a pool\'s comment is a token');
 $mount = $token('Canary Mount');
 has("\t/mnt/tank/$mount\trw\tshared:52\t-\tzfs\ttank/$mount\trw\n", $files['zfs/mounts.txt'], 'a mount whose name holds a space is one token, in its folder and its dataset');
-has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing = ".$token('tank/CanaryDs One')."\n", $files['plugin/settings-saved.cfg.txt'], 'the saved settings keep a known setting; a pattern, a prefix, a list of datasets and an unknown setting are each one token, with the lines the value runs on to left out');
+has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing = ".$token('tank/CanaryDs One')."\nsize_units = ".$token('Canary Customer')."\n".$token('Canary stray note')."\n", $files['plugin/settings-saved.cfg.txt'],
+	'the saved settings keep a known setting at the value the plugin uses; a pattern, a prefix, a list of datasets, an unknown setting, a value the plugin corrects and a line that sets nothing are each one token, with the lines a value runs on to left out');
 has("snap_prefix\t\"".zfsmDiagToken('CanaryPrefix_')."\"\t\"\"\tsaved\n", $files['plugin/settings-effective.txt'], 'the prefix its owner wrote is a token where the settings are listed as used');
 has($token('canarysender').' ('.$token('Canary Laptop').'): restrict: ok, from: ok, name: ok', $files['plugin/replication-receive.txt'], 'a sender and its key\'s comment are tokens');
 has("tank/$ds/".zfsmDiagToken('canarysender')."\texec\toff\tlocal\n", $files['plugin/replication-receive.txt'], 'the same token in the sender\'s area');
@@ -269,7 +271,11 @@ same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
 // A setting or a finding that names a dataset with nothing around it: its pool stays, and one word alone only when it is a pool.
-same(array('tank/'.zfsmDiagToken('a b').'/'.zfsmDiagToken('c'), 'tank', zfsmDiagToken('Media')), array_map('zfsmDiagNamed', array('tank/a b/c', 'tank', 'Media')), 'a dataset named alone keeps its pool; one word that is no pool is a token');
+same(array('tank/'.zfsmDiagToken('a b').'/'.zfsmDiagToken('c'), 'tank', zfsmDiagToken('Media'), zfsmDiagToken('Secret Team').'/'.zfsmDiagToken('photos'), zfsmDiagToken('ghostpool').'/'.zfsmDiagToken('x')),
+	array_map('zfsmDiagNamed', array('tank/a b/c', 'tank', 'Media', 'Secret Team/photos', 'ghostpool/x')), 'a dataset named alone keeps its pool; a first word that is no pool this run knows is a token, alone or before a slash');
+zfsmDiagKnowPool('zzvault-zzbackup');
+$pooled = 'imported zzvault-zzbackup, then zzvault-zzbackup/'.zfsmDiagToken('x').' and zzvault-zzbackup.';
+same(array($pooled, zfsmDiagToken('xzzvault').'-'.zfsmDiagToken('zzbackup')), array(zfsmDiagKnownWords($pooled), zfsmDiagKnownWords('xzzvault-zzbackup')), 'a pool\'s name passes the second net whole, - and . and all, and only whole');
 // The second net, for running text: a word the plugin itself does not use is a token; numbers, tokens and fingerprints pass.
 $sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:'.str_repeat('Ab+/', 10).'xyz d41d8cd98f00b204e9800998ecf8427e';
 same(str_replace('plexserver42', zfsmDiagToken('plexserver42'), $sentence), zfsmDiagKnownWords($sentence), 'a word that is no word of the plugin\'s is a token; its own words, numbers, tokens and checksums stay');

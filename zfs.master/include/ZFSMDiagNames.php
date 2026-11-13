@@ -47,6 +47,12 @@ function zfsmDiagKnowPool($pool) {
 	if (zfsmValidPoolName((string)$pool)) $GLOBALS['zfsm_diag_names']['pools'][(string)$pool] = true;
 }
 
+// Every pool this run knows: the ones zpool lists and the ones the plugin's own lines name (zfsmDiagKnowPool).
+function zfsmDiagKnownPools() {
+	$read = $GLOBALS['zfsm_diag']['pools'] ?? null;
+	return $GLOBALS['zfsm_diag_names']['pools'] + (is_array($read) ? $read : array());
+}
+
 // A dataset or snapshot a collector read or a setting names: its pool marks where names start in running text, and one with
 // a space is known whole, so the words after it are not taken for more of it.
 function zfsmDiagKnow($name) {
@@ -70,13 +76,13 @@ function zfsmDiagFreeValue($value) {
 	return preg_match('/^(?:-|on|off|yes|no|true|false|\d+(?:\.\d+)?(?:[KMGTPE]i?B?|B|[smhdwy]|x|%)?|[0-9]+[smhdwy](?:=>[0-9]+[smhdwy])+(?:,[0-9]+[smhdwy](?:=>[0-9]+[smhdwy])+)*)$/D', (string)$value) === 1 ? $value : zfsmDiagToken($value);
 }
 
-// A dataset a setting or a finding names, with nothing around it to mark it: its pool stays and each name after it is a token.
-// One word alone stays only when it is a pool's name.
+// A dataset a setting or a finding names, with nothing around it to mark it: each name in it is a token, but for its first
+// when that is a pool this run knows (a setting's first word is no proof of a pool).
 function zfsmDiagNamed($name) {
 	$parts = explode('/', (string)$name, 2);
-	$pools = $GLOBALS['zfsm_diag_names']['pools'] + (is_array($GLOBALS['zfsm_diag']['pools'] ?? null) ? $GLOBALS['zfsm_diag']['pools'] : array());
-	if (!isset($parts[1])) return isset($pools[$parts[0]]) ? $parts[0] : zfsmDiagToken($parts[0]);
-	return $parts[0].zfsmDiagNameTokens('/'.$parts[1]);
+	$pool = isset(zfsmDiagKnownPools()[$parts[0]]) ? $parts[0] : zfsmDiagToken($parts[0]);
+	$rest = isset($parts[1]) ? zfsmDiagNameTokens('/'.$parts[1]) : '';
+	return $rest === null ? zfsmDiagToken($name) : $pool.$rest;
 }
 
 // A name with no path to mark it, such as another server's: it becomes a token wherever it stands as a word.
@@ -99,8 +105,7 @@ function zfsmDiagAnyOf($list) {
 function zfsmDiagNamePattern() {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	if (!isset($names['pattern'])) {
-		$read = $GLOBALS['zfsm_diag']['pools'] ?? null;
-		$names['pool'] = zfsmDiagAnyOf(array_map('strval', array_keys($names['pools'] + (is_array($read) ? $read : array()))));
+		$names['pool'] = zfsmDiagAnyOf(array_map('strval', array_keys(zfsmDiagKnownPools())));
 		$names['files'] = array_flip(array_column(zfsmDiagCollectors(), 0));
 		// The paths the collectors list are the plugin's own: path => whether what its name starts, and what is under it, are too.
 		// That holds for a path with the plugin's name in it; another folder Unraid shares with everyone covers only itself.
