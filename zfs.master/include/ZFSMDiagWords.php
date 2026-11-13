@@ -13,7 +13,10 @@ define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon t
 	.' broken pipe interrupted call supported memory php fatal parse deprecated uncaught exception stack trace thrown undefined variable array offset'
 	.' index constant function method class object string int float bool null given expects parameter type line main opening include require once'
 	.' fastcgi sent stderr message while reading response header upstream client server request host referrer get post http unix sock fpm'
-	.' kmod rc online degraded faulted offline unavail removed ssh connect port');
+	.' kmod rc online degraded faulted offline unavail removed ssh connect port'
+	// A browser's report (plugin/browser.json.txt): what its user agent and Unraid's themes are made of.
+	.' mozilla windows nt win64 x64 x86_64 x11 wow64 applewebkit khtml like gecko chrome chromium safari edg edge firefox opr macintosh intel mac'
+	.' os linux ubuntu android iphone ipad cpu version mobile headlesschrome crios fxios theme black white azure gray page');
 
 // Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run.
 function zfsmDiagVocabulary() {

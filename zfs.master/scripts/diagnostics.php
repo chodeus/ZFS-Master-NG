@@ -13,7 +13,8 @@ require_once "$docroot/plugins/zfs.master/include/ZFSMDiagnostics.php";
 $job = in_array('--job', $argv, true);
 if ($job) {
 	// One run for the page at a time: the lock is held to the run's end, and the page is answered once it is held.
-	$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'));
+	// The run only reads: a command it started and left behind must not keep the page saying "running".
+	$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'), false);
 	if (!$lock) exit(1);
 	zfsmDiagJobSet(array('state' => 'running'));
 	zfsmJobStarted();

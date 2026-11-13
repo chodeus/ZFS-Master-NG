@@ -221,7 +221,7 @@ _(Diagnostics Zip)_:
 
 :zc_settings_diag_zip_plug:
 > Collects what a bug report needs into one zip: the plugin's settings, install and log, the pools and datasets as it reads them, what this browser shows, and what it finds wrong. The zip is kept in `/boot/logs`, the newest three of them.
-> Dataset, snapshot and folder names, addresses and keys are replaced by tokens before anything is packed; pool names stay. Nothing on this page or in these settings changes what is collected.
+> Dataset, snapshot and folder names, addresses and keys are replaced by tokens before anything is packed; pool names stay.
 > If this page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal: it prints what it finds and the zip's path.
 :end
 

@@ -2,7 +2,8 @@
 // A diagnostics run started from the Settings page (backend/ZFSMAdmin.php): one at a time, in a session of its own
 // (include/ZFSMJobs.php). scripts/diagnostics.php --job is the run; the page asks for its state.
 
-// The run's files in RAM: its lock (run.lock), its state (state.json) and what the browser sent with the request (browser.json).
+// The run's files in RAM: its lock (run.lock), the lock of a start (start.lock), its state (state.json) and what the browser
+// sent with the request (browser.json).
 function zfsmDiagJobFile($name) {
 	return zfsmJobDir('diagnostics').'/'.$name;
 }
@@ -29,10 +30,15 @@ function zfsmDiagJobSet($state) {
 // browser says of itself, kept as text for the run to put among its files: no more than 64 KB of it.
 function zfsmStartDiagnostics($unraid, $report) {
 	$lock = zfsmDiagJobFile('run.lock');
-	if (zfsmJobRunning($lock)) return array('running', '');
-	if (!is_dir(dirname($lock))) @mkdir(dirname($lock), 0700, true);
-	if (@file_put_contents(zfsmDiagJobFile('browser.json'), substr((string)$report, 0, 65536)) === false) return array('failed', 'The browser\'s report could not be kept');
-	return zfsmStartJob('diagnostics.php', array_merge(array('--job'), $unraid ? array() : array('--no-unraid')), $lock);
+	// Check, keep the report and start as one step: a start meanwhile is told a run is going, and never replaces this report.
+	$start = zfsmJobLock(zfsmDiagJobFile('start.lock'));
+	if ($start === null) return array('failed', 'The diagnostics lock could not be opened in '.dirname($lock));
+	if ($start === false) return array('running', '');
+	if (zfsmJobRunning($lock)) $started = array('running', '');
+	elseif (@file_put_contents(zfsmDiagJobFile('browser.json'), substr((string)$report, 0, 65536)) === false) $started = array('failed', 'The browser\'s report could not be kept');
+	else $started = zfsmStartJob('diagnostics.php', array_merge(array('--job'), $unraid ? array() : array('--no-unraid')), $lock);
+	zfsmJobUnlock($start);
+	return $started;
 }
 
 // What the browser said of itself when it asked for the run; a run from a terminal has none.

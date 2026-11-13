@@ -2,6 +2,11 @@
 // A diagnostics run's files made ready to send: every name in them replaced (include/ZFSMDiagNames.php), Unraid's own diagnostics
 // beside them as Unraid made them, all in one zip in /boot/logs.
 
+// A zip of this plugin's diagnostics, by its name alone: zfsmDiagPack makes no other, and only these are removed or served.
+function zfsmDiagIsZip($name) {
+	return preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', (string)$name) === 1;
+}
+
 // Unraid's own diagnostics, made by its script under a limit of its own. The zip stays where Unraid put it until the files are
 // packed (zfsmDiagPack), so nothing of this plugin's ever rewrites it.
 function zfsmDiagUnraidZip($ctx) {
@@ -23,7 +28,7 @@ function zfsmDiagUnraidZip($ctx) {
 // The files that are running text: sentences and command lines, where a name can stand in any shape (include/ZFSMDiagWords.php).
 function zfsmDiagRunningText() {
 	return array('summary.txt', 'collectors.txt', 'plugin/log.txt', 'plugin/php-errors.txt', 'plugin/jobs.txt', 'plugin/install.txt', 'plugin/schedule.txt',
-		'plugin/alerts-state.json.txt', 'zfs/processes.txt', 'zfs/timings.txt');
+		'plugin/alerts-state.json.txt', 'plugin/browser.json.txt', 'zfs/processes.txt', 'zfs/timings.txt');
 }
 
 // Rewrites every file of a run with its names replaced, then adds names.txt and writes README.txt again, which holds no name.
@@ -78,7 +83,7 @@ function zfsmDiagKeepNewest($logs, $keep, $made) {
 	$zips = array();
 	foreach (scandir($logs) ?: array() as $name) {
 		if (is_link($logs.'/'.$name) || !is_file($logs.'/'.$name)) continue;
-		if (preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $name) === 1 && $name !== $made) $zips[] = $name;
+		if (zfsmDiagIsZip($name) && $name !== $made) $zips[] = $name;
 		elseif (preg_match('/^zfs\.master-diag\.[0-9a-f]{16}\.part$/D', $name) === 1 && time() - (int)filemtime($logs.'/'.$name) > 3600) @unlink($logs.'/'.$name);
 	}
 	// The name holds the time, so the names sort by age; a clock that went back must not cost the zip just written.

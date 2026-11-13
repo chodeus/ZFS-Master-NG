@@ -86,4 +86,40 @@ const record = JSON.parse(page.storage.get('zfsm-diagnostics'));
 assert.deepEqual([record.status, record.errors.length, record.errors[0].text, record.errors[19].text, 'render' in record], [{text: 'second'}, 20, 'error 6', 'error 25', false], 'the record keeps the last status and the newest twenty errors');
 assert.match(JSON.parse(page.context.zfsmDiagReport(page.window)).kept['zfsm-diagnostics'], /error 25/, 'and the report carries it');
 
+// The record as the Main tab writes it: twenty long script errors, then a render. Each part is bounded where it is written, so the
+// report carries the newest error and the render whole, and its JSON stays whole.
+page = launch();
+for (let index = 1; index <= 20; index++) page.context.zfsmDiagRecord('errors', () => ({at: 't' + index, text: 'Uncaught TypeError number ' + index + ' ' + 'x'.repeat(3000), where: 'ZFSMFrontEnd.js:' + index}));
+page.context.zfsmDiagRecord('render', () => ({at: 'r', milliseconds: 41, pools: 2, rows: 37, headers: ['Name', 'Size', 'Other Plugin Column']}));
+const bounded = JSON.parse(page.storage.get('zfsm-diagnostics'));
+assert.deepEqual([bounded.errors.length, bounded.errors.every(entry => JSON.stringify(entry).length <= 2000), bounded.errors[19].at, /number 20 x/.test(bounded.errors[19].cut)],
+  [20, true, 't20', true], 'an error too long for the record keeps its time and its start, marked as cut');
+let sent = JSON.parse(page.context.zfsmDiagReport(page.window)).kept['zfsm-diagnostics'];
+assert.ok(sent.includes('number 20') && sent.includes('Other Plugin Column'), 'the report carries the newest error and the render');
+// Many dataset keys: what does not fit is counted, never cut through.
+for (let index = 0; index < 60; index++) page.storage.set('zdataset-tank/d' + index, 'y'.repeat(1500));
+const full = JSON.parse(page.context.zfsmDiagReport(page.window));
+const shown = Object.keys(full.kept).filter(key => key.startsWith('zdataset-')).length;
+assert.deepEqual([shown + full.leftOut, full.leftOut > 0, 'zfsm-diagnostics' in full.kept], [60, true, true], 'values that do not fit are left out and counted');
+
+// Answers that come back late or not at all: only the newest request's answer shows, and a lost poll while a run goes is asked again.
+page = launch();
+page.diagnostics.poll();
+page.diagnostics.start();
+page.posts[0].done({state: 'none'});
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Collecting. This can take a few minutes.', true], 'the answer to the poll sent before the start is stale');
+page.posts[1].done({state: 'started', why: ''});
+page.posts[2].done({state: 'running'});
+page.timers[0]();
+page.posts[3].failed({status: 0});
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page.timers.length], ['Collecting. The server did not answer; asking again.', true, 2], 'one lost poll while the run goes is asked again, not a failure');
+for (let lost = 0; lost < 3; lost++) {
+  page.timers[page.timers.length - 1]();
+  page.posts[page.posts.length - 1].failed({status: 0});
+}
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Diagnostics failed: the server did not answer (HTTP 0). Reload the page and try again.', false], 'four lost polls in a row are a failure');
+page.diagnostics.poll();
+page.posts[page.posts.length - 1].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip', why: 'older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip'});
+assert.equal(page.status.state.text, 'Ready, and kept in /boot/logs (older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip): ', 'a finished run says what else it has to say');
+
 console.log('diagnostics button and record tests passed');
