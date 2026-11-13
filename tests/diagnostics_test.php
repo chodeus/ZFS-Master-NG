@@ -167,7 +167,7 @@ has("== installed plugins\nother 2025.05.05\nzfs.master 2026.01.02\n", $read('un
 same(false, strpos($read('unraid/context.txt'), 'Tower'), 'not the server\'s name');
 has("== zfs version\nzfs-2.4.4-1\nzfs-kmod-2.4.4-1\n", $read('zfs/versions.txt'), 'the OpenZFS version');
 has("== zpool status -p tank\npool: tank\n", $read('zfs/zpool-status.txt'), 'each pool\'s status');
-has("== zpool get -H -o property,value,source all tank\nsize\t1.00T\n", $read('zfs/zpool-get-all.txt'), 'each pool\'s properties');
+has("== zpool get -H -o property,value,source all tank\nsize\t1.00T\t-\n", $read('zfs/zpool-get-all.txt'), 'each pool\'s properties');
 has("volblocksize\tguid\tmounted\tcanmount\tvolmode\tencryptionroot\n", $read('zfs/datasets.txt'), 'the dataset columns');
 has("tank/vol\tvolume\t", $read('zfs/datasets.txt'), 'each dataset');
 same("dataset\tsnapshots\toldest\tnewest\theld\ntank\t1\t".date('Y-m-d H:i', 1700000300)."\t".date('Y-m-d H:i', 1700000300)."\t0\ntank/data\t2\t".date('Y-m-d H:i', 1700000400)."\t".date('Y-m-d H:i', 1700000500)."\t1\n", $read('zfs/snapshots-summary.txt'), 'snapshots are counted per dataset, never named');
@@ -734,6 +734,11 @@ rmdir($spaced.'/zfs');
 rmdir($spaced);
 
 // From a terminal: the script prints each file's result and the summary, and leaves no folder behind.
+// It writes its zip into /boot/logs: only where that is a filesystem mounted for the tests (tests/run_http_inventory_tests.sh).
+if (!is_dir('/boot/logs') || stat('/boot/logs')['dev'] === stat('/boot')['dev']) {
+	fwrite(STDERR, "FAILED: /boot/logs must be a filesystem mounted for this test\n");
+	exit(1);
+}
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (!is_string($docroot) || !is_file($docroot.'/plugins/zfs.master/scripts/diagnostics.php')) {
 	fwrite(STDERR, "FAILED: the script needs ZFSM_TEST_DOCROOT with the plugin, as run_http_inventory_tests.sh sets it\n");

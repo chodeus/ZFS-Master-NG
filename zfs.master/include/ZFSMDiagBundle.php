@@ -42,7 +42,14 @@ function zfsmDiagPack($dir) {
 	$unraid = $GLOBALS['zfsm_diag']['unraid_zip'] ?? null;
 	if ($unraid !== null && !@copy($unraid, $dir.'/unraid/'.basename($unraid))) return array(null, 'Unraid\'s own diagnostics could not be copied in from '.$unraid);
 	$part = $logs.'/'.basename($dir).'.part';
-	$packed = runProcess('sh', array('-c', 'cd "$1" && exec zip -qr "$2" .', 'sh', $dir, $part));
+	// zip names its entries from where it runs: in the run's folder they are plugin/..., zfs/... and unraid/...
+	$from = getcwd();
+	if (!@chdir($dir)) return array(null, 'the run\'s folder could not be entered');
+	try {
+		$packed = runProcess('zip', array('-qr', $part, '.'));
+	} finally {
+		if ($from !== false) @chdir($from);
+	}
 	// Another run's zip of this second keeps its name: this one takes the next second's.
 	for ($second = time(); file_exists($zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip'); $second++);
 	if (($packed['code'] ?? 1) !== 0 || !@rename($part, $zip)) {

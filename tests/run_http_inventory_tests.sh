@@ -14,6 +14,9 @@ mkdir -p /mnt/user
 mount -t tmpfs tmpfs /mnt/user
 # Every zfsmLog call, and each script a test starts, appends to /var/log/zfs.master.log: never the host's.
 mount -t tmpfs tmpfs /var/log
+# The diagnostics tests write zips into /boot/logs and remove them: never the host's.
+mkdir -p /boot/logs
+mount -t tmpfs tmpfs /boot/logs
 mkdir -p /tmp/zfsm-http-test/webGui/include /tmp/zfsm-http-test/plugins /tmp/zfsm-bin
 ln -s "$zfsm_repo/zfs.master" /tmp/zfsm-http-test/plugins/zfs.master
 ln -s "$zfsm_repo/tests/fixtures/unraid/Helpers.php" /tmp/zfsm-http-test/webGui/include/Helpers.php

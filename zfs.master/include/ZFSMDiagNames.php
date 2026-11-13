@@ -2,8 +2,9 @@
 // Diagnostics privacy: include/ZFSMDiagBundle.php rewrites every file with these before it packs them. Dataset, snapshot, bookmark
 // and folder names, addresses, hosts and keys become tokens. A pool's own name stays, as in Unraid's diagnostics.
 
-// Top folders whose paths name the system or the plugin, never the user's data.
-define('ZFSM_DIAG_SYSTEM', 'bin|boot|etc|lib|lib64|proc|root|run|sbin|sys|tmp|usr|var|plugins|webGui|dev(?!/zvol/)');
+// Top folders that are the system's alone. Under ZFSM_DIAG_SHARED anyone keeps files beside the plugin's and Unraid's own.
+define('ZFSM_DIAG_SYSTEM', 'bin|etc|lib|lib64|proc|run|sbin|sys|usr|plugins|webGui|dev(?!/zvol/)');
+define('ZFSM_DIAG_SHARED', 'boot|tmp|var|root');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
@@ -90,6 +91,10 @@ function zfsmDiagNamePattern() {
 		$read = $GLOBALS['zfsm_diag']['pools'] ?? null;
 		$names['pool'] = zfsmDiagAnyOf(array_map('strval', array_keys($names['pools'] + (is_array($read) ? $read : array()))));
 		$names['files'] = array_flip(array_column(zfsmDiagCollectors(), 0));
+		// The paths the collectors list are the plugin's own; one named only by its top folder covers nothing under it.
+		$own = array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3));
+		$own = array_filter($own, function($path) { return substr_count($path, '/') > 1; });
+		$names['own'] = array_merge(array(zfsmJobDir('')), array_map(function($path) { return zfsmStatePath(strstr($path.'*', '*', true)); }, $own));
 		// A key runs to its END line; one whose end was cut off is the rest of its line and the lines of key text after it, no more.
 		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\s;]*-----END [A-Z0-9 ]*PRIVATE KEY-----|[^\r\n]*(?:\r?\n[A-Za-z0-9+/=]{16,}(?=\r?\n|\z))*))'
 			// zfs send -t: the token of a copy that stopped names its snapshot to anyone who asks zfs.
@@ -145,8 +150,11 @@ function zfsmDiagAnonPath($text, $at) {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = substr($text, $at, strcspn($text, "\t\r\n", $at));
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
+	// One of the plugin's own paths, to its first space; any other path under a shared top folder is a folder's, names and all.
+	$whole = substr($run, 0, strcspn($run, ' '));
+	foreach ($names['own'] as $own) if (strncmp($whole, $own, strlen($own)) === 0) return array($whole, $at + strlen($whole));
 	if ($run[0] === '/') {
-		preg_match('~^/(?:mnt|dev/zvol)(?=[/\s]|$)(?:/(?:'.$names['pool'].'|'.ZFSM_DIAG_MOUNTS.')(?=[/\s]|$))?|^~', $run, $kept);
+		preg_match('~^/(?:mnt|dev/zvol)(?=[/\s]|$)(?:/(?:'.$names['pool'].'|'.ZFSM_DIAG_MOUNTS.')(?=[/\s]|$))?|^/(?:'.ZFSM_DIAG_SHARED.')(?=[/\s]|$)|^~', $run, $kept);
 		// PHP ends an error with where it was raised: that is no part of the folder's name.
 		$name = preg_replace('~ in /usr/local/emhttp/\S+ on line \d+$~', '', $run);
 	} else {

@@ -93,11 +93,11 @@ function zfsmDiagZpoolStatus($ctx) {
 	return zfsmDiagShowAll(zfsmDiagPerPool('zpool', array('status', '-p')));
 }
 
-// A pool's comment is what its owner wrote: only a token for it goes in.
+// A pool's comment and its user properties are what its owner wrote (zfsmDiagFreeRows). A read that failed holds its error, not rows.
 function zfsmDiagZpoolGetAll($ctx) {
 	$results = zfsmDiagPerPool('zpool', array('get', '-H', '-o', 'property,value,source', 'all'));
 	foreach ($results as $title => $result) {
-		$results[$title]['output'] = preg_replace_callback('/^(comment\t)(?!-\t)([^\t]*)/m', function($row) { return $row[1].zfsmDiagToken($row[2]); }, $result['output']);
+		if ($result['code'] === 0) $results[$title]['output'] = zfsmDiagFreeRows($result['output'], 1, array('-', 'default', 'local'), '');
 	}
 	return zfsmDiagShowAll($results);
 }
@@ -168,22 +168,36 @@ function zfsmDiagBookmarks($ctx) {
 // Properties set on a dataset itself or received with it: ZnapZend's plans and other tools' marks are among them.
 function zfsmDiagUserProperties($ctx) {
 	$results = zfsmDiagPerPool('zfs', array('get', '-H', '-p', '-r', '-t', 'filesystem,volume', '-s', 'local,received', '-o', 'name,property,value,source', 'all'));
-	// A read that failed holds its error, not rows.
-	foreach ($results as $title => $result) if ($result['code'] === 0) $results[$title]['output'] = zfsmDiagHideFreeValues(zfsmDiagHideKeyLocation($result['output']));
+	// A read that failed holds its error, not rows. The pool is the last word of a read's title.
+	foreach ($results as $title => $result) {
+		if ($result['code'] === 0) $results[$title]['output'] = zfsmDiagFreeRows(zfsmDiagHideKeyLocation($result['output']), 2, array('local', 'received'), substr($title, strrpos($title, ' ') + 1));
+	}
 	return zfsmDiagShowAll($results);
 }
 
-// The value of a user property (its name holds a colon) and of a share's options is its owner's to write (zfsmDiagFreeValue).
-// One with a tab or a line break in it comes as more fields, or more rows, than a row has: they are that value too.
-function zfsmDiagHideFreeValues($output) {
+// The rows of zfs get or zpool get with every value its owner wrote hidden (zfsmDiagFreeValue): a user property's (its name holds
+// a colon), a share's options, a pool's comment. A value can hold tabs and line breaks, so a line is a row only when it starts as one.
+function zfsmDiagFreeRows($output, $before, $sources, $pool) {
 	$rows = array();
-	foreach (explode("\n", $output) as $row) {
-		$field = explode("\t", $row);
-		if (count($field) < 3) $rows[] = $row === '' ? '' : '(more of the value above, left out)';
-		elseif (strpos($field[1], ':') === false && !in_array($field[1], array('sharenfs', 'sharesmb'), true)) $rows[] = $row;
-		else $rows[] = $field[0]."\t".$field[1]."\t".zfsmDiagFreeValue(implode("\t", array_slice($field, 2, max(1, count($field) - 3))))."\t".(count($field) > 3 ? end($field) : '');
+	foreach (explode("\n", $output) as $line) {
+		$field = explode("\t", $line);
+		$rows[] = $line === '' ? '' : (zfsmDiagFreeRow($field, $before, $sources, $pool) ?? '(more of the value above, left out)');
 	}
 	return implode("\n", $rows);
+}
+
+// One row, its value hidden when it is its owner's; null for a line that starts no row: its fields before the value must be
+// a dataset of $pool (zfs get) and a property's name, and its last a source, unless its value runs on to the next line.
+function zfsmDiagFreeRow($field, $before, $sources, $pool) {
+	$property = $field[$before - 1];
+	$whole = count($field) > $before + 1 && in_array(end($field), $sources, true);
+	$named = $before === 1 || $field[0] === $pool || strncmp($field[0], $pool.'/', strlen($pool) + 1) === 0;
+	// A value cut by a line break leaves a row with no source: only a user property's can be one.
+	if (count($field) <= $before || !$named || preg_match('/^[a-z0-9_.:@-]+$/D', $property) !== 1 || (!$whole && strpos($property, ':') === false)) return null;
+	$value = implode("\t", array_slice($field, $before, $whole ? count($field) - $before - 1 : null));
+	// A pool's feature@... and unsupported@... rows are OpenZFS's own, colon or not.
+	$free = (strpos($property, ':') !== false && strpos($property, '@') === false) || in_array($property, array('sharenfs', 'sharesmb', 'comment'), true) || count($field) !== $before + 2;
+	return implode("\t", array_slice($field, 0, $before))."\t".($free ? zfsmDiagFreeValue($value) : $value)."\t".($whole ? end($field) : '');
 }
 
 // keylocation can be a URL or the path of a key file: only that it is set goes in.

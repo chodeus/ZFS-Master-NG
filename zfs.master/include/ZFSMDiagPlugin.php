@@ -298,11 +298,11 @@ function zfsmDiagLog($ctx) {
 	// A system log's line names the server after its time: "Jan  2 10:00:00 Tower ident[pid]: ...".
 	preg_match_all('/^[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d (\S+) /m', $lines, $hosts);
 	array_map('zfsmDiagKnowServer', array_unique($hosts[1]));
-	$own = zfsmDiagFile(zfsmLogFile().'.1').zfsmDiagFile(zfsmLogFile());
-	zfsmDiagLearnPools($own.$lines);
-	return zfsmDiagSection(zfsmLogFile().'.1', zfsmDiagFile(zfsmLogFile().'.1'))
-		.zfsmDiagSection(zfsmLogFile(), zfsmDiagFile(zfsmLogFile()))
-		.zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines);
+	// One read of each log, for what is learned from it and what is shown: a line written in between is in both or in neither.
+	$older = zfsmDiagFile(zfsmLogFile().'.1');
+	$newer = zfsmDiagFile(zfsmLogFile());
+	zfsmDiagLearnPools($older.$newer.$lines);
+	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines);
 }
 
 function zfsmDiagPhpErrors($ctx) {
