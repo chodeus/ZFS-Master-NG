@@ -23,7 +23,7 @@ function zfsmDebug($message) {
 
 // A command the plugin ran, for the debug log: what it was, how it ended and how long it took. Where a key is kept is left out.
 function zfsmDebugCommand($command, $args, $result, $began) {
-	$secret = basename((string)$command) === 'zfs' && (($args[0] ?? '') === 'load-key' || preg_grep('/keylocation=/', $args));
+	$secret = ($args[0] ?? '') === 'load-key' || preg_grep('/keylocation=/i', $args);
 	zfsmDebug(basename((string)$command).' '.($secret ? ($args[0] ?? '').' (its arguments are left out)' : implode(' ', $args)).': '.$result.' in '.number_format(microtime(true) - $began, 3, '.', '').' s');
 }
 

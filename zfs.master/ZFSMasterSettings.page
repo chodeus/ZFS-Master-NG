@@ -96,8 +96,8 @@ _(Debug Log)_:
   </select>
 
 :zc_settings_debug_log_plug:
-> **Yes** writes every `zfs` and `zpool` command the plugin runs, with its result and time, to the plugin's own log, `/var/log/zfs.master.log`. The log is in RAM and never passes about 1 MB, so the oldest lines go first; a diagnostics zip holds it.
-> Turn it on to reproduce a problem, make the zip, then turn it off again. A command that says where a key is kept is logged without its arguments.
+> **Yes** also writes each command the plugin runs to read or change pools and datasets, and each request this page and the Main tab send, with how it ended and its time, to the plugin's own log, `/var/log/zfs.master.log`. A replication, a rewrite and a receive log their own lines whether this is on or not. The log is in RAM and never passes about 1 MB, so the oldest lines go first; a diagnostics zip holds it.
+> Turn it on to reproduce a problem, make the zip, then turn it off again. A command that names where a key is kept is logged without its arguments.
 :end
 
 
@@ -246,7 +246,7 @@ var zfsm_tips = <?=zfsmJson(array(
 	'znapzend_data' => _('Show ZnapZend backup plans on each dataset.'),
 	'size_units' => _('Show sizes in ZFS units (GiB) or Unraid units (GB).'),
 	'destructive_mode' => _('Show rename, edit and destroy, and allow deletes of folders and newer snapshots.'),
-	'debug_log' => _('Write every command the plugin runs to its own log.'),
+	'debug_log' => _('Also write the commands the plugin runs, and the requests it gets, to its own log.'),
 	'exclusion' => _('Hide datasets and listed folders whose names match this pattern.'),
 	'directory_listing' => _('Datasets whose folders are listed on the Main tab, one per line.'),
 	'snap_max_days_alert' => _('Days since the last snapshot before the camera icon turns orange.'),

@@ -141,7 +141,8 @@ function zfsmReadWithin($seconds, $command, $args) {
 // How much a command that can print a line per file keeps of its output: enough for its first errors.
 define('ZFSM_KEEP_OUTPUT', 4096);
 
-// Every command the plugin runs goes through here: with Debug Log on, each is a line in the plugin's log (zfsmDebugCommand).
+// With Debug Log on, each command run through here is a line in the plugin's log (zfsmDebugCommand). The long jobs stream
+// their commands outside it and log their own lines.
 function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $keep_bytes = 0) {
 	$began = microtime(true);
 	$result = 'not run';

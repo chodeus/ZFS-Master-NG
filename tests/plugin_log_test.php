@@ -49,15 +49,16 @@ $lines = $debug_lines('1', function() {
 	try { zfsmWithDeadline(0.3, function() { runProcess('sleep', array('5')); }); } catch (ZFSMTimeout $timeout) {}
 	runProcess('zfs', array('load-key', '-L', 'file:///boot/secret.key', 'tank'));
 	runProcess('zfs', array('set', 'keylocation=file:///boot/secret.key', 'tank/data'));
+	runProcess('zpool', array('create', '-O', 'KEYLOCATION=https://user:secret.key@keys.example/p', 'tank2', 'sdc'));
 	zfsmDebug("request snapshotdataset\nsecond line");
 });
 same(array(1, 1, 1), array(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d debug \[\d+\] echo hello tank\/data: exit 0 in \d+\.\d{3} s$/D', $lines[0]), preg_match('/ debug \[\d+\] sh -c exit 3: exit 3 in \d+\.\d{3} s$/D', $lines[1]), preg_match('/ debug \[\d+\] sleep 5: timed out in 0\.\d{3} s$/D', $lines[2])),
 	'with it on a command is a line with its arguments, its exit code or its timeout, and its time: '.implode(' | ', $lines));
-same(array(1, 1, false), array(preg_match('/ zfs load-key \(its arguments are left out\): exit \d+ in /', $lines[3]), preg_match('/ zfs set \(its arguments are left out\): exit \d+ in /', $lines[4]), strpos(implode('', $lines), 'secret.key')), 'a command that says where a key is kept is logged without its arguments');
-same(array(6, 1), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[5])), 'a debug line is one line, like any other');
+same(array(1, 1, 1, false), array(preg_match('/ zfs load-key \(its arguments are left out\): exit \d+ in /', $lines[3]), preg_match('/ zfs set \(its arguments are left out\): exit \d+ in /', $lines[4]), preg_match('/ zpool create \(its arguments are left out\): exit \d+ in /', $lines[5]), strpos(implode('', $lines), 'secret.key')), 'a command that says where a key is kept is logged without its arguments');
+same(array(7, 1), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[6])), 'a debug line is one line, like any other');
 $GLOBALS['zfsm_test_debug'] = '0';
 runProcess('echo', array('again'));
-same(7, count(file($log)), 'the setting is read once for each run');
+same(8, count(file($log)), 'the setting is read once for each run');
 unset($GLOBALS['zfsm_debug']);
 
 // At the cap the file becomes .1 and a new one starts; the next turn replaces .1, so there are never three.
