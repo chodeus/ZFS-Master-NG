@@ -259,11 +259,12 @@ function zfsmReplicaHello($remote) {
 	if (($hello['code'] ?? 1) !== 0 || preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) !== 1 || !zfsmValidDatasetName($match[1])) {
 		return array('error' => zfsmCommandError($hello, 'No answer from '.$remote['name']));
 	}
-	// The area is named for the sender the key line there names: another name is a line made before this server was renamed.
+	// The area is named for the sender the key line there names: another name means a line made for another name, as before a rename.
 	$named = substr(strrchr('/'.$match[1], '/'), 1);
 	$this_name = zfsmReplicaThisName();
 	if ($named === $this_name) return array('area' => $match[1]);
-	return array('error' => 'The key line on '.$remote['name'].' names this server '.$named.', but it is '.($this_name ?? 'not named here').' now: put the line this page gives in its place');
+	$now = $this_name === null ? 'this server has no valid name here' : 'this server is '.$this_name.' now';
+	return array('error' => 'The key line on '.$remote['name'].' is for '.$named.', but '.$now.': put the line this page gives in its place');
 }
 
 function zfsmReplicaKeyHtml() {
