@@ -42,7 +42,7 @@ reviews:
     - path: "zfs.master/include/{ZFSMDiag*.php,diagnostics.php}"
       instructions: |
         Diagnostics: a zip the owner may post in a public issue. Its privacy scope is fixed; report gaps inside it and nothing past it.
-        - In scope: every name of the owner's that ZFS, the kernel or Unraid writes (a dataset, snapshot, bookmark, folder, host, user, address, key comment, or a value the owner wrote), in any file the plugin writes, is a token; a pool's name stays. A file that could not be read, searched or written stops the zip.
+        - In scope: every name of the owner's that ZFS, the kernel or Unraid writes (a dataset, snapshot, bookmark, folder, host, user, address, key comment, or a value the owner wrote), in any file the plugin writes, is a token; a pool's name stays. A file of the run that could not be written, or read back and searched for names, stops the zip. A source the run could not read is reported in the zip as "read failed" (collectors.txt and the summary) and does not stop it: diagnostics are most needed when something can't be read.
         - Out of scope, do not report: a name holding a control character (tab, line feed, carriage return or another); a name spelled like a word the plugin itself uses, or a number, where it is neither a known name nor in a path; a pool that is neither imported nor listed by Unraid; Unraid's own diagnostics zip, packed as Unraid made it by design.
         - All else in these files (failure paths, races, the zip's retention and removals, comments against code) is reviewed as usual.
     - path: "zfs.master/{scripts/replica-serve.php,include/ZFSMReplicaServe.php}"

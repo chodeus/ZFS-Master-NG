@@ -172,13 +172,15 @@ function zfsmDiagUserProperties($ctx) {
 }
 
 // zfs get or zpool get on each pool, each value its owner wrote hidden. A value can hold tabs and line breaks, so the same read
-// with only the $head columns says where each row starts (zfsmDiagFreeRows). A read that failed holds its error, not rows.
+// with only the $head columns says where each row starts (zfsmDiagFreeRows). A read that failed can print rows before its error,
+// and they were not checked, so only its exit code is shown; a timeout's text is the plugin's own.
 function zfsmDiagPropertyRows($command, $args, $head) {
 	$results = zfsmDiagPerPool($command, array_merge($args, array($head.',value,source', 'all')));
 	$heads = array_values(zfsmDiagPerPool($command, array_merge($args, array($head, 'all'))));
 	foreach (array_keys($results) as $at => $title) {
-		if ($results[$title]['code'] !== 0) continue;
-		$results[$title] = $heads[$at]['code'] === 0 ? array('code' => 0, 'output' => zfsmDiagFreeRows($results[$title]['output'], $heads[$at]['output'])) : $heads[$at];
+		$failed = $results[$title]['code'] !== 0 ? $results[$title] : $heads[$at];
+		if ($failed['code'] === 0) $results[$title] = array('code' => 0, 'output' => zfsmDiagFreeRows($results[$title]['output'], $heads[$at]['output']));
+		else $results[$title] = array('code' => $failed['code'], 'output' => $failed['code'] === null ? $failed['output'] : 'its output is not shown: rows it printed before the error were not checked for names');
 	}
 	return zfsmDiagShowAll($results);
 }
