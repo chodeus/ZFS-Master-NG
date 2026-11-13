@@ -175,28 +175,33 @@ function zfsmDiagUserProperties($ctx) {
 	return zfsmDiagShowAll($results);
 }
 
-// The rows of zfs get or zpool get with every value its owner wrote hidden (zfsmDiagFreeValue): a user property's (its name holds
-// a colon), a share's options, a pool's comment. A value can hold tabs and line breaks, so a line is a row only when it starts as one.
+// The rows of zfs get or zpool get with every value its owner wrote hidden (zfsmDiagFreeValue). A value can hold tabs and line
+// breaks: once a row's value runs on, every line is that value until one ends with a source, however much it looks like a row.
 function zfsmDiagFreeRows($output, $before, $sources, $pool) {
 	$rows = array();
+	$open = false;
 	foreach (explode("\n", $output) as $line) {
 		$field = explode("\t", $line);
-		$rows[] = $line === '' ? '' : (zfsmDiagFreeRow($field, $before, $sources, $pool) ?? '(more of the value above, left out)');
+		$ends = count($field) > 1 && in_array(end($field), $sources, true);
+		$row = $open ? null : zfsmDiagFreeRow($field, $before, $ends, $pool);
+		$rows[] = $line === '' ? '' : ($row ?? '(more of the value above, left out)');
+		$open = $row !== null ? !$ends : $open && !$ends;
 	}
 	return implode("\n", $rows);
 }
 
-// One row, its value hidden when it is its owner's; null for a line that starts no row: its fields before the value must be
-// a dataset of $pool (zfs get) and a property's name, and its last a source, unless its value runs on to the next line.
-function zfsmDiagFreeRow($field, $before, $sources, $pool) {
-	$property = $field[$before - 1];
-	$whole = count($field) > $before + 1 && in_array(end($field), $sources, true);
-	$named = $before === 1 || $field[0] === $pool || strncmp($field[0], $pool.'/', strlen($pool) + 1) === 0;
-	// A value cut by a line break leaves a row with no source: only a user property's can be one.
-	if (count($field) <= $before || !$named || preg_match('/^[a-z0-9_.:@-]+$/D', $property) !== 1 || (!$whole && strpos($property, ':') === false)) return null;
-	$value = implode("\t", array_slice($field, $before, $whole ? count($field) - $before - 1 : null));
+// One row with its value hidden when it is its owner's: a user property's (its name holds a colon), a share's options, a pool's
+// comment, or any value with a space in it, which no value of OpenZFS's own has. null for a line that starts no row.
+function zfsmDiagFreeRow($field, $before, $ends, $pool) {
+	$property = $field[$before - 1] ?? '';
 	// A pool's feature@... and unsupported@... rows are OpenZFS's own, colon or not.
-	$free = (strpos($property, ':') !== false && strpos($property, '@') === false) || in_array($property, array('sharenfs', 'sharesmb', 'comment'), true) || count($field) !== $before + 2;
+	$user = strpos($property, ':') !== false && strpos($property, '@') === false;
+	$named = $before === 1 || $field[0] === $pool || strncmp($field[0], $pool.'/', strlen($pool) + 1) === 0;
+	// Only a user property's value can run on to the next line, so only its row can lack a source.
+	$whole = $ends && count($field) >= $before + 2;
+	if (count($field) <= $before || !$named || preg_match('/^[a-z0-9_.:@-]+$/D', $property) !== 1 || (!$whole && !$user)) return null;
+	$value = implode("\t", array_slice($field, $before, $whole ? count($field) - $before - 1 : null));
+	$free = $user || in_array($property, array('sharenfs', 'sharesmb', 'comment'), true) || preg_match('~^(?:\S+|/[^\t]*)$~D', $value) !== 1;
 	return implode("\t", array_slice($field, 0, $before))."\t".($free ? zfsmDiagFreeValue($value) : $value)."\t".($whole ? end($field) : '');
 }
 

@@ -4,7 +4,7 @@
 
 // The settings whose text is their owner's to write and that no path marks as a name: only a token for each goes in.
 function zfsmDiagFreeSettings() {
-	return array('exclusion', 'snap_prefix', 'snap_pattern');
+	return array('exclusion', 'snap_prefix', 'snap_pattern', 'directory_listing', 'replica_accept');
 }
 
 // The file as saved, but for those settings and any this version does not know: each one's value is a token, and the further
@@ -42,7 +42,8 @@ function zfsmDiagSettingsEffective($ctx) {
 		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
 		$differs = zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key]);
 		if ($differs) $changed[] = $name;
-		if ($differs && in_array($name, zfsmDiagFreeSettings(), true)) $value = zfsmDiagToken($value);
+		// The settings that name datasets keep each one's pool (zfsmDiagNamed); the others their owner wrote are a token whole.
+		if ($differs && in_array($name, zfsmDiagFreeSettings(), true)) $value = is_array($value) ? array_map('zfsmDiagNamed', $value) : ($name === 'replica_accept' ? zfsmDiagNamed($value) : zfsmDiagToken($value));
 		$text .= $name."\t".zfsmJson($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".zfsmJson($defaults[$key], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".$source."\n";
 	}
 	zfsmDiagFact('settings changed from default', $changed ? implode(', ', $changed) : 'none');
@@ -75,7 +76,7 @@ function zfsmDiagDatasetSettingProblems($cfg) {
 	$problems = array();
 	$hidden = count(array_filter($names, function($name) use ($cfg) { return zfsmDatasetExcluded($name, $cfg['dataset_exclusion']); }));
 	if ($hidden > 0) $problems[] = 'the exclusion pattern hides '.$hidden.' of '.count($names).' datasets';
-	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.$missing;
+	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.zfsmDiagNamed($missing);
 	return $problems;
 }
 
@@ -255,7 +256,7 @@ function zfsmDiagReplicaReceive($ctx) {
 	$accept = $ctx['cfg']['replica_accept'];
 	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
 	$sender_keys = zfsmReplicaKeys($keys);
-	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
+	$text = 'accept replicas into: '.($accept !== '' ? zfsmDiagNamed($accept) : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
 	if ($accept !== '' && !zfsmReplicaAcceptValid($accept)) zfsmDiagFinding('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted');
 	elseif ($accept !== '') {
 		$wanted = zfsmReplicaAreaProps();

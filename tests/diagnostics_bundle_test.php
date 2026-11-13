@@ -9,14 +9,17 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
-// This test writes zips into /boot/logs and removes them: only where that folder is a filesystem of the test's own, as the
-// runner mounts it (tests/run_http_inventory_tests.sh), never a host's.
-if (is_file('/etc/unraid-version') || !is_dir('/boot/logs') || stat('/boot/logs')['dev'] === stat('/boot')['dev']) {
-	fwrite(STDERR, "FAILED: /boot/logs must be a filesystem mounted for this test\n");
+// This test's script runs write zips into /boot/logs: only on the tmpfs the runner mounts there (tests/run_http_inventory_tests.sh),
+// and only while it is empty, so nothing there is another's. The test removes the zips it made, by their names.
+$own_logs = preg_match('~^\S+ \S+ \S+ \S+ /boot/logs \S+(?: \S+)* - tmpfs ~m', (string)@file_get_contents('/proc/self/mountinfo')) === 1;
+if (is_file('/etc/unraid-version') || !$own_logs || array_diff(scandir('/boot/logs'), array('.', '..'))) {
+	fwrite(STDERR, "FAILED: /boot/logs must be an empty tmpfs mounted for this test\n");
 	exit(1);
 }
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
 require_once __DIR__.'/../zfs.master/include/ZFSMDiagnostics.php';
+// The log lines below are made by the plugin's own function for them.
+require_once __DIR__.'/../zfs.master/include/ZFSMImpact.php';
 
 function same($expected, $actual, $message) {
 	if ($expected === $actual) return;
@@ -33,7 +36,9 @@ function has($needle, $text, $message) {
 $work = sys_get_temp_dir().'/zfsm-bundle-test-'.getmypid().'-'.bin2hex(random_bytes(4));
 $root = $work.'/root';
 mkdir($work.'/bin', 0700, true);
-$clear_logs = function() { array_map('unlink', array_merge(glob('/boot/logs/zfs.master-diagnostics-*.zip') ?: array(), glob('/boot/logs/canarytower-diagnostics-*.zip') ?: array())); };
+$made = array('/boot/logs/canarytower-diagnostics-20260102-1000.zip');
+// The script's own pruning may have removed one already: PHP remembers the file as it last saw it.
+$clear_logs = function() use (&$made) { clearstatcache(); foreach ($made as $zip) if (is_file($zip)) @unlink($zip); };
 register_shutdown_function(function() use ($work, $clear_logs) { exec('rm -rf '.escapeshellarg($work)); $clear_logs(); });
 // The fixture's zfs and zpool behind wrappers that give its datasets, snapshots, senders and values names a leak would show.
 $real = getenv('ZFSM_TEST_BIN_DIR');
@@ -60,36 +65,43 @@ $put = function($path, $text) use ($root) {
 };
 $private_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nCanaryPrivateKeyBytesCanaryPrivateKeyBytes\n-----END OPENSSH PRIVATE KEY-----";
 $public_key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICanaryKeyCanaryKeyCanaryKeyCanaryKeyCanaryKeyCana';
+// The lines the plugin writes, in its own formats: the action lines through zfsmActionLogLines, the job lines of
+// include/ZFSMRewrite.php, ZFSMReplicate.php and ZFSMReplicaServe.php, the refusals of ZFSMReplicaPlan.php and ZFSMImpact.php's busy text.
+$action = function($title, $subject, $failed = null) {
+	return zfsmActionLogLines($title, $failed === null ? array('succeeded' => array($subject => 0)) : array('failed' => array($subject => $failed)))[0];
+};
 $log_lines = array(
-	'Destroy Snapshot: tank/CanaryGone@CanarySnap failed: cannot destroy \'tank/CanaryGone@CanarySnap\': dataset is busy',
+	$action('ZFS Snapshot Destroy', 'tank/CanaryGone@CanarySnap', "cannot destroy 'tank/CanaryGone@CanarySnap': dataset is busy"),
 	'Rewrite of tank/CanaryDs One started: zfs rewrite -r tank/CanaryDs One',
-	'Destroy: tank/Canary Old Stuff was removed by hand',
-	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (changes since @CanaryBase) started: zfs send -i tank/CanaryDs One@CanaryBase tank/CanaryDs One@CanarySnapA | zfs receive -s tank/CanaryCopy',
+	$action('ZFS Dataset Destroy', 'tank/Canary Old Stuff'),
+	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (changes since CanaryBase) started: zfs send -i tank/CanaryDs One@CanaryBase tank/CanaryDs One@CanarySnapA | zfs receive -s tank/CanaryCopy',
 	'Replication request from 203.0.113.77 refused: tank/CanaryElse/x is not inside tank/CanaryDs One/canarysender (zfsm-replica 1 exists '.bin2hex('tank/CanaryDs One/CanaryHex').')',
 	'Convert: cloning /mnt/tank/CanaryDs One/Canary Artist - Album (2019) failed, so rsync copies it: cp failed',
-	'a request from 203.0.113.77 and again from 203.0.113.77, then from 2001:db8::77',
-	'key '.$public_key.' canaryuser@canaryhost',
-	'Replication of tank/CanaryDs One@CanarySnapA to root@canaryhost:backup/CanaryRemote failed: no route',
-	'Destroy: tank/Canary failed Vol succeeded',
-	'now on otherpool/CanaryOther',
-	'the share on CanaryNas and canarynas',
-	'a line that names CanaryTower and canarytower by themselves',
-	'kept at backup:tank/CanaryColon',
-	'ZFS Snapshot Destroy: tank/CanaryDs One@CanaryA,CanaryB,CanaryC succeeded',
-	'Destroy: tank/Canary Gone finished movies succeeded',
+	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received',
+	$action('ZFS Replication', 'tank/CanaryDs One', 'ssh: connect to host canarynas port 22: Connection refused, as root@canaryhost:backup/CanaryRemote'),
+	$action('ZFS Dataset Destroy', 'tank/Canary failed Vol'),
+	'ZFS Master NG dataset inventory failed for otherpool: zfs timed out',
+	$action('ZFS Snapshot Destroy', 'tank/CanaryDs One@CanaryA,CanaryB,CanaryC'),
+	$action('ZFS Dataset Destroy', 'tank/Canary Gone finished movies'),
 	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
 	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (carried on from where it stopped) started: zfs send -P -v -t '.$resume.' | zfs receive -s tank/CanaryCopy',
-	'a key cut short -----BEGIN OPENSSH PRIVATE KEY-----; CanaryCutKeyBody',
+	// Names with nothing to mark them: a container and a process in the busy text, a refusal's example, a name that was refused.
+	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container canarycontainer has it mounted; process canary_backup.sh (pid 9) may be using it through /mnt/user"),
+	$action('ZFS Replication', 'tank/CanaryDs One', 'The copy needs a dataset name inside a pool, such as backup/CanaryLeaf'),
+	$action('ZFS Replication', 'tank/CanaryDs One', "The copy goes inside bakup/CanaryTyped, which doesn't exist"),
+	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
+	'ZFS Master NG backend exception: '.$private_key,
 );
 $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));
 	clearstatcache(true);
-	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\"\n");
+	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\"\n");
 	$put('/boot/config/ssh/root/authorized_keys', 'restrict,from="203.0.113.77",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php canarysender" '.$public_key." Canary Laptop\n");
-	$put('/var/log/zfs.master.log', "2026-01-02 10:00:00 notice [41] ".implode("\n2026-01-02 10:00:01 notice [41] ", $log_lines)."\n".$private_key."\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
+	// Through the plugin's own writer, so each line is as the plugin's log holds it: one line, its quotes replaced, cut at its limit.
+	foreach ($log_lines as $line) zfsmLog($line, LOG_NOTICE);
 	$put('/var/log/phplog', "[02-Jan-2026] PHP Warning: scandir(/mnt/tank/CanaryDs One/Canary's Stuff): Failed to open directory in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9\n");
-	$put('/var/log/nginx/error.log', "2026/01/02 10:00:00 [error] 1#1: *1 FastCGI sent in stderr: \"PHP message: x\" while reading, client: 203.0.113.77, server: , request: \"GET /plugins/zfs.master/include/ZFSMSnapshotAdmin.php?zdataset=tank%2FCanaryQuery&csrf_token=CANARYTOKEN HTTP/1.1\", host: \"canary.example.com\", referrer: \"http://canary.example.com/Main\"\n");
+	$put('/var/log/nginx/error.log', "2026/01/02 10:00:00 [error] 1#1: *1 FastCGI sent in stderr: \"PHP message: x\" while reading, client: 203.0.113.77, server: , request: \"POST /plugins/zfs.master/backend/ZFSMAdmin.php?zdataset=tank%2FCanaryQuery&csrf_token=CANARYTOKEN HTTP/1.1\", host: \"canary.example.com\", referrer: \"http://canary.example.com/Main\"\n");
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@CanaryTower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
 	$put('/proc/self/mounts', "tank /mnt/tank zfs rw 0 0\n");
@@ -98,7 +110,7 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
 };
-$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost", 'replica_accept' => 'tank/CanaryDs One');
+$settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare", 'replica_accept' => 'tank/CanaryDs One');
 // A run on that server, rewritten and packed: [the zip's path or null, why not, the folder its zip was unpacked into].
 $bundle = function($name, $unraid = true, $fresh = true) use ($work, $build, $settings) {
 	if ($fresh) $build();
@@ -141,7 +153,8 @@ $ds = $token('CanaryDs One');
 same(true, strpos($files['names.txt'], $ds."\t12 characters, 12 bytes, 1 space(s), mixed case\n") !== false, 'a name\'s shape is its length, its spaces and its case');
 has("tank/$ds\tfilesystem\t", $files['zfs/datasets.txt'], 'a dataset is its pool and a token');
 has("\t/mnt/tank/$ds\t", $files['zfs/datasets.txt'], 'the same token in its mount point');
-has('["tank/'.$ds.'","tank/'.$token('CanaryGone Two').'","ghostpool/'.$token('CanaryGhost').'"]', $files['plugin/settings-effective.txt'], 'and in the settings that name it');
+has('["tank/'.$ds.'","tank/'.$token('CanaryGone Two').'","ghostpool/'.$token('CanaryGhost').'","'.$token('CanaryBare').'"]', $files['plugin/settings-effective.txt'], 'and in the settings that name it; an entry of one word, which is no pool, is a token');
+has('Directory Listing names a dataset that does not exist: '.zfsmDiagToken('CanaryBare')."\n", $files['summary.txt'], 'as it is in its finding');
 has('Directory Listing names a dataset that does not exist: ghostpool/'.zfsmDiagToken('CanaryGhost')."\n", $files['summary.txt'], 'a pool only a setting names marks its datasets');
 has("\t-\tzfs\tmountedpool/".$token('CanaryMounted')."\trw\n", $files['zfs/mounts.txt'], 'and so does a pool only a mount names');
 has("4243\t5\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/$ds\n", $files['plugin/jobs.txt'], 'a system path stays as it is, and the dataset after it is a token');
@@ -153,35 +166,35 @@ has("tank\torg.example:role\t".$token('root@canaryhost:backup/CanaryRemote')."\t
 has("comment\t".$token('Canary Comment')."\tlocal\n", $files['zfs/zpool-get-all.txt'], 'a pool\'s comment is a token');
 $mount = $token('Canary Mount');
 has("\t/mnt/tank/$mount\trw\tshared:52\t-\tzfs\ttank/$mount\trw\n", $files['zfs/mounts.txt'], 'a mount whose name holds a space is one token, in its folder and its dataset');
-has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing=\"tank/$ds\n", $files['plugin/settings-saved.cfg.txt'], 'the saved settings keep a known setting, and give a pattern, a prefix and an unknown setting\'s whole value a token, past an empty line in it');
+has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\nmystery = ".$token('CanaryValue one')."\nsnap_prefix = ".$token('CanaryPrefix_')."\ndirectory_listing = ".$token('tank/CanaryDs One')."\n", $files['plugin/settings-saved.cfg.txt'], 'the saved settings keep a known setting; a pattern, a prefix, a list of datasets and an unknown setting are each one token, with the lines the value runs on to left out');
 has("snap_prefix\t\"".zfsmDiagToken('CanaryPrefix_')."\"\t\"\"\tsaved\n", $files['plugin/settings-effective.txt'], 'the prefix its owner wrote is a token where the settings are listed as used');
 has($token('canarysender').' ('.$token('Canary Laptop').'): restrict: ok, from: ok, name: ok', $files['plugin/replication-receive.txt'], 'a sender and its key\'s comment are tokens');
 has("tank/$ds/".zfsmDiagToken('canarysender')."\texec\toff\tlocal\n", $files['plugin/replication-receive.txt'], 'the same token in the sender\'s area');
 $log = $files['plugin/log.txt'];
 $gone = 'tank/'.$token('CanaryGone').'@'.$token('CanarySnap');
-has("Destroy Snapshot: $gone failed: cannot destroy '$gone': dataset is busy\n", $log, 'a name that is gone is a token too, and the words after it stay');
-has('Jan  2 10:00:00 '.$token('CanaryTower').' zfs.master[41]: Destroy Snapshot: '.$gone, $log, 'the server\'s own name is a token');
+has("ZFS Snapshot Destroy: $gone failed: cannot destroy ?$gone?: dataset is busy\n", $log, 'a name that is gone is a token too, and the words after it stay');
+has('Jan  2 10:00:00 '.$token('CanaryTower').' zfs.master[41]: ZFS Snapshot Destroy: '.$gone, $log, 'the server\'s own name, as the system log has it, is a token');
 has("Rewrite of tank/$ds started: zfs rewrite -r tank/$ds\n", $log, 'a known name with a space ends where it ends');
-has("Destroy: tank/".$token('Canary failed Vol')." succeeded\n", $log, 'a known name is whole though one of the plugin\'s own words is in it');
-has("now on otherpool/".$token('CanaryOther')."\n", $log, 'a pool only Unraid lists marks its datasets');
-has('the share on '.$token('CanaryNas').' and '.$token('canarynas')."\n", $log, 'and so is the name Unraid has for it, where no system log line says it');
-has('a line that names '.zfsmDiagToken('CanaryTower').' and '.$token('canarytower').' by themselves', $log, 'the server\'s name is a token wherever it stands, also as Unraid writes it in file names');
-has('kept at backup:tank/'.$token('CanaryColon')."\n", $log, 'a dataset right after a colon is found');
+has("ZFS Dataset Destroy: tank/".$token('Canary failed Vol')." succeeded\n", $log, 'a known name is whole though one of the plugin\'s own words is in it');
+has("ZFS Dataset Destroy: tank/".$token('Canary Old Stuff')." succeeded\n", $log, 'a name with a space that is gone ends at the plugin\'s own word');
+has("ZFS Dataset Destroy: tank/".$token('Canary Gone finished movies')." succeeded\n", $log, 'and one of the plugin\'s words in it ends it only with what follows that word in a log line');
+has("ZFS Master NG dataset inventory failed for otherpool: zfs timed out\n", $log, 'a pool Unraid lists keeps its name where it stands alone, imported or not');
+has('ssh: connect to host '.$token('canarynas').' port 22: Connection refused, as '.$token('root@canaryhost:backup/CanaryRemote')."\n", $log, 'this server\'s name as Unraid has it is a token; another server, its user and its dataset are one token, the one they have as a property\'s value');
 has("ZFS Snapshot Destroy: tank/$ds@".$token('CanaryA').','.$token('CanaryB').','.$token('CanaryC')." succeeded\n", $log, 'each snapshot of a list is a token');
-has("Destroy: tank/".$token('Canary Gone finished movies')." succeeded\n", $log, 'a name that is gone is whole though one of the plugin\'s words is in it: the word ends a name only with what follows it in a log line');
 $exported = 'exportedpool/'.$token('CanaryVol').'@'.zfsmDiagToken('CanaryA');
 has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
 has(' started: zfs send -P -v -t (a resume token, left out) | zfs receive -s tank/'.zfsmDiagToken('CanaryCopy')."\n", $log, 'a resume token is left out');
-has("a key cut short (a private key, left out)\n", $log, 'a private key whose end was cut off is left out, and the next line stays');
-has("Destroy: tank/".$token('Canary Old Stuff was removed by hand')."\n", $log, 'a name with a space that nothing known follows takes the line\'s end with it');
-has(" to tank/".$token('CanaryCopy').' (changes since @'.$token('CanaryBase').') started: zfs send -i tank/'.$ds.'@'.zfsmDiagToken('CanaryBase'), $log, 'a snapshot named without its dataset is a token');
+has(' to tank/'.zfsmDiagToken('CanaryCopy').' (changes since '.$token('CanaryBase').') started: zfs send -i tank/'.$ds.'@'.zfsmDiagToken('CanaryBase'), $log, 'a snapshot the plugin names by its short name alone is a token, the one it has after its dataset');
 has(' refused: tank/'.$token('CanaryElse').'/'.$token('x').' is not inside tank/'.$ds.'/'.zfsmDiagToken('canarysender').' (zfsm-replica 1 exists (as hex) tank/'.$ds.'/'.$token('CanaryHex').')', $log, 'a dataset a request names as hex is read and replaced');
 has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Artist - Album (2019) failed').','.$token(' so rsync copies it: cp failed')."\n", $log, 'a folder\'s path takes the rest of its line');
-same(1, preg_match('/a request from (ip-[0-9a-f]{8}) and again from \1, then from ip-[0-9a-f]{8}\n/', $log), 'an address is a token, the same one each time: '.$log);
-has('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') host-', $log, 'a key is its fingerprint and its comment a token');
-has("(a private key, left out)\n", $log, 'a private key is left out');
-has('Replication of tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' to '.zfsmDiagToken('root@canaryhost:backup/CanaryRemote')." failed: no route\n", $log, 'another server, its user and its dataset are one token, the one they have as a property\'s value');
-has('request: "GET /plugins/zfs.master/include/ZFSMSnapshotAdmin.php?(left out) HTTP/1.1", host: (left out), referrer: (left out)', $files['plugin/php-errors.txt'], 'a request\'s query and the site\'s name are left out');
+same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} refused: /', $log), preg_match('~Replication from ip-[0-9a-f]{8} into tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/'.$token('CanaryIn').' received\n~', $log)), 'an address is a token: '.$log);
+// No rule marks these names: they are tokens because they are no words of the plugin's.
+has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');
+has('such as backup/'.$token('CanaryLeaf')."\n", $log, 'the name in a refusal\'s example is a token');
+has('The copy goes inside '.$token('bakup').'/'.$token('CanaryTyped').', which doesn?t exist'."\n", $log, 'a dataset the user typed, of a pool there is not, is tokens');
+has('ZFS Dataset Creation: tank/'.$token('Canary').'?s '.$token('CanaryFiles').' ('.$token('CanarySmith').' 2024) failed: Invalid dataset name'."\n", $log, 'a name that was refused is tokens past the character that ended it for the rules');
+has("ZFS Master NG backend exception: (a private key, left out)\n", $log, 'a private key is left out');
+has('request: "POST /plugins/zfs.master/backend/ZFSMAdmin.php?(left out) HTTP/1.1", host: (left out), referrer: (left out)', $files['plugin/php-errors.txt'], 'a request\'s query and the site\'s name are left out');
 has('scandir(/mnt/tank/'.$ds.'/'.$token('Canary\'s Stuff): Failed to open directory').' in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9'."\n", $files['plugin/php-errors.txt'], 'a folder in a PHP error is replaced, and where PHP raised it stays');
 has("4242\t30\tzfs send -R tank/$ds@".$token('Canary Daily failed copy')."\n", $files['zfs/processes.txt'], 'a running command\'s dataset and snapshot are tokens, a known snapshot whole');
 has("4245\t3\tzfs send -P -v -t (a resume token, left out)\n", $files['zfs/processes.txt'], 'and its resume token is left out');
@@ -212,6 +225,9 @@ same("tank/a\tuser:note\t".zfsmDiagToken('line one')."\t\n(more of the value abo
 	zfsmDiagFreeRows("tank/a\tuser:note\tline one\nSecret Two\tlocal\ntank/a\tuser:tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\n", 2, array('local', 'received'), 'tank'), 'a value with a line break or a tab in it is hidden whole');
 same("tank/a\tuser:note\t".zfsmDiagToken('first')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
 	zfsmDiagFreeRows("tank/a\tuser:note\tfirst\nfake\tcompression\tPrivate Owner\tlocal\nelsewhere/a\tcompression\tPrivate\tlocal\n", 2, array('local', 'received'), 'tank'), 'a line of a value that looks like a row is no row: its dataset is not this pool\'s');
+same("tank/a\tuser:note\t".zfsmDiagToken('first')."\t\n(more of the value above, left out)\n(more of the value above, left out)\ntank/a\tcompression\tlz4\tlocal\ntank/a\tcompression\t".zfsmDiagToken('Private Owner')."\tlocal\n",
+	zfsmDiagFreeRows("tank/a\tuser:note\tfirst\ntank\tcompression\tPrivate Owner\tlocal\nlast\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tcompression\tPrivate Owner\tlocal\n", 2, array('local', 'received'), 'tank'),
+	'a line of a value that names this pool and looks like a row is still that value; and no value of OpenZFS\'s own holds a space, so one that does is hidden');
 same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:contact\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\t".zfsmDiagToken('line one')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
 	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\tline one\nAlice Two\tlocal\nsecret\tlocal\n", 1, array('-', 'default', 'local'), ''),
 	'a pool\'s comment and user properties are hidden as a dataset\'s are; its features are OpenZFS\'s own');
@@ -221,13 +237,35 @@ same('/mnt/user/'.zfsmDiagToken('Share').'/'.zfsmDiagToken('x'), zfsmDiagAnonTex
 $shared = array('/tmp/ClientA/notes', '/boot/config/shares/Private.cfg', '/var/lib/Secret Thing', '/root/ClientB');
 same(array('/tmp/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/boot/'.zfsmDiagToken('config').'/'.zfsmDiagToken('shares').'/'.zfsmDiagToken('Private.cfg'), '/var/'.zfsmDiagToken('lib').'/'.zfsmDiagToken('Secret Thing'), '/root/'.zfsmDiagToken('ClientB')),
 	array_map('zfsmDiagAnonText', $shared), 'under /tmp, /boot, /var and /root anyone keeps files: a path there that is not the plugin\'s own is a folder\'s');
+$test_root = $GLOBALS['zfsm_root'];
+$GLOBALS['zfsm_root'] = '';
+zfsmDiagStart();
+$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip');
+same(array('/boot/'.zfsmDiagToken('config').'/'.zfsmDiagToken('plugins').'/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/var/'.zfsmDiagToken('log').'/'.zfsmDiagToken('syslog-private'), '/boot/'.zfsmDiagToken('logs').'/'.zfsmDiagToken('tower-diagnostics-20260102-1000.zip')),
+	array_map('zfsmDiagAnonText', $private), 'a path under a folder the collectors list is not the plugin\'s own for that: only the listed path, a log that was turned over, and what has the plugin\'s name');
+$plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs';
+same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay');
+$GLOBALS['zfsm_root'] = $test_root;
+zfsmDiagStart();
+array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
 $kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/x.php /dev/null';
 same($kept, zfsmDiagAnonText($kept), 'a path the collectors list, and what its name starts, stays as it is');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
 same('{"tank/'.zfsmDiagToken('a').'": broken', zfsmDiagAnonJson('{"tank\/a": broken'), 'and text that is no JSON is still searched, its \\/ read as /');
-same(1, preg_match('/^\{"org\.example:host":"ip-[0-9a-f]{8}","org\.example:keep":"5"\}$/', (string)zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5"}')), 'a user property\'s value that stays as a number is still an address when it is one');
+same('{"org.example:host":"'.zfsmDiagToken('10.0.20.11').'","org.example:keep":"5","org.example:size":"10G","org.example:who":"'.zfsmDiagToken('123Bob').'"}', zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5","org.example:size":"10G","org.example:who":"123Bob"}'),
+	'of a user property\'s values only a number, alone or with a unit of size or time, stays: an address and a word that starts with digits are tokens');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
-same(array('on', '1d=>1h,1w=>1d', '5', '-', zfsmDiagToken('my media')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', 'my media')), 'of the values an owner can write, a switch, a plan and a number stay');
+same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
+	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
+// A setting or a finding that names a dataset with nothing around it: its pool stays, and one word alone only when it is a pool.
+same(array('tank/'.zfsmDiagToken('a b').'/'.zfsmDiagToken('c'), 'tank', zfsmDiagToken('Media')), array_map('zfsmDiagNamed', array('tank/a b/c', 'tank', 'Media')), 'a dataset named alone keeps its pool; one word that is no pool is a token');
+// The second net, for running text: a word the plugin itself does not use is a token; numbers, tokens and fingerprints pass.
+$sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:AbC+/9 d41d8cd98f00b204e9800998ecf8427e';
+same(str_replace('plexserver42', zfsmDiagToken('plexserver42'), $sentence), zfsmDiagKnownWords($sentence), 'a word that is no word of the plugin\'s is a token; its own words, numbers, tokens and checksums stay');
+same(array('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') '.zfsmDiagToken('canaryuser@canaryhost'), "cut short (a private key, left out)\nthe next line", 'at backup:tank/'.zfsmDiagToken('Colon')),
+	array(zfsmDiagAnonText('key '.$public_key.' canaryuser@canaryhost'), zfsmDiagAnonText("cut short -----BEGIN OPENSSH PRIVATE KEY-----; CutKeyBody\nthe next line"), zfsmDiagAnonText('at backup:tank/Colon')),
+	'a key is its fingerprint and its comment a token; a private key whose end was cut off is left out, and the next line stays; a dataset right after a colon is found');
+same(1, preg_match('/^from (ip-[0-9a-f]{8}) and \1, then ip-[0-9a-f]{8}$/D', (string)zfsmDiagAnonText('from 203.0.113.77 and 203.0.113.77, then 2001:db8::77')), 'an address is a token, the same one each time');
 same(array('2 characters, 3 bytes, non-ASCII, lower case', '2 bytes, not valid UTF-8, no letters', '3 characters, 3 bytes, upper case'), array_map('zfsmDiagShape', array("\xc3\xa9a", "\xff1", 'A-B')), 'a shape says what is not ASCII or not UTF-8, and the case');
 // Two names whose tokens would start alike get different ones.
 zfsmDiagStart();
@@ -297,12 +335,20 @@ file_put_contents($work.'/linked', 'kept');
 symlink($work.'/linked', $logs.'/zfs.master-diagnostics-20240101-000000.zip');
 touch($logs.'/zfs.master-diag.00000000000000aa.part', time() - 7200);
 touch($logs.'/zfs.master-diag.other.part', time() - 7200);
-zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip');
+same(array(), zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip'), 'every zip that had to go went');
 $left = array_values(array_diff(scandir($logs), array('.', '..')));
 same(array('tower-diagnostics-20250101-0000.zip', 'zfs.master-diag.00000000000000bb.part', 'zfs.master-diag.other.part', 'zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-0000.zip', 'zfs.master-diagnostics-20250101-000002.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip'), $left, 'the newest three stay, with every file that is not the plugin\'s zip, a link, and a part less than an hour old');
 same('kept', file_get_contents($work.'/linked'), 'and what a link points to is not touched');
 list($zip, $why) = $bundle('fourth', false, false);
 same(array('zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip', basename((string)$zip)), array_values(preg_grep('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/', scandir($logs))), 'a new zip takes the oldest one\'s place: '.$why);
+// A zip that can't be removed is named, not passed over: here another file is mounted over it. Through a link, nothing is removed.
+file_put_contents($logs.'/zfs.master-diagnostics-20230101-000000.zip', 'stuck');
+exec('mount --bind '.escapeshellarg($work.'/linked').' '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
+same(array('zfs.master-diagnostics-20230101-000000.zip'), zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
+exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
+symlink($logs, $work.'/logs-link');
+same(array(array(), true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
+unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
 // A clock that went back: the zip just written is kept though three have later names. A name another run took is not taken again.
 foreach (array('20990101-000001', '20990101-000002', '20990101-000003') as $later) file_put_contents($logs.'/zfs.master-diagnostics-'.$later.'.zip', 'later');
 list($zip, $why) = $bundle('clock', false, false);
@@ -334,9 +380,7 @@ if (!is_string($docroot) || !is_file($docroot.'/plugins/zfs.master/scripts/diagn
 	exit(1);
 }
 $script = $docroot.'/plugins/zfs.master/scripts/diagnostics.php';
-// This container has no disks.ini and no var.ini: the lines that need what only those say are left out.
-$script_lines = preg_grep('/otherpool|CanaryNas/', $log_lines, PREG_GREP_INVERT);
-file_put_contents('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".implode("\nJan  2 10:00:01 CanaryTower zfs.master[41]: ", $script_lines)."\n");
+file_put_contents('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".implode("\nJan  2 10:00:01 CanaryTower zfs.master[41]: ", array_map('zfsmSafeText', $log_lines))."\n");
 $clear_logs();
 $run = function($options, $arguments = '') use ($script) {
 	exec('ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($script).' '.$arguments.' 2>&1', $printed, $code);
@@ -347,6 +391,7 @@ same(array(0, false), array($code, stripos($printed, 'canary')), 'the script end
 has("zfs/timings.txt\tok\t", $printed, 'it prints each file\'s result');
 has("\nFINDINGS (", $printed, 'the summary');
 same(1, preg_match('~\n\nDiagnostics zip: (/boot/logs/zfs\.master-diagnostics-\d{8}-\d{6}\.zip)$~D', $printed, $said), 'and last the zip\'s path: '.$printed);
+$made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-script').' 2>&1', $unzipped, $code);
 same(array(0, array(), true), array($code, $leaks($ours($work.'/from-script')), is_file($work.'/from-script/unraid/canarytower-diagnostics-20260102-1000.zip')), 'the script\'s zip unpacks, holds no name, and has Unraid\'s zip: '.implode(' ', $unzipped));
 has('Rewrite of tank/name-', file_get_contents($work.'/from-script/plugin/log.txt'), 'the system log\'s lines are in it, rewritten');
@@ -354,6 +399,7 @@ same(array(), glob('/tmp/zfs.master-diag.*'), 'the work folder is removed');
 $clear_logs();
 list($code, $printed) = $run('', '--no-unraid');
 same(array(0, 1), array($code, preg_match('~\nDiagnostics zip: (\S+)$~D', $printed, $said)), 'the script ends well with --no-unraid: '.$printed);
+$made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/without-unraid'));
 same(array("Unraid's own diagnostics were not asked for.\n", array()), array(file_get_contents($work.'/without-unraid/unraid/diagnostics.txt'), glob($work.'/without-unraid/unraid/*.zip')), '--no-unraid leaves Unraid\'s script unrun');
 $clear_logs();

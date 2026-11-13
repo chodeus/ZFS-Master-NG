@@ -34,4 +34,6 @@ echo zfsmDiagFile($work.'/collectors.txt'), "\n", zfsmDiagFile($work.'/summary.t
 list($zip, $why) = $written ? zfsmDiagPack($work) : array(null, "some files could not be written to $work");
 if ($zip === null) fwrite(STDERR, "No zip was made: $why\n");
 else echo "\nDiagnostics zip: $zip\n";
+// A zip that was made can still come with something to say.
+if ($zip !== null && $why !== '') fwrite(STDERR, $why."\n");
 exit($zip === null ? 1 : 0);
