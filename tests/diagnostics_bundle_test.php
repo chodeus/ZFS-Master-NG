@@ -9,9 +9,10 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
-// This test writes the system log and removes the plugin's zips in /boot/logs: in a test's container only.
-if (is_file('/etc/unraid-version') || is_dir('/boot/config')) {
-	fwrite(STDERR, "FAILED: refusing to run on an Unraid system\n");
+// This test writes zips into /boot/logs and removes them: only where that folder is a filesystem of the test's own, as the
+// runner mounts it (tests/run_http_inventory_tests.sh), never a host's.
+if (is_file('/etc/unraid-version') || !is_dir('/boot/logs') || stat('/boot/logs')['dev'] === stat('/boot')['dev']) {
+	fwrite(STDERR, "FAILED: /boot/logs must be a filesystem mounted for this test\n");
 	exit(1);
 }
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
@@ -208,10 +209,20 @@ zfsmDiagLearnPools($said);
 same('Snapshot: gonepool/'.zfsmDiagToken('a').'@'.zfsmDiagToken('b').' failed: I/O error on read/write; cannot open \'otherpool/'.zfsmDiagToken('a').'\'; zfs list gonepool/'.zfsmDiagToken('a'), zfsmDiagAnonText($said),
 	'a pool nothing lists is learned from a line of the plugin\'s and from a name zfs quotes, then found anywhere; no other word with a slash is taken for one');
 same("tank/a\tuser:note\t".zfsmDiagToken('line one')."\t\n(more of the value above, left out)\ntank/a\tuser:tab\t".zfsmDiagToken("first\tSecret After")."\tlocal\ntank/a\tcompression\tlz4\tlocal\n",
-	zfsmDiagHideFreeValues("tank/a\tuser:note\tline one\nSecret Two\tlocal\ntank/a\tuser:tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\n"), 'a value with a line break or a tab in it is hidden whole');
+	zfsmDiagFreeRows("tank/a\tuser:note\tline one\nSecret Two\tlocal\ntank/a\tuser:tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\n", 2, array('local', 'received'), 'tank'), 'a value with a line break or a tab in it is hidden whole');
+same("tank/a\tuser:note\t".zfsmDiagToken('first')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
+	zfsmDiagFreeRows("tank/a\tuser:note\tfirst\nfake\tcompression\tPrivate Owner\tlocal\nelsewhere/a\tcompression\tPrivate\tlocal\n", 2, array('local', 'received'), 'tank'), 'a line of a value that looks like a row is no row: its dataset is not this pool\'s');
+same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:contact\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\t".zfsmDiagToken('line one')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
+	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\tline one\nAlice Two\tlocal\nsecret\tlocal\n", 1, array('-', 'default', 'local'), ''),
+	'a pool\'s comment and user properties are hidden as a dataset\'s are; its features are OpenZFS\'s own');
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
 same('/mnt/user/'.zfsmDiagToken('Share').'/'.zfsmDiagToken('x'), zfsmDiagAnonText('/mnt/user/Share/x'), 'Unraid\'s own folder under /mnt stays, a share does not');
+$shared = array('/tmp/ClientA/notes', '/boot/config/shares/Private.cfg', '/var/lib/Secret Thing', '/root/ClientB');
+same(array('/tmp/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/boot/'.zfsmDiagToken('config').'/'.zfsmDiagToken('shares').'/'.zfsmDiagToken('Private.cfg'), '/var/'.zfsmDiagToken('lib').'/'.zfsmDiagToken('Secret Thing'), '/root/'.zfsmDiagToken('ClientB')),
+	array_map('zfsmDiagAnonText', $shared), 'under /tmp, /boot, /var and /root anyone keeps files: a path there that is not the plugin\'s own is a folder\'s');
+$kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/x.php /dev/null';
+same($kept, zfsmDiagAnonText($kept), 'a path the collectors list, and what its name starts, stays as it is');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
 same('{"tank/'.zfsmDiagToken('a').'": broken', zfsmDiagAnonJson('{"tank\/a": broken'), 'and text that is no JSON is still searched, its \\/ read as /');
 same(1, preg_match('/^\{"org\.example:host":"ip-[0-9a-f]{8}","org\.example:keep":"5"\}$/', (string)zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5"}')), 'a user property\'s value that stays as a number is still an address when it is one');
