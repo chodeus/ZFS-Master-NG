@@ -85,12 +85,12 @@ function zfsmDiagNamed($name) {
 	return $rest === null ? zfsmDiagToken($name) : $pool.$rest;
 }
 
-// A name with no path to mark it, such as another server's: it becomes a token wherever it stands as a word.
 // The first word of a dataset a setting names on no pool this run knows: found as a pool is, and a token (zfsmDiagNamed).
 function zfsmDiagKnowRoot($root) {
 	if ((string)$root !== '') $GLOBALS['zfsm_diag_names']['roots'][(string)$root] = true;
 }
 
+// A name with no path to mark it, such as another server's: it becomes a token wherever it stands as a word.
 function zfsmDiagKnowWord($word) {
 	if (trim((string)$word) !== '') $GLOBALS['zfsm_diag_names']['words'][trim((string)$word)] = true;
 }
@@ -115,10 +115,8 @@ function zfsmDiagNamePattern() {
 		$names['files'] = array_flip(array_column(zfsmDiagCollectors(), 0));
 		// The paths the collectors list are the plugin's own: path => whether what its name starts, and what is under it, are too.
 		// That holds for a path with the plugin's name in it; another folder Unraid shares with everyone covers only itself.
-		$names['own'] = array(zfsmJobDir('') => true);
-		foreach (array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3)) as $path) {
-			$names['own'][zfsmStatePath(strstr($path.'*', '*', true))] = preg_match('~zfs\.master|zfsm~', $path) === 1;
-		}
+		$names['own'] = array();
+		foreach (array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3)) as $path) $names['own'][] = zfsmStatePath(strstr($path.'*', '*', true));
 		// A key runs to its END line; one whose end was cut off is the rest of its line and the lines of key text after it, no more.
 		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\s;]*-----END [A-Z0-9 ]*PRIVATE KEY-----|[^\r\n]*(?:\r?\n[A-Za-z0-9+/=]{16,}(?=\r?\n|\z))*))'
 			// zfs send -t: the token of a copy that stopped names its snapshot to anyone who asks zfs.
@@ -181,12 +179,10 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
 	// One of the plugin's own paths, to its first space; any other path under a shared top folder is a folder's, names and all.
 	$whole = rtrim(substr($run, 0, strcspn($run, ' ')), ':,;');
-	foreach ($names['own'] as $own => $prefix) {
-		$own = (string)$own;
-		if (strncmp($whole, $own, strlen($own)) !== 0) continue;
-		$rest = (string)substr($whole, strlen($own));
-		// Itself, a log that was turned over (syslog.1), inside a folder of the plugin's, or a name it makes after a prefix (zfsmDiagOwnName).
-		if ($rest === '' || preg_match('/^\.\d+$/D', $rest) === 1 || $prefix && ($rest[0] === '/' || substr($own, -1) === '/' || zfsmDiagOwnName($whole))) {
+	if (zfsmDiagOwnName($whole)) return array($whole, $at + strlen($whole));
+	foreach ($names['own'] as $own) {
+		// A listed path itself, or a log of it that was turned over (syslog.1): what is in or beside it is not, unless zfsmDiagOwnName says so.
+		if ($whole === $own || preg_match('/^'.preg_quote($own, '/').'\.\d+$/D', $whole) === 1) {
 			return array($whole, $at + strlen($whole));
 		}
 	}
@@ -213,13 +209,19 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	return array($tokens === null ? null : ($kept[1] ?? $kept[0]).$tokens, $at + strlen($name));
 }
 
-// Whether $path is, or is in, a name the plugin makes after one of its name prefixes: a diagnostics run's work folder, a job's folder
-// (zfsmJobDir), its lock and alert state, a package record. Any other name after those prefixes is someone else's.
+// Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
+// the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$names = array('/tmp/zfs.master-diag.' => '[0-9a-f]{16}', '/var/run/zfs.master.' => '(?:lock|alerts\.json(?:\.lock)?|rewrite|replicate|replica-serve|diagnostics)',
-		'/var/log/packages/zfs.master-*' => '\d[\d.]*-[a-z0-9_]+-\d\w*');
+	$jobs = '(?:rewrite|replicate|replica-serve|diagnostics)(?:/(?:\d+|[0-9a-f]{64}\.\d+|pack)\.lock)?';
+	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
+	$names = array(
+		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
+		zfsmJobDir('') => $jobs,
+		zfsmStatePath('/var/run/zfs.master.') => '(?:lock|alerts\.json(?:\.lock)?|'.$jobs.')',
+		zfsmStatePath(rtrim('/var/log/packages/zfs.master-*', '*')) => '\d[\d.]*-[a-z0-9_]+-\d\w*',
+		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z)');
 	foreach ($names as $prefix => $name) {
-		if (preg_match('~^'.preg_quote(zfsmStatePath(rtrim($prefix, '*')), '~').$name.'(?=/|$)~D', $path) === 1) return true;
+		if (preg_match('~^'.preg_quote($prefix, '~').$name.'$~D', $path) === 1) return true;
 	}
 	return false;
 }
