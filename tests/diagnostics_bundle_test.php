@@ -219,9 +219,19 @@ mkdir($work.'/readme');
 zfsmDiagWrite($work.'/readme', 'README.txt', zfsmDiagReadme());
 same(array(true, zfsmDiagReadme()), array(zfsmDiagAnonymizeDir($work.'/readme'), file_get_contents($work.'/readme/README.txt')), 'README.txt, which holds no name, is written again after the rewrite: its "zfs/" is not that pool');
 // What is no address, host or path stays as it is.
-$plain = "feature@async_destroy\tenabled\nscan: scrub repaired 0B in 00:01:02 on 2026.11.11.3; ZFSMOperations::run v1.2.3.4 300.1.2.3\n7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\nhttps://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg\n";
+$plain = "feature@async_destroy\tenabled\nscan: scrub repaired 0B in 00:01:02 on 2026.11.11.3; ZFSMOperations::run v1.2.3.4 300.1.2.3\n/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\nhttps://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg\n";
 same($plain, zfsmDiagAnonText($plain), 'a pool feature, a time, a version, a class, a system path and a link are left alone');
-same('/dev/zvol/zfs/'.zfsmDiagToken('vm')."\n/dev/sdb1", zfsmDiagAnonText("/dev/zvol/zfs/vm\n/dev/sdb1"), 'a volume\'s device names its dataset; a disk\'s does not');
+$cron = "7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\n";
+same($cron, zfsmDiagAnonRunning($cron), 'and a command line in running text keeps its system paths: in a field, a system path takes the whole field');
+same('/dev/zvol/zfs/'.zfsmDiagToken('vm')."\n/dev/null", zfsmDiagAnonText("/dev/zvol/zfs/vm\n/dev/null"), 'a volume\'s device names its dataset; /dev/null does not');
+// Under a system folder the system's and the plugin's names stay; any other name is a token, as a dataset can be mounted there.
+same(array('/usr/local/'.zfsmDiagToken('ClientA')."\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/".zfsmDiagToken('ClientB').'/'.zfsmDiagToken('root@10.0.0.5')."\t/dev/".zfsmDiagToken('ClientC')."\t/usr/local/".zfsmDiagToken('SHA256:ClientE'),
+		'{"m":"/usr/local/'.zfsmDiagToken('Client A').'"}', '/usr/local/'.zfsmDiagToken('ClientA').' failed',
+		'include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed', '/plugins/zfs.master/backend/ZFSMAdmin.php?(left out)'),
+	array(zfsmDiagAnonText("/usr/local/ClientA\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/ClientB/root@10.0.0.5\t/dev/ClientC\t/usr/local/SHA256:ClientE"),
+		zfsmDiagAnonJson('{"m":"/usr/local/Client A"}'), zfsmDiagAnonRunning('/usr/local/ClientA failed'),
+		zfsmDiagAnonRunning('include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed'), zfsmDiagAnonText('/plugins/zfs.master/backend/ZFSMAdmin.php?csrf_token=ClientD')),
+	'a folder under a system folder is a token, in a field, a JSON value and running text; the system\'s and the plugin\'s own names stay, a page\'s query is left out');
 zfsmDiagStart();
 $said = 'Snapshot: gonepool/a@b failed: I/O error on read/write; cannot open \'otherpool/a\'; zfs list gonepool/a';
 zfsmDiagLearnPools($said);
@@ -234,6 +244,9 @@ $values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clie
 same("tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\t".zfsmDiagToken("first\tSecret After")."\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
 	."tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\treceived\ntank/b\tsharenfs\t".zfsmDiagToken('rw=@10.0.0.0/24')."\tlocal\ntank/b\tcompression\t".zfsmDiagToken('Private Owner')."\tlocal\n", zfsmDiagFreeRows($values, $heads),
 	'a user property\'s value and a share\'s options are tokens, a plan and OpenZFS\'s own values stay, a value with a tab is hidden whole, a key\'s place is only "set"; a word of a user property\'s name that is not the plugin\'s is a token; a value with a space is no value of OpenZFS\'s');
+same("tank/c\tkeylocation\tnone\tlocal\ntank/d\tkeylocation\t-\t-\ntank/e\tkeylocation\t(set)\treceived\n",
+	zfsmDiagFreeRows("tank/c\tkeylocation\tnone\tlocal\ntank/d\tkeylocation\t-\t-\ntank/e\tkeylocation\tfile:///root/ClientA.key\treceived\n", "tank/c\tkeylocation\ntank/d\tkeylocation\ntank/e\tkeylocation\n"),
+	'a key\'s place: OpenZFS\'s own none and - stay, any other is only "set"');
 $left_out = "(a value here holds a line break, or a property changed while they were read: the values are left out)\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\ntank/a\tcompression\n";
 $two = "tank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\n";
 same(array($left_out, $left_out, $left_out, $left_out, $left_out), array(

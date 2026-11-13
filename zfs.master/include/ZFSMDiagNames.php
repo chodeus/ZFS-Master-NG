@@ -172,15 +172,21 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
 	return filter_var($ip, FILTER_VALIDATE_IP) === false ? array($found, $end) : array(zfsmDiagToken($ip, 'ip').substr($found, strlen($ip)), $end);
 }
 
-// A path at $at, each name in it a token. A system path stays. A dataset's pool stays, and its names end where ZFS's few characters do.
+// A path at $at, each name in it a token. A system path keeps its plain words (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
 // A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end.
 function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
-	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
-	// One of the plugin's own paths, whole: in a field (a row's, a JSON value's) the whole field, in running text up to its first space
-	// (zfsmDiagAnonRunning's second net takes the words after it). Any other path under a shared top folder is a folder's, names and all.
-	$whole = rtrim(strpos($ends, "\t") !== false || $ends === '' ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
+	$field = strpos($ends, "\t") !== false || $ends === '';
+	// A path, whole: in a field (a row's, a JSON value's) the whole field, in running text up to its first space
+	// (zfsmDiagAnonRunning's second net takes the words after it).
+	$whole = rtrim($field ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
+	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) {
+		// In running text a system path ends with its plain names; in a field, before a page's query (the query rule's).
+		$path = $field ? preg_replace('~\?[\w%.-]+=.*~s', '', $whole) : substr($run, 0, strspn($run, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-/'));
+		return array(zfsmDiagSystemPath($system[0], substr($path, strlen($system[0]))), $at + strlen($path));
+	}
+	// One of the plugin's own paths stays whole. Any other path under a shared top folder is a folder's, names and all.
 	if (zfsmDiagOwnName($whole)) return array($whole, $at + strlen($whole));
 	foreach ($names['own'] as $own) {
 		// A listed path itself, or a log of it that was turned over (syslog.1): what is in or beside it is not, unless zfsmDiagOwnName says so.
@@ -226,6 +232,17 @@ function zfsmDiagOwnName($path) {
 		if (preg_match('~^'.preg_quote($prefix, '~').$name.'$~D', $path) === 1) return true;
 	}
 	return false;
+}
+
+// A path under a system folder: a name below $top stays when it is plain words that each stay (zfsmDiagWordKept), any other is a
+// token, as a dataset can be mounted there too (mountpoint=/usr/local/x). null when the plugin's words could not be read.
+function zfsmDiagSystemPath($top, $rest) {
+	if (zfsmDiagVocabulary() === null) return null;
+	$clean = preg_replace_callback('~[^/]+~', function($name) {
+		$words = preg_match('~^[\w.+-]+$~D', $name[0]) === 1 ? preg_split('~[.+-]+~', $name[0], -1, PREG_SPLIT_NO_EMPTY) : array('');
+		return count(array_filter($words, 'zfsmDiagWordKept')) === count($words) ? $name[0] : zfsmDiagToken($name[0]);
+	}, $rest);
+	return $clean === null ? null : $top.$clean;
 }
 
 // The part of a path after what stays, each name in it a token.

@@ -214,11 +214,12 @@ function zfsmDiagOwnersProperties() {
 }
 
 // One row with its value hidden when it is its owner's (zfsmDiagFreeValue): a user property's, one of zfsmDiagOwnersProperties() but for
-// OpenZFS's own none and legacy, or a value with a space or a tab that is no path (a path goes to the path rules). keylocation: only that it is set.
+// OpenZFS's own none and legacy, or a value with a space or a tab that is no path (a path goes to the path rules). keylocation: OpenZFS's
+// own prompt, none and -, any other only as set.
 function zfsmDiagFreeRow($head, $value, $source) {
 	list($shown, $property, $user) = zfsmDiagRowHead($head);
 	$owners = in_array($property, zfsmDiagOwnersProperties(), true) && !in_array($value, array('none', 'legacy'), true);
-	if ($property === 'keylocation') $value = $value === 'prompt' ? $value : '(set)';
+	if ($property === 'keylocation') $value = in_array($value, array('prompt', 'none', '-'), true) ? $value : '(set)';
 	elseif ($user || $owners || preg_match('~^(?:\S+|/[^\t]*)$~D', $value) !== 1) $value = zfsmDiagFreeValue($value);
 	return $shown."\t".$value."\t".$source;
 }
