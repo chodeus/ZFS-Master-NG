@@ -209,7 +209,7 @@ function zfsmDiagRowHead($head) {
 }
 
 // One row with its value hidden when it is its owner's (zfsmDiagFreeValue): a user property's, a share's options, a pool's comment,
-// or any value with a space or a tab in it, which no value of OpenZFS's own has. keylocation is a URL or a key file's path: only that it is set.
+// or a value with a space or a tab that is no path (no value of OpenZFS's own has one; a path goes to the path rules). keylocation: only that it is set.
 function zfsmDiagFreeRow($head, $value, $source) {
 	list($shown, $property, $user) = zfsmDiagRowHead($head);
 	if ($property === 'keylocation') $value = $value === 'prompt' ? $value : '(set)';

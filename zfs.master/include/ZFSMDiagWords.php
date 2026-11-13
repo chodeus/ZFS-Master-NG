@@ -1,6 +1,6 @@
 <?php
 // The second net for running text. Logs, command lines and findings are sentences, and no rule knows every shape a name takes
-// in one: after the rules of ZFSMDiagNames.php, a word there stays only when it is a number or a word the plugin itself uses.
+// in one: after the rules of ZFSMDiagNames.php, a word there stays only when it is a number, a pool's name, a token, a fingerprint or a word the plugin uses.
 
 // Words of the system's own messages that the plugin's files may not hold: the calendar, zfs's, PHP's and nginx's errors.
 define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon tue wed thu fri sat sun utc gmt notice info debug warning error critical'
@@ -47,7 +47,7 @@ function zfsmDiagPropertyName($property) {
 	return $shown ?? zfsmDiagToken($property);
 }
 
-// A number, alone or with a unit of size, time or ratio, or a checksum: 12, 10G, 512KiB, 30s, 2x, an md5.
+// A number, alone, with a unit of size, time or ratio, or as an ordinal; or a checksum: 12, 10G, 512KiB, 30s, 2x, 2nd, an md5.
 function zfsmDiagIsNumber($word) {
 	return preg_match('/^(?:\d+(?:[KMGTPE]i?B?|B|[smhdwy]|x|st|nd|rd|th)?|[0-9a-f]{32,})$/D', $word) === 1;
 }
