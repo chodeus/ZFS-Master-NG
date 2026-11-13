@@ -28,7 +28,7 @@ function zfsmDiagUnraidZip($ctx) {
 // The files that are running text: sentences and command lines, where a name can stand in any shape (include/ZFSMDiagWords.php).
 function zfsmDiagRunningText() {
 	return array('summary.txt', 'collectors.txt', 'plugin/log.txt', 'plugin/php-errors.txt', 'plugin/jobs.txt', 'plugin/install.txt', 'plugin/schedule.txt',
-		'plugin/alerts-state.json.txt', 'plugin/browser.json.txt', 'zfs/processes.txt', 'zfs/timings.txt');
+		'plugin/alerts-state.json.txt', 'zfs/processes.txt', 'zfs/timings.txt');
 }
 
 // Rewrites every file of a run with its names replaced, then adds names.txt and writes README.txt again, which holds no name.
@@ -39,8 +39,8 @@ function zfsmDiagAnonymizeDir($dir) {
 	foreach (zfsmDiagFilesUnder($dir) as $file) {
 		$text = zfsmDiagWhole('file_get_contents', $dir.'/'.$file);
 		if ($text === false) return false;
-		$clean = substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text);
-		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean, $file === 'plugin/browser.json.txt' ? ZFSM_DIAG_BROWSER_WORDS : '');
+		$clean = $file === 'plugin/browser.json.txt' ? zfsmDiagAnonBrowser($text) : (substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text));
+		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean);
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());

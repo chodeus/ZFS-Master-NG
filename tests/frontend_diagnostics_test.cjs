@@ -92,8 +92,8 @@ page = launch();
 for (let index = 1; index <= 20; index++) page.context.zfsmDiagRecord('errors', () => ({at: 't' + index, text: 'error ' + index + ' ' + JSON.stringify({answer: '"\\'.repeat(600)}), where: 'ZFSMFrontEnd.js:' + index}));
 const quoted = JSON.parse(page.storage.get('zfsm-diagnostics'));
 const quotedReport = page.context.zfsmDiagReport(page.window);
-assert.deepEqual([quoted.errors.length, quoted.errors.every(entry => entry.text.length <= 200), JSON.parse(quotedReport).leftOut, Buffer.byteLength(quotedReport) < 65536, JSON.stringify(JSON.parse(quotedReport).kept['zfsm-diagnostics']) === page.storage.get('zfsm-diagnostics')],
-  [20, true, 0, true, true], 'each string of a part is cut to 200 characters before it is kept, and the report holds the whole record within 64 KB: ' + Buffer.byteLength(quotedReport) + ' bytes');
+assert.deepEqual([quoted.errors[quoted.errors.length - 1].at, JSON.stringify(quoted.errors).length <= 8000, quoted.errors.every(entry => entry.text.length <= 200), JSON.parse(quotedReport).leftOut, Buffer.byteLength(quotedReport) < 65536, JSON.stringify(JSON.parse(quotedReport).kept['zfsm-diagnostics']) === page.storage.get('zfsm-diagnostics')],
+  ['t20', true, true, 0, true, true], 'each string is cut to 200 characters and the errors to their share, newest kept; the report holds the whole record within 64 KB: ' + Buffer.byteLength(quotedReport) + ' bytes');
 // A value that does not fit is counted and takes no room: what comes after it is still kept.
 page = launch();
 for (let index = 0; index < 24; index++) page.storage.set('zdataset-tank/d' + index, 'y'.repeat(2000));
@@ -108,14 +108,25 @@ for (let index = 1; index <= 20; index++) page.context.zfsmDiagRecord('errors', 
 page.context.zfsmDiagRecord('render', () => ({at: 'r', headers: Array(50).fill('"'.repeat(300))}));
 const first = page.context.zfsmDiagReport(page.window);
 const firstKept = JSON.parse(first).kept['zfsm-diagnostics'];
-assert.deepEqual([typeof firstKept, firstKept && firstKept.errors.length, firstKept && firstKept.render.headers.length, JSON.parse(first).leftOut > 0, Buffer.byteLength(first) < 65536],
-  ['object', 20, 40, true, true], 'the record is kept whole, first, even at its largest, and the report stays within 64 KB: ' + Buffer.byteLength(first) + ' bytes');
+assert.deepEqual([typeof firstKept, firstKept && firstKept.errors.length > 0, firstKept && firstKept.render.headers.length > 0, JSON.stringify(firstKept).length < 13000, JSON.parse(first).leftOut > 0, Buffer.byteLength(first) < 65536],
+  ['object', true, true, true, true, true], 'the record is kept whole, first, even at its largest, and the report stays within 64 KB: ' + Buffer.byteLength(first) + ' bytes');
 
 // The budget is in bytes as sent: two-byte characters fill it twice as fast as their count says.
 page = launch();
 for (let index = 0; index < 24; index++) page.storage.set('zdataset-tank/e' + index, '\u00e9'.repeat(2000));
 const wide = page.context.zfsmDiagReport(page.window);
 assert.deepEqual([Buffer.byteLength(wide) < 65536, JSON.parse(wide).leftOut > 0], [true, true], 'a report of two-byte text stays within 64 KB as sent: ' + Buffer.byteLength(wide) + ' bytes');
+
+// At its largest, in text that takes the most room as sent (three-byte characters and escaped control characters), the record
+// still fits: the report keeps it whole and stays within 64 KB.
+page = launch();
+for (let index = 0; index < 20; index++) page.context.zfsmDiagRecord('errors', () => ({at: '\u4e2d'.repeat(200), text: '\u0001'.repeat(200), where: '\u4e2d'.repeat(200)}));
+page.context.zfsmDiagRecord('render', () => ({at: 'r', headers: Array(40).fill('\u4e2d'.repeat(200))}));
+page.context.zfsmDiagRecord('status', () => ({at: 's', text: '\u0001'.repeat(200)}));
+const widest = page.context.zfsmDiagReport(page.window);
+const widestKept = JSON.parse(widest).kept['zfsm-diagnostics'];
+assert.deepEqual([JSON.parse(widest).leftOut, Boolean(widestKept && widestKept.status), Buffer.byteLength(widest) < 65536, page.storage.get('zfsm-diagnostics').length <= 13000],
+  [0, true, true, true], 'the widest record fits the report whole: ' + Buffer.byteLength(widest) + ' bytes');
 
 // The page loads with no run, and its read of the state fails: that is not a failed run.
 page = launch();

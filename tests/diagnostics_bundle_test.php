@@ -289,9 +289,14 @@ same(array($pooled, zfsmDiagToken('xzzvault').'-'.zfsmDiagToken('zzbackup')), ar
 // The second net, for running text: a word the plugin itself does not use is a token; numbers, tokens and fingerprints pass.
 $sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:'.str_repeat('Ab+/', 10).'xyz d41d8cd98f00b204e9800998ecf8427e';
 same(str_replace('plexserver42', zfsmDiagToken('plexserver42'), $sentence), zfsmDiagKnownWords($sentence), 'a word that is no word of the plugin\'s is a token; its own words, numbers, tokens and checksums stay');
-$firefox = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:121.0) Gecko/20100101 Firefox/121.0 Chrome/120.0.0.0';
-same(array($firefox, 1), array(zfsmDiagKnownWords(zfsmDiagAnonText($firefox), ZFSM_DIAG_BROWSER_WORDS), preg_match('~^via host/ip-[0-9a-f]{8} and ip-[0-9a-f]{8}$~D', (string)zfsmDiagAnonText('via host/192.168.1.20 and 10.0.0.5'))),
-	'a browser\'s user agent passes whole, versions after its own names too; an address after any other name is a token');
+// A user agent is read by its own grammar, never by the shared rules: browsers' agents stay whole, other text is tokens.
+$agents = array('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7; rv:121.0) Gecko/20100101 Firefox/121.0',
+	'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Vivaldi/6.5.3206.48');
+same(array_merge($agents, array('Mozilla/5.0 (Linux; Android 14; '.zfsmDiagToken('Pixel 8').') Mobile', zfsmDiagToken('ClientAcme').' '.zfsmDiagToken('tank/data'))),
+	array_map('zfsmDiagUserAgent', array_merge($agents, array('Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile', 'ClientAcme tank/data'))), 'a browser\'s user agent stays whole; any other piece of one is a token');
+// Outside a user agent no browser's name or version shape is let through: an address is a token wherever it stands.
+same(array(1, 'id '.zfsmDiagToken('192_168_1_20')), array(preg_match('~^via host/ip-[0-9a-f]{8}, Version/ip-[0-9a-f]{8}$~D', (string)zfsmDiagAnonText('via host/192.168.1.20, Version/10.0.0.5')), zfsmDiagKnownWords('id 192_168_1_20')),
+	'an address after any name is a token, and digits joined by _ are no number');
 same(array('container '.zfsmDiagToken('safari').' has it mounted', 'Mozilla/5.0 Safari/537.36'), array(zfsmDiagKnownWords('container safari has it mounted'), zfsmDiagKnownWords('Mozilla/5.0 Safari/537.36', ZFSM_DIAG_BROWSER_WORDS)),
 	'a browser\'s words pass only in the browser\'s report: a container named for one is a token elsewhere');
 same(zfsmDiagToken('name-0123abcd').' SHA256:'.zfsmDiagToken('Zebra77'), zfsmDiagKnownWords('name-0123abcd SHA256:Zebra77'), 'text that only looks like a token or a fingerprint is not one: a token is one this run made, a fingerprint has its length');

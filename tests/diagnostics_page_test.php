@@ -85,18 +85,6 @@ $busy = 'Another diagnostics run is going: wait for it to end, then try again';
 exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --job --no-unraid 2>&1', $beside, $code);
 exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --no-unraid 2>&1', $terminal, $terminal_code);
 same(array(1, $busy, 1, $busy, array('state' => 'running')), array($code, implode("\n", $beside), $terminal_code, implode("\n", $terminal), $state()), 'a second job and a terminal run end, say why, and leave the first one\'s state');
-// A start that finds another start under way waits for it, and then sees that run.
-$starting = fopen($work.'/jobs/diagnostics/start.lock', 'c');
-flock($starting, LOCK_EX);
-$waiting = proc_open('ZFSM_TEST_POST='.escapeshellarg(json_encode(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'late'))).' '.escapeshellarg(PHP_BINARY).' -n -r '
-	.escapeshellarg('$_POST = json_decode(getenv("ZFSM_TEST_POST"), true); $_GET = array(); $docroot = getenv("ZFSM_TEST_DOCROOT"); $_SERVER["DOCUMENT_ROOT"] = $docroot; $GLOBALS["zfsm_php"] = PHP_BINARY; require $docroot."/plugins/zfs.master/backend/ZFSMAdmin.php";').' 2>&1',
-	array(1 => array('pipe', 'w')), $wait_pipes);
-usleep(500000);
-$still = proc_get_status($waiting)['running'];
-flock($starting, LOCK_UN);
-fclose($starting);
-same(array(true, array('state' => 'running', 'why' => '')), array($still, json_decode((string)stream_get_contents($wait_pipes[1]), true)), 'a start waits while another start is under way, then sees the run');
-proc_close($waiting);
 putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 $done = $finished();
 same(array('done', 1, 1), array($done['state'] ?? $done, preg_match('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/D', $done['zip'] ?? ''), count($zips())), 'the run ends with its zip\'s name, and one zip is made: '.json_encode($done));
@@ -151,6 +139,26 @@ putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
 $kill();
 for ($waited = 0; $waited < 40 && $state() === array('state' => 'running'); $waited++) usleep(250000);
 same(array('state' => 'failed', 'why' => 'The run ended without a result'), $state(), 'a killed run is a failed one');
+
+// A start under way is a run already: another start is told so at once, and the page reads it as running.
+$clear();
+@mkdir($work.'/jobs/diagnostics', 0700, true);
+$starting = fopen($work.'/jobs/diagnostics/start.lock', 'c');
+flock($starting, LOCK_EX);
+$began = microtime(true);
+$meanwhile = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'late'));
+same(array(array('state' => 'running', 'why' => ''), true, array('state' => 'running')), array($meanwhile, microtime(true) - $began < 2, $state()), 'a start while another start is under way is told a run is going, and so is the page');
+flock($starting, LOCK_UN);
+fclose($starting);
+same(true, $state() !== array('state' => 'running'), 'and once that start lets go with no run, the page no longer reads a run');
+
+// A start that fails is the page's latest result, so another tab, or this one after it was left, reads why.
+$clear();
+@unlink($work.'/jobs/diagnostics/browser.json');
+mkdir($work.'/jobs/diagnostics/browser.json', 0700, true);
+$refused = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '{}'));
+rmdir($work.'/jobs/diagnostics/browser.json');
+same(array(array('state' => 'failed', 'why' => 'The browser\'s report could not be kept'), array('state' => 'failed', 'why' => 'The browser\'s report could not be kept')), array($refused, $state()), 'a start that fails says why, and the page reads it later');
 
 // A run whose state can't be kept does not start, and says why: the page could never show its result.
 $clear();
