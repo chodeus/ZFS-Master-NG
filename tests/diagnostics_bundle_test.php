@@ -255,12 +255,19 @@ same(array('/tmp/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/boot/'
 $test_root = $GLOBALS['zfsm_root'];
 $GLOBALS['zfsm_root'] = '';
 zfsmDiagStart();
-$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient');
+$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient',
+	'/tmp/zfs.master-diag.ClientA/notes', '/var/run/zfs.master.ClientA', '/var/log/packages/zfs.master-ClientA');
 $tokens = function($path) { return preg_replace_callback('~[^/]+~', function($part) { return zfsmDiagToken($part[0]); }, $path); };
-same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient')),
+same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient'),
+	'/tmp'.$tokens('/zfs.master-diag.ClientA/notes'), '/var'.$tokens('/run/zfs.master.ClientA'), '/var'.$tokens('/log/packages/zfs.master-ClientA')),
 	array_map('zfsmDiagAnonText', $private), 'a path under a folder the collectors list is not the plugin\'s own for that: only the listed path, a log that was turned over, and what is inside the plugin\'s own; a name that only starts as the plugin\'s does is not');
-$plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs';
+$plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
+	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock';
 same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay');
+// Every job folder the source names (zfsmJobDir, zfsmJobLockFile) is one of the names the plugin makes: a new job is added there too.
+preg_match_all("~zfsmJob(?:Dir\\('|LockFile\\(\\$\\w+, ')([a-z-]+)'~", implode('', array_map('file_get_contents', glob(dirname(__DIR__).'/zfs.master/{include,backend,scripts}/*.php', GLOB_BRACE))), $jobs);
+$job_dirs = array_map(function($job) { return '/var/run/zfs.master.'.$job.'/x.lock'; }, array_unique($jobs[1]));
+same(array(true, $job_dirs), array(count($job_dirs) >= 4, array_map('zfsmDiagAnonText', $job_dirs)), 'each job\'s folder stays: '.implode(' ', $job_dirs));
 $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
