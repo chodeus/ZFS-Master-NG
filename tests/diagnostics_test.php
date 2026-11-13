@@ -208,7 +208,7 @@ foreach (zfsmDiagCollectors() as $collector) same(true, function_exists($collect
 // What each collector finds wrong. Settings first.
 $problems = function($changed, $change = null) use ($found) { return $found('zfsmDiagSettingsEffective', $change, $changed)[0]; };
 same(array(), $problems(array()), 'good settings have no findings');
-same(array('the settings file has a setting this version does not know: colour'), $problems(array('colour' => 'red')), 'a setting this version does not know');
+same(1, preg_match('/^the settings file has a setting this version does not know: name-[0-9a-f]{8}$/D', implode('|', $problems(array('colour' => 'red')))), 'a setting this version does not know, by a token');
 same(array('size_units holds text that a save would refuse'), $problems(array('size_units' => '${units}')), 'a value a save would refuse');
 same(1, preg_match('/^the snapshot prefix and pattern give a name ZFS refuses: name-[0-9a-f]{8}$/D', implode('|', $problems(array('snap_prefix' => 'a@b')))), 'a snapshot name ZFS refuses, as a token: its owner wrote the prefix');
 same(array('the exclusion pattern is invalid, so it is ignored'), $problems(array('exclusion' => '(')), 'an invalid exclusion pattern');

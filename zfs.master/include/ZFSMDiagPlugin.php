@@ -14,6 +14,8 @@ function zfsmDiagSettingsSaved($ctx) {
 	foreach ($ctx['cfg'] as $key => $value) {
 		if (is_scalar($value) && !in_array(zfsmDiagSavedName($key), zfsmDiagFreeSettings(), true)) $effective[zfsmDiagSavedName($key)] = (string)$value;
 	}
+	// Only the names the plugin itself writes stay (zfsmDiagKnownSettings), and its one section.
+	$known = array_flip(zfsmDiagKnownSettings($ctx['cfg']));
 	$open = false;
 	$lines = array();
 	$file = zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg');
@@ -26,9 +28,10 @@ function zfsmDiagSettingsSaved($ctx) {
 		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1) {
 			$value = trim($set[2], " \t\r\"");
 			$open = substr_count($set[2], '"') % 2 === 1;
-			$lines[] = !$open && ($effective[$set[1]] ?? null) === $value ? $line : $set[1].' = '.zfsmDiagToken($value);
+			$name = isset($known[$set[1]]) ? $set[1] : zfsmDiagToken($set[1]);
+			$lines[] = !$open && ($effective[$set[1]] ?? null) === $value ? $line : $name.' = '.zfsmDiagToken($value);
 		} else {
-			$lines[] = preg_match('/^\s*(?:\[[A-Za-z0-9_.-]*\]\s*)?$/D', $line) === 1 ? $line : zfsmDiagToken($line);
+			$lines[] = preg_match('/^\s*(?:\[general\]\s*)?$/D', $line) === 1 ? $line : zfsmDiagToken($line);
 		}
 	}
 	return implode("\n", $lines);
@@ -70,13 +73,18 @@ function zfsmDiagSettingsEffective($ctx) {
 	return $text."\n".zfsmDiagSection('problems', $problems ? implode("\n", $problems) : '(none)');
 }
 
+// The names a setting is saved under that this version reads: loadConfig's, and the misspelt one it still reads.
+function zfsmDiagKnownSettings($cfg) {
+	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+}
+
 // What is wrong with the saved settings, a line each.
 function zfsmDiagSettingProblems($ctx) {
 	$cfg = $ctx['cfg'];
 	$problems = array();
-	$known = array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+	$known = zfsmDiagKnownSettings($cfg);
 	foreach ($ctx['saved'] as $name => $value) {
-		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.$name;
+		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.zfsmDiagToken($name);
 		elseif (is_string($value) && zfsmConfigValueUnsafe($value)) $problems[] = $name.' holds text that a save would refuse';
 	}
 	$snapshot = zfsmNewSnapshotName($cfg, time());
