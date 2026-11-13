@@ -437,6 +437,13 @@ if (!is_string($docroot) || !is_file($docroot.'/plugins/zfs.master/scripts/diagn
 $script = $docroot.'/plugins/zfs.master/scripts/diagnostics.php';
 file_put_contents('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".implode("\nJan  2 10:00:01 CanaryTower zfs.master[41]: ", array_map('zfsmSafeText', $log_lines))."\n");
 $clear_logs();
+// Debug Log on, with a line of its own that names a dataset of a pool since exported: the run learns that pool from it, and adds
+// no debug line of its own. In this test's container only, like /var/log/syslog above.
+@mkdir('/boot/config/plugins/zfs.master', 0700, true);
+file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"1\"\n");
+$debug_line = "2026-01-02 10:00:02 debug [41] exit 1 in 0.200 s: zfs destroy -r gonepool/private\n";
+file_put_contents('/var/log/zfs.master.debug.log', $debug_line);
+register_shutdown_function(function() { @unlink('/var/log/zfs.master.debug.log'); @unlink('/boot/config/plugins/zfs.master/zfs.master.cfg'); });
 $run = function($options, $arguments = '') use ($script) {
 	exec('ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($script).' '.$arguments.' 2>&1', $printed, $code);
 	return array($code, implode("\n", $printed));
@@ -450,6 +457,8 @@ $made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-script').' 2>&1', $unzipped, $code);
 same(array(0, array(), true), array($code, $leaks($ours($work.'/from-script')), is_file($work.'/from-script/unraid/canarytower-diagnostics-20260102-1000.zip')), 'the script\'s zip unpacks, holds no name, and has Unraid\'s zip: '.implode(' ', $unzipped));
 has('Rewrite of tank/name-', file_get_contents($work.'/from-script/plugin/log.txt'), 'the system log\'s lines are in it, rewritten');
+same(array(1, $debug_line), array(preg_match('~ s: zfs destroy -r gonepool/name-[0-9a-f]{8}$~m', file_get_contents($work.'/from-script/plugin/log.txt')), file_get_contents('/var/log/zfs.master.debug.log')),
+	'a pool a debug line names is learned, so all its dataset\'s name is a token; and the run wrote no debug line of its own');
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the work folder is removed');
 $clear_logs();
 list($code, $printed) = $run('', '--no-unraid');

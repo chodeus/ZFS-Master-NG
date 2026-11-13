@@ -320,9 +320,11 @@ function zfsmDiagLog($ctx) {
 	// One read of each log, for what is learned from it and what is shown: a line written in between is in both or in neither.
 	$older = zfsmDiagFile(zfsmLogFile().'.1');
 	$newer = zfsmDiagFile(zfsmLogFile());
-	zfsmDiagLearnPools($older.$newer.$lines);
-	$debug = zfsmDiagSection(zfsmDebugFile().'.1', zfsmDiagFile(zfsmDebugFile().'.1')).zfsmDiagSection(zfsmDebugFile(), zfsmDiagFile(zfsmDebugFile()));
-	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines).$debug;
+	$debug_older = zfsmDiagFile(zfsmDebugFile().'.1');
+	$debug_newer = zfsmDiagFile(zfsmDebugFile());
+	zfsmDiagLearnPools($older.$newer.$lines.$debug_older.$debug_newer);
+	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines)
+		.zfsmDiagSection(zfsmDebugFile().'.1', $debug_older).zfsmDiagSection(zfsmDebugFile(), $debug_newer);
 }
 
 function zfsmDiagPhpErrors($ctx) {

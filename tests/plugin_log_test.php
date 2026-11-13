@@ -60,20 +60,29 @@ list($lines, $plugin_lines) = $debug_lines('1', function() {
 	runProcess('zfs', array('set', 'keylocation=file:///boot/secret.key', 'tank/data'));
 	runProcess('zpool', array('create', '-O', 'KEYLOCATION=https://user:secret.key@keys.example/p', 'tank2', 'sdc'));
 	runProcess('rsync', array('--version'));
+	runProcess('sh', array('-c', 'true # zfs set keylocation=file:///boot/secret.key tank'));
+	runProcess('echo', array("two\nlines", 'keylocation=file:///boot/secret.key'));
+	runProcess('zfs', array('create', '-o', 'encryption=on', '-o', 'keylocation=prompt', 'tank/new'));
 	try { runProcess('echo', 'not a list'); } catch (Throwable $error) {}
 	runProcess('echo', array(str_repeat('a', 600)));
 	zfsmDebug("request snapshotdataset\nsecond line");
 });
-same(array(10, array()), array(count($lines), $plugin_lines), 'with it on, each command is a line of the debug log and none goes to the plugin\'s own log');
+same(array(13, array()), array(count($lines), $plugin_lines), 'with it on, each command is a line of the debug log and none goes to the plugin\'s own log');
 same(array(1, 1, 1), array(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d debug \[\d+\] exit 0 in \d+\.\d{3} s: echo hello tank\/data$/D', $lines[0]), preg_match('/ debug \[\d+\] exit 3 in \d+\.\d{3} s: sh -c exit 3$/D', $lines[1]), preg_match('/ debug \[\d+\] timed out in 0\.\d{3} s: sleep 5$/D', $lines[2])),
 	'with it on a command is a line of the debug log with its exit code or its timeout, its time, then its arguments: '.implode(' | ', $lines));
-same(array(1, 1, 1, 1, false), array(preg_match('/ s: zfs load-key \(its arguments are left out\)$/D', $lines[3]), preg_match('/ s: zfs set \(its arguments are left out\)$/D', $lines[4]), preg_match('/ s: zpool create \(its arguments are left out\)$/D', $lines[5]), preg_match('/ s: rsync \(its arguments are left out\)$/D', $lines[6]), strpos(implode('', $lines), 'secret.key')),
-	'rsync\'s arguments and those of a command that names where a key is kept are left out, as the process list leaves them out');
-same(array(1, 1), array(preg_match('/ debug \[\d+\] failed: .+ in \d+\.\d{3} s: echo not a list$/D', $lines[7]), preg_match('/ debug \[\d+\] exit 0 in \d+\.\d{3} s: echo a{100,}$/D', $lines[8])), 'a command that could not run says why, and a long one keeps how it ended: '.$lines[7]);
-same(array(10, 1, array()), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[9]), $plugin_lines), 'a debug line is one line, like any other, and none goes to the plugin\'s own log');
+same(array(1, 1, 1, 1, 1, 1, 1, false), array(preg_match('/ s: zfs load-key \(its arguments are left out\)$/D', $lines[3]), preg_match('/ s: zfs set \(its arguments are left out\)$/D', $lines[4]), preg_match('/ s: zpool create \(its arguments are left out\)$/D', $lines[5]), preg_match('/ s: rsync \(its arguments are left out\)$/D', $lines[6]),
+	preg_match('/ s: sh \(its arguments are left out\)$/D', $lines[7]), preg_match('/ s: echo \(its arguments are left out\)$/D', $lines[8]), preg_match('/ s: zfs create -o encryption=on -o keylocation=prompt tank\/new$/D', $lines[9]), strpos(implode('', $lines), 'secret.key')),
+	'rsync\'s arguments and those of any command that names where a key is kept are left out, wrapped or across a line break; keylocation=prompt names none');
+same(array(1, 1), array(preg_match('/ debug \[\d+\] failed: .+ in \d+\.\d{3} s: echo not a list$/D', $lines[10]), preg_match('/ debug \[\d+\] exit 0 in \d+\.\d{3} s: echo a{100,}$/D', $lines[11])), 'a command that could not run says why, and a long one keeps how it ended: '.$lines[7]);
+same(array(13, 1, array()), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[12]), $plugin_lines), 'a debug line is one line, like any other, and none goes to the plugin\'s own log');
 file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"0\"\n");
 runProcess('echo', array('again'));
-same(11, count(file($debug_log)), 'the setting is read once for each run');
+same(14, count(file($debug_log)), 'the setting is read once for each run');
+// A long result is cut so the command still fits the line.
+zfsmDebugCommand('zfs', array('destroy', 'tank/end'), 'failed: '.str_repeat('m', 600), microtime(true));
+same(1, preg_match('/ failed: m{100,} in \d+\.\d{3} s: zfs destroy tank\/end$/D', file($debug_log, FILE_IGNORE_NEW_LINES)[14]), 'a long failure keeps the command it is about');
+// The setting is read from the saved file alone: Unraid would merge a default.cfg first, and the plugin ships none.
+same(false, file_exists(__DIR__.'/../zfs.master/default.cfg'), 'the plugin ships no default.cfg, so the saved file is the whole setting');
 unset($GLOBALS['zfsm_debug']);
 putenv('ZFSM_TEST_BIN_DIR');
 unlink($debug_log);

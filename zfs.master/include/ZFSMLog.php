@@ -33,17 +33,22 @@ function zfsmDebug($message) {
 	if (zfsmDebugOn()) zfsmLogKeep(zfsmSafeText($message), LOG_DEBUG, zfsmDebugFile());
 }
 
-// A command the plugin ran, for the debug log: how it ended and how long it took first, so a long command never cuts them off.
+// A command the plugin ran, for the debug log: how it ended and how long it took first, the result cut so the command still fits.
+// The time is taken before the setting is read: the first command of a run would carry that read.
 function zfsmDebugCommand($command, $args, $result, $began) {
+	$seconds = number_format(microtime(true) - $began, 3, '.', '');
 	if (!zfsmDebugOn()) return;
-	zfsmDebug($result.' in '.number_format(microtime(true) - $began, 3, '.', '').' s: '.zfsmCommandShown(basename((string)$command).' '.implode(' ', (array)$args)));
+	$line = substr($result, 0, 200).' in '.$seconds.' s: '.zfsmCommandShown(basename((string)$command).' '.implode(' ', (array)$args));
+	zfsmLogKeep(zfsmSafeText($line), LOG_DEBUG, zfsmDebugFile());
 }
 
-// A command line as the plugin shows it anywhere: rsync's arguments, and those of a zfs or zpool command that names where a key
-// is kept, are left out.
+// A command line as the plugin shows it anywhere: rsync's arguments, and those of any command that loads a key or names where one
+// is kept (keylocation=prompt names none), are left out, whatever wraps it and across line breaks.
 function zfsmCommandShown($line) {
-	if (preg_match('#^(\S*/)?(rsync|zfs\s+load-key)(\s|$)|^(\S*/)?((?:zfs|zpool)\s+\S+)\s.*(?i:keylocation)=#', $line, $match) !== 1) return $line;
-	return ($match[5] ?? $match[2]).' (its arguments are left out)';
+	if (preg_match('#^(\S*/)?rsync(\s|$)#', $line) === 1) return 'rsync (its arguments are left out)';
+	if (preg_match('#\bload-key\b|(?i:keylocation)=(?!prompt(?:\s|$))#', $line) !== 1) return $line;
+	// Only zfs and zpool keep their subcommand: any other command's next word is an argument.
+	return preg_replace('#^(?:\S*/)?((?:zfs|zpool)\s+[a-z][a-z-]*|\S+).*#s', '$1', $line).' (its arguments are left out)';
 }
 
 // At ZFSM_LOG_BYTES the file becomes .1, replacing the last one, so the two never pass about 1 MB. A line that can't be written
