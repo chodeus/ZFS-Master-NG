@@ -57,10 +57,8 @@ function zfsmDiagPack($dir) {
 	} finally {
 		if ($from !== false) @chdir($from);
 	}
-	// Another run's zip of this second keeps its name: this one takes the next second's.
-	for ($second = time(); file_exists($zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip'); $second++);
-	$failed = ($packed['code'] ?? 1) !== 0 ? zfsmCommandError($packed, 'the zip could not be written to '.$logs) : (@rename($part, $zip) ? '' : 'the zip could not be given its name in '.$logs);
-	if ($failed !== '') {
+	list($zip, $failed) = ($packed['code'] ?? 1) !== 0 ? array(null, zfsmCommandError($packed, 'the zip could not be written to '.$logs)) : zfsmDiagPublish($part, $logs);
+	if ($zip === null) {
 		@unlink($part);
 		return array(null, $failed);
 	}
@@ -68,6 +66,19 @@ function zfsmDiagPack($dir) {
 	if ($unraid !== null && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
 	$left = zfsmDiagKeepNewest($logs, 3, basename($zip));
 	return array($zip, $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '');
+}
+
+// Gives the packed zip its name, [the zip, ''] or [null, why]. One run at a time from picking the name to the rename, so two never
+// take one: the lock is in RAM (zfsmJobDir), not on the flash drive.
+function zfsmDiagPublish($part, $logs) {
+	$file = zfsmJobDir('diagnostics').'/pack.lock';
+	$lock = is_dir(dirname($file)) || @mkdir(dirname($file), 0700, true) ? @fopen($file, 'ce') : false;
+	if ($lock === false || !flock($lock, LOCK_EX)) return array(null, 'the zip could not be named: no lock could be taken in '.dirname($file));
+	// Another run's zip of this second keeps its name: this one takes the next second's.
+	for ($second = time(); file_exists($zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip'); $second++);
+	$named = @rename($part, $zip);
+	zfsmJobUnlock($lock);
+	return $named ? array($zip, '') : array(null, 'the zip could not be given its name in '.$logs);
 }
 
 // Removes the plugin's own zips in $logs but for $made, the one just written, and the newest of the others, $keep in all; and what
