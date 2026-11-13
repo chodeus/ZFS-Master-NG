@@ -253,9 +253,10 @@ same(array('/tmp/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/boot/'
 $test_root = $GLOBALS['zfsm_root'];
 $GLOBALS['zfsm_root'] = '';
 zfsmDiagStart();
-$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip');
-same(array('/boot/'.zfsmDiagToken('config').'/'.zfsmDiagToken('plugins').'/'.zfsmDiagToken('ClientA').'/'.zfsmDiagToken('notes'), '/var/'.zfsmDiagToken('log').'/'.zfsmDiagToken('syslog-private'), '/boot/'.zfsmDiagToken('logs').'/'.zfsmDiagToken('tower-diagnostics-20260102-1000.zip')),
-	array_map('zfsmDiagAnonText', $private), 'a path under a folder the collectors list is not the plugin\'s own for that: only the listed path, a log that was turned over, and what has the plugin\'s name');
+$private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient');
+$tokens = function($path) { return preg_replace_callback('~[^/]+~', function($part) { return zfsmDiagToken($part[0]); }, $path); };
+same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient')),
+	array_map('zfsmDiagAnonText', $private), 'a path under a folder the collectors list is not the plugin\'s own for that: only the listed path, a log that was turned over, and what is inside the plugin\'s own; a name that only starts as the plugin\'s does is not');
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs';
 same($plugins_own, zfsmDiagAnonText($plugins_own), 'the plugin\'s own paths stay');
 $GLOBALS['zfsm_root'] = $test_root;
@@ -377,6 +378,21 @@ exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip
 symlink($logs, $work.'/logs-link');
 same(array(array(), true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
 unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
+// Naming is one run at a time: while another run holds the lock, a zip waits as its .part, and takes its name once it is let go.
+$pack_lock = zfsmJobDir('diagnostics').'/pack.lock';
+if (!is_dir(dirname($pack_lock))) mkdir(dirname($pack_lock), 0700, true);
+$holder = fopen($pack_lock, 'c');
+flock($holder, LOCK_EX);
+file_put_contents($logs.'/waiting.part', 'packed');
+$child = 'require '.var_export(dirname(__DIR__).'/zfs.master/backend/ZFSMOperations.php', true).'; require '.var_export(dirname(__DIR__).'/zfs.master/include/ZFSMDiagnostics.php', true).'; echo json_encode(zfsmDiagPublish($argv[1], $argv[2]));';
+$naming = proc_open(array(PHP_BINARY, '-n', '-r', $child, $logs.'/waiting.part', $logs), array(1 => array('pipe', 'w')), $pipes);
+usleep(1500000);
+$waited = array(proc_get_status($naming)['running'], is_file($logs.'/waiting.part'));
+flock($holder, LOCK_UN);
+$named = json_decode((string)stream_get_contents($pipes[1]), true);
+proc_close($naming);
+same(array(array(true, true), true, ''), array($waited, is_file((string)($named[0] ?? '')), $named[1] ?? null), 'a zip waits for its name while another run names one, then takes its own: '.json_encode($named));
+unlink($named[0]);
 // A clock that went back: the zip just written is kept though three have later names. A name another run took is not taken again.
 foreach (array('20990101-000001', '20990101-000002', '20990101-000003') as $later) file_put_contents($logs.'/zfs.master-diagnostics-'.$later.'.zip', 'later');
 list($zip, $why) = $bundle('clock', false, false);

@@ -180,9 +180,11 @@ function zfsmDiagAnonPath($text, $at) {
 	// One of the plugin's own paths, to its first space; any other path under a shared top folder is a folder's, names and all.
 	$whole = rtrim(substr($run, 0, strcspn($run, ' ')), ':,;');
 	foreach ($names['own'] as $own => $prefix) {
-		$rest = strncmp($whole, (string)$own, strlen((string)$own)) === 0 ? (string)substr($whole, strlen((string)$own)) : null;
-		// Itself, a log that was turned over (syslog.1), or anything in the plugin's own namespace.
-		if ($rest === '' || ($rest !== null && ($prefix || preg_match('/^\.\d+$/D', $rest) === 1))) return array($whole, $at + strlen($whole));
+		$own = (string)$own;
+		if (strncmp($whole, $own, strlen($own)) !== 0) continue;
+		$rest = (string)substr($whole, strlen($own));
+		// Itself, a log that was turned over (syslog.1), or inside the plugin's own: past a /, or after a name it lists to its . or -.
+		if ($rest === '' || preg_match('/^\.\d+$/D', $rest) === 1 || $prefix && ($rest[0] === '/' || strpos('/.-', substr($own, -1)) !== false)) return array($whole, $at + strlen($whole));
 	}
 	$kept = array('');
 	if ($run[0] === '/') {
