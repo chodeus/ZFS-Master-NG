@@ -224,14 +224,25 @@ same($plain, zfsmDiagAnonText($plain), 'a pool feature, a time, a version, a cla
 $cron = "7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\n";
 same($cron, zfsmDiagAnonRunning($cron), 'and a command line in running text keeps its system paths: in a field, a system path takes the whole field');
 same('/dev/zvol/zfs/'.zfsmDiagToken('vm')."\n/dev/null", zfsmDiagAnonText("/dev/zvol/zfs/vm\n/dev/null"), 'a volume\'s device names its dataset; /dev/null does not');
-// Under a system folder the system's and the plugin's names stay; any other name is a token, as a dataset can be mounted there.
-same(array('/usr/local/'.zfsmDiagToken('ClientA')."\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/".zfsmDiagToken('ClientB').'/'.zfsmDiagToken('root@10.0.0.5')."\t/dev/".zfsmDiagToken('ClientC')."\t/usr/local/".zfsmDiagToken('SHA256:ClientE'),
-		'{"m":"/usr/local/'.zfsmDiagToken('Client A').'"}', '/usr/local/'.zfsmDiagToken('ClientA').' failed',
+// Under a system folder the system's and the plugin's own paths stay; any other name is a token, a word or a number too, as a dataset can be mounted there.
+same(array('/usr/local/'.zfsmDiagToken('ClientA')."\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/".zfsmDiagToken('ClientB').'/'.zfsmDiagToken('root').'@'.zfsmDiagToken('10.0.0.5')."\t/dev/".zfsmDiagToken('ClientC')."\t/usr/local/".zfsmDiagToken('SHA256:ClientE'),
+		'tank/'.zfsmDiagToken('a')."\tmountpoint\t/usr/local/".zfsmDiagToken('client')."\tlocal\ntank/".zfsmDiagToken('b')."\tmountpoint\t/usr/local/".zfsmDiagToken('12345')."\tlocal\n/usr/bin/".zfsmDiagToken('client')."\t/proc/self/mountinfo\t/usr/local/emhttp/plugins/zfs.master/".zfsmDiagToken('client'),
+		'{"m":"/usr/local/'.zfsmDiagToken('Client A').'","n":"/usr/local/'.zfsmDiagToken('12345').'"}', '/usr/local/'.zfsmDiagToken('ClientA').' failed, /usr/local/'.zfsmDiagToken('client').' too, zpool import -d /dev/disk/by-id/'.zfsmDiagToken('ata-ClientF').' tank',
 		'include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed', '/plugins/zfs.master/backend/ZFSMAdmin.php?(left out)'),
 	array(zfsmDiagAnonText("/usr/local/ClientA\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/ClientB/root@10.0.0.5\t/dev/ClientC\t/usr/local/SHA256:ClientE"),
-		zfsmDiagAnonJson('{"m":"/usr/local/Client A"}'), zfsmDiagAnonRunning('/usr/local/ClientA failed'),
+		zfsmDiagAnonText("tank/a\tmountpoint\t/usr/local/client\tlocal\ntank/b\tmountpoint\t/usr/local/12345\tlocal\n/usr/bin/client\t/proc/self/mountinfo\t/usr/local/emhttp/plugins/zfs.master/client"),
+		zfsmDiagAnonJson('{"m":"/usr/local/Client A","n":"/usr/local/12345"}'), zfsmDiagAnonRunning('/usr/local/ClientA failed, /usr/local/client too, zpool import -d /dev/disk/by-id/ata-ClientF tank'),
 		zfsmDiagAnonRunning('include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed'), zfsmDiagAnonText('/plugins/zfs.master/backend/ZFSMAdmin.php?csrf_token=ClientD')),
-	'a folder under a system folder is a token, in a field, a JSON value and running text; the system\'s and the plugin\'s own names stay, a page\'s query is left out');
+	'a folder under a system folder is a token, a word or a number too, in a row, a JSON value and running text; the system\'s and the plugin\'s own paths stay, a page\'s query is left out');
+// Every system path the plugin's own code names stays whole: zfsmDiagSystemKnown has them all.
+$named = array();
+foreach (zfsmDiagFilesUnder(__DIR__.'/../zfs.master') as $file) {
+	if (preg_match('~^(?!assets/).*\.(?:php|page|js)$~D', $file) !== 1) continue;
+	preg_match_all('~[\'"](/(?:'.ZFSM_DIAG_SYSTEM.')/[A-Za-z0-9_./+-]*)~', file_get_contents(__DIR__.'/../zfs.master/'.$file), $found);
+	$named = array_merge($named, $found[1]);
+}
+$named = array_values(array_unique($named));
+same(array(true, $named), array(count($named) > 20, array_map('zfsmDiagAnonText', $named)), 'every system path the plugin names stays whole');
 zfsmDiagStart();
 $said = 'Snapshot: gonepool/a@b failed: I/O error on read/write; cannot open \'otherpool/a\'; zfs list gonepool/a';
 zfsmDiagLearnPools($said);
@@ -294,7 +305,7 @@ same(array(true, $job_dirs), array(count($job_dirs) >= 4, array_map('zfsmDiagAno
 $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
-$kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/x.php /dev/null';
+$kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php /dev/null';
 same(explode(' ', $kept), array_map('zfsmDiagAnonText', explode(' ', $kept)), 'a path the collectors list, a log of it that was turned over and a system path stay as they are, each a field of its own');
 same($kept, zfsmDiagAnonText($kept, "\r\n"), 'and so in running text, where a space ends one');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
@@ -307,8 +318,8 @@ same(array('{"d":"/mnt/tank/'.zfsmDiagToken("Client\tSecret").'","e":"/mnt/tank/
 	array(zfsmDiagAnonJson(json_encode(array('d' => "/mnt/tank/Client\tSecret", 'e' => "/mnt/tank/Two\nLines"))), zfsmDiagAnonText("/mnt/tank/a\tlocal")),
 	'a folder\'s path in one JSON value takes its tabs and line breaks; in a row a tab ends it');
 // A message in one value is lines: a path in it ends at its line's end, and what the next line names is read as itself.
-$message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/x.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held';
-same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/x.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+$message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held';
+same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 	zfsmDiagAnonJson(json_encode(array('e' => $message), JSON_UNESCAPED_SLASHES)),
 	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay');
 // A message is running text in any JSON file: the second net takes the words after the plugin's own path, as in an inventory's error.
@@ -322,8 +333,8 @@ same('{"encryption":"aes-256-gcm","devices":"raidz1-0\nsda","'.$own.'":1}', zfsm
 	'a value with no space is one field: zfs\'s own words in it stay, and the plugin\'s own path, whole');
 // A path after a colon or in a file URI is a path; a link's // and an IPv6 prefix start none.
 same(array('{"errors":["failed:/mnt/tank/'.zfsmDiagToken('ClientA').'"],"u":"file:///mnt/tank/'.zfsmDiagToken('ClientB').'"}',
-		"failed:/mnt/tank/".zfsmDiagToken('ClientA')."\tfile:///usr/local/emhttp/x.php\thttps://example.org/a/b\t".zfsmDiagToken('fe80::', 'ip')."/10"),
-	array(zfsmDiagAnonJson('{"errors":["failed:/mnt/tank/ClientA"],"u":"file:///mnt/tank/ClientB"}'), zfsmDiagAnonText("failed:/mnt/tank/ClientA\tfile:///usr/local/emhttp/x.php\thttps://example.org/a/b\tfe80::/10")),
+		"failed:/mnt/tank/".zfsmDiagToken('ClientA')."\tfile:///usr/local/emhttp/webGui/include/Helpers.php\thttps://example.org/a/b\t".zfsmDiagToken('fe80::', 'ip')."/10"),
+	array(zfsmDiagAnonJson('{"errors":["failed:/mnt/tank/ClientA"],"u":"file:///mnt/tank/ClientB"}'), zfsmDiagAnonText("failed:/mnt/tank/ClientA\tfile:///usr/local/emhttp/webGui/include/Helpers.php\thttps://example.org/a/b\tfe80::/10")),
 	'a folder after a colon or file:// is a token; a system path in a file URI, a link and an IPv6 prefix stay');
 mkdir($work.'/colon');
 zfsmDiagWrite($work.'/colon', 'e.json.txt', '{"errors":["failed:/mnt/tank/ClientA"]}');
@@ -332,15 +343,15 @@ same(null, zfsmDiagFilesUnder($work.'/not-there'), 'a folder that can\'t be list
 // The word list is read once a run, so a failed read is tried in a PHP of its own, on a copy of the plugin with one file unreadable.
 $words_in = function($plugin, $as = '') {
 	$php = 'require "'.$plugin.'/backend/ZFSMOperations.php"; require "'.$plugin.'/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
-		.' echo json_encode(array(zfsmDiagVocabulary() === null, zfsmDiagKnownWords("failed busy"), zfsmDiagAnonJson("{\"e\":\"failed busy\"}")));';
+		.' echo json_encode(array(zfsmDiagVocabulary() === null, zfsmDiagKnownWords("failed busy"), zfsmDiagAnonJson("{\"e\":\"failed busy\"}"), zfsmDiagAnonText("/usr/bin/php")), JSON_UNESCAPED_SLASHES);';
 	exec($as.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
 	return array($code, implode("\n", $said));
 };
 exec('cp -a '.escapeshellarg(__DIR__.'/../zfs.master').' '.escapeshellarg($work.'/vocab').' && chmod -R a+rX '.escapeshellarg($work.'/vocab'), $unused, $copied);
 file_put_contents($work.'/vocab/include/ZZEmpty.php', '');
-same(array(0, array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]')), array($copied, $words_in($work.'/vocab')), 'a copy of the plugin reads its words, an empty file of it too');
+same(array(0, array(0, '[false,"failed busy","{\"e\":\"failed busy\"}","/usr/bin/php"]')), array($copied, $words_in($work.'/vocab')), 'a copy of the plugin reads its words, an empty file of it too, and its system paths');
 symlink('/proc/self/mem', $work.'/vocab/include/ZZUnreadable.php');
-same(array(0, '[true,null,null]'), $words_in($work.'/vocab'), 'a file of the plugin\'s that can\'t be read leaves no word list, so no running text can be searched');
+same(array(0, '[true,null,null,"/usr/bin/php"]'), $words_in($work.'/vocab'), 'a file of the plugin\'s that can\'t be read leaves no word list, so no running text can be searched; its system paths stay, as its files are listed');
 $php = 'require "'.$work.'/vocab/backend/ZFSMOperations.php"; require "'.$work.'/vocab/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
 	.' $first = zfsmDiagVocabulary() === null; unlink("'.$work.'/vocab/include/ZZUnreadable.php"); echo json_encode(array($first, zfsmDiagVocabulary() === null));';
 exec(escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
@@ -348,9 +359,9 @@ same(array(0, '[true,true]'), array($code, implode("\n", $said)), 'a failed read
 // Root lists any folder: as nobody, a folder of mode 000 can't be. Each case first shows nobody gets in while nothing is locked.
 chmod($work, 0711);
 $nobody = 'setpriv --reuid=65534 --regid=65534 --clear-groups ';
-same(array(0, '[false,"failed busy","{\"e\":\"failed busy\"}"]'), $words_in($work.'/vocab', $nobody), 'nobody reads the copy\'s words');
+same(array(0, '[false,"failed busy","{\"e\":\"failed busy\"}","/usr/bin/php"]'), $words_in($work.'/vocab', $nobody), 'nobody reads the copy\'s words');
 mkdir($work.'/vocab/include/ZZLocked', 0000);
-same(array(0, '[true,null,null]'), $words_in($work.'/vocab', $nobody), 'a folder of the plugin\'s that can\'t be listed leaves no word list either');
+same(array(0, '[true,null,null,null]'), $words_in($work.'/vocab', $nobody), 'a folder of the plugin\'s that can\'t be listed leaves no word list either, and no list of system paths, so no path can be searched');
 $rewrite = function() use ($work, $nobody) {
 	$php = 'require "'.__DIR__.'/../zfs.master/backend/ZFSMOperations.php"; require "'.__DIR__.'/../zfs.master/include/ZFSMDiagnostics.php"; zfsmDiagStart(); var_export(zfsmDiagAnonymizeDir("'.$work.'/unlisted"));';
 	exec($nobody.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);

@@ -172,7 +172,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
 	return filter_var($ip, FILTER_VALIDATE_IP) === false ? array($found, $end) : array(zfsmDiagToken($ip, 'ip').substr($found, strlen($ip)), $end);
 }
 
-// A path at $at, each name in it a token. A system path keeps its plain words (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
+// A path at $at, each name in it a token. A system path keeps the system's own folders (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
 // A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end.
 function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
@@ -234,15 +234,38 @@ function zfsmDiagOwnName($path) {
 	return false;
 }
 
-// A path under a system folder: a name below $top stays when it is plain words that each stay (zfsmDiagWordKept), any other is a
-// token, as a dataset can be mounted there too (mountpoint=/usr/local/x). null when the plugin's words could not be read.
+// A path under a system folder: the folders on the way to one of the system's own paths (zfsmDiagSystemKnown) stay; the first name off
+// that way and each after it is a token, as a dataset can be mounted there too (mountpoint=/usr/local/x). null when the list could not be made.
 function zfsmDiagSystemPath($top, $rest) {
-	if (zfsmDiagVocabulary() === null) return null;
-	$clean = preg_replace_callback('~[^/]+~', function($name) {
-		$words = preg_match('~^[\w.+-]+$~D', $name[0]) === 1 ? preg_split('~[.+-]+~', $name[0], -1, PREG_SPLIT_NO_EMPTY) : array('');
-		return count(array_filter($words, 'zfsmDiagWordKept')) === count($words) ? $name[0] : zfsmDiagToken($name[0]);
-	}, $rest);
-	return $clean === null ? null : $top.$clean;
+	$known = zfsmDiagSystemKnown();
+	if ($known === null) return null;
+	for ($kept = $top; preg_match('~^/([^/]+)~', $rest, $name) === 1 && isset($known[$kept.$name[0]]); $rest = substr($rest, strlen($name[0]))) $kept .= $name[0];
+	$tokens = zfsmDiagNameTokens($rest);
+	return $tokens === null ? null : $kept.$tokens;
+}
+
+// The system paths the plugin uses, with the folders on the way to each: tests/diagnostics_bundle_test.php checks every one its code
+// names is here. null when the plugin's files could not be listed.
+function zfsmDiagSystemKnown() {
+	static $known = null;
+	if ($known !== null) return $known ?: null;
+	$known = false;
+	$files = zfsmDiagFilesUnder(dirname(__DIR__));
+	if ($files === null) return null;
+	$web = array('webGui/include/Helpers.php', 'webGui/include/publish.php', 'webGui/scripts/diagnostics', 'webGui/javascript/dynamix.js', 'webGui/styles/default-base.css',
+		'webGui/styles/default-color-palette.css', 'webGui/styles/default-fonts.css', 'webGui/styles/default-popup.css', 'webGui/styles/font-awesome.css', 'plugins/dynamix/scripts/notify');
+	foreach (array('black', 'white', 'azure', 'gray') as $theme) $web[] = 'webGui/styles/themes/'.$theme.'.css';
+	foreach ($files as $file) $web[] = 'plugins/zfs.master/'.$file;
+	$paths = array('/dev/null', '/proc/self/mounts', '/proc/self/mountinfo', '/proc/self/ns/mnt', '/proc/locks', '/proc/uptime', '/sys/module/zfs/version',
+		'/sys/module/zfs/parameters/zfs_bclone_enabled', '/usr/share/zfs/compatibility.d', '/dev/disk/by-id', '/dev/disk/by-uuid', '/dev/disk/by-partuuid', '/dev/disk/by-path', '/dev/mapper');
+	foreach ($web as $file) array_push($paths, '/usr/local/emhttp/'.$file, '/'.$file);
+	foreach (array('/usr/local/sbin', '/usr/sbin', '/sbin', '/usr/local/bin', '/usr/bin', '/bin') as $folder) {
+		foreach (array('zfs', 'zpool', 'php', 'timeout', 'rsync', 'ssh', 'zip', 'cp', 'rm', 'rmdir', 'setsid', 'ps', 'sh', 'bash') as $program) $paths[] = $folder.'/'.$program;
+	}
+	$read = array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3));
+	$set = array();
+	foreach (array_merge($paths, $read) as $path) for ($at = rtrim($path, '/*'); $at !== ''; $at = substr($at, 0, (int)strrpos($at, '/'))) $set[$at] = true;
+	return $known = $set;
 }
 
 // The part of a path after what stays, each name in it a token.

@@ -45,18 +45,16 @@ function zfsmDiagAnonRunning($text) {
 // $text, already through the rules, with each word that is no number, no token and no word of the plugin's a token itself.
 // A pool's name is matched whole, '-', '.' and ':' and all. null when it could not be searched.
 function zfsmDiagKnownWords($text) {
-	if (zfsmDiagVocabulary() === null) return null;
-	$pool = zfsmDiagAnyOf(array_map('strval', array_keys(zfsmDiagKnownPools())));
+	$words = zfsmDiagVocabulary();
+	if ($words === null) return null;
+	$pools = zfsmDiagKnownPools();
+	$pool = zfsmDiagAnyOf(array_map('strval', array_keys($pools)));
 	// A token of this run and a key's fingerprint are matched whole: zfsmDiagToken gives a token of its own back as it is.
 	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])'
-		.'|(?<![A-Za-z0-9_\x80-\xff.:-])(?:'.$pool.')(?![A-Za-z0-9_\x80-\xff:-]|\.[A-Za-z0-9_])|[A-Za-z0-9_\x80-\xff]+~', function($word) {
-		return zfsmDiagWordKept($word[0]) ? $word[0] : zfsmDiagToken($word[0]);
+		.'|(?<![A-Za-z0-9_\x80-\xff.:-])(?:'.$pool.')(?![A-Za-z0-9_\x80-\xff:-]|\.[A-Za-z0-9_])|[A-Za-z0-9_\x80-\xff]+~', function($word) use ($words, $pools) {
+		$word = $word[0];
+		return isset($pools[$word]) || strncmp($word, 'SHA256:', 7) === 0 || isset($words[strtolower($word)]) || zfsmDiagIsNumber($word) ? $word : zfsmDiagToken($word);
 	}, $text);
-}
-
-// Whether a word stays as it is: a pool's name, a key's fingerprint, a word of the plugin's (zfsmDiagVocabulary) or a number.
-function zfsmDiagWordKept($word) {
-	return isset(zfsmDiagKnownPools()[$word]) || strncmp($word, 'SHA256:', 7) === 0 || isset(zfsmDiagVocabulary()[strtolower($word)]) || zfsmDiagIsNumber($word);
 }
 
 // A user property's name is its owner's to write: each word of it the plugin does not use is a token (org.znapzend:src_plan stays whole).
