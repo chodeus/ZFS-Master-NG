@@ -275,6 +275,11 @@ same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true
 same('{"tank/'.zfsmDiagToken('a').'": broken', zfsmDiagAnonJson('{"tank\/a": broken'), 'and text that is no JSON is still searched, its \\/ read as /');
 same('{"org.example:host":"'.zfsmDiagToken('10.0.20.11').'","org.example:keep":"5","org.example:size":"10G","org.example:who":"'.zfsmDiagToken('123Bob').'"}', zfsmDiagAnonJson('{"org.example:host":"10.0.20.11","org.example:keep":"5","org.example:size":"10G","org.example:who":"123Bob"}'),
 	'of a user property\'s values only a number, alone or with a unit of size or time, stays: an address and a word that starts with digits are tokens');
+// One decoded value is one field: a folder's name in it can hold a tab or a line break, and its path runs to the value's end.
+// In a file's rows a tab still ends a field.
+same(array('{"d":"/mnt/tank/'.zfsmDiagToken("Client\tSecret").'","e":"/mnt/tank/'.zfsmDiagToken("Two\nLines").'"}', '/mnt/tank/'.zfsmDiagToken('a')."\tlocal"),
+	array(zfsmDiagAnonJson(json_encode(array('d' => "/mnt/tank/Client\tSecret", 'e' => "/mnt/tank/Two\nLines"))), zfsmDiagAnonText("/mnt/tank/a\tlocal")),
+	'a folder\'s path in one JSON value takes its tabs and line breaks; in a row a tab ends it');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
@@ -466,8 +471,8 @@ do {
 } while ($status['running']);
 proc_close($going);
 $printed = file_get_contents($work.'/vanished.out');
-same(array(1, false, array(), array()), array($status['exitcode'], strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*'), glob('/tmp/zfs.master-diag.*')), 'a rewrite that fails shows no file, makes no zip and leaves no work folder: '.substr($printed, 0, 600));
-has('The names in the files could not all be replaced', $printed, 'and says so');
+same(array(1, false, array(), array()), array($status['exitcode'], strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*'), glob('/tmp/zfs.master-diag.*')), 'a run whose work folder went under it rewrites, shows and packs nothing, and leaves no work folder: '.substr($printed, 0, 600));
+has('The work folder changed under the run, so nothing was rewritten, shown or packed', $printed, 'and says so');
 unlink('/var/log/syslog');
 $clear_logs();
 

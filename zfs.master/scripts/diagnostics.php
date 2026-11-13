@@ -25,6 +25,11 @@ if (function_exists('pcntl_async_signals')) {
 	foreach (array(SIGINT, SIGHUP, SIGTERM) as $signal) pcntl_signal($signal, function() { exit(130); });
 }
 $written = zfsmDiagRun($work, zfsmDiagContext(parse_plugin_cfg('zfs.master', true), !in_array('--no-unraid', $argv, true)));
+// A folder that is not the run's any more is not rewritten either: nothing in it is the run's.
+if ($written === null) {
+	fwrite(STDERR, "The work folder changed under the run, so nothing was rewritten, shown or packed\n");
+	exit(1);
+}
 // Nothing is shown or packed with a real name in it.
 if (!zfsmDiagAnonymizeDir($work)) {
 	fwrite(STDERR, "The names in the files could not all be replaced, so the files are not shown and no zip was made\n");

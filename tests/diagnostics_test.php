@@ -93,7 +93,8 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 };
 $settings = array('refresh_interval' => '60', 'directory_listing' => 'tank/data', 'alert_interval' => '60', 'replica_accept' => 'tank/data');
 $context = function($changed = array()) use ($settings, $plugin_dir) {
-	return array('dir' => $plugin_dir) + zfsmDiagContext(array('general' => $changed + $settings));
+	// Unraid's own diagnostics left out: they run its real script, which the leak test (diagnostics_bundle_test.php) stands in for.
+	return array('dir' => $plugin_dir) + zfsmDiagContext(array('general' => $changed + $settings), false);
 };
 // A file that is there and that even root can't open: a socket in its place.
 $unopenable = function($path) {
@@ -561,7 +562,7 @@ function zfsmTestSwapsFolder($ctx) { zfsmTestLosesFolder($ctx); mkdir($GLOBALS['
 $GLOBALS['zfsm_test_lost'] = $work.'/lost';
 foreach (array('zfsmTestLosesFolder' => array(), 'zfsmTestSwapsFolder' => array('.', '..')) as $loses => $left) {
 	$lost_run = zfsmDiagRun($work.'/lost', $context(), array(array('plugin/first.txt', 5, $loses, array()), array('zfs/second.txt', 5, 'zfsmDiagSettingsSaved', array())));
-	same(array(false, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends and writes no more: '.$loses);
+	same(array(null, $left), array($lost_run, is_dir($work.'/lost') ? scandir($work.'/lost') : array()), 'a run whose folder went under it ends, writes no more and says so apart from a failed write: '.$loses);
 }
 same(array(false, false, false), array(zfsmDiagWrite($work.'/never', 'plugin/first.txt', 'first'), zfsmDiagWrite($work.'/never', 'summary.txt', 'first'), file_exists($work.'/never')), 'a file\'s write makes its own folder, never the run\'s');
 // The Main tab's read gives a pool whose devices could not be read an empty list: in the file that is a read that failed.

@@ -136,11 +136,12 @@ function zfsmDiagNamePattern() {
 }
 
 // $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
-function zfsmDiagAnonText($text) {
+// $one_value: $text is one decoded value (zfsmDiagAnonValue), not lines of a file, so a folder's path runs to its end, tabs and all.
+function zfsmDiagAnonText($text, $one_value = false) {
 	$pattern = zfsmDiagNamePattern();
 	$clean = '';
 	for ($at = 0; ($found = preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $at)) === 1; $at = $end) {
-		list($put, $end) = zfsmDiagAnonMatch($text, $match);
+		list($put, $end) = zfsmDiagAnonMatch($text, $match, $one_value);
 		// A name whose tokens could not be made is not written at all.
 		if ($put === null) return null;
 		$clean .= substr($text, $at, $match[0][1] - $at).$put;
@@ -149,10 +150,10 @@ function zfsmDiagAnonText($text) {
 }
 
 // What one find becomes, and where the search goes on: [its replacement, the offset after what it stands for].
-function zfsmDiagAnonMatch($text, $match) {
+function zfsmDiagAnonMatch($text, $match, $one_value = false) {
 	list($found, $at) = $match[0];
 	$end = $at + strlen($found);
-	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at);
+	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at, $one_value);
 	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
 	if ($match['resume'][0] !== null) return array('(a resume token, left out)', $end);
 	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
@@ -173,9 +174,10 @@ function zfsmDiagAnonMatch($text, $match) {
 
 // A path at $at, each name in it a token. A system path stays. A dataset's pool stays, and its names end where ZFS's few characters do.
 // A folder's name may hold any character: its path runs to the next tab or the line's end, after /mnt and the pool's or Unraid's own folder.
-function zfsmDiagAnonPath($text, $at) {
+function zfsmDiagAnonPath($text, $at, $one_value = false) {
 	$names = &$GLOBALS['zfsm_diag_names'];
-	$run = substr($text, $at, strcspn($text, "\t\r\n", $at));
+	// A tab or a line break ends a field of a file's rows; a folder's name can hold either, so in one value nothing ends it but its end.
+	$run = $one_value ? (string)substr($text, $at) : substr($text, $at, strcspn($text, "\t\r\n", $at));
 	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
 	// One of the plugin's own paths, to its first space; any other path under a shared top folder is a folder's, names and all.
 	$whole = rtrim(substr($run, 0, strcspn($run, ' ')), ':,;');
@@ -262,7 +264,7 @@ function zfsmDiagAnonJson($text) {
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
 		// A value that stays as a number can still be an address.
-		$clean = zfsmDiagAnonText($free ? zfsmDiagFreeValue($value) : $value);
+		$clean = zfsmDiagAnonText($free ? zfsmDiagFreeValue($value) : $value, true);
 		$failed = $failed || $clean === null;
 		return $clean;
 	}

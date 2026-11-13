@@ -80,7 +80,7 @@ function zfsmDiagSeconds($seconds) {
 	return $seconds * ($GLOBALS['zfsm_diag_scale'] ?? 1);
 }
 
-// Writes every file into $dir; false when one could not be written. A collector that throws, runs out of time or could not
+// Writes every file into $dir; false when one could not be written, null when the folder went under the run (it is not the run's now). A collector that throws, runs out of time or could not
 // read something is noted in collectors.txt and the summary, and the rest still run.
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
@@ -106,7 +106,7 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 		}
 		if ($result !== 'ok') $unfinished[$result][] = $file;
 		// The run's lock is on the folder it began in: once that is gone, or another of its name is there, the run ends.
-		if (!zfsmDiagSameFolder($dir, $began_in)) return false;
+		if (!zfsmDiagSameFolder($dir, $began_in)) return null;
 		$written = zfsmDiagWrite($dir, $file, $text) && $written;
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
