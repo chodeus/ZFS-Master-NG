@@ -25,8 +25,9 @@ function launch({interval = 30} = {}) {
         text(value) { if (value === undefined) return texts.get(selector); texts.set(selector, value); return this; },
         css() { return this; }, removeClass() { return this; }, addClass() { return this; },
         click() { return this; }, on() { return this; }, remove() { return this; }, removeAttr() { return this; }, hide() { return this; }, attr() { return this; }, ajaxSuccess() { return this; },
-        // The table's header cells, for the record a diagnostics run sends.
-        length: 3, map() { return {get: () => ['Name', 'Activity']}; }
+        // The header row's cells, for the record a diagnostics run sends: only that row's own children give names.
+        length: 3, map() { return {get: () => []}; },
+        first() { return {children: () => ({map: () => ({get: () => selector === '#zfs_master thead tr' ? ['Name', 'Activity'] : []})})}; }
       };
       elements.set(selector, element);
     }

@@ -17,7 +17,7 @@ function element() {
 }
 
 function launch(stored = {}) {
-  const posts = [], timers = [];
+  const posts = [], timers = [], cleared = [];
   const storage = new Map(Object.entries(stored));
   const localStorage = {get length() { return storage.size; }, key: index => [...storage.keys()][index], getItem: key => storage.has(key) ? storage.get(key) : null,
     setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key)};
@@ -28,12 +28,12 @@ function launch(stored = {}) {
   }};
   const window = {localStorage, navigator: {userAgent: 'TestBrowser/1.0'}, innerWidth: 1280, innerHeight: 800, devicePixelRatio: 1.25,
     document: {documentElement: {className: 'Theme--black'}, body: {className: 'page'}}};
-  const context = vm.createContext({$, localStorage, window, console: {warn() {}, error() {}}, setTimeout: callback => { timers.push(callback); return timers.length; }, clearTimeout() {}});
+  const context = vm.createContext({$, localStorage, window, console: {warn() {}, error() {}}, setTimeout: callback => { timers.push(callback); return timers.length; }, clearTimeout: id => cleared.push(id)});
   vm.runInContext(source, context);
   const parts = {button: element(), box: element(), status: element(), link: element()};
   parts.box.prop('checked', true);
   const diagnostics = context.createZFSMDiagnostics({url: '/admin', download: '/download?file=', ...parts, report: () => context.zfsmDiagReport(window)});
-  return {diagnostics, posts, timers, storage, context, window, ...parts};
+  return {diagnostics, posts, timers, cleared, storage, context, window, ...parts};
 }
 
 // A start: one request with the box's state and the browser's report; the button is off until the run ends.
@@ -86,14 +86,52 @@ const record = JSON.parse(page.storage.get('zfsm-diagnostics'));
 assert.deepEqual([record.status, record.errors.length, record.errors[0].text, record.errors[19].text, 'render' in record], [{text: 'second'}, 20, 'error 6', 'error 25', false], 'the record keeps the last status and the newest twenty errors');
 assert.match(JSON.parse(page.context.zfsmDiagReport(page.window)).kept['zfsm-diagnostics'], /error 25/, 'and the report carries it');
 
+// Errors whose text quotes a JSON answer, as a failed request's does: each string is cut before the record is kept, so escaping it
+// again can't grow it past its bound, and the report keeps the record whole and stays within what the server keeps.
+page = launch();
+for (let index = 1; index <= 20; index++) page.context.zfsmDiagRecord('errors', () => ({at: 't' + index, text: 'error ' + index + ' ' + JSON.stringify({answer: '"\\'.repeat(600)}), where: 'ZFSMFrontEnd.js:' + index}));
+const quoted = JSON.parse(page.storage.get('zfsm-diagnostics'));
+const quotedReport = page.context.zfsmDiagReport(page.window);
+assert.deepEqual([quoted.errors.length, quoted.errors.every(entry => entry.text.length <= 500), JSON.parse(quotedReport).leftOut, Buffer.byteLength(quotedReport) < 65536, JSON.parse(quotedReport).kept['zfsm-diagnostics'] === page.storage.get('zfsm-diagnostics')],
+  [20, true, 0, true, true], 'each string of a part is cut to 500 characters before it is kept, and the report holds the whole record within 64 KB: ' + Buffer.byteLength(quotedReport) + ' bytes');
+// A value that does not fit is counted and takes no room: what comes after it is still kept.
+page = launch();
+for (let index = 0; index < 24; index++) page.storage.set('zdataset-tank/d' + index, 'y'.repeat(2000));
+page.storage.set('zfsm-diagnostics', 'z'.repeat(5000));
+page.storage.set('zfsm-small', 'kept');
+const roomy = JSON.parse(page.context.zfsmDiagReport(page.window));
+assert.deepEqual([roomy.leftOut, 'zfsm-diagnostics' in roomy.kept, roomy.kept['zfsm-small']], [1, false, 'kept'], 'a value left out takes no room from the values after it');
+
+// The budget is in bytes as sent: two-byte characters fill it twice as fast as their count says.
+page = launch();
+for (let index = 0; index < 24; index++) page.storage.set('zdataset-tank/e' + index, '\u00e9'.repeat(2000));
+const wide = page.context.zfsmDiagReport(page.window);
+assert.deepEqual([Buffer.byteLength(wide) < 65536, JSON.parse(wide).leftOut > 0], [true, true], 'a report of two-byte text stays within 64 KB as sent: ' + Buffer.byteLength(wide) + ' bytes');
+
+// The page loads with no run, and its read of the state fails: that is not a failed run.
+page = launch();
+page.diagnostics.poll();
+page.posts[0].failed({status: 500});
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page.timers.length], ['The state of diagnostics could not be read: the server answered HTTP 500.', undefined, 0], 'an idle page whose read fails says only that');
+
+// The page is left while a run goes: its timer is cleared, and an answer still on its way is not shown.
+page = launch();
+page.diagnostics.start();
+page.posts[0].done({state: 'started', why: ''});
+page.posts[1].done({state: 'running'});
+page.diagnostics.poll();
+page.diagnostics.stop();
+page.posts[2].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
+assert.deepEqual([page.cleared, page.link.state.shown, page.timers.length], [[1], false, 1], 'leaving the page clears the pending poll\'s timer and drops the answer on its way');
+
 // The record as the Main tab writes it: twenty long script errors, then a render. Each part is bounded where it is written, so the
 // report carries the newest error and the render whole, and its JSON stays whole.
 page = launch();
 for (let index = 1; index <= 20; index++) page.context.zfsmDiagRecord('errors', () => ({at: 't' + index, text: 'Uncaught TypeError number ' + index + ' ' + 'x'.repeat(3000), where: 'ZFSMFrontEnd.js:' + index}));
 page.context.zfsmDiagRecord('render', () => ({at: 'r', milliseconds: 41, pools: 2, rows: 37, headers: ['Name', 'Size', 'Other Plugin Column']}));
 const bounded = JSON.parse(page.storage.get('zfsm-diagnostics'));
-assert.deepEqual([bounded.errors.length, bounded.errors.every(entry => JSON.stringify(entry).length <= 2000), bounded.errors[19].at, /number 20 x/.test(bounded.errors[19].cut)],
-  [20, true, 't20', true], 'an error too long for the record keeps its time and its start, marked as cut');
+assert.deepEqual([bounded.errors.length, bounded.errors.every(entry => entry.text.length === 500), bounded.errors[19].at, /^Uncaught TypeError number 20 x/.test(bounded.errors[19].text)],
+  [20, true, 't20', true], 'an error too long for the record keeps its time and the start of its text');
 let sent = JSON.parse(page.context.zfsmDiagReport(page.window)).kept['zfsm-diagnostics'];
 assert.ok(sent.includes('number 20') && sent.includes('Other Plugin Column'), 'the report carries the newest error and the render');
 // Many dataset keys: what does not fit is counted, never cut through.
@@ -117,7 +155,7 @@ for (let lost = 0; lost < 3; lost++) {
   page.timers[page.timers.length - 1]();
   page.posts[page.posts.length - 1].failed({status: 0});
 }
-assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Diagnostics failed: the server did not answer (HTTP 0). Reload the page and try again.', false], 'four lost polls in a row are a failure');
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Diagnostics failed: the server did not answer. Reload the page and try again.', false], 'four lost polls in a row are a failure');
 page.diagnostics.poll();
 page.posts[page.posts.length - 1].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip', why: 'older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip'});
 assert.equal(page.status.state.text, 'Ready, and kept in /boot/logs (older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip): ', 'a finished run says what else it has to say');

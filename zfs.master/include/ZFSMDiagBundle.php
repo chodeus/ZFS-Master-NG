@@ -40,7 +40,7 @@ function zfsmDiagAnonymizeDir($dir) {
 		$text = zfsmDiagWhole('file_get_contents', $dir.'/'.$file);
 		if ($text === false) return false;
 		$clean = substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text);
-		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean);
+		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean, $file === 'plugin/browser.json.txt' ? ZFSM_DIAG_BROWSER_WORDS : '');
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());

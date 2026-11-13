@@ -268,4 +268,5 @@ var zfsm_diagnostics = createZFSMDiagnostics({url: '/plugins/zfs.master/backend/
 	button: $('#zfsm-diag-start'), box: $('#zfsm-diag-unraid'), status: $('#zfsm-diag-status'), link: $('#zfsm-diag-link'), report: function() { return zfsmDiagReport(window); }});
 $('#zfsm-diag-start').on('click', zfsm_diagnostics.start);
 zfsm_diagnostics.poll();
+window.addEventListener('pagehide', zfsm_diagnostics.stop);
 </script>

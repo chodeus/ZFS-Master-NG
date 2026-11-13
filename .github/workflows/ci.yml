@@ -145,6 +145,9 @@ jobs:
       - name: Settings sections keep a gap under their last control in a real browser
         run: node tests/settings_render_test.cjs .webgui
 
+      - name: The Main tab's diagnostics record holds the table's header cells on this version's jQuery
+        run: node tests/diag_record_render_test.cjs .webgui
+
       - name: Page dialogs on this version's jQuery
         working-directory: tests
         run: |

@@ -11,19 +11,24 @@ require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 require_once "$docroot/plugins/zfs.master/include/ZFSMDiagnostics.php";
 
 $job = in_array('--job', $argv, true);
-if ($job) {
-	// One run for the page at a time: the lock is held to the run's end, and the page is answered once it is held.
-	// The run only reads: a command it started and left behind must not keep the page saying "running".
-	$lock = zfsmJobLock(zfsmDiagJobFile('run.lock'), false);
-	if (!$lock) exit(1);
-	zfsmDiagJobSet(array('state' => 'running'));
-	zfsmJobStarted();
+// One run at a time, from the page or a terminal, held to its end (zfsmDiagRunLock). A job says why it did not start on its output,
+// which the page's start reads (zfsmStartJob); the page is answered once the job holds the lock and has said so.
+$lock = zfsmDiagRunLock();
+$kept = $job && is_resource($lock) && zfsmDiagJobSet(array('state' => 'running'));
+if (!is_resource($lock) || $job && !$kept) {
+	$why = is_resource($lock) ? 'The run\'s state could not be kept in '.dirname(zfsmDiagJobFile('state.json')) : $lock;
+	if ($job) echo $why, "\n";
+	else fwrite(STDERR, $why."\n");
+	exit(1);
 }
+if ($job) zfsmJobStarted();
 // How a run ends: a terminal is told, the page reads the state. A job has no terminal to write to. A zip that was made can
 // still come with something to say.
 $end = function($zip, $why) use ($job) {
-	if ($job) zfsmDiagJobSet($zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why));
-	elseif ($zip !== null) echo "\nDiagnostics zip: $zip\n";
+	$state = $zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why);
+	// The page reads the run's state: one that can't be kept leaves it on the last one, so the log says so.
+	if ($job && !zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of the run started from Settings could not be kept in '.dirname(zfsmDiagJobFile('state.json')));
+	elseif (!$job && $zip !== null) echo "\nDiagnostics zip: $zip\n";
 	if (!$job && $why !== '') fwrite(STDERR, $why."\n");
 	exit($zip === null ? 1 : 0);
 };
