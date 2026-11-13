@@ -93,7 +93,7 @@ function zfsmDiagZpoolStatus($ctx) {
 	return zfsmDiagShowAll(zfsmDiagPerPool('zpool', array('status', '-p')));
 }
 
-// A pool's comment and its user properties are what its owner wrote (zfsmDiagPropertyRows).
+// A pool's comment, compatibility files and user properties are what its owner wrote (zfsmDiagPropertyRows).
 function zfsmDiagZpoolGetAll($ctx) {
 	return zfsmDiagPropertyRows('zpool', array('get', '-H', '-o'), 'property');
 }
@@ -208,12 +208,18 @@ function zfsmDiagRowHead($head) {
 	return array(substr($head, 0, $at).($user ? zfsmDiagPropertyName($property) : $property), $property, $user);
 }
 
-// One row with its value hidden when it is its owner's (zfsmDiagFreeValue): a user property's, a share's options, a pool's comment,
-// or a value with a space or a tab that is no path (no value of OpenZFS's own has one; a path goes to the path rules). keylocation: only that it is set.
+// The properties of OpenZFS's whose value is text its owner writes: a share's options, a pool's comment and compatibility files, SELinux labels.
+function zfsmDiagOwnersProperties() {
+	return array('sharenfs', 'sharesmb', 'comment', 'compatibility', 'context', 'fscontext', 'defcontext', 'rootcontext', 'mlslabel');
+}
+
+// One row with its value hidden when it is its owner's (zfsmDiagFreeValue): a user property's, one of zfsmDiagOwnersProperties() but for
+// OpenZFS's own none and legacy, or a value with a space or a tab that is no path (a path goes to the path rules). keylocation: only that it is set.
 function zfsmDiagFreeRow($head, $value, $source) {
 	list($shown, $property, $user) = zfsmDiagRowHead($head);
+	$owners = in_array($property, zfsmDiagOwnersProperties(), true) && !in_array($value, array('none', 'legacy'), true);
 	if ($property === 'keylocation') $value = $value === 'prompt' ? $value : '(set)';
-	elseif ($user || in_array($property, array('sharenfs', 'sharesmb', 'comment'), true) || preg_match('~^(?:\S+|/[^\t]*)$~D', $value) !== 1) $value = zfsmDiagFreeValue($value);
+	elseif ($user || $owners || preg_match('~^(?:\S+|/[^\t]*)$~D', $value) !== 1) $value = zfsmDiagFreeValue($value);
 	return $shown."\t".$value."\t".$source;
 }
 

@@ -247,6 +247,11 @@ same(array('', "(a value here holds a line break, or a property changed while th
 same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:".zfsmDiagToken('contact')."\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n",
 	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n", "size\ncomment\norg:contact\nfeature@lz4_compress\nunsupported@com.example:x\n"),
 	'a pool\'s comment and user properties are hidden as a dataset\'s are; its features are OpenZFS\'s own');
+same("compatibility\toff\tdefault\ncompatibility\tlegacy\tlocal\ncompatibility\t".zfsmDiagToken('ClientA/profile')."\tlocal\ncompatibility\t".zfsmDiagToken('openzfs-2.1-linux,ClientB')."\tlocal\n"
+	."tank/a\tcontext\t".zfsmDiagToken('system_u:object_r:clienta_t:s0')."\tlocal\ntank/a\tmlslabel\tnone\tlocal\n",
+	zfsmDiagFreeRows("compatibility\toff\tdefault\ncompatibility\tlegacy\tlocal\ncompatibility\tClientA/profile\tlocal\ncompatibility\topenzfs-2.1-linux,ClientB\tlocal\ntank/a\tcontext\tsystem_u:object_r:clienta_t:s0\tlocal\ntank/a\tmlslabel\tnone\tlocal\n",
+		"compatibility\ncompatibility\ncompatibility\ncompatibility\ntank/a\tcontext\ntank/a\tmlslabel\n"),
+	'a pool\'s compatibility files, a relative path among them, and an SELinux label are tokens; OpenZFS\'s own off, legacy and none stay');
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
 same('/mnt/user/'.zfsmDiagToken('Share').'/'.zfsmDiagToken('x'), zfsmDiagAnonText('/mnt/user/Share/x'), 'Unraid\'s own folder under /mnt stays, a share does not');
