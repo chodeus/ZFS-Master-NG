@@ -44,8 +44,8 @@ register_shutdown_function(function() use ($work, $clear_logs) { exec('rm -rf '.
 $real = getenv('ZFSM_TEST_BIN_DIR');
 file_put_contents($work.'/bin/zfs', "#!/bin/sh\nn=\$#\nwhile [ \"\$n\" -gt 0 ]; do a=\$(printf '%s' \"\$1\" | sed 's#tank/CanaryDs One#tank/data#g; s#tank/Canary failed Vol#tank/vol#g'); shift; set -- \"\$@\" \"\$a\"; n=\$((n - 1)); done\n"
 	."out=\$(".escapeshellarg($real.'/zfs')." \"\$@\" 2>&1); code=\$?\n"
-	."[ -n \"\$out\" ] && printf '%s\\n' \"\$out\" | sed 's#tank/data#tank/CanaryDs One#g; s#tank/vol#tank/Canary failed Vol#g; s#/nas2#/canarysender#g; s#@daily#@Canary Daily failed copy#g; s#\\tmedia\\t#\\tCanary Role\\t#g; s#\\tstorage\\t#\\troot@canaryhost:backup/CanaryRemote\\t#g'\nexit \$code\n");
-file_put_contents($work.'/bin/zpool', "#!/bin/sh\n".escapeshellarg($real.'/zpool')." \"\$@\"; code=\$?\n[ \"\$1\" = get ] && [ \$code -eq 0 ] && printf 'comment\\tCanary Comment\\tlocal\\n'\nexit \$code\n");
+	."[ -n \"\$out\" ] && printf '%s\\n' \"\$out\" | sed 's#tank/data#tank/CanaryDs One#g; s#tank/vol#tank/Canary failed Vol#g; s#/nas2#/canarysender#g; s#@daily#@Canary Daily failed copy#g; s#\\tmedia\\t#\\tCanary Role\\t#g; s#\\tstorage\\t#\\troot@canaryhost:backup/CanaryRemote\\t#g; s#^tank\\torg.example:role#tank\\tcom.canaryclient:canary_plan#'\nexit \$code\n");
+file_put_contents($work.'/bin/zpool', "#!/bin/sh\n".escapeshellarg($real.'/zpool')." \"\$@\"; code=\$?\n[ \"\$1\" = get ] && [ \$code -eq 0 ] && if [ \"\$4\" = property ]; then printf 'comment\\n'; else printf 'comment\\tCanary Comment\\tlocal\\n'; fi\nexit \$code\n");
 foreach (array('ps', 'diagnostics') as $fake) copy(__DIR__.'/fixtures/bin/'.$fake, $work.'/bin/'.$fake);
 foreach (glob($work.'/bin/*') as $fake) chmod($fake, 0755);
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
@@ -162,7 +162,8 @@ has('Directory Listing names a dataset that does not exist: tank/'.zfsmDiagToken
 has('"name":"tank/'.$ds.'"', $files['plugin/inventory.json.txt'], 'and so does the Main tab\'s read');
 has('"org.example:role":"'.zfsmDiagToken('Canary Role').'"', $files['plugin/inventory.json.txt'], 'where a user property\'s value is a token too');
 has("tank/$ds\torg.example:role\t".$token('Canary Role')."\tlocal\n", $files['zfs/user-properties.txt'], 'a value its owner wrote is a token');
-has("tank\torg.example:role\t".$token('root@canaryhost:backup/CanaryRemote')."\tlocal\n", $files['zfs/user-properties.txt'], 'and so is one that names another server and its dataset');
+has("tank\tcom.".$token('canaryclient').':'.$token('canary')."_plan\t".$token('root@canaryhost:backup/CanaryRemote')."\tlocal\n", $files['zfs/user-properties.txt'], 'and so is one that names another server and its dataset; the words of a property\'s name that are its owner\'s are tokens');
+has('"com.'.zfsmDiagToken('canaryclient').':'.zfsmDiagToken('canary').'_plan":', $files['plugin/inventory.json.txt'], 'as they are where the Main tab\'s read names the property');
 has("comment\t".$token('Canary Comment')."\tlocal\n", $files['zfs/zpool-get-all.txt'], 'a pool\'s comment is a token');
 $mount = $token('Canary Mount');
 has("\t/mnt/tank/$mount\trw\tshared:52\t-\tzfs\ttank/$mount\trw\n", $files['zfs/mounts.txt'], 'a mount whose name holds a space is one token, in its folder and its dataset');
@@ -221,15 +222,25 @@ $said = 'Snapshot: gonepool/a@b failed: I/O error on read/write; cannot open \'o
 zfsmDiagLearnPools($said);
 same('Snapshot: gonepool/'.zfsmDiagToken('a').'@'.zfsmDiagToken('b').' failed: I/O error on read/write; cannot open \'otherpool/'.zfsmDiagToken('a').'\'; zfs list gonepool/'.zfsmDiagToken('a'), zfsmDiagAnonText($said),
 	'a pool nothing lists is learned from a line of the plugin\'s and from a name zfs quotes, then found anywhere; no other word with a slash is taken for one');
-same("tank/a\tuser:note\t".zfsmDiagToken('line one')."\t\n(more of the value above, left out)\ntank/a\tuser:tab\t".zfsmDiagToken("first\tSecret After")."\tlocal\ntank/a\tcompression\tlz4\tlocal\n",
-	zfsmDiagFreeRows("tank/a\tuser:note\tline one\nSecret Two\tlocal\ntank/a\tuser:tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\n", 2, array('local', 'received'), 'tank'), 'a value with a line break or a tab in it is hidden whole');
-same("tank/a\tuser:note\t".zfsmDiagToken('first')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
-	zfsmDiagFreeRows("tank/a\tuser:note\tfirst\nfake\tcompression\tPrivate Owner\tlocal\nelsewhere/a\tcompression\tPrivate\tlocal\n", 2, array('local', 'received'), 'tank'), 'a line of a value that looks like a row is no row: its dataset is not this pool\'s');
-same("tank/a\tuser:note\t".zfsmDiagToken('first')."\t\n(more of the value above, left out)\n(more of the value above, left out)\ntank/a\tcompression\tlz4\tlocal\ntank/a\tcompression\t".zfsmDiagToken('Private Owner')."\tlocal\n",
-	zfsmDiagFreeRows("tank/a\tuser:note\tfirst\ntank\tcompression\tPrivate Owner\tlocal\nlast\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tcompression\tPrivate Owner\tlocal\n", 2, array('local', 'received'), 'tank'),
-	'a line of a value that names this pool and looks like a row is still that value; and no value of OpenZFS\'s own holds a space, so one that does is hidden');
-same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:contact\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\t".zfsmDiagToken('line one')."\t\n(more of the value above, left out)\n(more of the value above, left out)\n",
-	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\norg:note\tline one\nAlice Two\tlocal\nsecret\tlocal\n", 1, array('-', 'default', 'local'), ''),
+// Property rows: a value can hold tabs and line breaks, so the rows are read against the same read without its values.
+$heads = "tank/a\torg.znapzend:src_plan\ntank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\ntank/a\tmountpoint\ntank/a\tkeylocation\ntank/b\tkeylocation\ntank/b\tsharenfs\ntank/b\tcompression\n";
+$values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clientacme:owner_tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
+	."tank/a\tkeylocation\thttps://user:pw@keys.example/a\tlocal\ntank/b\tkeylocation\tprompt\treceived\ntank/b\tsharenfs\trw=@10.0.0.0/24\tlocal\ntank/b\tcompression\tPrivate Owner\tlocal\n";
+same("tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\t".zfsmDiagToken("first\tSecret After")."\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
+	."tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\treceived\ntank/b\tsharenfs\t".zfsmDiagToken('rw=@10.0.0.0/24')."\tlocal\ntank/b\tcompression\t".zfsmDiagToken('Private Owner')."\tlocal\n", zfsmDiagFreeRows($values, $heads),
+	'a user property\'s value and a share\'s options are tokens, a plan and OpenZFS\'s own values stay, a value with a tab is hidden whole, a key\'s place is only "set"; a word of a user property\'s name that is not the plugin\'s is a token; a value with a space is no value of OpenZFS\'s');
+$left_out = "(a value here holds a line break, or a property changed while they were read: the values are left out)\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\ntank/a\tcompression\n";
+$two = "tank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\n";
+same(array($left_out, $left_out, $left_out, $left_out, $left_out), array(
+	zfsmDiagFreeRows("tank/a\tcom.clientacme:owner_tab\tline one\nSecret Two\tlocal\ntank/a\tcompression\tlz4\tlocal\n", $two),
+	zfsmDiagFreeRows("tank/a\tcom.clientacme:owner_tab\tfirst\tlocal\ntank/a\tcompression\tPrivate\tlocal\ntank/a\tcompression\tlz4\tlocal\n", $two),
+	zfsmDiagFreeRows("tank/a\tcom.clientacme:owner_tab\tfirst\ntank/a\tcompression\tPrivate\tlocal\n", $two),
+	zfsmDiagFreeRows("tank/a\tcom.clientacme:owner_tab\tfirst\tlocal\ntank/a\tcompressratio\t1.00x\t-\n", $two),
+	zfsmDiagFreeRows("tank/a\tcom.clientacme:owner_tab\tfirst\tlocal\n", $two),
+), 'no value is shown when a line more than the rows is there (a value with a line break, though each of its lines looks like a row), a line with no source, another row than the one read, or a row less');
+same(array('', "(a value here holds a line break, or a property changed while they were read: the values are left out)\n"), array(zfsmDiagFreeRows('', ''), zfsmDiagFreeRows("tank/a\tcompression\tlz4\tlocal\n", '')), 'no rows is no text; rows where the read of their names gave none are not shown');
+same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:".zfsmDiagToken('contact')."\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n",
+	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n", "size\ncomment\norg:contact\nfeature@lz4_compress\nunsupported@com.example:x\n"),
 	'a pool\'s comment and user properties are hidden as a dataset\'s are; its features are OpenZFS\'s own');
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
@@ -260,8 +271,9 @@ same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my med
 // A setting or a finding that names a dataset with nothing around it: its pool stays, and one word alone only when it is a pool.
 same(array('tank/'.zfsmDiagToken('a b').'/'.zfsmDiagToken('c'), 'tank', zfsmDiagToken('Media')), array_map('zfsmDiagNamed', array('tank/a b/c', 'tank', 'Media')), 'a dataset named alone keeps its pool; one word that is no pool is a token');
 // The second net, for running text: a word the plugin itself does not use is a token; numbers, tokens and fingerprints pass.
-$sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:AbC+/9 d41d8cd98f00b204e9800998ecf8427e';
+$sentence = 'Using it now: container plexserver42 has it mounted (pid 9), 10G in 30s, the 2nd of 3; '.zfsmDiagToken('kept').' SHA256:'.str_repeat('Ab+/', 10).'xyz d41d8cd98f00b204e9800998ecf8427e';
 same(str_replace('plexserver42', zfsmDiagToken('plexserver42'), $sentence), zfsmDiagKnownWords($sentence), 'a word that is no word of the plugin\'s is a token; its own words, numbers, tokens and checksums stay');
+same(zfsmDiagToken('name-0123abcd').' SHA256:'.zfsmDiagToken('Zebra77'), zfsmDiagKnownWords('name-0123abcd SHA256:Zebra77'), 'text that only looks like a token or a fingerprint is not one: a token is one this run made, a fingerprint has its length');
 same(array('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') '.zfsmDiagToken('canaryuser@canaryhost'), "cut short (a private key, left out)\nthe next line", 'at backup:tank/'.zfsmDiagToken('Colon')),
 	array(zfsmDiagAnonText('key '.$public_key.' canaryuser@canaryhost'), zfsmDiagAnonText("cut short -----BEGIN OPENSSH PRIVATE KEY-----; CutKeyBody\nthe next line"), zfsmDiagAnonText('at backup:tank/Colon')),
 	'a key is its fingerprint and its comment a token; a private key whose end was cut off is left out, and the next line stays; a dataset right after a colon is found');

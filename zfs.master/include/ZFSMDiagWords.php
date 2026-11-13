@@ -34,12 +34,17 @@ function zfsmDiagVocabulary() {
 function zfsmDiagKnownWords($text) {
 	$words = zfsmDiagVocabulary();
 	foreach ($GLOBALS['zfsm_diag_names']['pools'] + (is_array($GLOBALS['zfsm_diag']['pools'] ?? null) ? $GLOBALS['zfsm_diag']['pools'] : array()) as $pool => $is) $words[strtolower((string)$pool)] = true;
-	// A token and a key's fingerprint are matched whole, so they pass as they are.
-	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|SHA256:[A-Za-z0-9+/]+|[A-Za-z0-9_\x80-\xff]+~', function($word) use ($words) {
+	// A token of this run and a key's fingerprint are matched whole: zfsmDiagToken gives a token of its own back as it is.
+	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])|[A-Za-z0-9_\x80-\xff]+~', function($word) use ($words) {
 		$word = $word[0];
-		$passes = strpos($word, '-') !== false || strpos($word, ':') !== false || isset($words[strtolower($word)]) || zfsmDiagIsNumber($word);
-		return $passes ? $word : zfsmDiagToken($word);
+		return strncmp($word, 'SHA256:', 7) === 0 || isset($words[strtolower($word)]) || zfsmDiagIsNumber($word) ? $word : zfsmDiagToken($word);
 	}, $text);
+}
+
+// A user property's name is its owner's to write: each word of it the plugin does not use is a token (org.znapzend:src_plan stays whole).
+function zfsmDiagPropertyName($property) {
+	$shown = preg_replace_callback('/[^_]+/', function($part) { return zfsmDiagKnownWords($part[0]) ?? zfsmDiagToken($part[0]); }, $property);
+	return $shown ?? zfsmDiagToken($property);
 }
 
 // A number, alone or with a unit of size, time or ratio, or a checksum: 12, 10G, 512KiB, 30s, 2x, an md5.

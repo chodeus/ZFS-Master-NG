@@ -15,7 +15,7 @@ fi
 if [ "$1" = "get" ] && [ "$5" = "all" ]; then
 	[ "${ZFSM_TEST_FEATURES:-}" = hang ] && sleep 30
 	case " ${ZFSM_TEST_BCLONE:-} ${ZFSM_TEST_BCLONE_ENDIAN:-} ${ZFSM_TEST_PHYSICAL:-} " in *" fail "*) printf 'cannot get property: I/O error\n' >&2; exit 1;; esac
-	# With a source column asked for, each row has one, as zpool's has.
+	# With a source column asked for, each row has one, as zpool's has; with -o property, only its name.
 	{
 	printf 'size\t1.00T\ncapacity\t10%%\nhealth\tONLINE\n'
 	printf 'feature@async_destroy\tenabled\nfeature@empty_bpobj\tactive\nfeature@lz4_compress\tactive\nfeature@draid\tdisabled\n'
@@ -27,7 +27,7 @@ if [ "$1" = "get" ] && [ "$5" = "all" ]; then
 	for pair in ${ZFSM_TEST_FEATURES:-}; do
 		case $pair in unsupported@*|compatibility=*) printf '%s\t%s\n' "${pair%%=*}" "${pair#*=}";; *) printf 'feature@%s\t%s\n' "${pair%%=*}" "${pair#*=}";; esac
 	done
-	} | if [ "${4##*,}" = source ]; then sed 's/$/\t-/'; else cat; fi
+	} | if [ "${4##*,}" = source ]; then sed 's/$/\t-/'; elif [ "$4" = property ]; then cut -f1; else cat; fi
 	exit 0
 fi
 

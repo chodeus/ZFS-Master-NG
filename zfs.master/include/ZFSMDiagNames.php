@@ -230,8 +230,8 @@ function zfsmDiagAnonJson($text) {
 	return $failed ? null : zfsmJson($clean, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
 
-// A decoded JSON value with the strings in it rewritten, keys too. The text under a key with a colon in it is a user property's
-// value, as the Main tab's read gives them (zfsmDiagFreeValue).
+// A decoded JSON value with the strings in it rewritten, keys too. A key with a colon in it is a user property's name, as the Main
+// tab's read gives them (zfsmDiagPropertyName), and the text under it that property's value (zfsmDiagFreeValue).
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
 		// A value that stays as a number can still be an address.
@@ -241,7 +241,12 @@ function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	}
 	if (!is_array($value)) return $value;
 	$clean = array();
-	foreach ($value as $key => $inner) $clean[is_string($key) ? zfsmDiagAnonValue($key, $failed) : $key] = zfsmDiagAnonValue($inner, $failed, is_string($key) && strpos($key, ':') !== false);
+	foreach ($value as $key => $inner) {
+		$user = is_string($key) && strpos($key, ':') !== false;
+		// A dataset's name can hold a colon too: that one is a path, for the rules.
+		$named = $user && strpbrk($key, '/@') === false ? zfsmDiagPropertyName($key) : $key;
+		$clean[is_string($named) ? zfsmDiagAnonValue($named, $failed) : $named] = zfsmDiagAnonValue($inner, $failed, $user);
+	}
 	return $clean;
 }
 
