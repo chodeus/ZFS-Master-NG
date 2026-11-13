@@ -512,9 +512,12 @@ $failed_reads = array(
 	'disks.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/disks.ini'); }),
 );
 foreach ($failed_reads as $what => $case) same(array('read failed', true), $result_of($case[0], $case[1]), 'a failed read is its file\'s result and in the summary when '.$what);
+$result_of('plugin/settings-saved.cfg.txt', $failed_reads['the settings file can\'t be opened'][1]);
+same("(unreadable)\n", file_get_contents($work.'/unread/plugin/settings-saved.cfg.txt'), 'a settings file that can\'t be read says so in the file, not as a token');
 same(true, zfsmDiagLockHeld($root.'/var/run/zfs.master.lock') !== null, 'the lock table is read again');
 // A file that need not be there is no failed read.
 same(array('ok', false), $result_of('plugin/settings-saved.cfg.txt', function($root) { unlink($root.'/boot/config/plugins/zfs.master/zfs.master.cfg'); }), 'a settings file that is not there is not a failed read');
+same("(not there)\n", file_get_contents($work.'/unread/plugin/settings-saved.cfg.txt'), 'and the file says it is not there, not a token for those words');
 same(array('ok', false), $result_of('plugin/replication-receive.txt', function($root) { unlink($root.'/etc/ssh/ssh_host_ed25519_key.pub'); }), 'nor is a host key that is not there');
 has("host key: not there\n", file_get_contents($work.'/unread/plugin/replication-receive.txt'), 'and the file says it is not there');
 // What was read and holds no usable value is no failed read either: the file says what is wrong with it.

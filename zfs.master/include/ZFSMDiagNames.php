@@ -183,8 +183,10 @@ function zfsmDiagAnonPath($text, $at) {
 		$own = (string)$own;
 		if (strncmp($whole, $own, strlen($own)) !== 0) continue;
 		$rest = (string)substr($whole, strlen($own));
-		// Itself, a log that was turned over (syslog.1), or inside the plugin's own: past a /, or after a name it lists to its . or -.
-		if ($rest === '' || preg_match('/^\.\d+$/D', $rest) === 1 || $prefix && ($rest[0] === '/' || strpos('/.-', substr($own, -1)) !== false)) return array($whole, $at + strlen($whole));
+		// Itself, a log that was turned over (syslog.1), inside a folder of the plugin's, or a name it makes after a prefix (zfsmDiagOwnName).
+		if ($rest === '' || preg_match('/^\.\d+$/D', $rest) === 1 || $prefix && ($rest[0] === '/' || substr($own, -1) === '/' || zfsmDiagOwnName($whole))) {
+			return array($whole, $at + strlen($whole));
+		}
 	}
 	$kept = array('');
 	if ($run[0] === '/') {
@@ -207,6 +209,17 @@ function zfsmDiagAnonPath($text, $at) {
 	}
 	$tokens = zfsmDiagNameTokens((string)substr($name, strlen($kept[0])));
 	return array($tokens === null ? null : ($kept[1] ?? $kept[0]).$tokens, $at + strlen($name));
+}
+
+// Whether $path is, or is in, a name the plugin makes after one of its name prefixes: a diagnostics run's work folder, a job's folder
+// (zfsmJobDir), its lock and alert state, a package record. Any other name after those prefixes is someone else's.
+function zfsmDiagOwnName($path) {
+	$names = array('/tmp/zfs.master-diag.' => '[0-9a-f]{16}', '/var/run/zfs.master.' => '(?:lock|alerts\.json(?:\.lock)?|rewrite|replicate|replica-serve|diagnostics)',
+		'/var/log/packages/zfs.master-*' => '\d[\d.]*-[a-z0-9_]+-\d\w*');
+	foreach ($names as $prefix => $name) {
+		if (preg_match('~^'.preg_quote(zfsmStatePath(rtrim($prefix, '*')), '~').$name.'(?=/|$)~D', $path) === 1) return true;
+	}
+	return false;
 }
 
 // The part of a path after what stays, each name in it a token.
