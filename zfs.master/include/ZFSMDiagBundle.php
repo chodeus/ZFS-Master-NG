@@ -20,6 +20,12 @@ function zfsmDiagUnraidZip($ctx) {
 	return 'Unraid\'s own diagnostics are the zip in this folder, '.filesize($zip).' bytes, as Unraid made them.';
 }
 
+// The files that are running text: sentences and command lines, where a name can stand in any shape (include/ZFSMDiagWords.php).
+function zfsmDiagRunningText() {
+	return array('summary.txt', 'collectors.txt', 'plugin/log.txt', 'plugin/php-errors.txt', 'plugin/jobs.txt', 'plugin/install.txt', 'plugin/schedule.txt',
+		'plugin/alerts-state.json.txt', 'zfs/processes.txt', 'zfs/timings.txt');
+}
+
 // Rewrites every file of a run with its names replaced, then adds names.txt and writes README.txt again, which holds no name.
 // False when a file could not be read, searched or written: its names are still in it, so nothing may be shown or packed.
 function zfsmDiagAnonymizeDir($dir) {
@@ -29,6 +35,7 @@ function zfsmDiagAnonymizeDir($dir) {
 		$text = zfsmDiagWhole('file_get_contents', $dir.'/'.$file);
 		if ($text === false) return false;
 		$clean = substr($file, -9) === '.json.txt' ? zfsmDiagAnonJson($text) : zfsmDiagAnonText($text);
+		if ($clean !== null && in_array($file, zfsmDiagRunningText(), true)) $clean = zfsmDiagKnownWords($clean);
 		if ($clean === null || !zfsmDiagWrite($dir, $file, $clean)) return false;
 	}
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());
@@ -52,19 +59,22 @@ function zfsmDiagPack($dir) {
 	}
 	// Another run's zip of this second keeps its name: this one takes the next second's.
 	for ($second = time(); file_exists($zip = $logs.'/zfs.master-diagnostics-'.date('Ymd-His', $second).'.zip'); $second++);
-	if (($packed['code'] ?? 1) !== 0 || !@rename($part, $zip)) {
+	$failed = ($packed['code'] ?? 1) !== 0 ? zfsmCommandError($packed, 'the zip could not be written to '.$logs) : (@rename($part, $zip) ? '' : 'the zip could not be given its name in '.$logs);
+	if ($failed !== '') {
 		@unlink($part);
-		return array(null, zfsmCommandError($packed, 'the zip could not be written to '.$logs));
+		return array(null, $failed);
 	}
-	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough.
-	if ($unraid !== null) @unlink($unraid);
-	zfsmDiagKeepNewest($logs, 3, basename($zip));
-	return array($zip, '');
+	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough. Still the file it was, never a link.
+	if ($unraid !== null && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
+	$left = zfsmDiagKeepNewest($logs, 3, basename($zip));
+	return array($zip, $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '');
 }
 
 // Removes the plugin's own zips in $logs but for $made, the one just written, and the newest of the others, $keep in all; and what
-// a run that was killed while packing left there. Only names this file makes are touched, never a link.
+// a run that was killed while packing left there. Only names this file makes are touched, never a link. Gives the names it could not remove.
 function zfsmDiagKeepNewest($logs, $keep, $made) {
+	// A folder reached through a link is another folder: nothing is removed there.
+	if (realpath($logs) !== $logs) return array();
 	$zips = array();
 	foreach (scandir($logs) ?: array() as $name) {
 		if (is_link($logs.'/'.$name) || !is_file($logs.'/'.$name)) continue;
@@ -73,5 +83,7 @@ function zfsmDiagKeepNewest($logs, $keep, $made) {
 	}
 	// The name holds the time, so the names sort by age; a clock that went back must not cost the zip just written.
 	sort($zips);
-	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) @unlink($logs.'/'.$name);
+	$left = array();
+	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) if (!@unlink($logs.'/'.$name)) $left[] = $name;
+	return $left;
 }
