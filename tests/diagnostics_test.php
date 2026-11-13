@@ -69,6 +69,7 @@ $build = function() use ($work, $root, $plugin_dir, $put, $manifest, $cron_line,
 	symlink($root.'/boot/config/plugins/zfs.master.plg', $root.'/var/log/plugins/zfs.master.plg');
 	$put('/var/log/packages/zfs.master-2026.01.02-x86_64-1', 'record');
 	$put('/var/log/zfs.master.log', "2026-01-02 10:00:00 notice [41] Snapshot created: tank/data@plugin-log\n");
+	$put('/var/log/zfs.master.debug.log', "2026-01-02 10:00:01 debug [41] exit 0 in 0.010 s: zfs list -H -o name tank\n");
 	$put('/var/log/syslog.1', "Jan  1 09:00:00 Tower zfs.master[40]: older line\nJan  1 09:00:01 Tower kernel: not ours\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 Tower zfs.master[41]: newer line\nJan  2 10:00:01 Tower nginx: not ours either\n");
 	$put('/var/log/phplog', "[02-Jan-2026] PHP Warning: x in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 1\n[02-Jan-2026] PHP Warning: y in /usr/local/emhttp/plugins/dynamix/x.php\n");
@@ -151,6 +152,7 @@ same(false, strpos($read('plugin/replication-receive.txt'), 'AAAAC3'), 'no key t
 same(false, strpos($read('plugin/replication-receive.txt'), 'admin@laptop'), 'nor a key that is not a sender\'s');
 same('getDatasets', json_decode($read('plugin/inventory.json.txt'), true)['op'], 'the Main tab\'s first read');
 has("Snapshot created: tank/data@plugin-log\n", $read('plugin/log.txt'), 'the plugin\'s own log');
+has("zfs.master.debug.log\n2026-01-02 10:00:01 debug [41] exit 0 in 0.010 s: zfs list -H -o name tank\n", $read('plugin/log.txt'), 'and its debug log');
 has("zfs.master[40]: older line\nJan  2 10:00:00 Tower zfs.master[41]: newer line\n", $read('plugin/log.txt'), 'the system log\'s lines, older file first');
 same(false, strpos($read('plugin/log.txt'), 'not ours'), 'no other line of the system log');
 has("ZFSMHelpers.php on line 1\n", $read('plugin/php-errors.txt'), 'the PHP log\'s lines that name the plugin');

@@ -153,6 +153,9 @@ function runProcess($command, $args = array(), $stdin = null, $max_lines = 0, $k
 	} catch (ZFSMTimeout $timeout) {
 		$result = 'timed out';
 		throw $timeout;
+	} catch (Throwable $error) {
+		$result = 'failed: '.$error->getMessage();
+		throw $error;
 	} finally {
 		zfsmDebugCommand($command, $args, $result, $began);
 	}

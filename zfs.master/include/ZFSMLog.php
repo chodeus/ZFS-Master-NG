@@ -15,22 +15,41 @@ function zfsmLog($message, $priority = LOG_ERR) {
 	zfsmLogKeep($text, $priority);
 }
 
-// A debug line: in the plugin's own log only, and only while Debug Log is on in the settings, read once for each run.
-function zfsmDebug($message) {
-	if (!isset($GLOBALS['zfsm_debug'])) $GLOBALS['zfsm_debug'] = function_exists('parse_plugin_cfg') && (int)(parse_plugin_cfg('zfs.master', true)['general']['debug_log'] ?? 0) === 1;
-	if ($GLOBALS['zfsm_debug']) zfsmLogKeep(zfsmSafeText($message), LOG_DEBUG);
+// Debug Log's lines have a file of their own under the same ceiling, so they never push the plugin's other lines out.
+function zfsmDebugFile() {
+	return zfsmStatePath('/var/log/zfs.master.debug.log');
 }
 
-// A command the plugin ran, for the debug log: what it was, how it ended and how long it took. Where a key is kept is left out.
+// Whether Debug Log is on, from the saved settings by loadConfig's own rule, read once for each run.
+function zfsmDebugOn() {
+	if (!isset($GLOBALS['zfsm_debug'])) {
+		$saved = @parse_ini_file(zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg'), true);
+		$GLOBALS['zfsm_debug'] = loadConfig(is_array($saved) ? $saved : array())['debug_log'] === 1;
+	}
+	return $GLOBALS['zfsm_debug'];
+}
+
+function zfsmDebug($message) {
+	if (zfsmDebugOn()) zfsmLogKeep(zfsmSafeText($message), LOG_DEBUG, zfsmDebugFile());
+}
+
+// A command the plugin ran, for the debug log: how it ended and how long it took first, so a long command never cuts them off.
 function zfsmDebugCommand($command, $args, $result, $began) {
-	$secret = ($args[0] ?? '') === 'load-key' || preg_grep('/keylocation=/i', $args);
-	zfsmDebug(basename((string)$command).' '.($secret ? ($args[0] ?? '').' (its arguments are left out)' : implode(' ', $args)).': '.$result.' in '.number_format(microtime(true) - $began, 3, '.', '').' s');
+	if (!zfsmDebugOn()) return;
+	zfsmDebug($result.' in '.number_format(microtime(true) - $began, 3, '.', '').' s: '.zfsmCommandShown(basename((string)$command).' '.implode(' ', (array)$args)));
+}
+
+// A command line as the plugin shows it anywhere: rsync's arguments, and those of a zfs or zpool command that names where a key
+// is kept, are left out.
+function zfsmCommandShown($line) {
+	if (preg_match('#^(\S*/)?(rsync|zfs\s+load-key)(\s|$)|^(\S*/)?((?:zfs|zpool)\s+\S+)\s.*(?i:keylocation)=#', $line, $match) !== 1) return $line;
+	return ($match[5] ?? $match[2]).' (its arguments are left out)';
 }
 
 // At ZFSM_LOG_BYTES the file becomes .1, replacing the last one, so the two never pass about 1 MB. A line that can't be written
 // is dropped: syslog has it.
-function zfsmLogKeep($text, $priority) {
-	$file = zfsmLogFile();
+function zfsmLogKeep($text, $priority, $file = null) {
+	$file = $file ?? zfsmLogFile();
 	$levels = array(LOG_EMERG => 'emergency', LOG_ALERT => 'alert', LOG_CRIT => 'critical', LOG_ERR => 'error', LOG_WARNING => 'warning', LOG_NOTICE => 'notice', LOG_INFO => 'info', LOG_DEBUG => 'debug');
 	$line = date('Y-m-d H:i:s').' '.($levels[$priority] ?? 'level '.$priority).' ['.getmypid().'] '.$text."\n";
 	for ($try = 0; $try < 3; $try++) {

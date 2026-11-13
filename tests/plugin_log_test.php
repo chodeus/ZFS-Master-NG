@@ -33,33 +33,50 @@ zfsmLogKeep('pool lost', LOG_CRIT);
 zfsmLogKeep('odd level', 42);
 same(array(1, 1), array(preg_match('/ critical \[\d+\] pool lost$/D', file($log, FILE_IGNORE_NEW_LINES)[2]), preg_match('/ level 42 \[\d+\] odd level$/D', file($log, FILE_IGNORE_NEW_LINES)[3])), 'a level worse than error keeps its name, and one with no name its number');
 
-// Debug Log, as the settings have it: off, a command leaves no line; on, each command the plugin runs is one, with how it ended.
-function parse_plugin_cfg($plugin, $sections) { return array('general' => array('debug_log' => $GLOBALS['zfsm_test_debug'])); }
-$debug_lines = function($setting, $run) use ($log) {
-	$GLOBALS['zfsm_test_debug'] = $setting;
+// Debug Log, as the saved settings have it: off, a command leaves no line; on, each command the plugin runs is a line of the debug
+// log, how it ended first. zfs and zpool are the test's fakes, so nothing touches a real pool.
+mkdir($root.'/bin');
+foreach (array('zfs', 'zpool') as $fake) {
+	copy(__DIR__.'/fixtures/bin/'.$fake, $root.'/bin/'.$fake);
+	chmod($root.'/bin/'.$fake, 0755);
+}
+putenv('ZFSM_TEST_BIN_DIR='.$root.'/bin');
+mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
+$debug_log = $root.'/var/log/zfs.master.debug.log';
+$debug_lines = function($setting, $run) use ($root, $log, $debug_log) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"$setting\"\n");
 	unset($GLOBALS['zfsm_debug']);
 	file_put_contents($log, '');
+	@unlink($debug_log);
 	$run();
-	return file($log, FILE_IGNORE_NEW_LINES);
+	return array(is_file($debug_log) ? file($debug_log, FILE_IGNORE_NEW_LINES) : array(), file($log, FILE_IGNORE_NEW_LINES));
 };
-same(array(), $debug_lines('0', function() { runProcess('echo', array('hello')); }), 'with Debug Log off a command leaves no line');
-$lines = $debug_lines('1', function() {
+same(array(array(), array()), $debug_lines('0', function() { runProcess('echo', array('hello')); }), 'with Debug Log off a command leaves no line');
+list($lines, $plugin_lines) = $debug_lines('1', function() {
 	runProcess('echo', array('hello', 'tank/data'));
 	runProcess('sh', array('-c', 'exit 3'));
 	try { zfsmWithDeadline(0.3, function() { runProcess('sleep', array('5')); }); } catch (ZFSMTimeout $timeout) {}
 	runProcess('zfs', array('load-key', '-L', 'file:///boot/secret.key', 'tank'));
 	runProcess('zfs', array('set', 'keylocation=file:///boot/secret.key', 'tank/data'));
 	runProcess('zpool', array('create', '-O', 'KEYLOCATION=https://user:secret.key@keys.example/p', 'tank2', 'sdc'));
+	runProcess('rsync', array('--version'));
+	try { runProcess('echo', 'not a list'); } catch (Throwable $error) {}
+	runProcess('echo', array(str_repeat('a', 600)));
 	zfsmDebug("request snapshotdataset\nsecond line");
 });
-same(array(1, 1, 1), array(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d debug \[\d+\] echo hello tank\/data: exit 0 in \d+\.\d{3} s$/D', $lines[0]), preg_match('/ debug \[\d+\] sh -c exit 3: exit 3 in \d+\.\d{3} s$/D', $lines[1]), preg_match('/ debug \[\d+\] sleep 5: timed out in 0\.\d{3} s$/D', $lines[2])),
-	'with it on a command is a line with its arguments, its exit code or its timeout, and its time: '.implode(' | ', $lines));
-same(array(1, 1, 1, false), array(preg_match('/ zfs load-key \(its arguments are left out\): exit \d+ in /', $lines[3]), preg_match('/ zfs set \(its arguments are left out\): exit \d+ in /', $lines[4]), preg_match('/ zpool create \(its arguments are left out\): exit \d+ in /', $lines[5]), strpos(implode('', $lines), 'secret.key')), 'a command that says where a key is kept is logged without its arguments');
-same(array(7, 1), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[6])), 'a debug line is one line, like any other');
-$GLOBALS['zfsm_test_debug'] = '0';
+same(array(10, array()), array(count($lines), $plugin_lines), 'with it on, each command is a line of the debug log and none goes to the plugin\'s own log');
+same(array(1, 1, 1), array(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d debug \[\d+\] exit 0 in \d+\.\d{3} s: echo hello tank\/data$/D', $lines[0]), preg_match('/ debug \[\d+\] exit 3 in \d+\.\d{3} s: sh -c exit 3$/D', $lines[1]), preg_match('/ debug \[\d+\] timed out in 0\.\d{3} s: sleep 5$/D', $lines[2])),
+	'with it on a command is a line of the debug log with its exit code or its timeout, its time, then its arguments: '.implode(' | ', $lines));
+same(array(1, 1, 1, 1, false), array(preg_match('/ s: zfs load-key \(its arguments are left out\)$/D', $lines[3]), preg_match('/ s: zfs set \(its arguments are left out\)$/D', $lines[4]), preg_match('/ s: zpool create \(its arguments are left out\)$/D', $lines[5]), preg_match('/ s: rsync \(its arguments are left out\)$/D', $lines[6]), strpos(implode('', $lines), 'secret.key')),
+	'rsync\'s arguments and those of a command that names where a key is kept are left out, as the process list leaves them out');
+same(array(1, 1), array(preg_match('/ debug \[\d+\] failed: .+ in \d+\.\d{3} s: echo not a list$/D', $lines[7]), preg_match('/ debug \[\d+\] exit 0 in \d+\.\d{3} s: echo a{100,}$/D', $lines[8])), 'a command that could not run says why, and a long one keeps how it ended: '.$lines[7]);
+same(array(10, 1, array()), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[9]), $plugin_lines), 'a debug line is one line, like any other, and none goes to the plugin\'s own log');
+file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"0\"\n");
 runProcess('echo', array('again'));
-same(8, count(file($log)), 'the setting is read once for each run');
+same(11, count(file($debug_log)), 'the setting is read once for each run');
 unset($GLOBALS['zfsm_debug']);
+putenv('ZFSM_TEST_BIN_DIR');
+unlink($debug_log);
 
 // At the cap the file becomes .1 and a new one starts; the next turn replaces .1, so there are never three.
 file_put_contents($log, str_repeat('x', ZFSM_LOG_BYTES - 1));
