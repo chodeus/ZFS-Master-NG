@@ -7,20 +7,24 @@ function zfsmDiagFreeSettings() {
 	return array('exclusion', 'snap_prefix', 'snap_pattern', 'directory_listing', 'replica_accept');
 }
 
-// The file as saved, but for those settings and any this version does not know: each one's value is a token, and the further
-// lines it runs on to, up to the one that closes its quote, are left out.
+// The file as saved: a line stays only at the value loadConfig uses, else its value is a token and the lines it runs on to are
+// left out. Of a line that sets nothing, only a section's name and an empty line stay.
 function zfsmDiagSettingsSaved($ctx) {
-	$shown = array_diff(array_map('zfsmDiagSavedName', array_keys($ctx['cfg'])), zfsmDiagFreeSettings());
+	$effective = array();
+	foreach ($ctx['cfg'] as $key => $value) {
+		if (is_scalar($value) && !in_array(zfsmDiagSavedName($key), zfsmDiagFreeSettings(), true)) $effective[zfsmDiagSavedName($key)] = (string)$value;
+	}
 	$open = false;
 	$lines = array();
 	foreach (explode("\n", zfsmDiagFile(zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg'))) as $line) {
 		if ($open) {
 			$open = substr_count($line, '"') % 2 === 0;
-		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1 && !in_array($set[1], $shown, true)) {
-			$lines[] = $set[1].' = '.zfsmDiagToken(trim($set[2], " \t\r\""));
+		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1) {
+			$value = trim($set[2], " \t\r\"");
 			$open = substr_count($set[2], '"') % 2 === 1;
+			$lines[] = !$open && ($effective[$set[1]] ?? null) === $value ? $line : $set[1].' = '.zfsmDiagToken($value);
 		} else {
-			$lines[] = $line;
+			$lines[] = preg_match('/^\s*(?:\[[A-Za-z0-9_.-]*\]\s*)?$/D', $line) === 1 ? $line : zfsmDiagToken($line);
 		}
 	}
 	return implode("\n", $lines);
@@ -36,7 +40,17 @@ function zfsmDiagSettingsEffective($ctx) {
 	$defaults = loadConfig(array());
 	$text = "setting\tvalue\tdefault\tsource\n";
 	$changed = array();
-	foreach (array_merge($ctx['cfg']['directory_listing'], array($ctx['cfg']['replica_accept'])) as $named) zfsmDiagKnow($named);
+	// Only a dataset of a pool this run knows is learned from a setting: its first word is no proof of a pool. So the pools
+	// are read first, the read later collectors use; one that fails is this file's result, and leaves every name here a token.
+	try {
+		zfsmDiagPools();
+	} catch (RuntimeException $error) {
+	}
+	foreach (array_merge($ctx['cfg']['directory_listing'], array($ctx['cfg']['replica_accept'])) as $named) {
+		$first = preg_split('~[/@#]~', $named)[0];
+		if (isset(zfsmDiagKnownPools()[$first])) zfsmDiagKnow($named);
+		elseif ($first !== $named) zfsmDiagKnowRoot($first);
+	}
 	foreach ($ctx['cfg'] as $key => $value) {
 		$name = zfsmDiagSavedName($key);
 		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
