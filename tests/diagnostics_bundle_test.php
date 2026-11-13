@@ -141,7 +141,7 @@ $leaks = function($files) {
 // The zip: no private thing in the plugin's files, and each kind of thing stands as its token.
 list($zip, $why, $out) = $bundle('full');
 same(1, preg_match('~^'.preg_quote($root, '~').'/boot/logs/zfs\.master-diagnostics-\d{8}-\d{6}\.zip$~D', (string)$zip), 'the zip is in /boot/logs under the plugin\'s name: '.$zip.$why);
-same(array(), glob($root.'/boot/logs/*.part'), 'and nothing of its packing is left beside it');
+same(array(array(), ''), array(glob($root.'/boot/logs/*.part'), $why), 'and nothing of its packing is left beside it, with nothing left undone to say');
 $files = $ours($out);
 same(array(), $leaks($files), 'no name, address, host or key is in the plugin\'s files');
 foreach (array_merge(array_column(zfsmDiagCollectors(), 0), array('names.txt', 'README.txt', 'summary.txt', 'collectors.txt')) as $file) same(true, isset($files[$file]), $file.' is in the zip');
@@ -471,9 +471,11 @@ exec('mount --bind '.escapeshellarg($work.'/linked').' '.escapeshellarg($logs.'/
 same('older zips could not be removed from '.$logs.': zfs.master-diagnostics-20230101-000000.zip', zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
 exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
 // A folder that can't be listed (here a file in its place) is said to be, not taken for one with nothing to remove.
-same('older zips could not be looked for in '.$work.'/linked, so none were removed', zfsmDiagKeepNewest($work.'/linked', 3, basename((string)$zip)), 'a failed look for older zips is said');
+same(array('older zips could not be looked for in '.$work.'/linked, so none were removed', 'older zips could not be looked for in '.$work.'/missing, so none were removed'),
+	array(zfsmDiagKeepNewest($work.'/linked', 3, basename((string)$zip)), zfsmDiagKeepNewest($work.'/missing', 3, basename((string)$zip))), 'a failed look for older zips is said, a folder that is not there too');
 symlink($logs, $work.'/logs-link');
-same(array('', true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
+same(array('older zips were not removed: '.$work.'/logs-link is reached through a link', true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')),
+	'a folder reached through a link is not this one: nothing is removed there, and that is said');
 unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
 // Naming is one run at a time: while another run holds the lock, a zip waits as its .part, and takes its name once it is let go.
 $pack_lock = zfsmJobDir('diagnostics').'/pack.lock';
@@ -507,6 +509,20 @@ putenv('PATH='.$work.'/nozip:'.$path);
 list($zip, $why) = $bundle('full-drive');
 putenv('PATH='.$path);
 same(array(null, 'zip I/O error: No space left on device', array('canarytower-diagnostics-20260102-1000.zip')), array($zip, $why, array_values(array_diff(scandir($logs), array('.', '..')))), 'a zip that can\'t be written is reported, nothing of it is left, and Unraid\'s zip stays where Unraid put it');
+// Unraid's zip that can't be removed once it is packed (here a file is mounted over it), or in a /boot/logs reached through a link: the zip is made, and that Unraid's is still there is said.
+$unraid_zip = $logs.'/canarytower-diagnostics-20260102-1000.zip';
+file_put_contents($work.'/stuck', '');
+exec('mount --bind '.escapeshellarg($work.'/stuck').' '.escapeshellarg($unraid_zip));
+list($zip, $why) = $bundle('unraid-stuck', true, false);
+exec('umount '.escapeshellarg($unraid_zip));
+same(array(true, 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well', true), array(is_file((string)$zip), $why, is_file($unraid_zip)), 'Unraid\'s zip that could not be removed is said');
+rename($logs, $work.'/real-logs');
+symlink($work.'/real-logs', $logs);
+list($zip, $why) = $bundle('logs-linked', true, false);
+same(array(true, 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well'."\n".'older zips were not removed: '.$logs.' is reached through a link', true),
+	array(is_file((string)$zip), $why, is_file($work.'/real-logs/canarytower-diagnostics-20260102-1000.zip')), 'in a /boot/logs reached through a link nothing is removed, and that is said');
+unlink($logs);
+rename($work.'/real-logs', $logs);
 // A place for the zips that can't be made.
 exec('rm -rf '.escapeshellarg($logs));
 symlink('/dev/null', $logs);

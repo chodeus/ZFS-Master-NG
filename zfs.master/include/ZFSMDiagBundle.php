@@ -48,8 +48,8 @@ function zfsmDiagAnonymizeDir($dir) {
 	return zfsmDiagWrite($dir, 'names.txt', zfsmDiagNamesTable()) && zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme());
 }
 
-// Packs a run's rewritten files, with a copy of Unraid's zip beside them, as [the zip's path in /boot/logs, ''], or [null, why not]:
-// then no zip is left, and Unraid's stays where Unraid put it. A zip is written under another name first, so one with the final name is whole.
+// Packs a run's rewritten files, with a copy of Unraid's zip beside them, as [the zip's path in /boot/logs, what was left undone or ''], or
+// [null, why not]: then no zip is left, and Unraid's stays where Unraid put it. A zip is written under another name first, so one with the final name is whole.
 function zfsmDiagPack($dir) {
 	$logs = zfsmStatePath('/boot/logs');
 	if (!is_dir($logs) && !@mkdir($logs, 0755, true)) return array(null, $logs.' could not be made');
@@ -69,9 +69,10 @@ function zfsmDiagPack($dir) {
 		@unlink($part);
 		return array(null, $failed);
 	}
-	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough. Still the file it was, never a link.
-	if ($unraid !== null && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
-	return array($zip, zfsmDiagKeepNewest($logs, 3, basename($zip)));
+	// Unraid's zip is in the plugin's now: one copy of it on the flash drive is enough. Only a file of its own in the folder itself, never through a link.
+	if ($unraid !== null && realpath(dirname($unraid)) === $logs && !is_link($unraid) && is_file($unraid)) @unlink($unraid);
+	$twice = $unraid !== null && (is_link($unraid) || file_exists($unraid)) ? 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well' : '';
+	return array($zip, implode("\n", array_filter(array($twice, zfsmDiagKeepNewest($logs, 3, basename($zip))))));
 }
 
 // Gives the packed zip its name, [the zip, ''] or [null, why]. One run at a time from picking the name to the rename, so two never
@@ -91,7 +92,8 @@ function zfsmDiagPublish($part, $logs) {
 // a run that was killed while packing left there. Only names this file makes are touched, never a link. Says what it could not do, '' when nothing.
 function zfsmDiagKeepNewest($logs, $keep, $made) {
 	// A folder reached through a link is another folder: nothing is removed there.
-	if (realpath($logs) !== $logs) return '';
+	$real = realpath($logs);
+	if ($real !== $logs) return $real === false ? 'older zips could not be looked for in '.$logs.', so none were removed' : 'older zips were not removed: '.$logs.' is reached through a link';
 	$listed = @scandir($logs);
 	if ($listed === false) return 'older zips could not be looked for in '.$logs.', so none were removed';
 	$zips = array();
