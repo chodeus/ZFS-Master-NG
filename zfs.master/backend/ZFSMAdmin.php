@@ -8,6 +8,7 @@ require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMBase.php';
 require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMError.php';
 require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMHelpers.php';
 require_once $docroot.'/plugins/'.$plugin.'/backend/ZFSMOperations.php';
+require_once $docroot.'/plugins/'.$plugin.'/include/ZFSMDiagJob.php';
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $_POST = is_array($_POST ?? null) ? $_POST : array();
@@ -104,6 +105,15 @@ try {
 
 		case 'validateexclusion':
 			echo zfsmJson(array('valid' => zfsmExclusionIsValid(zfsmPostString('pattern'))));
+			break;
+
+		case 'diagnosticsstart':
+			list($state, $why) = zfsmStartDiagnostics(zfsmPostString('unraid', '1') === '1', zfsmPostString('report'));
+			echo zfsmJson(array('state' => $state, 'why' => $why));
+			break;
+
+		case 'diagnosticsstatus':
+			echo zfsmJson(zfsmDiagJobState());
 			break;
 
 		case 'validateaccept':

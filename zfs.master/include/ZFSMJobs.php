@@ -23,10 +23,11 @@ function zfsmJobRunning($lock_file) {
 	return !$free;
 }
 
-// The lock for this run: false when another run holds it, null when it can't be opened.
-function zfsmJobLock($lock_file) {
+// The lock for this run: false when another run holds it, null when it can't be opened. Commands the run starts hold it too,
+// so a dataset stays locked while its zfs runs, unless $children is false: then one left behind can't hold it.
+function zfsmJobLock($lock_file, $children = true) {
 	if (!is_dir(dirname($lock_file))) @mkdir(dirname($lock_file), 0700, true);
-	$lock = @fopen($lock_file, 'c');
+	$lock = @fopen($lock_file, $children ? 'c' : 'ce');
 	if ($lock === false) return null;
 	if (flock($lock, LOCK_EX | LOCK_NB)) return $lock;
 	fclose($lock);

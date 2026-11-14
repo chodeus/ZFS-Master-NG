@@ -792,7 +792,7 @@ foreach ($pcntl ? array('INT' => 2, 'HUP' => 1, 'TERM' => 15) : array() as $name
 	proc_terminate($stopped, $signal);
 	for ($wait = 0; $wait < 100 && proc_get_status($stopped)['running']; $wait++) usleep(50000);
 	proc_close($stopped);
-	same(array(), glob('/tmp/zfs.master-diag.*'), 'a run ended by SIG'.$name.' removes its work folder');
+	same(array(array(), array('state' => 'failed', 'why' => 'The run was stopped before it ended')), array(glob('/tmp/zfs.master-diag.*'), zfsmDiagJobState()), 'a run ended by SIG'.$name.' removes its work folder, and the page reads it as stopped');
 }
 if (!$pcntl) echo "diagnostics: the three signal cases were not run (no ZFSM_TEST_PCNTL)\n";
 

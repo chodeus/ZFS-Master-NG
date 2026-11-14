@@ -239,13 +239,24 @@ switch ($check) {
 		// Unraid runs Markdown() over the page; the fields must still become form rows inside each section.
 		require_once is_file($docroot.'/webGui/include/MarkdownExtra.inc.php') ? $docroot.'/webGui/include/MarkdownExtra.inc.php' : $docroot.'/webGui/include/Markdown.php';
 		$rendered = Markdown($html);
-		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts') as $section => $field) {
-			if (!preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>(?:(?!</details>).)*<dt>(?:<[^>]+>|[^<])*'.$field.'#s', $rendered)) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
+		// Each section and each row is cut out first: a pattern run across the whole page runs PCRE's JIT out of stack, and reads as a miss.
+		$rows = array();
+		for ($at = 0; ($from = strpos($rendered, '<dl>', $at)) !== false && ($to = strpos($rendered, '</dl>', $from)) !== false; $at = $to) $rows[] = substr($rendered, $from, $to - $from);
+		$row_has = function($label, $control) use ($rows) {
+			foreach ($rows as $row) if (preg_match('#<dt>[^\n]*'.preg_quote($label, '#').'#', $row) === 1 && strpos($row, $control) !== false) return true;
+			return false;
+		};
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
+			$from = preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>#', $rendered, $found, PREG_OFFSET_CAPTURE) === 1 ? $found[0][1] : false;
+			$to = $from === false ? false : strpos($rendered, '</details>', $from);
+			if ($to === false || preg_match('#<dt>[^\n]*'.$field.'#', substr($rendered, $from, $to - $from)) !== 1) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
-		if (!preg_match('#<dt>(?:<[^>]+>|[^<])*Snapshot Time(?:(?!</dl>).)*<select name="snap_utc">#s', $rendered)) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
 		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
-			if (!preg_match('#<dt>(?:<[^>]+>|[^<])*'.$label.'(?:(?!</dl>).)*<select name="'.$name.'">#s', $rendered)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+			if (!$row_has($label, '<select name="'.$name.'">')) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
+		// The Diagnostics section is after the form, so its tick box never arms Apply; its button and link are there for the script.
+		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-diag-unraid"') || !$row_has('Diagnostics Zip', 'id="zfsm-diag-start"') || strpos($rendered, 'id="zfsm-diag-link"') === false) { fwrite(STDERR, "settings page lost the Diagnostics controls, or they are inside the form\n"); exit(1); }
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
 		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }

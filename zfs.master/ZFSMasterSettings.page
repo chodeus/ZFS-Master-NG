@@ -206,6 +206,28 @@ _(Sender Keys)_:
 : <input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()">
 </form>
 
+<details class="zfsm-section" open markdown="1">
+<summary>_(Diagnostics)_</summary>
+
+_(Unraid Diagnostics)_:
+: <input type="checkbox" id="zfsm-diag-unraid" checked>
+
+:zc_settings_diag_unraid_plug:
+> Put Unraid's own diagnostics zip inside the plugin's. It goes in as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.
+:end
+
+_(Diagnostics Zip)_:
+: <input type="button" id="zfsm-diag-start" value="_(Generate)_"> <span id="zfsm-diag-status"></span><a id="zfsm-diag-link" href="#" style="display:none"></a>
+
+:zc_settings_diag_zip_plug:
+> Collects what a bug report needs into one zip: the plugin's settings, install and log, the pools and datasets as it reads them, what this browser shows, and what it finds wrong. The zip is kept in `/boot/logs`, the newest three of them.
+> Dataset, snapshot and folder names, addresses and keys are replaced by tokens before anything is packed; pool names stay.
+> If this page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal: it prints what it finds and the zip's path.
+:end
+
+</details>
+
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDiagnostics.js'); ?>"></script>
 <script>
 var zfsm_tips = <?=zfsmJson(array(
 	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
@@ -241,4 +263,12 @@ function zfsmCheckAccept(value) {
 }
 $('input[name="replica_accept"]').on('change', function() { zfsmCheckAccept($(this).val()); });
 zfsmCheckAccept($('input[name="replica_accept"]').val());
+// Outside the form, so its tick box never arms Apply. A run already going, or the last zip, shows on load.
+var zfsm_diagnostics = createZFSMDiagnostics({url: '/plugins/zfs.master/backend/ZFSMAdmin.php', download: '/plugins/zfs.master/backend/ZFSMDiagDownload.php?file=',
+	button: $('#zfsm-diag-start'), box: $('#zfsm-diag-unraid'), status: $('#zfsm-diag-status'), link: $('#zfsm-diag-link'), report: function() { return zfsmDiagReport(window); }});
+$('#zfsm-diag-start').on('click', zfsm_diagnostics.start);
+zfsm_diagnostics.poll();
+window.addEventListener('pagehide', zfsm_diagnostics.stop);
+// A page brought back from the browser's cache asks again: what it showed was stopped when it was left.
+window.addEventListener('pageshow', function(event) { if (event.persisted) zfsm_diagnostics.poll(); });
 </script>

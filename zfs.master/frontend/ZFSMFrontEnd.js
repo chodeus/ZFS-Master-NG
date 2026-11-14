@@ -164,6 +164,28 @@ function loadFromLocalStorage(key, decode=true) {
 	}
 }
 
+// What the Main tab last showed, for a diagnostics run to send (ZFSMDiagnostics.js). Its JSON stays under 13,000 characters, 40 KB
+// at three bytes a character (the report keeps 50 KB): strings cut to 200, lists to 40, errors to 8,000 oldest first, the render 3,000.
+function zfsmDiagRecord(part, make) {
+	try {
+		const record = zfsmDiagBounded(loadFromLocalStorage('zfsm-diagnostics') || {});
+		const entry = zfsmDiagBounded(make());
+		record[part] = part === 'errors' ? (record.errors || []).concat([entry]).slice(-20) : entry;
+		while (JSON.stringify(record.errors || []).length > 8000) record.errors.shift();
+		while (record.render && JSON.stringify(record.render).length > 3000 && (record.render.headers || []).length) record.render.headers.pop();
+		saveToLocalStorage('zfsm-diagnostics', record);
+	} catch (error) {}
+}
+
+function zfsmDiagBounded(value) {
+	if (typeof value === 'string') return value.slice(0, 200);
+	if (Array.isArray(value)) return value.slice(0, 40).map(zfsmDiagBounded);
+	if (value === null || typeof value !== 'object') return value;
+	const bounded = {};
+	for (const key of Object.keys(value)) bounded[key] = zfsmDiagBounded(value[key]);
+	return bounded;
+}
+
 function removeFromLocalStorage(key) {
 	try { localStorage.removeItem(key); } catch (error) {
 		console.warn('ZFS Master NG could not clear its browser cache', error);
