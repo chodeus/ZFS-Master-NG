@@ -21,6 +21,7 @@ sudo unshare --mount --propagation private sh tests/run_http_inventory_tests.sh 
 
 PHP and its libraries must reside outside `/tmp`, which the runner overlays.
 Set `ZFSM_TEST_POSIX` to a `posix.so` path if your PHP does not build it in.
+Set `ZFSM_TEST_PCNTL` to `pcntl` (or a `pcntl.so` path) to run the diagnostics script's signal cases; `tests/ci_php.sh` builds pcntl and sets it.
 Do not run this test runner on a production
 Unraid host. Testing uses simulated ZFS results, not real pool administration.
 
