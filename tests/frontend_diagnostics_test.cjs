@@ -22,7 +22,8 @@ function launch(stored = {}) {
   const localStorage = {get length() { return storage.size; }, key: index => [...storage.keys()][index], getItem: key => storage.has(key) ? storage.get(key) : null,
     setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key)};
   const $ = {post(url, data, done) {
-    const post = {url, data, done, fail(callback) { this.failed = callback; return this; }};
+    // As jQuery's: an aborted request's fail callbacks run at once, with status 0.
+    const post = {url, data, done, fail(callback) { this.failed = callback; return this; }, abort() { this.aborted = true; if (this.failed) this.failed({status: 0}); }};
     posts.push(post);
     return post;
   }};
@@ -141,6 +142,7 @@ page.posts[0].done({state: 'started', why: ''});
 page.posts[1].done({state: 'running'});
 page.diagnostics.poll();
 page.diagnostics.stop();
+assert.equal(page.posts[2].aborted, true, 'leaving the page cancels the request on its way');
 page.posts[2].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
 assert.deepEqual([page.cleared, page.link.state.shown, page.timers.length], [[1], false, 1], 'leaving the page clears the pending poll\'s timer and drops the answer on its way');
 // Back from the browser's cache, the page asks again (ZFSMasterSettings.page on pageshow): that answer is shown.
@@ -168,6 +170,8 @@ assert.deepEqual([shown + full.leftOut, full.leftOut > 0, 'zfsm-diagnostics' in 
 page = launch();
 page.diagnostics.poll();
 page.diagnostics.start();
+assert.deepEqual([page.posts[0].aborted, page.posts[1].aborted, page.status.state.text], [true, undefined, 'Collecting. This can take a few minutes.'],
+  'a start sent while the first poll is on its way cancels that poll, and its cancelling shows nothing');
 page.posts[0].done({state: 'none'});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Collecting. This can take a few minutes.', true], 'the answer to the poll sent before the start is stale');
 page.posts[1].done({state: 'started', why: ''});

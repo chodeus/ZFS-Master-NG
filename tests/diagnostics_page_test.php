@@ -167,6 +167,16 @@ $unkept = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '
 rmdir($work.'/jobs/diagnostics/state.json.tmp');
 same(array('failed', 'The run\'s state could not be kept in '.$work.'/jobs/diagnostics', array()), array($unkept['state'] ?? $unkept, $unkept['why'] ?? null, $zips()), 'a run whose state can\'t be kept does not start, and says why');
 
+// A run that can't make its work folder (here /tmp is read-only for that run alone, its job folder not) says why and still removes
+// the browser's report.
+$clear();
+file_put_contents($work.'/jobs/diagnostics/browser.json', '{"userAgent":"CanaryAgent"}');
+$read_only = 'mount --bind '.escapeshellarg($work.'/jobs').' '.escapeshellarg($work.'/jobs').' && mount -o remount,ro,bind /tmp && exec '
+	.escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --job --no-unraid';
+exec('unshare -m sh -c '.escapeshellarg($read_only).' 2>&1', $unmade, $unmade_code);
+same(array(1, false, array('state' => 'failed', 'why' => 'Unable to make a work folder in /tmp')), array($unmade_code, file_exists($work.'/jobs/diagnostics/browser.json'), $state()),
+	'a run that can\'t make its work folder says why and removes the browser\'s report: '.implode(' ', $unmade));
+
 // A start while a status read holds the run's lock shared for a moment: the job asks again, and the run starts.
 $clear();
 @mkdir($work.'/jobs/diagnostics', 0700, true);

@@ -335,14 +335,20 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	if (!focus.details) zfsmHideTip();
   }
 
-  // Every redraw goes through here, so it keeps a running copy's progress and the collapsed datasets.
+  // Every redraw goes through here, a cached one too, so it keeps a running copy's progress and the collapsed datasets, and is recorded.
   function zfsmRender(data) {
+	const began = Date.now();
 	const focus = zfsmRowFocus();
 	zfsmHideTip();
 	updateFullBodyTable(data, zfsm_config['destructive_mode'], zfsm_config['snap_max_days_alert'], zfsm_display);
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();
 	zfsmRestoreRowFocus(focus);
+	// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here.
+	zfsmDiagRecord('render', function() {
+		return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
+			headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get()};
+	});
   }
 
   $(function() {
@@ -356,13 +362,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					.addClass(active ? 'fa-spinner fa-spin' : 'fa-refresh fa-arrows-rotate');
 			},
 			render: function(data, complete) {
-				const began = Date.now();
 				zfsmRender(data);
-				// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here.
-				zfsmDiagRecord('render', function() {
-					return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
-						headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get()};
-				});
 				if (complete) saveCache(data);
 			}
 		});
