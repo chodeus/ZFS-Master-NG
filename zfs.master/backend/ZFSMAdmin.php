@@ -20,6 +20,12 @@ function zfsmPostString($key, $default = '') {
 	return is_string($value) ? $value : $default;
 }
 
+// 0, which no check accepts, unless the field holds a number.
+function zfsmPostPort() {
+	$port = zfsmPostString('port');
+	return preg_match('/^[0-9]{1,5}$/D', $port) === 1 ? (int)$port : 0;
+}
+
 function zfsmResolveAnswerCodes($answer) {
 	if (!is_array($answer)) return zfsmFailure('request', 'The operation returned no usable result');
 	$answer['succeeded'] = is_array($answer['succeeded'] ?? null) ? $answer['succeeded'] : array();
@@ -118,8 +124,34 @@ try {
 			break;
 
 		case 'validateaccept':
-			// Trimmed as loadConfig trims the saved setting.
-			echo zfsmJson(array('valid' => zfsmReplicaAcceptValid(trim(zfsmPostString('dataset')))));
+			// Trimmed as loadConfig trims the saved setting. missing is null for a name that isn't valid, or when ZFS could not be read.
+			$dataset = trim(zfsmPostString('dataset'));
+			$valid = zfsmReplicaAcceptValid($dataset);
+			echo zfsmJson(array('valid' => $valid, 'missing' => $valid ? zfsmDatasetMissing($dataset) : null));
+			break;
+
+		case 'replicakey':
+			$made = zfsmReplicaKeyMake();
+			echo zfsmJson(isset($made['error']) ? $made : array('key_html' => zfsmReplicaKeyHtml(), 'servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
+			break;
+
+		case 'replicascan':
+			$host = zfsmPostString('host');
+			$port = zfsmPostPort();
+			echo zfsmJson(zfsmWithReadLimit(function() use ($host, $port) { return zfsmReplicaScan($host, $port); }));
+			break;
+
+		case 'replicaadd':
+		case 'replicaremove':
+			$why = $command === 'replicaadd'
+				? zfsmReplicaRemoteAdd(zfsmPostString('name'), zfsmPostString('host'), zfsmPostPort(), zfsmPostString('key'), zfsmPostString('fingerprint'))
+				: zfsmReplicaRemoteRemove(zfsmPostString('name'));
+			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
+			break;
+
+		case 'replicatest':
+			$remote = zfsmReplicaRemote(zfsmPostString('name'));
+			echo zfsmJson(is_string($remote) ? array('error' => $remote) : zfsmWithReadLimit(function() use ($remote) { return zfsmReplicaHello($remote); }));
 			break;
 
 		case 'adddirectortlisting':

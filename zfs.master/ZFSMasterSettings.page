@@ -8,6 +8,7 @@ $plugin = "zfs.master";
 
 require_once "$docroot/plugins/$plugin/include/ZFSMHelpers.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
+require_once "$docroot/plugins/$plugin/include/ZFSMReplicaRemote.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
@@ -198,17 +199,30 @@ _(Accept Replicas Into)_:
 : <input type="text" name="replica_accept" value="<?=zfsmHtml($zfsm_cfg['replica_accept'])?>" placeholder="off"> <span id="zfsm-replica-accept-warning" style="color:#e22828"></span>
 
 :zc_settings_replica_accept_plug:
-> Other servers running ZFS Master NG may replicate into this dataset, each into its own dataset inside it, which never mounts or shows as a block device, with setuid, devices and exec off. Leave it empty to accept none; a pool's top dataset isn't accepted.
-> Add a sender's key under Users, root, SSH authorized keys as one line starting `restrict,from="<its address>",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php <its name>"`. That key can then only list, check and receive copies inside this dataset's `<its name>`: it can't destroy, roll back or replace anything, or run anything else. Paste exactly that one line: any other line there is a key with no limits.
-> `from=` takes the sender's exact IP addresses, separated by commas when it has more than one: no ranges, wildcards, `!` or host names.
-> A quota on this dataset caps the space all copies use. This server's SSH host key is `<?=zfsmHtml(zfsmHostKeyFingerprint() ?? 'unreadable')?>`; compare it with the one a sender shows before it trusts this server.
+> Lets other servers running ZFS Master NG send copies of their datasets here. To set it up:
+>
+> 1. Create the dataset the copies go into, such as `backup/replicas` (Main, **Create Dataset** on its pool), type its name here and Apply. A pool's top dataset isn't accepted.
+> 2. On the sending server, open ZFS Master NG's Settings and add this server under **Add A Server**. Compare the host key it reads with **This Server's Host Key** below, tick that they match, then Add.
+> 3. The sender then shows one line under this server's name. Copy it unchanged into this server's Users, root, **SSH authorized keys**, and Apply there. Unraid 6.9 has no such field: add the line to `/boot/config/ssh/root/authorized_keys` instead.
+> 4. Press Test beside this server on the sender. It makes the sender's own dataset inside this one, and shows its name.
+>
+> That line lets the sender's key only list, check and receive copies inside its own dataset here: it can't destroy, roll back or replace anything, or run anything else. Any other line in SSH authorized keys is a key with no limits.
+> Copies never mount or show as block devices, and run with setuid, devices and exec off. A quota on this dataset caps the space all copies use. Leave this empty to accept none.
+:end
+
+_(This Server's Host Key)_:
+: <span id="zfsm-replica-hostkey"><?=zfsmHtml(zfsmHostKeyFingerprint() ?? 'could not be read')?></span>
+
+:zc_settings_replica_hostkey_plug:
+> The fingerprint of this server's SSH host key. A server adding this one reads the key over the network and shows its fingerprint: if the two differ, something else is answering at this server's address, so don't add it.
 :end
 
 _(Sender Keys)_:
 : <span id="zfsm-replica-keys"><?=zfsmReplicaKeysHtml(zfsmReplicaKeys())?></span>
 
 :zc_settings_replica_keys_plug:
-> The keys in root's authorized_keys that run replica-serve.php. Each one's line must hold restrict (with no limit turned back on after it), a from= of exact IP addresses, and command= exactly the script and its sender's name; one in red does not.
+> The lines in root's SSH authorized keys that let a sender's key only receive copies here, one per sender. Each must hold `restrict` with no limit turned back on after it, a `from=` of the sender's exact IP addresses (commas between several; no ranges, wildcards, `!` or host names), and `command=` naming exactly replica-serve.php and its sender.
+> A line shown in red lacks one of these limits: replace it with the line the sender shows.
 :end
 
 </details>
@@ -216,6 +230,33 @@ _(Sender Keys)_:
 &nbsp;
 : <input type="submit" name="#apply" value="_(Apply)_" disabled><input type="button" value="_(Done)_" onclick="done()">
 </form>
+
+<details class="zfsm-section" open markdown="1">
+<summary>_(Replicate To Other Servers)_</summary>
+
+_(This Server's Key)_:
+: <span id="zfsm-send-key"><?=zfsmReplicaKeyHtml()?></span> <span id="zfsm-send-key-status" style="color:#e22828"></span>
+
+:zc_settings_send_key_plug:
+> This server's own SSH key for sending copies, made here once. Its private half is kept on the flash drive, unencrypted: keep the flash share and every flash backup private. A server added below accepts copies from it once its own Settings name a dataset under **Accept Replicas Into** and its root adds the line shown under it to SSH authorized keys (Users, root).
+:end
+
+_(Servers)_:
+: <span id="zfsm-send-servers"><?=zfsmReplicaRemotesHtml(zfsmReplicaRemotes())?></span> <span id="zfsm-send-servers-status" style="color:#e22828"></span>
+
+:zc_settings_send_servers_plug:
+> The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test makes this server's dataset there if it is missing, and shows its name.
+> The line's `from=` is the address this server reaches that server from. Where a router between them changes that address (source NAT), that server sees another one and refuses the key: set `from=` there to the exact address it sees.
+:end
+
+_(Add A Server)_:
+: <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address" aria-label="IP address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
+
+:zc_settings_send_add_plug:
+> The name is how this list shows the server. Compare the host key read here with **This Server's Host Key** in that server's ZFS Master NG Settings, under Replication; tick that they match, then Add.
+:end
+
+</details>
 
 <details class="zfsm-section" open markdown="1">
 <summary>_(Diagnostics)_</summary>
@@ -255,7 +296,7 @@ var zfsm_tips = <?=zfsmJson(array(
 	'snap_utc' => _('Clock used for the date in new snapshot names.'),
 	'alert_interval' => _('How often to check pool health and send Unraid notifications.'),
 	'alert_stale' => _('Also notify when snapshots are older than the Max Days setting.'),
-	'replica_accept' => _('The dataset other servers may replicate into. Empty accepts none.'),
+	'replica_accept' => _('An existing dataset other servers may send copies into. Empty turns this off.'),
 ), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
@@ -266,15 +307,6 @@ $('textarea[name="exclusion"]').on('change', function() {
 		$('#zfsm-exclusion-warning').text(answer.valid ? '' : 'This pattern is invalid and would be ignored.');
 	}, 'json');
 });
-// Checked on load too, without a change event, so the saved value shows its warning and Apply stays off.
-function zfsmCheckAccept(value) {
-	if (value === '') return $('#zfsm-replica-accept-warning').text('');
-	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', {cmd: 'validateaccept', dataset: value}, function(answer) {
-		$('#zfsm-replica-accept-warning').text(answer.valid ? '' : 'Not a dataset inside a pool, so nothing is accepted.');
-	}, 'json');
-}
-$('input[name="replica_accept"]').on('change', function() { zfsmCheckAccept($(this).val()); });
-zfsmCheckAccept($('input[name="replica_accept"]').val());
 // Outside the form, so its tick box never arms Apply. A run already going, or the last zip, shows on load.
 var zfsm_diagnostics = createZFSMDiagnostics({url: '/plugins/zfs.master/backend/ZFSMAdmin.php', download: '/plugins/zfs.master/backend/ZFSMDiagDownload.php?file=',
 	button: $('#zfsm-diag-start'), box: $('#zfsm-diag-unraid'), status: $('#zfsm-diag-status'), link: $('#zfsm-diag-link'), report: function() { return zfsmDiagReport(window); }});
@@ -283,4 +315,94 @@ zfsm_diagnostics.poll();
 window.addEventListener('pagehide', zfsm_diagnostics.stop);
 // A page brought back from the browser's cache asks again: what it showed was stopped when it was left.
 window.addEventListener('pageshow', function(event) { if (event.persisted) zfsm_diagnostics.poll(); });
+
+// Replicate To Other Servers: each answer carries what its action gives (the refreshed HTML, a host key and its fingerprint,
+// or the area a test found) or, as error, why not. Unraid's page adds the token to every post ($.ajaxPrefilter, DefaultPageLayout.php).
+var zfsm_send_found = null;
+var zfsm_send_asked = 0;
+function zfsmSendPost(data, done) {
+	$.post('/plugins/zfs.master/backend/ZFSMAdmin.php', data, function(answer) {
+		answer = answer || {};
+		// ZFSMAdmin's catch-all answers {failed: {request: why}}, with no error.
+		if (!answer.error && answer.failed) answer = {error: Object.values(answer.failed)[0] || 'The request failed'};
+		done(answer);
+	}, 'json').fail(function() { done({error: 'No answer from this server'}); });
+}
+function zfsmSendKey() {
+	// Off while it runs: a second click would answer "already has its key" beside the new key.
+	var button = $('#zfsm-send-key input[type=button]').prop('disabled', true);
+	zfsmSendPost({cmd: 'replicakey'}, function(answer) {
+		$('#zfsm-send-key-status').text(answer.error || '');
+		if (answer.error) return button.prop('disabled', false);
+		$('#zfsm-send-key').html(answer.key_html);
+		$('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmSendScan() {
+	var asked = {host: $('#zfsm-send-host').val(), port: $('#zfsm-send-port').val()};
+	var found = $('#zfsm-send-found').css('color', '').text('Reading…');
+	var ask = ++zfsm_send_asked;
+	zfsm_send_found = null;
+	zfsmSendPost($.extend({cmd: 'replicascan'}, asked), function(answer) {
+		// An answer for an address or port changed since is dropped.
+		if (ask !== zfsm_send_asked) return;
+		if (answer.error) return found.css('color', '#e22828').text(answer.error);
+		zfsm_send_found = $.extend(asked, {key: answer.key, fingerprint: answer.fingerprint});
+		var add = $('<input type="button" value="Add" disabled>').on('click', zfsmSendAdd);
+		var match = $('<input type="checkbox">').on('change', function() { add.prop('disabled', !this.checked); });
+		found.empty().append(document.createTextNode('Host key '+answer.fingerprint+' '), $('<label>').append(match, ' matches that server\'s Settings'), ' ', add);
+	});
+}
+// A changed address or port needs its own host key read again.
+$('#zfsm-send-host, #zfsm-send-port').on('input', function() { zfsm_send_asked++; zfsm_send_found = null; $('#zfsm-send-found').empty(); });
+function zfsmSendAdd() {
+	if (!zfsm_send_found) return;
+	var ask = zfsm_send_asked;
+	var found = $('#zfsm-send-found');
+	found.children('.zfsm-send-refused').remove();
+	// Off while it runs: a second click would answer "already a server here" for an Add that worked.
+	var controls = found.find('input').prop('disabled', true);
+	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
+		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+		// A host key read since keeps its fields and its Add.
+		if (ask !== zfsm_send_asked) return;
+		if (answer.error) {
+			// Add and its ticked box come back: a name put right is added without reading the host key again.
+			controls.prop('disabled', false);
+			return found.append($('<span class="zfsm-send-refused" style="color:#e22828">').text(' '+answer.error));
+		}
+		zfsm_send_found = null;
+		found.empty();
+		$('#zfsm-send-name, #zfsm-send-host').val('');
+	});
+}
+function zfsmSendRemove(name) {
+	zfsmSendPost({cmd: 'replicaremove', name: name}, function(answer) {
+		$('#zfsm-send-servers-status').text(answer.error || '');
+		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmSendTest(name, id) {
+	var status = $(document.getElementById(id)).css('color', '').text('Asking…');
+	zfsmSendPost({cmd: 'replicatest', name: name}, function(answer) {
+		if (answer.error) return status.css('color', '#e22828').text(answer.error);
+		status.text('Ready: copies go into '+answer.area);
+	});
+}
+// Accept Replicas Into, checked on load too (no change event) so the saved value shows its warning; an answer for a value changed since is dropped.
+function zfsmCheckAccept() {
+	var input = $('input[name="replica_accept"]');
+	var value = input.val();
+	var warning = $('#zfsm-replica-accept-warning').text('');
+	if (value === '') return;
+	zfsmSendPost({cmd: 'validateaccept', dataset: value}, function(answer) {
+		if (input.val() !== value) return;
+		if (answer.error) return warning.text('This dataset could not be checked: '+answer.error);
+		if (!answer.valid) return warning.text('Not a dataset inside a pool, so nothing is accepted.');
+		if (answer.missing === null) return warning.text('Whether this dataset exists could not be read.');
+		if (answer.missing) warning.text('This dataset does not exist, so nothing is accepted: create it first (Main, Create Dataset).');
+	});
+}
+$('input[name="replica_accept"]').on('change', zfsmCheckAccept);
+zfsmCheckAccept();
 </script>

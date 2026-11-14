@@ -54,6 +54,8 @@ putenv('ZFSM_TEST_JOB_DIR='.$work.'/jobs');
 putenv('ZFSM_TEST_PS='.$work.'/ps.txt');
 putenv('ZFSM_TEST_DIAG_LOGS='.$root.'/boot/logs');
 $GLOBALS['zfsm_root'] = $root;
+$GLOBALS['zfsm_ssh_dir'] = $root.'/boot/config/plugins/zfs.master/ssh';
+$GLOBALS['zfsm_ident_file'] = $root.'/boot/config/ident.cfg';
 $GLOBALS['zfsm_uptime'] = $work.'/uptime';
 file_put_contents($work.'/uptime', "864000.00 800000.00\n");
 // A resume token as zfs writes one: anyone can ask zfs which snapshot it names.
@@ -66,6 +68,9 @@ $put = function($path, $text) use ($root) {
 };
 $private_key = "-----BEGIN OPENSSH PRIVATE KEY-----\nCanaryPrivateKeyBytesCanaryPrivateKeyBytes\n-----END OPENSSH PRIVATE KEY-----";
 $public_key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICanaryKeyCanaryKeyCanaryKeyCanaryKeyCanaryKeyCana';
+// Whole ed25519 keys, so the sending side reads them as keys: this server's own, and the host key it pinned for a server it sends to.
+$send_key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICanarySendKeyCanarySendKeyCanarySendKeyCana';
+$remote_key = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICanaryHostKeyCanaryHostKeyCanaryHostKeyCana';
 // The lines the plugin writes, in its own formats: the action lines through zfsmActionLogLines, the job lines of
 // include/ZFSMRewrite.php, ZFSMReplicate.php and ZFSMReplicaServe.php, the refusals of ZFSMReplicaPlan.php and ZFSMImpact.php's busy text.
 $action = function($title, $subject, $failed = null) {
@@ -95,11 +100,16 @@ $log_lines = array(
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
 );
-$build = function() use ($work, $root, $put, $private_key, $public_key, $log_lines) {
+$build = function() use ($work, $root, $put, $private_key, $public_key, $send_key, $remote_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));
 	clearstatcache(true);
 	$put('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nrefresh_interval=\"60\"\nexclusion=\"^.*CanaryPattern.*$\"\nmystery=\"CanaryValue one\n\nCanaryValue two\"\nsnap_prefix=\"CanaryPrefix_\"\ndirectory_listing=\"tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos\"\nsize_units=\"Canary Customer\"\nCanary stray note\nCanaryOwnSetting=\"1\"\n[CanarySection]\n");
 	$put('/boot/config/ssh/root/authorized_keys', 'restrict,from="203.0.113.77",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php canarysender" '.$public_key." Canary Laptop\n");
+	// A server this one sends to: in a row of its file, only the collector's zfsmDiagKnowWord makes its bare name a token.
+	$put('/boot/config/plugins/zfs.master/ssh/remotes.json', json_encode(array(array('name' => 'canarybackup', 'host' => '203.0.113.9', 'port' => 2222, 'key' => $remote_key))));
+	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519', "CanaryPrivateKey\n");
+	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $send_key." zfs.master@CanaryNas\n");
+	$put('/boot/config/ident.cfg', "NAME=\"CanaryNas\"\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
 	// Through the plugin's own writer, so each line is as the plugin's log holds it: one line, its quotes replaced, cut at its limit.
 	foreach ($log_lines as $line) zfsmLog($line, LOG_NOTICE);
@@ -179,6 +189,8 @@ has("refresh_interval=\"60\"\nexclusion = ".$token('^.*CanaryPattern.*$')."\n".$
 has("snap_prefix\t\"".zfsmDiagToken('CanaryPrefix_')."\"\t\"\"\tsaved\n", $files['plugin/settings-effective.txt'], 'the prefix its owner wrote is a token where the settings are listed as used');
 has($token('canarysender').' ('.$token('Canary Laptop').'): restrict: ok, from: ok, name: ok', $files['plugin/replication-receive.txt'], 'a sender and its key\'s comment are tokens');
 has("tank/$ds/".zfsmDiagToken('canarysender')."\texec\toff\tlocal\n", $files['plugin/replication-receive.txt'], 'the same token in the sender\'s area');
+same(1, preg_match('~^'.preg_quote($token('canarybackup'), '~')."\tip-[0-9a-f]{8}\t2222\t".preg_quote((string)zfsmKeyFingerprint($remote_key), '~').'$~m', $files['plugin/replication-send.txt']),
+	'a server this one sends to is a token, its address too, and its pinned host key is its fingerprint: '.$files['plugin/replication-send.txt']);
 $log = $files['plugin/log.txt'];
 $gone = 'tank/'.$token('CanaryGone').'@'.$token('CanarySnap');
 has("ZFS Snapshot Destroy: $gone failed: cannot destroy ?$gone?: dataset is busy\n", $log, 'a name that is gone is a token too, and the words after it stay');
@@ -309,14 +321,16 @@ $GLOBALS['zfsm_root'] = '';
 zfsmDiagStart();
 $private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient',
 	'/tmp/zfs.master-diag.ClientA/notes', '/var/run/zfs.master.ClientA', '/var/log/packages/zfs.master-ClientA',
-	'/var/run/zfs.master.rewrite/ClientA', '/tmp/zfs.master-diag.0123456789abcdef/ClientA', '/boot/config/plugins/zfs.master/ClientA');
+	'/var/run/zfs.master.rewrite/ClientA', '/tmp/zfs.master-diag.0123456789abcdef/ClientA', '/boot/config/plugins/zfs.master/ClientA', '/boot/config/plugins/zfs.master/ssh/ClientA', '/var/run/zfs.master.replica-send/ssh-ClientA');
 $tokens = function($path) { return preg_replace_callback('~[^/]+~', function($part) { return zfsmDiagToken($part[0]); }, $path); };
 same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient'),
 	'/tmp'.$tokens('/zfs.master-diag.ClientA/notes'), '/var'.$tokens('/run/zfs.master.ClientA'), '/var'.$tokens('/log/packages/zfs.master-ClientA'),
-	'/var'.$tokens('/run/zfs.master.rewrite/ClientA'), '/tmp'.$tokens('/zfs.master-diag.0123456789abcdef/ClientA'), '/boot'.$tokens('/config/plugins/zfs.master/ClientA')),
+	'/var'.$tokens('/run/zfs.master.rewrite/ClientA'), '/tmp'.$tokens('/zfs.master-diag.0123456789abcdef/ClientA'), '/boot'.$tokens('/config/plugins/zfs.master/ClientA'),
+	'/boot'.$tokens('/config/plugins/zfs.master/ssh/ClientA'), '/var'.$tokens('/run/zfs.master.replica-send/ssh-ClientA')),
 	array_map('zfsmDiagAnonText', $private), 'only the paths the plugin makes are its own, whole: not a name that only starts as one of them, nor another name inside one of its folders');
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
-	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock';
+	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock'
+	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts';
 same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
 // In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
 same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');
@@ -617,6 +631,16 @@ file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\n
 // The second line's command failed: the word it names is no pool, so it is a token like any other.
 $debug_line = "2026-01-02 10:00:02 debug [41] exit 0 in 0.200 s: zfs destroy -r gonepool/private\n2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename tank/a CanaryTyped/docs\n";
 file_put_contents('/var/log/zfs.master.debug.log', $debug_line);
+// The sending side's commands as runProcess logs them: the key's folder on the flash drive and its RAM copy are the plugin's own paths.
+// Digits only in their random parts: the second net makes a token of a word of hex letters, as of any word the plugin does not use.
+$GLOBALS['zfsm_root'] = '';
+$GLOBALS['zfsm_debug'] = true;
+$copy = '/var/run/zfs.master.replica-send/ssh-012345678901';
+zfsmDebugCommand('/usr/bin/ssh-keygen', array('-q', '-t', 'ed25519', '-N', '', '-C', 'zfs.master@tower', '-f', '/boot/config/plugins/zfs.master/ssh/new-01234567'), 'exit 0', microtime(true));
+zfsmDebugCommand('/usr/bin/ssh', zfsmReplicaSshArgs(array('host' => '203.0.113.9', 'port' => 2222), array('key' => $copy.'/id_ed25519', 'known_hosts' => $copy.'/known_hosts'), 'hello'), 'exit 255', microtime(true));
+unset($GLOBALS['zfsm_debug']);
+$GLOBALS['zfsm_root'] = $test_root;
+$debug_line = file_get_contents('/var/log/zfs.master.debug.log');
 // The older log's last line cut short, as a full /var/log leaves it: its success must not prove the pool the newer log's first line names.
 file_put_contents('/var/log/zfs.master.log.1', '2026-01-02 10:00:00 notice [41] Replication of tank/a@b to tank/x finished (in fu');
 file_put_contents('/var/log/zfs.master.log', "2026-01-02 10:00:01 error [41] Replication of tank/a to canaryjoin/x not started: The copy goes inside canaryjoin/x, which doesn?t exist\n");
@@ -642,6 +666,10 @@ same(1, preg_match('~^ZFS Master NG diagnostics, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d 
 has("/diagnostics/run.lock: held (this run)\n", file_get_contents($work.'/from-script/plugin/jobs.txt'), 'the run\'s lock is held, by the run');
 same(array(1, $debug_line), array(preg_match('~ s: zfs destroy -r gonepool/name-[0-9a-f]{8}$~m', file_get_contents($work.'/from-script/plugin/log.txt')), file_get_contents('/var/log/zfs.master.debug.log')),
 	'a pool a debug line names is learned, so all its dataset\'s name is a token; and the run wrote no debug line of its own');
+$script_log = file_get_contents($work.'/from-script/plugin/log.txt');
+same(array(1, 1, false), array(preg_match('~ s: ssh-keygen .* -f /boot/config/plugins/zfs\.master/ssh/new-01234567$~m', $script_log),
+	preg_match('~ s: ssh -F none -T -i '.preg_quote($copy, '~').'/id_ed25519 .*UserKnownHostsFile='.preg_quote($copy, '~').'/known_hosts ~m', $script_log), strpos($script_log, '203.0.113.9')),
+	'the sending side\'s key paths stay as they are in a debug line, and the address it asks does not: '.implode(' | ', preg_grep('/ s: ssh/', explode("\n", $script_log))));
 has("== display settings the plugin uses\ndate=%A, %d.%m.%Y\ntime=(not shown: not in the shape of Unraid's choices)\nnumber=, \nscale=(not set)\ntheme=(not shown: not in the shape of Unraid's choices)\n\n",
 	file_get_contents($work.'/from-script/unraid/context.txt'), 'only the display settings the plugin uses, and none written by hand');
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the work folder is removed');

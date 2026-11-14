@@ -30,6 +30,8 @@ $cases = array(
 	'accept_inside_pool' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup/replicas'), '0', '', 'accept_valid'),
 	'accept_pool_top' => array(array('cmd' => 'validateaccept', 'dataset' => 'backup'), '0', '', 'accept_invalid'),
 	'accept_padded' => array(array('cmd' => 'validateaccept', 'dataset' => " backup/replicas \n"), '0', '', 'accept_valid'),
+	'accept_missing' => array(array('cmd' => 'validateaccept', 'dataset' => 'tank/secure'), '0', '', 'accept_missing'),
+	'accept_unread' => array(array('cmd' => 'validateaccept', 'dataset' => 'tank/locked'), '0', '', 'accept_unread'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -40,6 +42,7 @@ putenv('ZFSM_TEST_DESTRUCTIVE='.$destructive);
 putenv('ZFSM_TEST_EXCLUSION='.$exclusion);
 putenv('ZFSM_TEST_LAZY=0');
 putenv('ZFSM_TEST_MISSING_DATASET=tank/secure');
+putenv('ZFSM_TEST_LIST_FAIL=tank/locked');
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 $_SERVER['DOCUMENT_ROOT'] = $docroot;
 $_POST = $post;
@@ -61,7 +64,9 @@ if ($expected === 'diffed') $passed = count($answer['changes'] ?? array()) === 5
 if ($expected === 'not_snapshot') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'Snapshot does not exist') !== false;
 if ($expected === 'unreviewed') $passed = empty($answer['succeeded']) && strpos(implode(' ', $answer['failed'] ?? array()), 'please review') !== false;
 if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($answer['failed']);
-if ($expected === 'accept_valid' || $expected === 'accept_invalid') $passed = $answer === array('valid' => $expected === 'accept_valid');
+$accept = array('accept_valid' => array('valid' => true, 'missing' => false), 'accept_invalid' => array('valid' => false, 'missing' => null),
+	'accept_missing' => array('valid' => true, 'missing' => true), 'accept_unread' => array('valid' => true, 'missing' => null));
+if (isset($accept[$expected])) $passed = $answer === $accept[$expected];
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {

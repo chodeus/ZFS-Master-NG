@@ -44,6 +44,14 @@ function zfsmReplicaArea($accept, $sender) {
 	return zfsmReplicaAcceptValid($accept) && zfsmReplicaSenderName($sender) ? $accept.'/'.$sender : null;
 }
 
+// The sender an area is for (zfsmReplicaArea), as the sending side reads it back from a hello.
+function zfsmReplicaAreaSender($area) {
+	$at = strrpos((string)$area, '/');
+	return $at === false ? (string)$area : substr($area, $at + 1);
+}
+
+// zfsmReplicaSenderName's rule in words, for each message that refuses a name.
+define('ZFSM_REPLICA_NAME_RULE', '1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
 function zfsmReplicaSenderName($sender) {
 	return is_string($sender) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/D', $sender) === 1;
 }
@@ -210,7 +218,14 @@ function zfsmReplicaKeysHtml($keys) {
 
 // This server's ed25519 SSH host key as ssh-keygen -l prints it, for a sender to compare before it trusts the key; null when unread.
 function zfsmHostKeyFingerprint($file = '/etc/ssh/ssh_host_ed25519_key.pub') {
-	$fields = preg_split('/\s+/', trim((string)@file_get_contents($file)));
+	return zfsmKeyFingerprint((string)@file_get_contents($file));
+}
+
+// The fingerprint of a public-key line, "ssh-ed25519 <base64> [comment]", as ssh-keygen -l prints one; null for any other type,
+// or a blob that isn't an ed25519 public key.
+function zfsmKeyFingerprint($key) {
+	$fields = is_string($key) ? preg_split('/\s+/', trim($key)) : array();
 	$blob = count($fields) >= 2 && $fields[0] === 'ssh-ed25519' ? base64_decode($fields[1], true) : false;
-	return !is_string($blob) || $blob === '' ? null : 'SHA256:'.rtrim(base64_encode(hash('sha256', $blob, true)), '=');
+	if (!is_string($blob) || strlen($blob) !== 51 || strncmp($blob, "\0\0\0\x0bssh-ed25519\0\0\0\x20", 19) !== 0) return null;
+	return 'SHA256:'.rtrim(base64_encode(hash('sha256', $blob, true)), '=');
 }
