@@ -13,6 +13,7 @@ require_once __ROOT__."/include/ZFSMRewrite.php";
 require_once __ROOT__."/include/ZFSMReplicaPlan.php";
 require_once __ROOT__."/include/ZFSMReplicate.php";
 require_once __ROOT__."/include/ZFSMReplicaServe.php";
+require_once __ROOT__."/include/ZFSMReplicaRemote.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';

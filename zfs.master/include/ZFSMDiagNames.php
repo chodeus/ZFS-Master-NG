@@ -5,6 +5,8 @@
 // Top folders that are the system's alone. Under ZFSM_DIAG_SHARED anyone keeps files beside the plugin's and Unraid's own.
 define('ZFSM_DIAG_SYSTEM', 'bin|etc|lib|lib64|proc|run|sbin|sys|usr|plugins|webGui|dev(?!/zvol/)');
 define('ZFSM_DIAG_SHARED', 'boot|tmp|var|root');
+// A key's fingerprint, kept whole: its base64 may hold "/" after ":" or "+", where a path would start.
+define('ZFSM_DIAG_FINGERPRINT', 'SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
@@ -133,6 +135,7 @@ function zfsmDiagNamePattern() {
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
+			.'|(?<fingerprint>'.ZFSM_DIAG_FINGERPRINT.')'
 			// A path starts after a colon (failed:/mnt/...) and after file://; not inside a link's //, nor at an IPv6 prefix (fe80::/10).
 			.'|(?<path>(?:(?<![A-Za-z0-9_./-]|::)|(?<=file://))/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
 			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
@@ -163,6 +166,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 	$end = $at + strlen($found);
 	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at, $ends);
 	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
+	if ($match['fingerprint'][0] !== null) return array($found, $end);
 	if ($match['resume'][0] !== null) return array('(a resume token, left out)', $end);
 	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
 	if ($match['query'][0] !== null) return array(($found[0] === '?' ? '?' : explode(':', $found, 2)[0].': ').'(left out)', $end);
@@ -228,14 +232,14 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 // Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
 // the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$jobs = '(?:rewrite|replicate|replica-serve|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start)\.lock|state\.json(?:\.tmp)?|browser\.json))?';
+	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts))?))?';
 	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
 	$names = array(
 		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
 		zfsmJobDir('') => $jobs,
 		zfsmStatePath('/var/run/zfs.master.') => '(?:lock|alerts\.json(?:\.lock)?|'.$jobs.')',
 		zfsmStatePath(rtrim('/var/log/packages/zfs.master-*', '*')) => '\d[\d.]*-[a-z0-9_]+-\d\w*',
-		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z)');
+		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z|ssh(?:/(?:id_ed25519(?:\.pub)?|remotes\.json|new-[0-9a-f]{8}(?:\.pub)?))?)');
 	foreach ($names as $prefix => $name) {
 		if (preg_match('~^'.preg_quote($prefix, '~').$name.'$~D', $path) === 1) return true;
 	}
