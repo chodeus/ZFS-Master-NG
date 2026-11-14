@@ -1,5 +1,73 @@
 # Changelog
 
+## Unreleased
+
+- fix: review round 1 — the translated Version label is escaped with the version
+- fix: local review — the version is the PLUGIN element's, entities expanded as Unraid reads it; the tests check its value (three or four parts) and read Unraid's answer without its warnings
+- fix: a gap between a Settings section's last control and its bottom border (Unraid 7's phone layout set it on the border)
+- feat: Settings shows the installed plugin's version at the top
+- fix: review round 1 — a file whose md5 can't be read fails the build, the list's entries are counted, and a full /var/log drops the line quietly
+- feat: the plugin keeps its own log in RAM, capped at about 1 MB, and the package lists each file's md5
+- fix: the comments call both removals of a work folder attempts
+- fix: review round 8 — alerts whose schedule is not on the flash drive are a finding, and comments say what the code does
+- fix: review round 7 — a sender's area with the wrong properties is a finding, and the plugin's removal step leaves what is not root's
+- fix: an empty mount table blocks the removal of a work folder, and the plugin's removal step takes only the names a run makes
+- fix: review round 6 — a work folder with a mount in it is never removed, and a manifest with no version is not judged
+- fix: review round 5 — zpool key locations stay out of the process list, the script runs from a terminal only, and labels say what was wrong
+- fix: a link is never held as a work folder, whoever owns it
+- fix: review round 4 — only root's work folders are removed, and a read that fails after its file opened is a failed read
+- fix: review round 3 — a read that failed is its file's result and a finding in the summary
+- fix: review round 2 — a work folder is removed only under its own lock, and a run that lost its folder ends
+- fix: review round 1 — a failed collector is a finding, a read that failed is never shown as empty, and a run holds its work folder
+- feat: diagnostics collectors, one file each under its own time limit, and a terminal script that prints what they find
+- fix: review round 20 — a killed run's part that could not be removed from /boot/logs is named in the warning, as an older zip is: one removal loop for both
+- fix: review round 19 — a resume token is matched by its own shape wherever it stands, so one after -t attached or grouped (-tTOKEN, -vt TOKEN) is left out too; the scope rule says installed plugins' names, which their authors publish, are listed by design
+- fix: review round 18 — the plugin's own words and paths come from the files its manifest.md5 lists, so a file the owner added is a token wherever its name stands; only the display settings the plugin uses are shown, each value only in the shape Unraid's choices take; every fake-bin test refuses to run unless /var/log is the runner's tmpfs and the host is not Unraid
+- fix: review round 17 — a property read that fails, or its second read of names alone, shows only its exit code: rows it printed before the error were never checked for owner-written values and property names; the scope rule says a source that can't be read is reported in the zip, not a stop
+- fix: review round 16 — every removal in /boot/logs (older zips, stale parts, a failed pack's part, Unraid's zip) goes through one check made right before it, with PHP's cached resolution of the folder cleared, so a folder swapped for a link by another process is never removed through
+- fix: review round 15 — a carriage return in a name is part of it: in a file's rows a path ends only at a tab or a line feed, and the mount list and zfs's rows are split only at line feeds, so a mountpoint holding one is a token whole and its mount line one line
+- fix: review round 14 — under a system folder only the system's own paths stay (the plugin's files, the Unraid files and programs it uses, what it reads), so a dataset mounted at /usr/local/client or /usr/local/12345 is a token; a test checks every system path the plugin's code names is on the list
+- fix: review round 13 — Unraid's zip is removed only from /boot/logs itself, checked right before the remove, and one left there is said; older zips not removed through a link are said, and a folder that is not there is a failed look, not a link
+- fix: review round 12 — a name under a system folder stays only when each of its words is the plugin's or a number, so a dataset mounted at /usr/local/x is a token, in a field, a JSON value and running text; a key's place keeps OpenZFS's own none and -
+- fix: review round 11 — a path after a colon (failed:/mnt/...) or in a file:// URI is a path, an IPv6 prefix is not; a failed look for older zips is said, not taken for none; the slow-run tests wait until the run is collecting, past its work folder's lock
+- Diagnostics: hide a pool's compatibility files and SELinux labels in property rows (c4b7c2d)
+- fix: a JSON value with a tab is running text too, so a word after a tab is no field of its own; a failed read of the word list stays failed for the run
+- fix: review round 9 — a JSON value with a space is running text and passes the second net, so a word after the plugin's own path in an inventory error is a token; a word list with a file unread, or a folder that can't be listed, stops the rewrite instead of passing as empty
+- fix: review round 8 — in a row's field or a value the whole field must be one of the plugin's own names, so a folder that only starts with one is a folder's; of the saved settings only the plugin's own setting names and its one section stay
+- fix: review round 7 — the plugin's own paths are the exact names it makes, its folders and the files it puts in them; nothing else inside or beside them stays; a comment moved to the function it describes
+- fix: the run checks its folder against the lock the work folder was made with, before its last writes too; a folder's path end is a parameter again, not a mode left set; the swapped-folder test checks nothing of the run's reached the folder
+- fix: delta review — one owner says whether the work folder is still the run's, and every step after the collectors asks it, the removal at exit too; a folder's path ends at a tab only in a file's tab-separated rows, at a line's end in running text and in a message, and nowhere in a value that is a path; the rewrite failure is tested at the script
+- fix: review round 6 — in one decoded JSON value a folder's path runs to the value's end, tabs and line breaks and all; a run whose folder went under it says so and rewrites nothing; the collectors' test leaves Unraid's own diagnostics out
+- fix: review round 5 — after a name prefix of the plugin's only a name it makes stays (a work folder's 16 hex digits, a job's folder, a package record), and a settings file that is not there or not read says so
+- fix: review round 4 — a listed own path covers what is under it only past a / or after a name prefix it lists, and picking a zip's name and the rename hold one lock, so two runs in the same second never take one name
+- fix: a dataset a setting names on a pool that does not exist is tokens wherever a collector writes it, as zfs answers too, not only in the settings list
+- fix: review round 3 — a setting's first word is a pool only when this run knows that pool, so a setting registers none; a saved setting's line stays only at the value the plugin uses, and a line that sets nothing is a token; a pool's name passes the second net whole; a failed pool read is the settings file's result
+- fix: property rows are read against a second read of their names alone, so a value with a line break hides every value instead of being guessed at; a user property's name is its owner's, in the rows and in the Main tab's read; only a token of this run and a whole fingerprint pass the second net
+- fix: review round 2 — in logs, command lines and findings a word the plugin itself does not use is a token; a path under a listed folder stays only when it is the plugin's own; a value that runs on is hidden to the line its source ends; only a number with a unit of size or time is a plain value; a setting's bare name is a token; the tests remove only the zips they made
+- fix: review round 1 — a path under /tmp, /boot, /var or /root stays only when it is the plugin's own, a pool's user properties and any line of a value that looks like a row are hidden, zip runs with no shell, the log is read once, and the tests keep to a /boot/logs of their own
+- fix: a resume token and a cut-off private key are left out, each snapshot of a list and a value with a line break are tokens, a pool nothing lists is learned from the plugin's own log lines, and one of the plugin's words ends a name only with what follows it in a log line
+- fix: an address kept as a user property's value, a hex-named dataset of an unknown pool, the snapshot prefix and pattern, and an unknown setting past an empty line are tokens; the zip just written is never the one removed, and a zip's name is never taken twice
+- fix: the name map's and its test's comments keep to two lines
+- feat: diagnostics are packed into one zip in /boot/logs with every dataset, snapshot and folder name replaced by a token, and Unraid's own diagnostics beside them as Unraid made them
+- fix: a run whose work folder goes under it ends there, removing the plugin leaves a running run's folder, an inventory with no devices is a failed read, and only a sender's area is judged as one
+- fix: review round 3 — a diagnostics request with no answer in a minute fails, as the inventory's does, so a stalled one reaches the retry and the not-known message
+- fix: review round 2 — a request with no answer says the run's state is not known, not that it failed; a run's result that could not be kept is logged as not shown, as it is
+- fix: review round 1 — the Settings page sends one request at a time and cancels the one on its way when the page is left; a run that can't make its work folder still removes the browser's report; a table drawn from the cache is recorded for diagnostics too
+- fix: delta review — the browser's user agent is read by its own grammar and no browser exception is left in the shared rules; every start and every end of a run lands in the page's state (a failed start, a start under way, a run stopped by a signal); the browser's report goes on any exit; the Main tab's record keeps a share per part
+- fix: code review — a run from a terminal keeps its state for the page, a start waits out another start, the browser's report is removed once collected, an address is a token except as a browser's own version, the record goes first and whole as an object, a page back from the cache asks again, Firefox's and macOS's version parts pass
+- fix: pre-PR audit — the Main tab's record reads the header row's own cells; one run at a time from the page or a terminal, asked again past a status read and saying why when it can't; the start lock is not passed to the job; the record and report are bounded in bytes as sent; an idle page's failed read is no failed run; the page stops polling when it is left; a browser's words pass only in its report; the issue template says what Unraid's zip holds
+- fix: audit findings — a command the diagnostics job leaves behind holds none of its locks, two starts at once are one start, the Main tab's record is bounded where it is written and the report keeps whole JSON, a lost poll is asked again, a late answer is dropped, the browser report goes through the second net, one owner for the zip's name
+- feat: a Diagnostics section on the Settings page makes the zip, follows the run and links to it, with what the browser shows in it
+- fix: a pool is learned only from a debug line whose command ended well, so a mistyped name stays a token; the test runner keeps the host's /boot/config; help and comments say only what holds
+- fix: delta review — any command that loads a key or names where one is kept hides its arguments, wrapped or across lines (keylocation=prompt names none); pools a debug line names are learned; a diagnostics run writes no debug lines of its own; a long result never cuts off its command; the first command's time leaves out the settings read
+- fix: code review — Debug Log writes a file of its own, read from the saved settings by loadConfig's rule; a line says how the command ended before the command; rsync's and key-location arguments are left out by one rule shared with the process list; a command that could not run says why; the test runs the fake zfs
+- fix: a command that names where a key is kept is logged without its arguments whatever runs it, and the help, the tip and the comment say what Debug Log adds: the runner's commands and the requests; the long jobs log their own lines
+- feat: Debug Log in the settings writes every command the plugin runs, with its result and time, to the plugin's own log
+- fix: review round 1 — a log line proves its pools only with a success and no failure anywhere, so a name holding 'finished.' proves nothing
+- refactor: the success and failure words after a dataset's name have one definition, which the proof of a pool and the name's end both read
+- fix: a log line proves its pools by its first verb with what follows it, so a name holding a success word proves nothing; other lines' names still end the name before them; logs are joined line by line
+- fix: diagnostics learn a pool only from a log line that started or ended well, so a mistyped destination stays a token
+
 ## 2026.11.11.3 (beta)
 
 - Table text wraps instead of being cut off (Health, long pool names, errors)
