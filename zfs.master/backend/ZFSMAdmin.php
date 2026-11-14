@@ -47,6 +47,7 @@ function zfsmRequireDestructiveMode($config, $subject) {
 
 try {
 	$command = zfsmPostString('cmd');
+	zfsmDebug('request '.$command);
 	switch ($command) {
 		case 'inventory':
 		case 'inventorysnapshots':

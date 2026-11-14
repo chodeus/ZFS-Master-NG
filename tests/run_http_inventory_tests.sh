@@ -17,6 +17,9 @@ mount -t tmpfs tmpfs /var/log
 # The diagnostics tests write zips into /boot/logs and remove them: never the host's.
 mkdir -p /boot/logs
 mount -t tmpfs tmpfs /boot/logs
+# diagnostics_bundle_test.php writes the plugin's saved settings and removes them: never the host's.
+mkdir -p /boot/config
+mount -t tmpfs tmpfs /boot/config
 mkdir -p /tmp/zfsm-http-test/webGui/include /tmp/zfsm-http-test/plugins /tmp/zfsm-bin
 ln -s "$zfsm_repo/zfs.master" /tmp/zfsm-http-test/plugins/zfs.master
 ln -s "$zfsm_repo/tests/fixtures/unraid/Helpers.php" /tmp/zfsm-http-test/webGui/include/Helpers.php

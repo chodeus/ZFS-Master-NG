@@ -255,7 +255,7 @@ function zfsmDiagZfsProcesses($ctx) {
 	$text = "pid\tseconds\tcommand\n";
 	$stuck = 0;
 	foreach ($processes as $process) {
-		if (preg_match('#^(\S*/)?(rsync|zfs\s+load-key)(\s|$)|^(\S*/)?((?:zfs|zpool)\s+\S+)\s.*keylocation=#', $process[2], $match) === 1) $process[2] = ($match[5] ?? $match[2]).' (its arguments are left out)';
+		$process[2] = zfsmCommandShown($process[2]);
 		$text .= implode("\t", $process)."\n";
 		if ($process[1] > 600 && preg_match('#^(\S*/)?(zfs (list|get)|zpool (list|status|get))(\s|$)#', $process[2]) === 1) $stuck++;
 	}

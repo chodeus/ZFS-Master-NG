@@ -9,6 +9,8 @@ $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 require_once "$docroot/plugins/zfs.master/include/ZFSMDiagnostics.php";
+// This run's own commands are no debug lines: they would bury what Debug Log was turned on to catch (timings.txt has them).
+$GLOBALS['zfsm_debug'] = false;
 
 $job = in_array('--job', $argv, true);
 // One run at a time, from the page or a terminal, held to its end (zfsmDiagRunLock). A job says why it did not start on its output,

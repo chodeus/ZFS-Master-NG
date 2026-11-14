@@ -20,7 +20,7 @@ function zfsmDiagCollectors() {
 		array('plugin/jobs.txt', 20, 'zfsmDiagJobs', array('/var/run/zfs.master.lock', '/var/run/zfs.master.')),
 		array('plugin/replication-receive.txt', 30, 'zfsmDiagReplicaReceive', array('/boot/config/ssh/root/authorized_keys', '/etc/ssh/ssh_host_ed25519_key.pub')),
 		array('plugin/inventory.json.txt', 60, 'zfsmDiagInventory', array()),
-		array('plugin/log.txt', 30, 'zfsmDiagLog', array('/var/log/zfs.master.log', '/var/log/syslog')),
+		array('plugin/log.txt', 30, 'zfsmDiagLog', array('/var/log/zfs.master.log', '/var/log/syslog', '/var/log/zfs.master.debug.log')),
 		array('plugin/php-errors.txt', 30, 'zfsmDiagPhpErrors', array('/var/log/phplog', '/var/log/nginx/error.log')),
 		array('plugin/browser.json.txt', 5, 'zfsmDiagBrowser', array()),
 		array('unraid/context.txt', 20, 'zfsmDiagUnraid', array('/etc/unraid-version', '/var/local/emhttp', '/var/local/emhttp/var.ini', '/var/local/emhttp/disks.ini', '/tmp/publishPaused', '/var/log/plugins/*.plg')),
