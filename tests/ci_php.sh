@@ -5,7 +5,7 @@ set -eu
 find zfs.master tests \( -name '*.php' -o -name '*.page' \) -print0 | xargs -0 -n1 php -l
 php_bin=$(command -v php)
 # zip and unzip: the diagnostics tests pack a real zip, as the plugin does on Unraid, and open it.
-# openssh-client: replica_remote_test.php runs the real ssh-keygen and ssh -G.
+# openssh-client: replica_remote_test.php runs the real ssh-keygen and ssh -G, replicate_test.php the real ssh-keygen.
 if ! command -v rsync >/dev/null || ! command -v zip >/dev/null || ! command -v unzip >/dev/null || ! command -v ssh-keygen >/dev/null; then sh tests/ci_apt.sh rsync zip unzip openssh-client; fi
 # pcntl: Unraid's PHP has it, and diagnostics_test.php's signal cases need it; php:<version>-cli builds it from its own source.
 pcntl_loads() { "$php_bin" -n -d extension=pcntl -r 'exit(function_exists("pcntl_async_signals") ? 0 : 1);'; }

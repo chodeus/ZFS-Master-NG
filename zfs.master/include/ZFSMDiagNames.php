@@ -12,7 +12,7 @@ define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
 define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$');
 define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
-define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |\((?:in full|changes since|carried on)|\| ');
+define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
 
 // A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
 function zfsmDiagNamesStart() {
@@ -74,6 +74,9 @@ function zfsmDiagLearnPools($log, $debug) {
 		preg_match_all('~(?<=: |of |to |into )(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $line, $found);
 		$proves = preg_match('~ (?:'.ZFSM_DIAG_DONE.')~', $line) === 1 && preg_match('~ (?:'.ZFSM_DIAG_FAILED.'|refused: )~', $line) === 0;
 		array_map($proves ? 'zfsmDiagKnowPool' : 'zfsmDiagKnowRoot', $found[0]);
+		// A copy on another server names it so (zfsmReplicaTargetWhere): one removed from remotes.json since is known by that.
+		preg_match_all('~ on server \K[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}?(?=[.:,;]?(?:\s|$))~', $line, $servers);
+		array_map('zfsmDiagKnowWord', $servers[0]);
 	}
 	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
 	preg_match_all('~(?<!\S)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $commands[0]), $named);
@@ -135,6 +138,8 @@ function zfsmDiagNamePattern() {
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
+			// A copy on another server is one name inside its area, with nothing to mark it (zfsmReplicaTargetWhere, zfsmReplicatePlan).
+			.'|(?<bare>(?<= to )[^\s/][^/\r\n]*?(?= on server )|(?<=one name with no slash, such as )[^\s/][^/\r\n]*?(?=[\r\n]|\z))'
 			.'|(?<fingerprint>'.ZFSM_DIAG_FINGERPRINT.')'
 			// A path starts after a colon (failed:/mnt/...) and after file://; not inside a link's //, nor at an IPv6 prefix (fe80::/10).
 			.'|(?<path>(?:(?<![A-Za-z0-9_./-]|::)|(?<=file://))/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
@@ -176,7 +181,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 		return array($match['request'][0].'(as hex) '.$named[0].zfsmDiagNameTokens(isset($named[1]) ? '/'.$named[1] : ''), $end);
 	}
 	// The plugin writes the snapshot's short name there, with nothing to mark it (zfsmReplicaShortName).
-	if ($match['since'][0] !== null) return array(zfsmDiagToken($found), $end);
+	if ($match['since'][0] !== null || $match['bare'][0] !== null) return array(zfsmDiagToken($found), $end);
 	if ($match['word'][0] !== null) return array(zfsmDiagToken($found), $end);
 	if ($match['host'][0] !== null) return array(zfsmDiagToken($found, 'host'), $end);
 	// Sentence punctuation after an address is not part of it; what is no address stays as it is.
@@ -232,7 +237,7 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 // Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
 // the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts))?))?';
+	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts|cm))?))?';
 	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
 	$names = array(
 		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
