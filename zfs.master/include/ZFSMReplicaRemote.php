@@ -86,7 +86,13 @@ function zfsmReplicaPublicRestore($name) {
 
 // An IP address only: the from= in that server's key line must be an exact address (zfsmReplicaKeyFrom), so the route to it decides it.
 function zfsmReplicaHostValid($host) {
-	return is_string($host) && filter_var($host, FILTER_VALIDATE_IP) !== false;
+	return zfsmReplicaAddress($host) !== null;
+}
+
+// The address in the short form ssh looks it up by in known_hosts (fd12::11, not fd12:0:0::11); null when it isn't an IP address.
+function zfsmReplicaAddress($host) {
+	$packed = is_string($host) && filter_var($host, FILTER_VALIDATE_IP) !== false ? @inet_pton($host) : false;
+	return $packed === false ? null : inet_ntop($packed);
 }
 
 function zfsmReplicaPortValid($port) {
@@ -131,7 +137,7 @@ function zfsmReplicaRemotesRead() {
 	$list = json_decode($text, true);
 	$read = array('valid' => array(), 'other' => array());
 	foreach ($list as $remote) {
-		if (zfsmReplicaRemoteValid($remote) && !isset($read['valid'][$remote['name']])) $read['valid'][$remote['name']] = array('name' => $remote['name'], 'host' => $remote['host'], 'port' => $remote['port'], 'key' => $remote['key']);
+		if (zfsmReplicaRemoteValid($remote) && !isset($read['valid'][$remote['name']])) $read['valid'][$remote['name']] = array('name' => $remote['name'], 'host' => zfsmReplicaAddress($remote['host']), 'port' => $remote['port'], 'key' => $remote['key']);
 		else $read['other'][] = $remote;
 	}
 	return $read;
@@ -175,7 +181,7 @@ function zfsmReplicaScan($host, $port) {
 
 // Added only with the fingerprint the page showed, so the key saved is the one compared; a name already used must be removed first.
 function zfsmReplicaRemoteAdd($name, $host, $port, $key, $fingerprint) {
-	$remote = array('name' => $name, 'host' => $host, 'port' => $port, 'key' => $key);
+	$remote = array('name' => $name, 'host' => zfsmReplicaAddress($host), 'port' => $port, 'key' => $key);
 	if (!zfsmReplicaSenderName($name)) return 'Name it with '.ZFSM_REPLICA_NAME_RULE;
 	if (!zfsmReplicaRemoteValid($remote)) return 'Give the server\'s IP address, SSH port and the host key read from it';
 	if (!is_string($fingerprint) || zfsmKeyFingerprint($key) !== $fingerprint) return 'The host key is not the one shown; read it again';

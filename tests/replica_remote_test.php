@@ -199,6 +199,28 @@ same('600', substr(sprintf('%o', fileperms($files['key'])), -3), 'the RAM copy o
 zfsmReplicaSshCleanup($files);
 same(false, is_dir($files['dir']), 'and goes when the call ends');
 
+// ssh looks an address up in its short form: the real ssh -G gives the name and port, the real ssh-keygen -F looks them up as ssh does.
+$pinned = function($remote) {
+	$files = zfsmReplicaSshFiles($remote);
+	exec('ssh -G '.implode(' ', array_map('escapeshellarg', array_slice(zfsmReplicaSshArgs($remote, $files, 'zfsm-replica 1 hello'), 0, -1))).' 2>&1', $resolved);
+	$host = substr((string)current(preg_grep('/^hostname /', $resolved)), 9);
+	$port = substr((string)current(preg_grep('/^port /', $resolved)), 5);
+	exec('ssh-keygen -F '.escapeshellarg($port === '22' ? $host : '['.$host.']:'.$port).' -f '.escapeshellarg($files['known_hosts']).' 2>&1', $found, $code);
+	zfsmReplicaSshCleanup($files);
+	return array($host, $code);
+};
+$before = file_get_contents($work.'/flash/ssh/remotes.json');
+same('', zfsmReplicaRemoteAdd('v6', 'FD12:3456:789A:0000:0000:0000:0000:0011', 2222, $host_key, $host_print), 'a server given by a long-form address is added');
+$saved = json_decode(file_get_contents($work.'/flash/ssh/remotes.json'), true);
+same('fd12:3456:789a::11', array_column($saved, 'host', 'name')['v6'] ?? null, 'and saved under the short form');
+$saved[] = array('name' => 'old6', 'host' => 'fd12:3456:789a:0:0:0:0:12', 'port' => 22, 'key' => $host_key);
+file_put_contents($work.'/flash/ssh/remotes.json', json_encode($saved));
+$remotes = zfsmReplicaRemotes();
+same(array('fd12:3456:789a::11', 'fd12:3456:789a::12'), array($remotes['v6']['host'] ?? null, $remotes['old6']['host'] ?? null), 'one saved in the long form is read back in the short form');
+same(array(array('fd12:3456:789a::11', 0), array('fd12:3456:789a::12', 0)), array($pinned($remotes['v6']), $pinned($remotes['old6'])), 'the address ssh looks up finds the pinned key, at a port and at 22');
+file_put_contents($work.'/flash/ssh/remotes.json', $before);
+$log();
+
 // hello through ssh into the checker: the area there, or why not, in its own words.
 mkdir($work.'/pool');
 file_put_contents($work.'/pool/datasets', "backup\tfilesystem\nbackup/replicas\tfilesystem\n");
