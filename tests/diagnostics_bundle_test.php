@@ -485,11 +485,18 @@ same(array('tower-diagnostics-20250101-0000.zip', 'zfs.master-diag.0000000000000
 same('kept', file_get_contents($work.'/linked'), 'and what a link points to is not touched');
 list($zip, $why) = $bundle('fourth', false, false);
 same(array('zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip', basename((string)$zip)), array_values(preg_grep('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/', scandir($logs))), 'a new zip takes the oldest one\'s place: '.$why);
-// A zip that can't be removed is named, not passed over: here another file is mounted over it. Through a link, nothing is removed.
-file_put_contents($logs.'/zfs.master-diagnostics-20230101-000000.zip', 'stuck');
-exec('mount --bind '.escapeshellarg($work.'/linked').' '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
-same('older zips could not be removed from '.$logs.': zfs.master-diagnostics-20230101-000000.zip', zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
-exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
+// A zip or a killed run's part that can't be removed is named, not passed over: here another file is mounted over each, the part's
+// an old one so it is due. Through a link, nothing is removed.
+$stuck = array('zfs.master-diag.00000000000000cc.part' => $work.'/old', 'zfs.master-diagnostics-20230101-000000.zip' => $work.'/linked');
+file_put_contents($work.'/old', 'old');
+touch($work.'/old', time() - 7200);
+foreach ($stuck as $name => $over) {
+	file_put_contents($logs.'/'.$name, 'stuck');
+	exec('mount --bind '.escapeshellarg($over).' '.escapeshellarg($logs.'/'.$name));
+}
+same('older zips could not be removed from '.$logs.': zfs.master-diag.00000000000000cc.part, zfs.master-diagnostics-20230101-000000.zip', zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip or a part that could not be removed is named');
+foreach ($stuck as $name => $over) exec('umount '.escapeshellarg($logs.'/'.$name));
+unlink($logs.'/zfs.master-diag.00000000000000cc.part');
 // A folder that can't be listed (here a file in its place) is said to be, not taken for one with nothing to remove.
 same(array('older zips could not be looked for in '.$work.'/linked, so none were removed', 'older zips could not be looked for in '.$work.'/missing, so none were removed'),
 	array(zfsmDiagKeepNewest($work.'/linked', 3, basename((string)$zip)), zfsmDiagKeepNewest($work.'/missing', 3, basename((string)$zip))), 'a failed look for older zips is said, a folder that is not there too');

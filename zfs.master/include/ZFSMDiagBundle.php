@@ -104,12 +104,10 @@ function zfsmDiagKeepNewest($logs, $keep, $made) {
 	}
 	// The name holds the time, so the names sort by age; a clock that went back must not cost the zip just written.
 	sort($zips);
-	$moved = 'older zips were not all removed: '.$logs.' is gone or reached through a link now';
-	foreach ($parts as $name) if (zfsmDiagRemoveLog($logs, $name) === null) return $moved;
 	$left = array();
-	foreach (array_slice($zips, 0, max(0, count($zips) - $keep + 1)) as $name) {
+	foreach (array_merge($parts, array_slice($zips, 0, max(0, count($zips) - $keep + 1))) as $name) {
 		$removed = zfsmDiagRemoveLog($logs, $name);
-		if ($removed === null) return $moved;
+		if ($removed === null) return 'older zips were not all removed: '.$logs.' is gone or reached through a link now';
 		if (!$removed) $left[] = $name;
 	}
 	return $left ? 'older zips could not be removed from '.$logs.': '.implode(', ', $left) : '';
