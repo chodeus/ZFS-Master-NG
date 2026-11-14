@@ -58,7 +58,7 @@ $GLOBALS['zfsm_uptime'] = $work.'/uptime';
 file_put_contents($work.'/uptime', "864000.00 800000.00\n");
 // A resume token as zfs writes one: anyone can ask zfs which snapshot it names.
 $resume = '1-c740b4779-118-789c636064000310a500c4ec50360710e72765a52697303030419460caa7a515a79680647ce0f26c48f2499525a9c5405ac3c9fabfe92fcf4d2cc140cbbd9a5c0e4b1ca4e';
-file_put_contents($work.'/ps.txt', "4242 30 zfs send -R tank/CanaryDs One@Canary Daily failed copy\n4243 5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/CanaryDs One\n4244 9 rsync -a /mnt/tank/CanaryDs One/CanaryRsync/ /mnt/x\n4245 3 zfs send -P -v -t $resume\n");
+file_put_contents($work.'/ps.txt', "4242 30 zfs send -R tank/CanaryDs One@Canary Daily failed copy\n4243 5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/CanaryDs One\n4244 9 rsync -a /mnt/tank/CanaryDs One/CanaryRsync/ /mnt/x\n4245 3 zfs send -P -v -t $resume\n4246 3 zfs send -vt $resume\n4247 3 zfs send -t$resume\n4248 3 zfs send -Pvt$resume\n");
 
 $put = function($path, $text) use ($root) {
 	if (!is_dir(dirname($root.$path))) mkdir(dirname($root.$path), 0755, true);
@@ -205,7 +205,9 @@ has('request: "POST /plugins/zfs.master/backend/ZFSMAdmin.php?(left out) HTTP/1.
 has('scandir(/mnt/tank/'.$ds.'/'.$token("Canary\tprivate): Failed to open directory").' in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9'."\n", $files['plugin/php-errors.txt'], 'in running text a tab is part of a folder\'s name: only the line\'s end ends its path');
 has('scandir(/mnt/tank/'.$ds.'/'.$token('Canary\'s Stuff): Failed to open directory').' in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9'."\n", $files['plugin/php-errors.txt'], 'a folder in a PHP error is replaced, and where PHP raised it stays');
 has("4242\t30\tzfs send -R tank/$ds@".$token('Canary Daily failed copy')."\n", $files['zfs/processes.txt'], 'a running command\'s dataset and snapshot are tokens, a known snapshot whole');
-has("4245\t3\tzfs send -P -v -t (a resume token, left out)\n", $files['zfs/processes.txt'], 'and its resume token is left out');
+same(array(), preg_grep('~'.explode('-', $resume)[3].'~', explode("\n", $files['zfs/processes.txt'])), 'no resume token is in the process list');
+has("4245\t3\tzfs send -P -v -t (a resume token, left out)\n4246\t3\tzfs send -".$token('vt')." (a resume token, left out)\n4247\t3\tzfs send -t(a resume token, left out)\n"
+	."4248\t3\tzfs send -".$token('Pvt')."(a resume token, left out)\n", $files['zfs/processes.txt'], 'and its resume token is left out, after -t in every form');
 has("zfs/timings.txt\tok\t", $files['collectors.txt'], 'the files\' own names stay');
 has("names.txt       each token in these files", $files['README.txt'], 'README.txt says what names.txt is');
 // Unraid's own zip: as Unraid made it, and moved, so it is not left on the flash drive as well.

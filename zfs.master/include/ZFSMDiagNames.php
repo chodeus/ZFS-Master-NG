@@ -119,8 +119,8 @@ function zfsmDiagNamePattern() {
 		foreach (array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3)) as $path) $names['own'][] = zfsmStatePath(strstr($path.'*', '*', true));
 		// A key runs to its END line; one whose end was cut off is the rest of its line and the lines of key text after it, no more.
 		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\s;]*-----END [A-Z0-9 ]*PRIVATE KEY-----|[^\r\n]*(?:\r?\n[A-Za-z0-9+/=]{16,}(?=\r?\n|\z))*))'
-			// zfs send -t: the token of a copy that stopped names its snapshot to anyone who asks zfs.
-			.'|(?<resume>(?<= -t )\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
+			// A resume token names its snapshot to anyone who asks zfs: matched by its own shape, after -t in any form or alone.
+			.'|(?<resume>(?<![0-9a-f-])\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
 			.'|(?<key>\b(?:ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-[\w-]+|sk-[\w-]+@openssh\.com)[ \t]+(?<blob>AAAA[0-9A-Za-z+/]+=*))'
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
