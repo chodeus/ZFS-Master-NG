@@ -393,6 +393,8 @@ same(array('no throw', array()), array($timed_out(function() use ($target) { zfs
 same(true, in_array('connection ends', $ssh(), true), 'and the connection ends all the same, as one whose command hangs there would outlive ControlPersist');
 same(array(), $left(), 'every connection\'s key files are gone');
 same(array('tank/data' => 'Replication to data on server gone not started: No server here is named gone'), zfsmStartReplicate('tank/data', 'e', 'data', $cfg, 'gone')['failed'], 'a start that fails names its server as a run does');
+same(array('tank/data' => 'Replication on server gone not started: No server here is named gone'), zfsmStartReplicate('tank/data', 'e', "<b>\n", $cfg, 'gone')['failed'], 'with only the names that are valid');
+same(array('tank/data' => 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE), zfsmStartReplicate('tank/data', 'e', 'data', $cfg, "x\ny")['failed'], 'and none it was given that is not');
 
 // A connection lost just as the receive ends there: the copy may hold the snapshot the run took, so the run keeps it as the next one's base.
 $reset();

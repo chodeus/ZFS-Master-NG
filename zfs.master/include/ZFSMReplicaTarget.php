@@ -88,7 +88,7 @@ function zfsmReplicaRequest($verb, $zdataset = '') {
 	return 'zfsm-replica 1 '.$verb.($zdataset !== '' ? ' '.bin2hex($zdataset) : '');
 }
 
-// After one of ssh's own failures (exit 255) a server is left alone this long: Unraid's sshd shuts out a sender after three quick failed logins.
+// After one of ssh's own failures (exit 255) a server is left alone this long: Unraid's sshd shuts out a sender after a few quick failed logins.
 define('ZFSM_REPLICA_RETRY', 30);
 
 function zfsmReplicaDownFile($name) {

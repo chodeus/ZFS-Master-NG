@@ -13,7 +13,10 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '') {
 		zfsmReplicaDisconnect($target);
 	}
 	// A server's failure names it as a run's does (zfsmDiagLearnPools): by the time diagnostics are made it may be gone from remotes.json.
-	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $server === '' ? $plan['error'] : 'Replication to '.zfsmReplicaTargetWhere(array('server' => $server), $zdest).' not started: '.$plan['error']);
+	if (!$plan['can_proceed'] && zfsmReplicaSenderName($server)) {
+		return zfsmFailure($zdataset, 'Replication'.(zfsmValidDatasetName($zdest) ? ' to '.$zdest : '').' on server '.$server.' not started: '.$plan['error']);
+	}
+	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
 	$resume = $plan['mode'] === 'resume';
 	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
 	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server);
