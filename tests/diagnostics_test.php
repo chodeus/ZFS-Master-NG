@@ -292,11 +292,18 @@ same(array('alerts are on every 60 minutes, but the last check was 180 minutes a
 
 // Jobs: a held lock is fine while one of the plugin's scripts runs.
 $hold = function() use ($work) { $GLOBALS['zfsm_held'] = fopen($work.'/jobs/rewrite/4711.lock', 'c'); flock($GLOBALS['zfsm_held'], LOCK_EX); };
+// Never this test's own process: the collector leaves that one out.
 $script_pid = getmypid() + 1;
 $running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  900    2 nginx: worker process\n";
 list($findings, $text) = $found('zfsmDiagJobs', $hold);
 same(array('a job\'s lock is held, but its script is not running: '.$work.'/jobs/rewrite/4711.lock'), $findings, 'a lock held with no script running');
 has($work."/jobs/rewrite/4711.lock: held\n", $text, 'the held lock is shown');
+// The run's own lock is held by the run, whatever its command line, so it is no finding.
+list($findings, $text) = $found('zfsmDiagJobs', function() use ($work) { @mkdir($work.'/jobs/diagnostics'); $GLOBALS['zfsm_run_held'] = fopen($work.'/jobs/diagnostics/run.lock', 'c'); flock($GLOBALS['zfsm_run_held'], LOCK_EX); });
+fclose($GLOBALS['zfsm_run_held']);
+unlink($work.'/jobs/diagnostics/run.lock');
+same(array(), $findings, 'the run\'s own lock is no finding');
+has($work."/jobs/diagnostics/run.lock: held (this run)\n", $text, 'it is shown as the run\'s');
 list($findings, $text) = $found('zfsmDiagJobs', function() use ($hold, $work, $running) { $hold(); file_put_contents($work.'/ps.txt', $running); });
 same(array(), $findings, 'a lock held by a running script');
 $others = "  813    5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n  814    3 timeout 600 /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n";

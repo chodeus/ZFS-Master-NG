@@ -305,14 +305,13 @@ function zfsmDiagScriptPattern($script = '') {
 	return '^(\S*/)?php\S*(\s+-\S+)*\s+\S*plugins/zfs\.master/scripts/'.preg_quote($script, '#');
 }
 
-// The processes whose command line matches, as [pid, seconds running, command line], this run's own too, so zfsmDiagJobs finds the
-// script holding the run's lock; null when ps can't be read.
+// The processes whose command line matches, as [pid, seconds running, command line], this one left out; null when ps can't be read.
 function zfsmDiagProcesses($pattern) {
 	$result = zfsmDiagRead('ps', array('-eo', 'pid=,etimes=,args='));
 	if ($result['code'] !== 0) return null;
 	$found = array();
 	foreach (zfsmImpactRows($result['output']) as $line) {
-		if (preg_match('/^\s*(\d+)\s+(\d+)\s+(.*)$/', $line, $match) !== 1 || preg_match($pattern, $match[3]) !== 1) continue;
+		if (preg_match('/^\s*(\d+)\s+(\d+)\s+(.*)$/', $line, $match) !== 1 || (int)$match[1] === getmypid() || preg_match($pattern, $match[3]) !== 1) continue;
 		$found[] = array((int)$match[1], (int)$match[2], $match[3]);
 	}
 	return $found;
