@@ -221,7 +221,7 @@ _(Sender Keys)_:
 : <span id="zfsm-replica-keys"><?=zfsmReplicaKeysHtml(zfsmReplicaKeys())?></span>
 
 :zc_settings_replica_keys_plug:
-> The lines in root's SSH authorized keys that let a sender's key only receive copies here, one per sender. Each must hold `restrict` with no limit turned back on after it, a `from=` of the sender's exact IP addresses (commas between several; no ranges, wildcards, `!` or host names), and `command=` naming exactly replica-serve.php and its sender.
+> The lines in root's SSH authorized keys that run replica-serve.php. Each must hold `restrict` with no limit turned back on after it, a `from=` of the sender's exact IP addresses (commas between several; no ranges, wildcards, `!` or host names), and `command=` naming exactly replica-serve.php and its sender.
 > A line shown in red lacks one of these limits: replace it with the line the sender shows.
 :end
 
