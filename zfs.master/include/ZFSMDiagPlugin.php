@@ -2,8 +2,39 @@
 // Diagnostics collectors for the plugin's own state and Unraid's (include/ZFSMDiagnostics.php lists them).
 // Each returns its file's text and notes what looks wrong with zfsmDiagFinding.
 
+// The settings whose text is their owner's to write and that no path marks as a name: only a token for each goes in.
+function zfsmDiagFreeSettings() {
+	return array('exclusion', 'snap_prefix', 'snap_pattern', 'directory_listing', 'replica_accept');
+}
+
+// The file as saved: a line stays only at the value loadConfig uses, else its value is a token and the lines it runs on to are
+// left out. Of a line that sets nothing, only a section's name and an empty line stay.
 function zfsmDiagSettingsSaved($ctx) {
-	return zfsmDiagFile(zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg'));
+	$effective = array();
+	foreach ($ctx['cfg'] as $key => $value) {
+		if (is_scalar($value) && !in_array(zfsmDiagSavedName($key), zfsmDiagFreeSettings(), true)) $effective[zfsmDiagSavedName($key)] = (string)$value;
+	}
+	// Only the names the plugin itself writes stay (zfsmDiagKnownSettings), and its one section.
+	$known = array_flip(zfsmDiagKnownSettings($ctx['cfg']));
+	$open = false;
+	$lines = array();
+	$file = zfsmStatePath('/boot/config/plugins/zfs.master/zfs.master.cfg');
+	$saved = zfsmDiagFile($file);
+	// zfsmDiagFile's own words for a file that is not there or not read whole, which name nothing.
+	if (!is_file($file) || $saved === '(unreadable)') return $saved;
+	foreach (explode("\n", $saved) as $line) {
+		if ($open) {
+			$open = substr_count($line, '"') % 2 === 0;
+		} elseif (preg_match('/^\s*([A-Za-z0-9_.-]+)\s*=(.*)$/s', $line, $set) === 1) {
+			$value = trim($set[2], " \t\r\"");
+			$open = substr_count($set[2], '"') % 2 === 1;
+			$name = isset($known[$set[1]]) ? $set[1] : zfsmDiagToken($set[1]);
+			$lines[] = !$open && ($effective[$set[1]] ?? null) === $value ? $line : $name.' = '.zfsmDiagToken($value);
+		} else {
+			$lines[] = preg_match('/^\s*(?:\[general\]\s*)?$/D', $line) === 1 ? $line : zfsmDiagToken($line);
+		}
+	}
+	return implode("\n", $lines);
 }
 
 // The name a setting is saved under: loadConfig renames the exclusion pattern.
@@ -16,11 +47,25 @@ function zfsmDiagSettingsEffective($ctx) {
 	$defaults = loadConfig(array());
 	$text = "setting\tvalue\tdefault\tsource\n";
 	$changed = array();
+	// Only a dataset of a pool this run knows is learned from a setting: its first word is no proof of a pool. So the pools
+	// are read first, the read later collectors use; one that fails is this file's result, and leaves every name here a token.
+	try {
+		zfsmDiagPools();
+	} catch (RuntimeException $error) {
+	}
+	foreach (array_merge($ctx['cfg']['directory_listing'], array($ctx['cfg']['replica_accept'])) as $named) {
+		$first = preg_split('~[/@#]~', $named)[0];
+		if (isset(zfsmDiagKnownPools()[$first])) zfsmDiagKnow($named);
+		elseif ($first !== $named) zfsmDiagKnowRoot($first);
+	}
 	foreach ($ctx['cfg'] as $key => $value) {
 		$name = zfsmDiagSavedName($key);
 		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
-		if (zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key])) $changed[] = $name;
-		$text .= $name."\t".zfsmJson($value, JSON_UNESCAPED_SLASHES)."\t".zfsmJson($defaults[$key], JSON_UNESCAPED_SLASHES)."\t".$source."\n";
+		$differs = zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key]);
+		if ($differs) $changed[] = $name;
+		// The settings that name datasets keep each one's pool (zfsmDiagNamed); the others their owner wrote are a token whole.
+		if ($differs && in_array($name, zfsmDiagFreeSettings(), true)) $value = is_array($value) ? array_map('zfsmDiagNamed', $value) : ($name === 'replica_accept' ? zfsmDiagNamed($value) : zfsmDiagToken($value));
+		$text .= $name."\t".zfsmJson($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".zfsmJson($defaults[$key], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)."\t".$source."\n";
 	}
 	zfsmDiagFact('settings changed from default', $changed ? implode(', ', $changed) : 'none');
 	$problems = zfsmDiagSettingProblems($ctx);
@@ -28,17 +73,22 @@ function zfsmDiagSettingsEffective($ctx) {
 	return $text."\n".zfsmDiagSection('problems', $problems ? implode("\n", $problems) : '(none)');
 }
 
+// The names a setting is saved under that this version reads: loadConfig's, and the misspelt one it still reads.
+function zfsmDiagKnownSettings($cfg) {
+	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+}
+
 // What is wrong with the saved settings, a line each.
 function zfsmDiagSettingProblems($ctx) {
 	$cfg = $ctx['cfg'];
 	$problems = array();
-	$known = array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+	$known = zfsmDiagKnownSettings($cfg);
 	foreach ($ctx['saved'] as $name => $value) {
-		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.$name;
+		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.zfsmDiagToken($name);
 		elseif (is_string($value) && zfsmConfigValueUnsafe($value)) $problems[] = $name.' holds text that a save would refuse';
 	}
 	$snapshot = zfsmNewSnapshotName($cfg, time());
-	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.$snapshot;
+	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($snapshot);
 	$pattern = $cfg['dataset_exclusion'];
 	if (!zfsmExclusionIsValid($pattern)) $problems[] = 'the exclusion pattern is invalid, so it is ignored';
 	elseif (strpos($pattern, '%') !== false) $problems[] = 'the exclusion pattern is a Lua pattern, the format older versions used';
@@ -52,7 +102,7 @@ function zfsmDiagDatasetSettingProblems($cfg) {
 	$problems = array();
 	$hidden = count(array_filter($names, function($name) use ($cfg) { return zfsmDatasetExcluded($name, $cfg['dataset_exclusion']); }));
 	if ($hidden > 0) $problems[] = 'the exclusion pattern hides '.$hidden.' of '.count($names).' datasets';
-	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.$missing;
+	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.zfsmDiagNamed($missing);
 	return $problems;
 }
 
@@ -115,23 +165,22 @@ function zfsmDiagRelease($manifest, $flash) {
 
 // The installed files against the package's manifest.md5 (pkg_build.sh writes it), and whether the scripts can still run.
 function zfsmDiagFileCheck($dir) {
-	$listed = zfsmDiagWhole('file_get_contents', $dir.'/manifest.md5');
-	if ($listed === false) {
-		$there = file_exists($dir.'/manifest.md5');
-		zfsmDiagFinding('manifest.md5 '.($there ? 'could not be read' : 'is missing').', so the installed files could not be checked against the release');
-		return 'manifest.md5: '.($there ? zfsmDiagUnread('unreadable') : 'not there')."\n";
+	$expected = zfsmDiagReleaseSums($dir);
+	if (!is_array($expected)) {
+		zfsmDiagFinding('manifest.md5 '.($expected === false ? 'could not be read' : 'is missing').', so the installed files could not be checked against the release');
+		return 'manifest.md5: '.($expected === false ? zfsmDiagUnread('unreadable') : 'not there')."\n";
 	}
 	$wrong = array('changed' => array(), 'missing' => array(), 'not in the release' => array(), 'not executable' => array(), 'unreadable' => array());
-	$expected = array();
-	foreach (preg_split('/\R/', $listed, -1, PREG_SPLIT_NO_EMPTY) as $line) {
-		list($md5, $file) = explode('  ', $line, 2) + array('', '');
-		$expected[$file] = true;
+	foreach ($expected as $file => $md5) {
 		// A file that can't be read is not one that differs.
 		if (!is_file($dir.'/'.$file)) $wrong['missing'][] = $file;
 		elseif (($sum = zfsmDiagWhole('md5_file', $dir.'/'.$file)) === false) $wrong['unreadable'][] = zfsmDiagUnread($file);
 		elseif ($sum !== $md5) $wrong['changed'][] = $file;
 	}
-	foreach (zfsmDiagFilesUnder($dir) as $file) if (!isset($expected[$file]) && $file !== 'manifest.md5') $wrong['not in the release'][] = $file;
+	$installed = zfsmDiagFilesUnder($dir);
+	// zfsmDiagRun notes the collector as failed.
+	if ($installed === null) throw new RuntimeException('the installed files could not all be listed in '.$dir);
+	foreach ($installed as $file) if (!isset($expected[$file]) && $file !== 'manifest.md5') $wrong['not in the release'][] = $file;
 	foreach (glob($dir.'/scripts/*') ?: array() as $script) if (!is_executable($script)) $wrong['not executable'][] = 'scripts/'.basename($script);
 	$text = 'files in the release: '.count($expected)."\n";
 	foreach ($wrong as $what => $files) {
@@ -141,12 +190,38 @@ function zfsmDiagFileCheck($dir) {
 	return $text;
 }
 
-// Every file under $dir, as a path from it.
+// Every file under $dir, as a path from it; null when $dir or a folder in it could not be listed, such as one removed during the walk.
 function zfsmDiagFilesUnder($dir) {
 	$files = array();
-	foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $entry) $files[] = substr($entry->getPathname(), strlen($dir) + 1);
+	try {
+		foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)) as $entry) $files[] = substr($entry->getPathname(), strlen($dir) + 1);
+	} catch (UnexpectedValueException $error) {
+		return null;
+	}
 	sort($files);
 	return $files;
+}
+
+// $dir/manifest.md5, which pkg_build.sh writes, as file => md5: null when it is not there, false when it could not be read.
+function zfsmDiagReleaseSums($dir) {
+	if (!file_exists($dir.'/manifest.md5')) return null;
+	$listed = zfsmDiagWhole('file_get_contents', $dir.'/manifest.md5');
+	if ($listed === false) return false;
+	$sums = array();
+	foreach (preg_split('/\R/', $listed, -1, PREG_SPLIT_NO_EMPTY) as $line) {
+		list($md5, $file) = explode('  ', $line, 2) + array('', '');
+		$sums[$file] = $md5;
+	}
+	return $sums;
+}
+
+// The plugin's own files there now: those its manifest.md5 lists, so a file the owner added is not one; with no manifest.md5
+// (a copy pkg_build.sh did not make), every file. null when they could not be read.
+function zfsmDiagPluginFiles() {
+	$dir = dirname(__DIR__);
+	$sums = zfsmDiagReleaseSums($dir);
+	if ($sums === null) return zfsmDiagFilesUnder($dir);
+	return $sums === false ? null : array_values(array_filter(array_keys($sums), function($file) use ($dir) { return is_file($dir.'/'.$file); }));
 }
 
 // Whether a crontab's lines hold the alert check as zfsmAlertCron writes it, not commented out: another of the plugin's jobs
@@ -214,13 +289,14 @@ function zfsmDiagHostKey($file) {
 	return zfsmHostKeyFingerprint($file) ?? 'not an ed25519 key';
 }
 
-// The datasets one level under the accepting one that the receiver refuses requests into, by its own rule (zfsmReplicaAreaHolds):
-// each is a sender's area and must hold every one of zfsmReplicaAreaProps. $output is the read of them, name, property, value.
-function zfsmDiagAreasRefused($output, $accept) {
+// The senders' areas the receiver refuses requests into, by its own rule (zfsmReplicaAreaHolds): <accept>/<sender> must hold every one
+// of zfsmReplicaAreaProps. Another dataset under the accepting one is no area. $output is the read of them, name, property, value.
+function zfsmDiagAreasRefused($output, $accept, $senders) {
+	$areas = array_map(function($sender) use ($accept) { return zfsmReplicaArea($accept, $sender); }, $senders);
 	$found = array();
 	foreach (zfsmImpactRows($output) as $row) {
 		$field = explode("\t", $row);
-		if (count($field) >= 3 && $field[0] !== $accept) $found[$field[0]][$field[1]] = $field[2];
+		if (count($field) >= 3 && in_array($field[0], $areas, true)) $found[$field[0]][$field[1]] = $field[2];
 	}
 	return array_keys(array_filter($found, function($props) { return array_diff_assoc(zfsmReplicaAreaProps(), $props) !== array(); }));
 }
@@ -229,18 +305,20 @@ function zfsmDiagAreasRefused($output, $accept) {
 // Each key's own text stays out.
 function zfsmDiagReplicaReceive($ctx) {
 	$accept = $ctx['cfg']['replica_accept'];
-	$text = 'accept replicas into: '.($accept !== '' ? $accept : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
+	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
+	$sender_keys = zfsmReplicaKeys($keys);
+	$text = 'accept replicas into: '.($accept !== '' ? zfsmDiagNamed($accept) : '(off)')."\n".'host key: '.zfsmDiagHostKey(zfsmStatePath('/etc/ssh/ssh_host_ed25519_key.pub'))."\n\n";
 	if ($accept !== '' && !zfsmReplicaAcceptValid($accept)) zfsmDiagFinding('Accept Replicas Into is not a dataset inside a pool, so nothing is accepted');
 	elseif ($accept !== '') {
 		$wanted = zfsmReplicaAreaProps();
 		$read = zfsmDiagPoolRead(explode('/', $accept)[0], 'zfs', array('get', '-H', '-d', '1', '-t', 'filesystem,volume', '-o', 'name,property,value,source', implode(',', array_keys($wanted)), $accept));
 		if ($read['code'] !== 0) zfsmDiagFinding('the dataset Accept Replicas Into names could not be read');
-		foreach (zfsmDiagAreasRefused($read['output'], $accept) as $area) zfsmDiagFinding('a dataset under Accept Replicas Into does not keep '.implodeWithKeys(', ', $wanted, '=').', so requests into it are refused: '.$area);
-		$text .= zfsmDiagShow('the accepting dataset and each sender\'s area (an area needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
+		foreach (zfsmDiagAreasRefused($read['output'], $accept, array_column($sender_keys, 'sender')) as $area) zfsmDiagFinding('a sender\'s area under Accept Replicas Into does not keep '.implodeWithKeys(', ', $wanted, '=').', so requests into it are refused: '.$area);
+		$text .= zfsmDiagShow('the accepting dataset and the datasets under it (a sender\'s area, named for the sender, needs '.implodeWithKeys(', ', $wanted, '=').')', $read);
 	}
-	$keys = zfsmStatePath('/boot/config/ssh/root/authorized_keys');
 	$senders = !file_exists($keys) ? '(the file is not there)' : (zfsmDiagWhole('file_get_contents', $keys) === false ? zfsmDiagUnread('(the file could not be read)') : '');
-	foreach (zfsmReplicaKeys($keys) as $key) {
+	foreach ($sender_keys as $key) {
+		array_map('zfsmDiagKnowWord', array($key['sender'], $key['comment']));
 		$checks = array('restrict' => $key['restrict'], 'from' => $key['from'], 'name' => zfsmReplicaSenderName($key['sender']));
 		$senders .= ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.implodeWithKeys(', ', array_map(function($held) { return $held ? 'ok' : 'NOT OK'; }, $checks))."\n";
 		if (!zfsmReplicaKeyHeld($key)) zfsmDiagFinding('a sender key\'s line does not hold it to replication: '.($key['sender'] !== '' ? $key['sender'] : '?'));
@@ -258,8 +336,8 @@ function zfsmDiagInventory($ctx) {
 		return 'skipped, because '.implode(', ', $hung).' timed out on a pool';
 	}
 	$inventory = zfsmReadInventory($ctx['cfg'], false);
-	// A pool that read failed on is in its answer, not thrown.
-	if (!empty($inventory['data']['errors'])) zfsmDiagUnread();
+	// A pool that read failed on is in its answer, not thrown; one whose devices could not be read has none (getZFSPoolDevices).
+	if (!empty($inventory['data']['errors']) || in_array('', $inventory['data']['devices'] ?? array(), true)) zfsmDiagUnread();
 	return zfsmJson($inventory, JSON_UNESCAPED_SLASHES);
 }
 
@@ -268,9 +346,15 @@ function zfsmDiagLog($ctx) {
 	$syslogs = glob(zfsmStatePath('/var/log/syslog').'.*') ?: array();
 	rsort($syslogs, SORT_NATURAL);
 	$syslogs[] = zfsmStatePath('/var/log/syslog');
-	return zfsmDiagSection(zfsmLogFile().'.1', zfsmDiagFile(zfsmLogFile().'.1'))
-		.zfsmDiagSection(zfsmLogFile(), zfsmDiagFile(zfsmLogFile()))
-		.zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), zfsmDiagPluginLines($syslogs, 5000));
+	$lines = zfsmDiagPluginLines($syslogs, 5000);
+	// A system log's line names the server after its time: "Jan  2 10:00:00 Tower ident[pid]: ...".
+	preg_match_all('/^[A-Z][a-z]{2} [ \d]\d \d\d:\d\d:\d\d (\S+) /m', $lines, $hosts);
+	array_map('zfsmDiagKnowServer', array_unique($hosts[1]));
+	// One read of each log, for what is learned from it and what is shown: a line written in between is in both or in neither.
+	$older = zfsmDiagFile(zfsmLogFile().'.1');
+	$newer = zfsmDiagFile(zfsmLogFile());
+	zfsmDiagLearnPools($older.$newer.$lines);
+	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines);
 }
 
 function zfsmDiagPhpErrors($ctx) {
@@ -284,16 +368,18 @@ function zfsmDiagIniValue($ini, $key) {
 	return is_array($ini) ? (string)($ini[$key] ?? 'not in the file') : zfsmDiagUnread('not read');
 }
 
-// What the plugin reads of Unraid: its version, the array's state, the display settings, the ZFS pools Unraid expects, the other plugins.
+// What the plugin reads of Unraid: its version, the array's state, the display settings it uses, the ZFS pools Unraid expects, the other plugins.
 function zfsmDiagUnraid($ctx) {
 	$version = zfsmDiagIniValue(zfsmDiagWhole('parse_ini_file', zfsmStatePath('/etc/unraid-version')), 'version');
 	$var = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/var.ini'));
 	$disks = zfsmDiagWhole('parse_ini_file', zfsmStatePath('/var/local/emhttp/disks.ini'), true);
 	$display = function_exists('parse_plugin_cfg') ? (parse_plugin_cfg('dynamix', true)['display'] ?? array()) : array();
+	if (is_array($var)) zfsmDiagKnowServer($var['NAME'] ?? '');
 	zfsmDiagFact('Unraid', $version);
 	zfsmDiagFact('PHP', PHP_VERSION);
 	$pools = array();
 	foreach (is_array($disks) ? $disks : array() as $disk) {
+		if (zfsmExpectedPools(array($disk))) zfsmDiagKnowPool($disk['name'] ?? '');
 		if (zfsmExpectedPools(array($disk))) $pools[] = implodeWithKeys(' ', array_intersect_key($disk, array_flip(array('name', 'type', 'fsType', 'fsStatus', 'status', 'luksState'))), '=');
 	}
 	$plugins = array();
@@ -303,7 +389,19 @@ function zfsmDiagUnraid($ctx) {
 	return 'Unraid: '.$version."\n".'PHP: '.PHP_VERSION."\n"
 		.'array: mdState='.zfsmDiagIniValue($var, 'mdState').', fsState='.zfsmDiagIniValue($var, 'fsState')."\n"
 		.'publishing paused: '.(is_file(zfsmStatePath('/tmp/publishPaused')) ? 'yes' : 'no')."\n\n"
-		.zfsmDiagSection('display settings', implodeWithKeys("\n", array_filter($display, 'is_scalar'), '='))
+		.zfsmDiagSection('display settings the plugin uses', zfsmDiagDisplay($display))
 		.zfsmDiagSection('ZFS pools and disks Unraid lists', is_array($disks) ? implode("\n", $pools) : zfsmDiagUnread('(disks.ini could not be read)'))
 		.zfsmDiagSection('installed plugins', implode("\n", $plugins));
+}
+
+// The display settings the plugin reads, each value shown only in the shape Unraid's own choices take: another may be written by hand.
+function zfsmDiagDisplay($display) {
+	$shapes = array('date' => '~^(?:%[A-Za-z]|[ ,./-])*$~D', 'time' => '~^(?:%[A-Za-z]|[ :])*$~D', 'number' => '~^[., ]{1,2}$~D', 'scale' => '~^-?\d$~D',
+		'theme' => '~^(?:black|white|azure|gray)$~D');
+	$rows = array();
+	foreach ($shapes as $key => $shape) {
+		$value = $display[$key] ?? null;
+		$rows[] = $key.'='.(!is_scalar($value) ? '(not set)' : (preg_match($shape, (string)$value) === 1 ? $value : '(not shown: not in the shape of Unraid\'s choices)'));
+	}
+	return implode("\n", $rows);
 }

@@ -233,8 +233,8 @@ $found = array_filter($users, function($user) use ($status) { return strpos($use
 same(1, count($found), 'the process using the mount is named: '.json_encode($users));
 same(false, strpos(implode(' ', $users), '<'), 'a file name cannot put markup in the report: '.json_encode($users));
 
-// Writes under /mnt/user, so only on the empty tmpfs the runner mounts there.
-same(1, preg_match('~^\S+ \S+ \S+ \S+ /mnt/user \S+.* - tmpfs ~m', (string)@file_get_contents('/proc/self/mountinfo')), '/mnt/user must be a scratch tmpfs before this test writes to it');
+// Writes under /mnt/user, which on an Unraid server holds the user shares.
+zfsmTestScratch('/mnt/user');
 mkdir('/mnt/user/zfsm-share/inner', 0777, true);
 env(array('ZFSM_TEST_USERS_MOUNT' => '/mnt/zfsm-pool/zfsm-share'));
 $through = proc_open(array('sleep', '20'), array(), $pipes, '/mnt/user/zfsm-share/inner');

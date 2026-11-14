@@ -6,7 +6,7 @@ set -u
 if [ -e /etc/unraid-version ] || [ -d /boot/config ]; then echo 'Refusing to run on an Unraid system' >&2; exit 2; fi
 web=$(cd "$1" && pwd); version=$2; repo=$(pwd)
 fail() { echo "FAILED [$version]: $*"; exit 1; }
-command -v xz >/dev/null || { apt-get update -qq && apt-get install -y -qq xz-utils >/dev/null; } || fail 'xz unavailable'
+command -v xz >/dev/null && command -v zip >/dev/null && command -v unzip >/dev/null || sh "$repo/tests/ci_apt.sh" xz-utils zip unzip || fail 'xz, zip or unzip unavailable'
 
 docroot=/usr/local/emhttp
 flash=/boot/config/plugins/zfs.master
@@ -140,4 +140,20 @@ grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php che
 printf '[general]\nalert_interval="0"\n' > "$flash/zfs.master.cfg"
 "$live/scripts/alerts.php" schedule && [ ! -e "$flash/alerts.cron" ] || fail 'alert schedule left behind when turned off'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
-echo "Unraid $version: installer, CSRF, backend and pages passed"
+# Diagnostics from the package. This version's own diagnostics script can't run to its end here (it reads Unraid's state and
+# runs its tools), so a stand-in holds the script's own line that names its zip: the plugin must find that zip and pack it as it is.
+unraid_script=$docroot/webGui/scripts/diagnostics
+[ -x "$unraid_script" ] || fail "this version's diagnostics script is not where the plugin runs it"
+grep -q '$zip = "/boot/logs/$diag.zip";' "$unraid_script" || fail "this version's diagnostics script does not write its zip to /boot/logs"
+names_zip=$(grep "ZIP file '\$zip' created" "$unraid_script") || fail "this version's diagnostics script names its zip in another way"
+cp -p "$unraid_script" "$work/unraid-diagnostics"
+printf '#!/usr/bin/php -q\n<?php\n$zip = "/boot/logs/tower-diagnostics-20260102-1000.zip";\nfile_put_contents($zip, "Unraid made this");\n%s\n' "$names_zip" > "$unraid_script"
+rm -rf /boot/logs; mkdir -p /boot/logs
+"$live/scripts/diagnostics.php" > "$work/diagnostics.log" 2>&1 || { cat "$work/diagnostics.log"; fail 'the diagnostics script failed'; }
+cp -p "$work/unraid-diagnostics" "$unraid_script"
+made=$(sed -n 's/^Diagnostics zip: //p' "$work/diagnostics.log")
+[ -f "$made" ] || { cat "$work/diagnostics.log"; fail 'the diagnostics script named no zip'; }
+unzip -q "$made" -d "$work/diagnostics" || fail 'the diagnostics zip does not unpack'
+[ "$(cat "$work/diagnostics/unraid/tower-diagnostics-20260102-1000.zip" 2>/dev/null)" = 'Unraid made this' ] || { cat "$work/diagnostics/unraid/diagnostics.txt"; fail "Unraid's zip is not in the plugin's zip as Unraid made it"; }
+[ "$(ls /boot/logs)" = "$(basename "$made")" ] || fail "something beside the plugin's zip is left in /boot/logs: $(ls /boot/logs)"
+echo "Unraid $version: installer, CSRF, backend, pages and diagnostics passed"

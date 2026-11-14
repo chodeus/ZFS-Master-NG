@@ -287,10 +287,17 @@ if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@" && contain
 	exit 0
 fi
 
-if [ "$1" = "get" ] && contains_arg 'name,property,value,source' "$@"; then
+# Diagnostics reads these twice: with every column, and with name,property alone to know where each row starts.
+if [ "$1" = "get" ] && { contains_arg 'name,property,value,source' "$@" || contains_arg 'name,property' "$@"; }; then
 	[ "${ZFSM_TEST_PROPERTIES_FAIL:-0}" = 1 ] && { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
-	printf 'tank\torg.example:role\tstorage\tlocal\n'
-	printf 'tank/data\torg.example:role\tmedia\tlocal\n'
+	# ZFSM_TEST_GET_PART=values|heads: that read prints a row, then fails at a dataset it can't read.
+	part=values; contains_arg 'name,property,value,source' "$@" || part=heads
+	if [ "${ZFSM_TEST_GET_PART:-}" = "$part" ]; then
+		printf 'tank/data\torg.example:canarypart\tCanary Part Value\tlocal\n' | if [ "$part" = heads ]; then cut -f1,2; else cat; fi
+		printf "cannot get property for 'tank/data/CanaryGone': Input/output error\n" >&2
+		exit 1
+	fi
+	printf 'tank\torg.example:role\tstorage\tlocal\ntank/data\torg.example:role\tmedia\tlocal\n' | if contains_arg 'name,property' "$@"; then cut -f1,2; else cat; fi
 	exit 0
 fi
 

@@ -39,6 +39,14 @@ reviews:
         - Escape anything echoed into HTML or inline script. Config is saved to `/boot`, so saved values from older versions must keep working.
         - File names, ZFS user properties and anything from another server may not be valid UTF-8. htmlspecialchars() needs ENT_SUBSTITUTE, or it returns '' and the text disappears. json_encode() needs JSON_INVALID_UTF8_SUBSTITUTE, or its false result must be handled; never echo, publish or hash a json_encode() that can fail.
         - Every `zfs receive` takes `-s -u -o readonly=on` and never `-F`. A copy of a volume must not appear as a block device (volmode=none).
+    - path: "zfs.master/{include/ZFSMDiag*.php,scripts/diagnostics.php}"
+      instructions: |
+        Diagnostics: a zip the owner may post in a public issue. Its privacy scope is fixed; report gaps inside it and nothing past it.
+        - Report only what can happen on a real install of a supported Unraid: 6.9.2 to current 7.x, or Unraid 8, which moves to a Fedora base (Universal Blue's uCore) with a new plugin SDK. What that Fedora system does by itself (journald, SELinux, systemd) counts as real. Each finding must say how it comes about: what the owner does in Unraid's pages, in the plugin's pages, or with a tool owners commonly run (User Scripts, znapzend, sanoid or syncoid), and what then lands in the zip.
+        - Not real here, do not report: a file added to or edited in the plugin's folder by hand (on 6.9.2 to 7.x Unraid rebuilds it from the package at every boot); a system or Unraid file edited by hand; a setting set to a value no Unraid or plugin page offers; a command typed in an unusual form at the moment diagnostics run; a test run outside tests/run_http_inventory_tests.sh.
+        - In scope: every name of the owner's that ZFS, the kernel or Unraid writes (a dataset, snapshot, bookmark, folder, host, user, address, key comment, or a value the owner wrote), in any file the plugin writes, is a token; a pool's name stays. A file of the run that could not be written, or read back and searched for names, stops the zip. A source the run could not read is reported in the zip as "read failed" (collectors.txt and the summary) and does not stop it: diagnostics are most needed when something can't be read.
+        - Out of scope, do not report: a name holding a control character (tab, line feed, carriage return or another); a name spelled like a word the plugin itself uses, or a number, where it is neither a known name nor in a path; a pool that is neither imported nor listed by Unraid; the installed plugins' names and versions, which their authors publish and the zip lists by design; Unraid's own diagnostics zip, packed as Unraid made it by design.
+        - All else in these files (failure paths, races, the zip's retention and removals, comments against code) is reviewed as usual.
     - path: "zfs.master/{scripts/replica-serve.php,include/ZFSMReplicaServe.php}"
       instructions: |
         Reached by another server's SSH key (authorized_keys `command=`) and run as root. Treat everything from that server as hostile: SSH_ORIGINAL_COMMAND, the script's arguments, and the stream on stdin.
@@ -59,6 +67,7 @@ reviews:
     - path: "tests/**"
       instructions: |
         Tests use fake zfs and zpool binaries and must never run real ZFS commands. Flag a test that stubs the code it claims to check. Tests also run on PHP 7.4.
+        Tests run only through tests/run_http_inventory_tests.sh (CI runs it via tests/ci_php.sh), which mounts the host folders they write over; do not report what a test would do when run outside it.
     - path: ".github/workflows/**"
       instructions: |
         Pin third-party actions by commit SHA. Least-privilege permissions. Untrusted PR data must not reach `run:` via `${{ }}` interpolation.
