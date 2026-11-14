@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- New Diagnostics section in Settings: Generate makes a zip for bug reports
+- Dataset, snapshot and folder names in the zip become tokens; pool names stay
+- Unraid's own diagnostics can go in the zip too, as Unraid made them
+- The newest three zips are kept in /boot/logs
+- If the page won't load, run the diagnostics script in a terminal
+- New Debug Log setting logs every command the plugin runs and how it ended
+- Settings shows the installed plugin version at the top
+- On phones, a section's last setting no longer sits on its border
+
 ## 2026.11.11.3 (beta)
 
 - Table text wraps instead of being cut off (Health, long pool names, errors)
