@@ -26,5 +26,7 @@ else
 fi
 # A receive whose connection drops part-way: ssh riding the connection exits 255 and says nothing, as OpenSSH 10's does.
 case "${ZFSM_TEST_SSH_DROP:-}:$last" in ?*:'zfsm-replica 1 receive '*) head -c "$ZFSM_TEST_SSH_DROP" > /dev/null; exit 255 ;; esac
+# A receive that ends there, its exit status lost as the connection drops just after.
+case "${ZFSM_TEST_SSH_LOST:-}:$last" in ?*:'zfsm-replica 1 receive '*) SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"; exit 255 ;; esac
 [ -n "${ZFSM_TEST_SSH_FLOOD:-}" ] && { head -c "$ZFSM_TEST_SSH_FLOOD" /dev/zero | tr "\000" x; exit 0; }
 SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"

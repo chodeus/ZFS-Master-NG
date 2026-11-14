@@ -12,7 +12,8 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '') {
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}
-	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
+	// A server's failure names it as a run's does (zfsmDiagLearnPools): by the time diagnostics are made it may be gone from remotes.json.
+	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $server === '' ? $plan['error'] : 'Replication to '.zfsmReplicaTargetWhere(array('server' => $server), $zdest).' not started: '.$plan['error']);
 	$resume = $plan['mode'] === 'resume';
 	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
 	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server);
@@ -25,7 +26,7 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '') {
 }
 
 // Runs zfs send into the target's receive (zfsmReplicaTargetReceive), the stream passing straight between them; reports the bytes
-// sent and keeps each side's first errors.
+// sent, the first error that says why, and 'lost' when the connection there ended it (zfsmReplicaTargetLost).
 function zfsmReplicateStream($plan, $zdataset, $target) {
 	$zfs = zfsmCommandPath('zfs');
 	if ($zfs === null) return array('code' => 127, 'bytes' => 0, 'errors' => 'zfs must come from ZFSM_TEST_BIN_DIR in a test');
@@ -86,8 +87,9 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 	// The reason: ssh's own failure (zfsmReplicaTargetLost), else receive's unless only that, else send's; its first line only.
 	$receive_failed = $receive_code !== 0 && trim($errors['receive']) !== '' && preg_match('/failed to read from stream|incomplete stream|^Not a send stream$/im', $errors['receive']) !== 1;
 	$send_failed = $send_code !== 0 && trim($errors['send']) !== '' && stripos($errors['send'], 'broken pipe') === false;
-	$why = zfsmReplicaTargetLost($target, $receive_code, $errors['receive']) ?? ($receive_failed || (!$send_failed && $receive_code !== 0) ? $errors['receive'] : $errors['send']);
-	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")));
+	$lost = zfsmReplicaTargetLost($target, $receive_code, $errors['receive']);
+	$why = $lost ?? ($receive_failed || (!$send_failed && $receive_code !== 0) ? $errors['receive'] : $errors['send']);
+	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")), 'lost' => $lost !== null);
 }
 
 // After a run: this destination's bookmark at the snapshot it now holds, and its older ones removed. Returns what went wrong, or ''.
@@ -152,8 +154,10 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			list($token) = zfsmReplicaTargetToken($target, $plan['dest']);
 			$then = $token === '' ? '.' : '. Replicate it again to carry on from where it stopped.';
 			if ($token === null) $then = '. Whether it can carry on could not be read'.($take ? '; the snapshot it took is kept.' : '.');
-			// Only a copy read as holding no token frees the snapshot this run took.
-			if ($take && $token === '') runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
+			// Only a copy read as holding no token, after a failure the other end saw, frees the snapshot this run took.
+			$lost = $result['lost'] ?? false;
+			if ($take && $token === '' && $lost) $then = '; the copy there may hold it already, so the snapshot it took is kept.';
+			if ($take && $token === '' && !$lost) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
 			zfsmLog('Replication of '.$what.$how.' failed: '.$why);
 			zfsnotify($title, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, '', 'warning');
 			return 1;

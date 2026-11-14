@@ -390,8 +390,23 @@ same('ssh timed out before it started', $timed_out(function() { zfsmReplicaTarge
 same(array(), $left(), 'with the key\'s RAM copy already gone');
 $target = zfsmReplicaTargetOpen('nas');
 same(array('no throw', array()), array($timed_out(function() use ($target) { zfsmReplicaDisconnect($target); }), $left()), 'ending one past the limit keeps what was read, and its key files go');
-$ssh();
+same(true, in_array('connection ends', $ssh(), true), 'and the connection ends all the same, as one whose command hangs there would outlive ControlPersist');
 same(array(), $left(), 'every connection\'s key files are gone');
+same(array('tank/data' => 'Replication to data on server gone not started: No server here is named gone'), zfsmStartReplicate('tank/data', 'e', 'data', $cfg, 'gone')['failed'], 'a start that fails names its server as a run does');
+
+// A connection lost just as the receive ends there: the copy may hold the snapshot the run took, so the run keeps it as the next one's base.
+$reset();
+putenv('ZFSM_TEST_SSH_LOST=1');
+same(1, zfsmRunReplicate('tank/data', 'f', 'data', null, true, 'nas'), 'a run whose end there is lost');
+putenv('ZFSM_TEST_SSH_LOST');
+same(array(true, true), array(in_array('backup/replicas/tower/data@f', $names('backup/replicas/tower/data', 'snapshot'), true), in_array('tank/data@f', $names('tank/data', 'snapshot'), true)), 'the copy holds the snapshot it took, and so does the dataset');
+same(true, strpos($read('notify-detail.log')[0] ?? '', 'failed: The connection to nas dropped; the copy there may hold it already, so the snapshot it took is kept.') !== false, 'says so: '.($read('notify-detail.log')[0] ?? ''));
+runProcess('zfs', array('snapshot', 'tank/data@g'));
+$target = zfsmReplicaTargetOpen('nas');
+$plan = zfsmReplicatePlan('tank/data', 'g', 'data', array('target' => $target, 'estimate' => false));
+zfsmReplicaDisconnect($target);
+same(array('incremental', 'tank/data@f'), array($plan['mode'] ?? $plan['error'], $plan['base'] ?? null), 'and the next run there is incremental from it');
+$ssh();
 
 // A start in the background passes the server to the job, with a snapshot it takes or one picked. The job finds the key, the
 // servers and this server's name where Unraid keeps them: here the tmpfs run_http_inventory_tests.sh mounts on /boot/config.

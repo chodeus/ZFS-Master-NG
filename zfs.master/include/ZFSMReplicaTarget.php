@@ -155,9 +155,10 @@ function zfsmReplicaConnect($remote) {
 function zfsmReplicaDisconnect($link) {
 	if (!isset($link['files'])) return;
 	try {
-		if (file_exists($link['files']['control'])) runProcess('ssh', array('-F', 'none', '-o', 'ControlPath='.$link['files']['control'], '-O', 'exit', '--', $link['remote']['host']));
-	} catch (ZFSMTimeout $timeout) {
-		// Past the dialog's read limit ssh can't start: the connection ends itself (ControlPersist), and what was read still holds.
+		// Past the dialog's read limit too: a connection whose command hangs there outlives ControlPersist.
+		if (file_exists($link['files']['control'])) zfsmWithoutDeadline(function() use ($link) {
+			runProcess('ssh', array('-F', 'none', '-o', 'ControlPath='.$link['files']['control'], '-O', 'exit', '--', $link['remote']['host']));
+		});
 	} finally {
 		zfsmReplicaSshCleanup($link['files']);
 	}

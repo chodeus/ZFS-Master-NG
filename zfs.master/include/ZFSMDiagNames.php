@@ -76,7 +76,9 @@ function zfsmDiagLearnPools($log, $debug) {
 		array_map($proves ? 'zfsmDiagKnowPool' : 'zfsmDiagKnowRoot', $found[0]);
 		// A copy on another server names it so (zfsmReplicaTargetWhere): one removed from remotes.json since is known by that.
 		preg_match_all('~ on server \K[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}?(?=[.:,;]?(?:\s|$))~', $line, $servers);
-		array_map('zfsmDiagKnowWord', $servers[0]);
+		// And a key line made before a rename names this server's old name (zfsmReplicaConnect).
+		preg_match_all('~The key line on \S+ is for \K[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}?(?=, but this server is )~', $line, $old);
+		array_map('zfsmDiagKnowWord', array_merge($servers[0], $old[0]));
 	}
 	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
 	preg_match_all('~(?<!\S)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $commands[0]), $named);
