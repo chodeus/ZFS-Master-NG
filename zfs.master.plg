@@ -6,13 +6,23 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.11.3">
-<!ENTITY md5 "1b3657193a0952c6a1f1099836f554d2">
+<!ENTITY version "2026.11.14.1">
+<!ENTITY md5 "102d4750b07b0b538e5c6b695aa3b208">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.14.1
+- New Diagnostics section in Settings: Generate makes a zip for bug reports
+- Dataset, snapshot and folder names in the zip become tokens; pool names stay
+- Unraid's own diagnostics can go in the zip too, as Unraid made them
+- The newest three zips are kept in /boot/logs
+- If the page won't load, run the diagnostics script in a terminal
+- New Debug Log setting logs every command the plugin runs and how it ended
+- Settings shows the installed plugin version at the top
+- On phones, a section's last setting no longer sits on its border
 
 ###2026.11.11.3
 - Table text wraps instead of being cut off (Health, long pool names, errors)

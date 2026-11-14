@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.14.1 (beta)
 
 - New Diagnostics section in Settings: Generate makes a zip for bug reports
 - Dataset, snapshot and folder names in the zip become tokens; pool names stay
