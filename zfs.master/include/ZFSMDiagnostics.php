@@ -124,7 +124,7 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 
 // One screen: the versions and counts the collectors noted, then what they found wrong.
 function zfsmDiagSummary() {
-	$text = 'ZFS Master NG diagnostics, '.date('Y-m-d H:i:s T')."\n\n";
+	$text = 'ZFS Master NG diagnostics, '.date('Y-m-d H:i:s P')."\n\n";
 	foreach ($GLOBALS['zfsm_diag']['facts'] as $name => $value) $text .= $name.': '.$value."\n";
 	$findings = $GLOBALS['zfsm_diag']['findings'];
 	$text .= "\nFINDINGS (".count($findings).")\n";

@@ -626,7 +626,8 @@ $run = function($options, $arguments = '', $at = null) use ($docroot) {
 	exec('ZFSM_TEST_DOCROOT='.escapeshellarg($at).' ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($at.'/plugins/zfs.master/scripts/diagnostics.php').' '.$arguments.' 2>&1', $printed, $code);
 	return array($code, implode("\n", $printed));
 };
-list($code, $printed) = $run('');
+// A server's time zone, as Unraid's PHP sets it.
+list($code, $printed) = $run('-ddate.timezone=Australia/Perth');
 same(array(0, false), array($code, stripos($printed, 'canary')), 'the script ends well and prints no name: '.$printed);
 has("zfs/timings.txt\tok\t", $printed, 'it prints each file\'s result');
 has("\nFINDINGS (", $printed, 'the summary');
@@ -635,6 +636,10 @@ $made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-script').' 2>&1', $unzipped, $code);
 same(array(0, array(), true), array($code, $leaks($ours($work.'/from-script')), is_file($work.'/from-script/unraid/canarytower-diagnostics-20260102-1000.zip')), 'the script\'s zip unpacks, holds no name, and has Unraid\'s zip: '.implode(' ', $unzipped));
 has('Rewrite of tank/name-', file_get_contents($work.'/from-script/plugin/log.txt'), 'the system log\'s lines are in it, rewritten');
+$script_summary = file_get_contents($work.'/from-script/summary.txt');
+same(false, strpos($script_summary, 'lock is held'), 'the run\'s own lock is no finding: '.$script_summary);
+same(1, preg_match('~^ZFS Master NG diagnostics, \d{4}-\d\d-\d\d \d\d:\d\d:\d\d \+08:00\n~', $script_summary), 'the summary\'s time keeps its zone: '.$script_summary);
+has("/diagnostics/run.lock: held (this run)\n", file_get_contents($work.'/from-script/plugin/jobs.txt'), 'the run\'s lock is held, by the run');
 same(array(1, $debug_line), array(preg_match('~ s: zfs destroy -r gonepool/name-[0-9a-f]{8}$~m', file_get_contents($work.'/from-script/plugin/log.txt')), file_get_contents('/var/log/zfs.master.debug.log')),
 	'a pool a debug line names is learned, so all its dataset\'s name is a token; and the run wrote no debug line of its own');
 has("== display settings the plugin uses\ndate=%A, %d.%m.%Y\ntime=(not shown: not in the shape of Unraid's choices)\nnumber=, \nscale=(not set)\ntheme=(not shown: not in the shape of Unraid's choices)\n\n",
