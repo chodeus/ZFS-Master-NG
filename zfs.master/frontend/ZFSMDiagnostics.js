@@ -86,8 +86,8 @@ function createZFSMDiagnostics(options) {
 		pending.fail(function(xhr) { if (ticket === asked) fail(xhr); });
 	}
 
-	// While a run goes, a poll the server did not answer is asked again, three times, before the run is called failed. With no run
-	// going, only the state could not be read.
+	// While a run goes, a poll the server did not answer is asked again, three times, before the run's state is called not known.
+	// With no run going, only the state could not be read.
 	function poll() {
 		ask({cmd: 'diagnosticsstatus'}, function(answer) {
 			lost = 0;
