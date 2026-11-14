@@ -9,11 +9,11 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
-// This test's script runs write zips into /boot/logs: only on the tmpfs the runner mounts there (tests/run_http_inventory_tests.sh),
-// and only while it is empty, so nothing there is another's. The test removes the zips it made, by their names.
-$own_logs = preg_match('~^\S+ \S+ \S+ \S+ /boot/logs \S+(?: \S+)* - tmpfs ~m', (string)@file_get_contents('/proc/self/mountinfo')) === 1;
-if (is_file('/etc/unraid-version') || !$own_logs || array_diff(scandir('/boot/logs'), array('.', '..'))) {
-	fwrite(STDERR, "FAILED: /boot/logs must be an empty tmpfs mounted for this test\n");
+// This test's script runs write zips into /boot/logs, and only while it is empty, so nothing there is another's. The test removes the
+// zips it made, by their names.
+zfsmTestScratch('/boot/logs');
+if (array_diff(scandir('/boot/logs'), array('.', '..'))) {
+	fwrite(STDERR, "FAILED: /boot/logs must be empty\n");
 	exit(1);
 }
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
@@ -33,7 +33,8 @@ function has($needle, $text, $message) {
 	exit(1);
 }
 
-$work = sys_get_temp_dir().'/zfsm-bundle-test-'.getmypid().'-'.bin2hex(random_bytes(4));
+// Words and digits only: the second net keeps the plugin's own paths under it as they are on a server.
+$work = sys_get_temp_dir().'/zfsm-test-'.getmypid().'-'.random_int(100000, 999999);
 $root = $work.'/root';
 mkdir($work.'/bin', 0700, true);
 $made = array('/boot/logs/canarytower-diagnostics-20260102-1000.zip');
@@ -57,7 +58,7 @@ $GLOBALS['zfsm_uptime'] = $work.'/uptime';
 file_put_contents($work.'/uptime', "864000.00 800000.00\n");
 // A resume token as zfs writes one: anyone can ask zfs which snapshot it names.
 $resume = '1-c740b4779-118-789c636064000310a500c4ec50360710e72765a52697303030419460caa7a515a79680647ce0f26c48f2499525a9c5405ac3c9fabfe92fcf4d2cc140cbbd9a5c0e4b1ca4e';
-file_put_contents($work.'/ps.txt', "4242 30 zfs send -R tank/CanaryDs One@Canary Daily failed copy\n4243 5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/CanaryDs One\n4244 9 rsync -a /mnt/tank/CanaryDs One/CanaryRsync/ /mnt/x\n4245 3 zfs send -P -v -t $resume\n");
+file_put_contents($work.'/ps.txt', "4242 30 zfs send -R tank/CanaryDs One@Canary Daily failed copy\n4243 5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/CanaryDs One\n4244 9 rsync -a /mnt/tank/CanaryDs One/CanaryRsync/ /mnt/x\n4245 3 zfs send -P -v -t $resume\n4246 3 zfs send -vt $resume\n4247 3 zfs send -t$resume\n4248 3 zfs send -Pvt$resume\n");
 
 $put = function($path, $text) use ($root) {
 	if (!is_dir(dirname($root.$path))) mkdir(dirname($root.$path), 0755, true);
@@ -107,7 +108,9 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $log_lin
 	$put('/etc/ssh/ssh_host_ed25519_key.pub', 'ssh-ed25519 '.base64_encode(str_repeat('k', 51))." root@CanaryTower\n");
 	$put('/etc/unraid-version', "version=\"7.4.0\"\n");
 	$put('/proc/self/mounts', "tank /mnt/tank zfs rw 0 0\n");
-	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n106 1 0:49 / /var/run/zfs.master.rewrite\\040CanaryRunMount rw shared:54 - zfs tank/CanaryRunMount rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n");
+	$put('/proc/self/mountinfo', "102 1 0:45 / /mnt/tank rw shared:50 - zfs tank rw\n106 1 0:49 / /var/run/zfs.master.rewrite\\040CanaryRunMount rw shared:54 - zfs tank/CanaryRunMount rw\n104 102 0:47 / /mnt/tank/Canary\\040Mount rw shared:52 - zfs tank/Canary\\040Mount rw\n105 1 0:48 / /mnt/mountedpool/CanaryMounted rw shared:53 - zfs mountedpool/CanaryMounted rw\n"
+		// The kernel writes a carriage return in a path as it is.
+		."107 102 0:50 / /mnt/tank/CanaryCR\rCanaryTail rw shared:56 - zfs tank/CanaryCR rw\n");
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"CanaryNas\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
@@ -141,7 +144,7 @@ $leaks = function($files) {
 // The zip: no private thing in the plugin's files, and each kind of thing stands as its token.
 list($zip, $why, $out) = $bundle('full');
 same(1, preg_match('~^'.preg_quote($root, '~').'/boot/logs/zfs\.master-diagnostics-\d{8}-\d{6}\.zip$~D', (string)$zip), 'the zip is in /boot/logs under the plugin\'s name: '.$zip.$why);
-same(array(), glob($root.'/boot/logs/*.part'), 'and nothing of its packing is left beside it');
+same(array(array(), ''), array(glob($root.'/boot/logs/*.part'), $why), 'and nothing of its packing is left beside it, with nothing left undone to say');
 $files = $ours($out);
 same(array(), $leaks($files), 'no name, address, host or key is in the plugin\'s files');
 foreach (array_merge(array_column(zfsmDiagCollectors(), 0), array('names.txt', 'README.txt', 'summary.txt', 'collectors.txt')) as $file) same(true, isset($files[$file]), $file.' is in the zip');
@@ -204,7 +207,9 @@ has('request: "POST /plugins/zfs.master/backend/ZFSMAdmin.php?(left out) HTTP/1.
 has('scandir(/mnt/tank/'.$ds.'/'.$token("Canary\tprivate): Failed to open directory").' in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9'."\n", $files['plugin/php-errors.txt'], 'in running text a tab is part of a folder\'s name: only the line\'s end ends its path');
 has('scandir(/mnt/tank/'.$ds.'/'.$token('Canary\'s Stuff): Failed to open directory').' in /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php on line 9'."\n", $files['plugin/php-errors.txt'], 'a folder in a PHP error is replaced, and where PHP raised it stays');
 has("4242\t30\tzfs send -R tank/$ds@".$token('Canary Daily failed copy')."\n", $files['zfs/processes.txt'], 'a running command\'s dataset and snapshot are tokens, a known snapshot whole');
-has("4245\t3\tzfs send -P -v -t (a resume token, left out)\n", $files['zfs/processes.txt'], 'and its resume token is left out');
+same(array(), preg_grep('~'.explode('-', $resume)[3].'~', explode("\n", $files['zfs/processes.txt'])), 'no resume token is in the process list');
+has("4245\t3\tzfs send -P -v -t (a resume token, left out)\n4246\t3\tzfs send -".$token('vt')." (a resume token, left out)\n4247\t3\tzfs send -t(a resume token, left out)\n"
+	."4248\t3\tzfs send -".$token('Pvt')."(a resume token, left out)\n", $files['zfs/processes.txt'], 'and its resume token is left out, after -t in every form');
 has("zfs/timings.txt\tok\t", $files['collectors.txt'], 'the files\' own names stay');
 has("names.txt       each token in these files", $files['README.txt'], 'README.txt says what names.txt is');
 // Unraid's own zip: as Unraid made it, and moved, so it is not left on the flash drive as well.
@@ -220,9 +225,35 @@ mkdir($work.'/readme');
 zfsmDiagWrite($work.'/readme', 'README.txt', zfsmDiagReadme());
 same(array(true, zfsmDiagReadme()), array(zfsmDiagAnonymizeDir($work.'/readme'), file_get_contents($work.'/readme/README.txt')), 'README.txt, which holds no name, is written again after the rewrite: its "zfs/" is not that pool');
 // What is no address, host or path stays as it is.
-$plain = "feature@async_destroy\tenabled\nscan: scrub repaired 0B in 00:01:02 on 2026.11.11.3; ZFSMOperations::run v1.2.3.4 300.1.2.3\n7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\nhttps://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg\n";
+$plain = "feature@async_destroy\tenabled\nscan: scrub repaired 0B in 00:01:02 on 2026.11.11.3; ZFSMOperations::run v1.2.3.4 300.1.2.3\n/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\nhttps://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg\n";
 same($plain, zfsmDiagAnonText($plain), 'a pool feature, a time, a version, a class, a system path and a link are left alone');
-same('/dev/zvol/zfs/'.zfsmDiagToken('vm')."\n/dev/sdb1", zfsmDiagAnonText("/dev/zvol/zfs/vm\n/dev/sdb1"), 'a volume\'s device names its dataset; a disk\'s does not');
+$cron = "7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null\n";
+same($cron, zfsmDiagAnonRunning($cron), 'and a command line in running text keeps its system paths: in a field, a system path takes the whole field');
+same('/dev/zvol/zfs/'.zfsmDiagToken('vm')."\n/dev/null", zfsmDiagAnonText("/dev/zvol/zfs/vm\n/dev/null"), 'a volume\'s device names its dataset; /dev/null does not');
+// Under a system folder the system's and the plugin's own paths stay; any other name is a token, a word or a number too, as a dataset can be mounted there.
+same(array('/usr/local/'.zfsmDiagToken('ClientA')."\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/".zfsmDiagToken('ClientB').'/'.zfsmDiagToken('root').'@'.zfsmDiagToken('10.0.0.5')."\t/dev/".zfsmDiagToken('ClientC')."\t/usr/local/".zfsmDiagToken('SHA256:ClientE'),
+		'tank/'.zfsmDiagToken('a')."\tmountpoint\t/usr/local/".zfsmDiagToken('client')."\tlocal\ntank/".zfsmDiagToken('b')."\tmountpoint\t/usr/local/".zfsmDiagToken('12345')."\tlocal\n/usr/bin/".zfsmDiagToken('client')."\t/proc/self/mountinfo\t/usr/local/emhttp/plugins/zfs.master/".zfsmDiagToken('client'),
+		'{"m":"/usr/local/'.zfsmDiagToken('Client A').'","n":"/usr/local/'.zfsmDiagToken('12345').'"}', '/usr/local/'.zfsmDiagToken('ClientA').' failed, /usr/local/'.zfsmDiagToken('client').' too, zpool import -d /dev/disk/by-id/'.zfsmDiagToken('ata-ClientF').' tank',
+		'include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed', '/plugins/zfs.master/backend/ZFSMAdmin.php?(left out)'),
+	array(zfsmDiagAnonText("/usr/local/ClientA\t/usr/bin/php\t/usr/local/emhttp/plugins/zfs.master/scripts/alerts.php\t/etc/ClientB/root@10.0.0.5\t/dev/ClientC\t/usr/local/SHA256:ClientE"),
+		zfsmDiagAnonText("tank/a\tmountpoint\t/usr/local/client\tlocal\ntank/b\tmountpoint\t/usr/local/12345\tlocal\n/usr/bin/client\t/proc/self/mountinfo\t/usr/local/emhttp/plugins/zfs.master/client"),
+		zfsmDiagAnonJson('{"m":"/usr/local/Client A","n":"/usr/local/12345"}'), zfsmDiagAnonRunning('/usr/local/ClientA failed, /usr/local/client too, zpool import -d /dev/disk/by-id/ata-ClientF tank'),
+		zfsmDiagAnonRunning('include(/usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php): failed'), zfsmDiagAnonText('/plugins/zfs.master/backend/ZFSMAdmin.php?csrf_token=ClientD')),
+	'a folder under a system folder is a token, a word or a number too, in a row, a JSON value and running text; the system\'s and the plugin\'s own paths stay, a page\'s query is left out');
+// A name can hold a carriage return: in a row it is no line's end, so the name after it is in the token too.
+same(array('tank/'.zfsmDiagToken('a')."\tmountpoint\t/mnt/tank/".zfsmDiagToken("Client\rSecret")."\tlocal\n", 'tank/'.zfsmDiagToken('a')."\t/mnt/tank/".zfsmDiagToken("Client\rSecret")."\tlz4", 1),
+	array(zfsmDiagAnonText(zfsmDiagFreeRows("tank/a\tmountpoint\t/mnt/tank/Client\rSecret\tlocal\n", "tank/a\tmountpoint\n")), zfsmDiagAnonText("tank/a\t/mnt/tank/Client\rSecret\tlz4"),
+		count(zfsmDiagAllRows(array('tank' => array('code' => 0, 'output' => "tank/a\t/mnt/tank/Client\rSecret\tlz4\n"))))),
+	'a carriage return in a property\'s value or a dataset\'s mountpoint is part of its name, and its row is one row');
+// Every system path the plugin's own code names stays whole: zfsmDiagSystemKnown has them all.
+$named = array();
+foreach (zfsmDiagFilesUnder(__DIR__.'/../zfs.master') as $file) {
+	if (preg_match('~^(?!assets/).*\.(?:php|page|js)$~D', $file) !== 1) continue;
+	preg_match_all('~[\'"](/(?:'.ZFSM_DIAG_SYSTEM.')/[A-Za-z0-9_./+-]*)~', file_get_contents(__DIR__.'/../zfs.master/'.$file), $found);
+	$named = array_merge($named, $found[1]);
+}
+$named = array_values(array_unique($named));
+same(array(true, $named), array(count($named) > 20, array_map('zfsmDiagAnonText', $named)), 'every system path the plugin names stays whole');
 zfsmDiagStart();
 $said = 'Snapshot: gonepool/a@b failed: I/O error on read/write; cannot open \'otherpool/a\'; zfs list gonepool/a';
 zfsmDiagLearnPools($said);
@@ -235,6 +266,9 @@ $values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clie
 same("tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\t".zfsmDiagToken("first\tSecret After")."\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
 	."tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\treceived\ntank/b\tsharenfs\t".zfsmDiagToken('rw=@10.0.0.0/24')."\tlocal\ntank/b\tcompression\t".zfsmDiagToken('Private Owner')."\tlocal\n", zfsmDiagFreeRows($values, $heads),
 	'a user property\'s value and a share\'s options are tokens, a plan and OpenZFS\'s own values stay, a value with a tab is hidden whole, a key\'s place is only "set"; a word of a user property\'s name that is not the plugin\'s is a token; a value with a space is no value of OpenZFS\'s');
+same("tank/c\tkeylocation\tnone\tlocal\ntank/d\tkeylocation\t-\t-\ntank/e\tkeylocation\t(set)\treceived\n",
+	zfsmDiagFreeRows("tank/c\tkeylocation\tnone\tlocal\ntank/d\tkeylocation\t-\t-\ntank/e\tkeylocation\tfile:///root/ClientA.key\treceived\n", "tank/c\tkeylocation\ntank/d\tkeylocation\ntank/e\tkeylocation\n"),
+	'a key\'s place: OpenZFS\'s own none and - stay, any other is only "set"');
 $left_out = "(a value here holds a line break, or a property changed while they were read: the values are left out)\ntank/a\tcom.".zfsmDiagToken('clientacme').":owner_tab\ntank/a\tcompression\n";
 $two = "tank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\n";
 same(array($left_out, $left_out, $left_out, $left_out, $left_out), array(
@@ -248,6 +282,11 @@ same(array('', "(a value here holds a line break, or a property changed while th
 same("size\t1.00T\t-\ncomment\t".zfsmDiagToken('Private pool')."\tlocal\norg:".zfsmDiagToken('contact')."\t".zfsmDiagToken('Alice Smith')."\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n",
 	zfsmDiagFreeRows("size\t1.00T\t-\ncomment\tPrivate pool\tlocal\norg:contact\tAlice Smith\tlocal\nfeature@lz4_compress\tactive\tlocal\nunsupported@com.example:x\tinactive\tlocal\n", "size\ncomment\norg:contact\nfeature@lz4_compress\nunsupported@com.example:x\n"),
 	'a pool\'s comment and user properties are hidden as a dataset\'s are; its features are OpenZFS\'s own');
+same("compatibility\toff\tdefault\ncompatibility\tlegacy\tlocal\ncompatibility\t".zfsmDiagToken('ClientA/profile')."\tlocal\ncompatibility\t".zfsmDiagToken('openzfs-2.1-linux,ClientB')."\tlocal\n"
+	."tank/a\tcontext\t".zfsmDiagToken('system_u:object_r:clienta_t:s0')."\tlocal\ntank/a\tmlslabel\tnone\tlocal\n",
+	zfsmDiagFreeRows("compatibility\toff\tdefault\ncompatibility\tlegacy\tlocal\ncompatibility\tClientA/profile\tlocal\ncompatibility\topenzfs-2.1-linux,ClientB\tlocal\ntank/a\tcontext\tsystem_u:object_r:clienta_t:s0\tlocal\ntank/a\tmlslabel\tnone\tlocal\n",
+		"compatibility\ncompatibility\ncompatibility\ncompatibility\ntank/a\tcontext\ntank/a\tmlslabel\n"),
+	'a pool\'s compatibility files, a relative path among them, and an SELinux label are tokens; OpenZFS\'s own off, legacy and none stay');
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
 same('/mnt/user/'.zfsmDiagToken('Share').'/'.zfsmDiagToken('x'), zfsmDiagAnonText('/mnt/user/Share/x'), 'Unraid\'s own folder under /mnt stays, a share does not');
@@ -281,7 +320,7 @@ same(array(true, $job_files), array(count($job_files) >= 4, array_map('zfsmDiagA
 $GLOBALS['zfsm_root'] = $test_root;
 zfsmDiagStart();
 array_map('zfsmDiagKnowPool', array('zfs', 'tank'));
-$kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/x.php /dev/null';
+$kept = $root.'/var/log/syslog.1 '.$root.'/boot/config/plugins/zfs.master/zfs.master.cfg '.$root.'/var/run/zfs.master.alerts.json.lock /usr/local/emhttp/plugins/zfs.master/include/ZFSMHelpers.php /dev/null';
 same(explode(' ', $kept), array_map('zfsmDiagAnonText', explode(' ', $kept)), 'a path the collectors list, a log of it that was turned over and a system path stay as they are, each a field of its own');
 same($kept, zfsmDiagAnonText($kept, "\r\n"), 'and so in running text, where a space ends one');
 same('{"tank/'.zfsmDiagToken('a').'":["/mnt/zfs/'.zfsmDiagToken('b c').'",5,true]}', zfsmDiagAnonJson('{"tank\/a":["\/mnt\/zfs\/b c",5,true]}'), 'JSON is read, so a name written with \\/ is found, in a key too');
@@ -294,10 +333,62 @@ same(array('{"d":"/mnt/tank/'.zfsmDiagToken("Client\tSecret").'","e":"/mnt/tank/
 	array(zfsmDiagAnonJson(json_encode(array('d' => "/mnt/tank/Client\tSecret", 'e' => "/mnt/tank/Two\nLines"))), zfsmDiagAnonText("/mnt/tank/a\tlocal")),
 	'a folder\'s path in one JSON value takes its tabs and line breaks; in a row a tab ends it');
 // A message in one value is lines: a path in it ends at its line's end, and what the next line names is read as itself.
-$message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/x.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held';
-same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/x.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+$message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held';
+same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 	zfsmDiagAnonJson(json_encode(array('e' => $message), JSON_UNESCAPED_SLASHES)),
 	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay');
+// A message is running text in any JSON file: the second net takes the words after the plugin's own path, as in an inventory's error.
+$own = zfsmStatePath('/var/run/zfs.master.rewrite');
+same('{"data":{"errors":{"tank":"failed '.$own.' '.zfsmDiagToken('CanaryClient').' busy"}}}',
+	zfsmDiagAnonJson(json_encode(array('data' => array('errors' => array('tank' => 'failed '.$own.' CanaryClient busy'))), JSON_UNESCAPED_SLASHES)),
+	'in a JSON file of no running text, a message\'s word after the plugin\'s own path is a token');
+same(json_encode(array('e' => "failed\t/tmp/".implode('/', array_map('zfsmDiagToken', explode('/', substr($own, 5)."\tCanaryClient")))), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+	zfsmDiagAnonJson(json_encode(array('e' => "failed\t$own\tCanaryClient"), JSON_UNESCAPED_SLASHES)), 'and one with a tab is too: the path runs to the line\'s end, a tab and all');
+same('{"encryption":"aes-256-gcm","devices":"raidz1-0\nsda","'.$own.'":1}', zfsmDiagAnonJson(json_encode(array('encryption' => 'aes-256-gcm', 'devices' => "raidz1-0\nsda", $own => 1), JSON_UNESCAPED_SLASHES)),
+	'a value with no space is one field: zfs\'s own words in it stay, and the plugin\'s own path, whole');
+// A path after a colon or in a file URI is a path; a link's // and an IPv6 prefix start none.
+same(array('{"errors":["failed:/mnt/tank/'.zfsmDiagToken('ClientA').'"],"u":"file:///mnt/tank/'.zfsmDiagToken('ClientB').'"}',
+		"failed:/mnt/tank/".zfsmDiagToken('ClientA')."\tfile:///usr/local/emhttp/webGui/include/Helpers.php\thttps://example.org/a/b\t".zfsmDiagToken('fe80::', 'ip')."/10"),
+	array(zfsmDiagAnonJson('{"errors":["failed:/mnt/tank/ClientA"],"u":"file:///mnt/tank/ClientB"}'), zfsmDiagAnonText("failed:/mnt/tank/ClientA\tfile:///usr/local/emhttp/webGui/include/Helpers.php\thttps://example.org/a/b\tfe80::/10")),
+	'a folder after a colon or file:// is a token; a system path in a file URI, a link and an IPv6 prefix stay');
+mkdir($work.'/colon');
+zfsmDiagWrite($work.'/colon', 'e.json.txt', '{"errors":["failed:/mnt/tank/ClientA"]}');
+same(array(true, '{"errors":["failed:/mnt/tank/'.zfsmDiagToken('ClientA').'"]}'."\n"), array(zfsmDiagAnonymizeDir($work.'/colon'), file_get_contents($work.'/colon/e.json.txt')), 'and so in a run\'s JSON file');
+same(null, zfsmDiagFilesUnder($work.'/not-there'), 'a folder that can\'t be listed has no files: it is no empty folder');
+// The word list is read once a run, so a failed read is tried in a PHP of its own, on a copy of the plugin with one file unreadable.
+$words_in = function($plugin, $as = '') {
+	$php = 'require "'.$plugin.'/backend/ZFSMOperations.php"; require "'.$plugin.'/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
+		.' echo json_encode(array(zfsmDiagVocabulary() === null, zfsmDiagKnownWords("failed busy"), zfsmDiagAnonJson("{\"e\":\"failed busy\"}"), zfsmDiagAnonText("/usr/bin/php")), JSON_UNESCAPED_SLASHES);';
+	exec($as.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+	return array($code, implode("\n", $said));
+};
+exec('cp -a '.escapeshellarg(__DIR__.'/../zfs.master').' '.escapeshellarg($work.'/vocab').' && chmod -R a+rX '.escapeshellarg($work.'/vocab'), $unused, $copied);
+file_put_contents($work.'/vocab/include/ZZEmpty.php', '');
+same(array(0, array(0, '[false,"failed busy","{\"e\":\"failed busy\"}","/usr/bin/php"]')), array($copied, $words_in($work.'/vocab')), 'a copy of the plugin reads its words, an empty file of it too, and its system paths');
+symlink('/proc/self/mem', $work.'/vocab/include/ZZUnreadable.php');
+same(array(0, '[true,null,null,"/usr/bin/php"]'), $words_in($work.'/vocab'), 'a file of the plugin\'s that can\'t be read leaves no word list, so no running text can be searched; its system paths stay, as its files are listed');
+$php = 'require "'.$work.'/vocab/backend/ZFSMOperations.php"; require "'.$work.'/vocab/include/ZFSMDiagnostics.php"; zfsmDiagStart();'
+	.' $first = zfsmDiagVocabulary() === null; unlink("'.$work.'/vocab/include/ZZUnreadable.php"); echo json_encode(array($first, zfsmDiagVocabulary() === null));';
+exec(escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+same(array(0, '[true,true]'), array($code, implode("\n", $said)), 'a failed read of the word list stays failed for the run, once the file can be read again too');
+// Root lists any folder: as nobody, a folder of mode 000 can't be. Each case first shows nobody gets in while nothing is locked.
+chmod($work, 0711);
+$nobody = 'setpriv --reuid=65534 --regid=65534 --clear-groups ';
+same(array(0, '[false,"failed busy","{\"e\":\"failed busy\"}","/usr/bin/php"]'), $words_in($work.'/vocab', $nobody), 'nobody reads the copy\'s words');
+mkdir($work.'/vocab/include/ZZLocked', 0000);
+same(array(0, '[true,null,null,null]'), $words_in($work.'/vocab', $nobody), 'a folder of the plugin\'s that can\'t be listed leaves no word list either, and no list of system paths, so no path can be searched');
+$rewrite = function() use ($work, $nobody) {
+	$php = 'require "'.__DIR__.'/../zfs.master/backend/ZFSMOperations.php"; require "'.__DIR__.'/../zfs.master/include/ZFSMDiagnostics.php"; zfsmDiagStart(); var_export(zfsmDiagAnonymizeDir("'.$work.'/unlisted"));';
+	exec($nobody.escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg($php).' 2>&1', $said, $code);
+	return array($code, implode("\n", $said), is_file($work.'/unlisted/names.txt'));
+};
+mkdir($work.'/unlisted/plugin', 0700, true);
+file_put_contents($work.'/unlisted/summary.txt', "kept\n");
+exec('chown -R 65534:65534 '.escapeshellarg($work.'/unlisted'));
+same(array(0, 'true', true), $rewrite(), 'nobody rewrites a work folder it can list');
+unlink($work.'/unlisted/names.txt');
+chmod($work.'/unlisted/plugin', 0000);
+same(array(0, 'false', false), $rewrite(), 'a work folder that can\'t be listed to its end is not rewritten, and no names.txt is written');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
@@ -404,20 +495,46 @@ file_put_contents($work.'/linked', 'kept');
 symlink($work.'/linked', $logs.'/zfs.master-diagnostics-20240101-000000.zip');
 touch($logs.'/zfs.master-diag.00000000000000aa.part', time() - 7200);
 touch($logs.'/zfs.master-diag.other.part', time() - 7200);
-same(array(), zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip'), 'every zip that had to go went');
+same('', zfsmDiagKeepNewest($logs, 3, 'zfs.master-diagnostics-20250101-000004.zip'), 'every zip that had to go went');
 $left = array_values(array_diff(scandir($logs), array('.', '..')));
 same(array('tower-diagnostics-20250101-0000.zip', 'zfs.master-diag.00000000000000bb.part', 'zfs.master-diag.other.part', 'zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-0000.zip', 'zfs.master-diagnostics-20250101-000002.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip'), $left, 'the newest three stay, with every file that is not the plugin\'s zip, a link, and a part less than an hour old');
 same('kept', file_get_contents($work.'/linked'), 'and what a link points to is not touched');
 list($zip, $why) = $bundle('fourth', false, false);
 same(array('zfs.master-diagnostics-20240101-000000.zip', 'zfs.master-diagnostics-20250101-000003.zip', 'zfs.master-diagnostics-20250101-000004.zip', basename((string)$zip)), array_values(preg_grep('/^zfs\.master-diagnostics-\d{8}-\d{6}\.zip$/', scandir($logs))), 'a new zip takes the oldest one\'s place: '.$why);
-// A zip that can't be removed is named, not passed over: here another file is mounted over it. Through a link, nothing is removed.
-file_put_contents($logs.'/zfs.master-diagnostics-20230101-000000.zip', 'stuck');
-exec('mount --bind '.escapeshellarg($work.'/linked').' '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
-same(array('zfs.master-diagnostics-20230101-000000.zip'), zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip that could not be removed is named');
-exec('umount '.escapeshellarg($logs.'/zfs.master-diagnostics-20230101-000000.zip'));
+// A zip or a killed run's part that can't be removed is named, not passed over: here another file is mounted over each, the part's
+// an old one so it is due. Through a link, nothing is removed.
+$stuck = array('zfs.master-diag.00000000000000cc.part' => $work.'/old', 'zfs.master-diagnostics-20230101-000000.zip' => $work.'/linked');
+file_put_contents($work.'/old', 'old');
+touch($work.'/old', time() - 7200);
+foreach ($stuck as $name => $over) {
+	file_put_contents($logs.'/'.$name, 'stuck');
+	exec('mount --bind '.escapeshellarg($over).' '.escapeshellarg($logs.'/'.$name));
+}
+same('older zips could not be removed from '.$logs.': zfs.master-diag.00000000000000cc.part, zfs.master-diagnostics-20230101-000000.zip', zfsmDiagKeepNewest($logs, 3, basename((string)$zip)), 'a zip or a part that could not be removed is named');
+foreach ($stuck as $name => $over) exec('umount '.escapeshellarg($logs.'/'.$name));
+unlink($logs.'/zfs.master-diag.00000000000000cc.part');
+// A folder that can't be listed (here a file in its place) is said to be, not taken for one with nothing to remove.
+same(array('older zips could not be looked for in '.$work.'/linked, so none were removed', 'older zips could not be looked for in '.$work.'/missing, so none were removed'),
+	array(zfsmDiagKeepNewest($work.'/linked', 3, basename((string)$zip)), zfsmDiagKeepNewest($work.'/missing', 3, basename((string)$zip))), 'a failed look for older zips is said, a folder that is not there too');
 symlink($logs, $work.'/logs-link');
-same(array(array(), true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')), 'a folder reached through a link is not this one: nothing is removed there');
+same(array('older zips were not removed: '.$work.'/logs-link is reached through a link', true), array(zfsmDiagKeepNewest($work.'/logs-link', 3, basename((string)$zip)), is_file($logs.'/zfs.master-diagnostics-20230101-000000.zip')),
+	'a folder reached through a link is not this one: nothing is removed there, and that is said');
 unlink($logs.'/zfs.master-diagnostics-20230101-000000.zip');
+// Another process swaps the folder for a link after this one resolved it (PHP keeps that): retention and each removal check again.
+mkdir($work.'/swap-target');
+foreach (array('000001', '000002', '000003', '000004') as $at) file_put_contents($work.'/swap-target/zfs.master-diagnostics-20220101-'.$at.'.zip', 'elsewhere');
+$swapped = function ($run) use ($logs, $work) {
+	clearstatcache(true, $logs);
+	realpath($logs);
+	exec('mv '.escapeshellarg($logs).' '.escapeshellarg($work.'/logs-real').' && ln -s '.escapeshellarg($work.'/swap-target').' '.escapeshellarg($logs));
+	$said = $run();
+	exec('rm '.escapeshellarg($logs).' && mv '.escapeshellarg($work.'/logs-real').' '.escapeshellarg($logs));
+	clearstatcache(true);
+	return $said;
+};
+same(array('older zips were not removed: '.$logs.' is reached through a link', null, 4),
+	array($swapped(fn() => zfsmDiagKeepNewest($logs, 3, 'none')), $swapped(fn() => zfsmDiagRemoveLog($logs, 'zfs.master-diagnostics-20220101-000001.zip')), count(glob($work.'/swap-target/*.zip'))),
+	'a folder swapped for a link by another process after this one resolved it: nothing there is removed');
 // Naming is one run at a time: while another run holds the lock, a zip waits as its .part, and takes its name once it is let go.
 $pack_lock = zfsmJobDir('diagnostics').'/pack.lock';
 if (!is_dir(dirname($pack_lock))) mkdir(dirname($pack_lock), 0700, true);
@@ -450,6 +567,20 @@ putenv('PATH='.$work.'/nozip:'.$path);
 list($zip, $why) = $bundle('full-drive');
 putenv('PATH='.$path);
 same(array(null, 'zip I/O error: No space left on device', array('canarytower-diagnostics-20260102-1000.zip')), array($zip, $why, array_values(array_diff(scandir($logs), array('.', '..')))), 'a zip that can\'t be written is reported, nothing of it is left, and Unraid\'s zip stays where Unraid put it');
+// Unraid's zip that can't be removed once it is packed (here a file is mounted over it), or in a /boot/logs reached through a link: the zip is made, and that Unraid's is still there is said.
+$unraid_zip = $logs.'/canarytower-diagnostics-20260102-1000.zip';
+file_put_contents($work.'/stuck', '');
+exec('mount --bind '.escapeshellarg($work.'/stuck').' '.escapeshellarg($unraid_zip));
+list($zip, $why) = $bundle('unraid-stuck', true, false);
+exec('umount '.escapeshellarg($unraid_zip));
+same(array(true, 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well', true), array(is_file((string)$zip), $why, is_file($unraid_zip)), 'Unraid\'s zip that could not be removed is said');
+rename($logs, $work.'/real-logs');
+symlink($work.'/real-logs', $logs);
+list($zip, $why) = $bundle('logs-linked', true, false);
+same(array(true, 'Unraid\'s own zip was not removed from '.$logs.', so it is there as well'."\n".'older zips were not removed: '.$logs.' is reached through a link', true),
+	array(is_file((string)$zip), $why, is_file($work.'/real-logs/canarytower-diagnostics-20260102-1000.zip')), 'in a /boot/logs reached through a link nothing is removed, and that is said');
+unlink($logs);
+rename($work.'/real-logs', $logs);
 // A place for the zips that can't be made.
 exec('rm -rf '.escapeshellarg($logs));
 symlink('/dev/null', $logs);
@@ -465,6 +596,8 @@ if (!is_string($docroot) || !is_file($docroot.'/plugins/zfs.master/scripts/diagn
 }
 $script = $docroot.'/plugins/zfs.master/scripts/diagnostics.php';
 file_put_contents('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".implode("\nJan  2 10:00:01 CanaryTower zfs.master[41]: ", array_map('zfsmSafeText', $log_lines))."\n");
+// Unraid's display settings: a time and a theme written by hand, and a setting the plugin does not use.
+putenv('ZFSM_TEST_DISPLAY='.json_encode(array('date' => '%A, %d.%m.%Y', 'time' => 'CanaryClock %R', 'number' => ', ', 'theme' => 'canarytheme', 'background' => 'CanaryBackground.png')));
 $clear_logs();
 // Debug Log on, with a line of its own that names a dataset of a pool since exported: the run learns that pool from it, and adds
 // no debug line of its own. In this test's container only, like /var/log/syslog above.
@@ -473,8 +606,9 @@ file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\n
 $debug_line = "2026-01-02 10:00:02 debug [41] exit 1 in 0.200 s: zfs destroy -r gonepool/private\n";
 file_put_contents('/var/log/zfs.master.debug.log', $debug_line);
 register_shutdown_function(function() { @unlink('/var/log/zfs.master.debug.log'); @unlink('/boot/config/plugins/zfs.master/zfs.master.cfg'); });
-$run = function($options, $arguments = '') use ($script) {
-	exec('ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($script).' '.$arguments.' 2>&1', $printed, $code);
+$run = function($options, $arguments = '', $at = null) use ($docroot) {
+	$at = $at ?? $docroot;
+	exec('ZFSM_TEST_DOCROOT='.escapeshellarg($at).' ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($at.'/plugins/zfs.master/scripts/diagnostics.php').' '.$arguments.' 2>&1', $printed, $code);
 	return array($code, implode("\n", $printed));
 };
 list($code, $printed) = $run('');
@@ -488,6 +622,8 @@ same(array(0, array(), true), array($code, $leaks($ours($work.'/from-script')), 
 has('Rewrite of tank/name-', file_get_contents($work.'/from-script/plugin/log.txt'), 'the system log\'s lines are in it, rewritten');
 same(array(1, $debug_line), array(preg_match('~ s: zfs destroy -r gonepool/name-[0-9a-f]{8}$~m', file_get_contents($work.'/from-script/plugin/log.txt')), file_get_contents('/var/log/zfs.master.debug.log')),
 	'a pool a debug line names is learned, so all its dataset\'s name is a token; and the run wrote no debug line of its own');
+has("== display settings the plugin uses\ndate=%A, %d.%m.%Y\ntime=(not shown: not in the shape of Unraid's choices)\nnumber=, \nscale=(not set)\ntheme=(not shown: not in the shape of Unraid's choices)\n\n",
+	file_get_contents($work.'/from-script/unraid/context.txt'), 'only the display settings the plugin uses, and none written by hand');
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the work folder is removed');
 $clear_logs();
 list($code, $printed) = $run('', '--no-unraid');
@@ -496,16 +632,46 @@ $made[] = $said[1];
 exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/without-unraid'));
 same(array("Unraid's own diagnostics were not asked for.\n", array()), array(file_get_contents($work.'/without-unraid/unraid/diagnostics.txt'), glob($work.'/without-unraid/unraid/*.zip')), '--no-unraid leaves Unraid\'s script unrun');
 $clear_logs();
+// A file the owner added to an installed release, and a PHP error in it: the file's words are not the plugin's, so its name is a token.
+$added = $work.'/added';
+mkdir($added.'/webGui/include', 0700, true);
+mkdir($added.'/plugins');
+foreach (array('Helpers.php', 'publish.php') as $file) symlink(realpath($docroot.'/webGui/include/'.$file), $added.'/webGui/include/'.$file);
+exec('cp -R '.escapeshellarg($docroot.'/plugins/zfs.master/.').' '.escapeshellarg($added.'/plugins/zfs.master'), $copied, $code);
+same(0, $code, 'the plugin is copied: '.implode(' ', $copied));
+$sums = '';
+foreach (zfsmDiagFilesUnder($added.'/plugins/zfs.master') as $file) $sums .= md5_file($added.'/plugins/zfs.master/'.$file).'  '.$file."\n";
+file_put_contents($added.'/plugins/zfs.master/manifest.md5', $sums);
+file_put_contents($added.'/plugins/zfs.master/include/CanaryAdded.php', "<?php\nclass CanaryAdded {}\n");
+file_put_contents('/var/log/phplog', "[02-Jan-2026] PHP Warning: x in /usr/local/emhttp/plugins/zfs.master/include/CanaryAdded.php on line 2\n");
+list($code, $printed) = $run('', '--no-unraid', $added);
+unlink('/var/log/phplog');
+same(array(0, false, 1), array($code, stripos($printed, 'canary'), preg_match('~\nDiagnostics zip: (\S+)$~D', $printed, $said)), 'the script ends well and prints no name of an added file: '.$printed);
+$made[] = $said[1];
+exec('unzip -q '.escapeshellarg($said[1]).' -d '.escapeshellarg($work.'/from-added'));
+$from_added = $ours($work.'/from-added');
+same(array(array(), 1, 1), array($leaks($from_added), preg_match('~^not in the release: include/name-[0-9a-f]{8,}\.php$~m', $from_added['plugin/install.txt']),
+	preg_match('~^\[02-Jan-2026\] PHP Warning: x in /usr/local/emhttp/plugins/zfs\.master/include/name-[0-9a-f]{8,} on line 2$~m', $from_added['plugin/php-errors.txt'])),
+	'an added file is a token in the file check and in a PHP error, and is nowhere else: '.$from_added['plugin/install.txt'].$from_added['plugin/php-errors.txt']);
+$clear_logs();
 // Text that can't be searched (PCRE gives up at once): the script shows no file and makes no zip, and says why.
 list($code, $printed) = $run('-d pcre.jit=0 -d pcre.backtrack_limit=1', '--no-unraid');
 same(array(1, false, array()), array($code, strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*')), 'a rewrite that fails shows no file and makes no zip: '.substr($printed, 0, 400));
 has('The names in the files could not all be replaced', $printed, 'and says so');
 $clear_logs();
+// A run held in its slow zpool status: by then its work folder is made and locked, which the folder alone does not show.
+$slow_run = function($name) use ($script, $work) {
+	putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
+	putenv('ZFSM_TEST_ZPOOL_STATUS_STARTED='.$work.'/'.$name.'.started');
+	$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/'.$name.'.out', 'w'), 2 => array('file', $work.'/'.$name.'.out', 'a')), $pipes);
+	putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
+	putenv('ZFSM_TEST_ZPOOL_STATUS_STARTED');
+	for ($waited = 0; $waited < 200 && !is_file($work.'/'.$name.'.started'); $waited++) usleep(50000);
+	same(true, is_file($work.'/'.$name.'.started'), 'the run reached its collectors before its work folder is touched');
+	return $going;
+};
 // The work folder goes under the run: the script rewrites, shows and packs nothing.
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
-$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/vanished.out', 'w'), 2 => array('file', $work.'/vanished.out', 'a')), $pipes);
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
-for ($waited = 0; $waited < 200 && !glob('/tmp/zfs.master-diag.*'); $waited++) usleep(50000);
+$going = $slow_run('vanished');
 exec('rm -rf /tmp/zfs.master-diag.*');
 do {
 	usleep(100000);
@@ -516,10 +682,7 @@ $printed = file_get_contents($work.'/vanished.out');
 same(array(1, false, array(), array()), array($status['exitcode'], strpos($printed, "file\tresult\tseconds"), glob('/boot/logs/zfs.master-*'), glob('/tmp/zfs.master-diag.*')), 'a run whose work folder went under it rewrites, shows and packs nothing, and leaves no work folder: '.substr($printed, 0, 600));
 has('The work folder changed under the run, so nothing was rewritten, shown or packed', $printed, 'and says so');
 // A folder put in place of the run's under it: the run leaves it as it is, and says so.
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
-$going = proc_open(array(PHP_BINARY, '-n', $script, '--no-unraid'), array(1 => array('file', $work.'/swapped.out', 'w'), 2 => array('file', $work.'/swapped.out', 'a')), $pipes);
-putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
-for ($waited = 0; $waited < 200 && !glob('/tmp/zfs.master-diag.*'); $waited++) usleep(50000);
+$going = $slow_run('swapped');
 $swapped = (string)(glob('/tmp/zfs.master-diag.*')[0] ?? '');
 same(true, $swapped !== '', 'the run made its work folder');
 exec('rm -rf '.escapeshellarg($swapped));

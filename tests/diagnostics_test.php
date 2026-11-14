@@ -373,6 +373,14 @@ putenv('ZFSM_TEST_GET_FAIL=tank');
 list(, $text) = $found('zfsmDiagBookmarks');
 putenv('ZFSM_TEST_GET_FAIL');
 has("receive_resume_token tank\nFAILED (exit 1): cannot open 'tank': permission denied\n\n== datasets holding part of a received copy\n(not read on every pool)\n", $text, 'a token read that failed is not "none"');
+// A property read, or its second read of names alone, that prints a row and then fails: none of its text is shown, only its exit code.
+foreach (array('values', 'heads') as $part) {
+	putenv('ZFSM_TEST_GET_PART='.$part);
+	list(, $text) = $found('zfsmDiagUserProperties');
+	putenv('ZFSM_TEST_GET_PART');
+	same(array(true, false), array(strpos($text, "== zfs get -H -p -r -t filesystem,volume -s local,received -o name,property,value,source all tank\nFAILED (exit 1): its output is not shown: rows it printed before the error were not checked for names\n\n") !== false,
+		stripos($text, 'canary') !== false), 'a '.$part.' read that failed partway shows its exit code and none of its rows: '.$text);
+}
 list(, $text) = $found('zfsmDiagMounts', function($root) { unlink($root.'/proc/self/mountinfo'); });
 has("== zfs mounts in /proc/self/mountinfo\n(the mount list could not be read)\n", $text, 'a mount list that can\'t be read is not "no mounts"');
 list(, $text) = $found('zfsmDiagMounts', function($root) { file_put_contents($root.'/proc/self/mountinfo', "103 1 0:46 / /tmp rw shared:51 - tmpfs tmpfs rw\n"); });

@@ -49,7 +49,7 @@ function zfsmDiagBytes(text) {
 
 // options: url (the admin route), download (the link's address before the zip's name), button, box, status, link, report().
 function createZFSMDiagnostics(options) {
-	let busy = false, asked = 0, lost = 0, timer = null;
+	let busy = false, asked = 0, lost = 0, timer = null, pending = null;
 
 	function show(answer) {
 		busy = answer.state === 'running' || answer.state === 'started';
@@ -68,22 +68,28 @@ function createZFSMDiagnostics(options) {
 		return xhr.status && xhr.status !== 200 ? 'the server answered HTTP ' + xhr.status : 'the server did not answer' + (xhr.status ? ' (HTTP 200)' : '');
 	}
 
+	// No answer says nothing of the run: it may go on, or never have started. "Failed" is only the server's word.
 	function unanswered(xhr) {
-		show({state: 'failed', why: failure(xhr) + '. Reload the page and try again.'});
+		show({});
+		options.status.text('The run\'s state is not known: ' + failure(xhr) + '. Reload the page to see it.');
 	}
 
 	function later() {
 		timer = setTimeout(poll, 2000);
 	}
 
-	// Only the newest request's answer is shown: one that comes back after a later request was sent is stale.
+	// One request at a time: one still on its way when the next is sent is cancelled, and only the newest one's answer is shown.
+	// One with no answer in a minute fails, as the inventory's does (ZFSMInventory.js).
 	function ask(data, done, fail) {
 		const ticket = ++asked;
-		$.post(options.url, data, function(answer) { if (ticket === asked) done(answer); }, 'json').fail(function(xhr) { if (ticket === asked) fail(xhr); });
+		if (pending) pending.abort();
+		pending = $.ajax({url: options.url, method: 'POST', data: data, dataType: 'json', timeout: 60000});
+		pending.done(function(answer) { if (ticket === asked) done(answer); });
+		pending.fail(function(xhr) { if (ticket === asked) fail(xhr); });
 	}
 
-	// While a run goes, a poll the server did not answer is asked again, three times, before the run is called failed. With no run
-	// going, only the state could not be read.
+	// While a run goes, a poll the server did not answer is asked again, three times, before the run's state is called not known.
+	// With no run going, only the state could not be read.
 	function poll() {
 		ask({cmd: 'diagnosticsstatus'}, function(answer) {
 			lost = 0;
@@ -97,10 +103,11 @@ function createZFSMDiagnostics(options) {
 		});
 	}
 
-	// The page is left: no more polls, and an answer still on its way is not shown.
+	// The page is left: no more polls, and a request still on its way is cancelled.
 	function stop() {
 		clearTimeout(timer);
 		asked++;
+		if (pending) pending.abort();
 	}
 
 	function start() {

@@ -167,6 +167,31 @@ $unkept = $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '
 rmdir($work.'/jobs/diagnostics/state.json.tmp');
 same(array('failed', 'The run\'s state could not be kept in '.$work.'/jobs/diagnostics', array()), array($unkept['state'] ?? $unkept, $unkept['why'] ?? null, $zips()), 'a run whose state can\'t be kept does not start, and says why');
 
+// A run that can't make its work folder (here /tmp is read-only for that run alone, its job folder not) says why and still removes
+// the browser's report.
+$clear();
+file_put_contents($work.'/jobs/diagnostics/browser.json', '{"userAgent":"CanaryAgent"}');
+$read_only = 'mount --bind '.escapeshellarg($work.'/jobs').' '.escapeshellarg($work.'/jobs').' && mount -o remount,ro,bind /tmp && exec '
+	.escapeshellarg(PHP_BINARY).' -n '.escapeshellarg($docroot.'/plugins/zfs.master/scripts/diagnostics.php').' --job --no-unraid';
+exec('unshare -m sh -c '.escapeshellarg($read_only).' 2>&1', $unmade, $unmade_code);
+same(array(1, false, array('state' => 'failed', 'why' => 'Unable to make a work folder in /tmp')), array($unmade_code, file_exists($work.'/jobs/diagnostics/browser.json'), $state()),
+	'a run that can\'t make its work folder says why and removes the browser\'s report: '.implode(' ', $unmade));
+
+// A run whose result can't be kept (its state's temporary name taken while it collects): the page never shows the result, and the
+// log says so.
+$clear();
+$logged = strlen((string)@file_get_contents('/var/log/zfs.master.log'));
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
+same(array('state' => 'started', 'why' => ''), $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => '{}')), 'a run whose result will not be kept starts');
+putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW');
+for ($waited = 0; $waited < 100 && (json_decode((string)@file_get_contents($work.'/jobs/diagnostics/state.json'), true)['state'] ?? '') !== 'running'; $waited++) usleep(100000);
+mkdir($work.'/jobs/diagnostics/state.json.tmp');
+$lost_result = $finished();
+rmdir($work.'/jobs/diagnostics/state.json.tmp');
+same(array(array('state' => 'failed', 'why' => 'The run ended without a result'), 1),
+	array($lost_result, substr_count(substr((string)@file_get_contents('/var/log/zfs.master.log'), $logged), 'Diagnostics: the result of a run could not be kept in '.$work.'/jobs/diagnostics, so Settings does not show it')),
+	'a run whose result can\'t be kept is not shown on the page, and the log says so');
+
 // A start while a status read holds the run's lock shared for a moment: the job asks again, and the run starts.
 $clear();
 @mkdir($work.'/jobs/diagnostics', 0700, true);

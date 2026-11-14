@@ -31,26 +31,29 @@ $ended = false;
 $end = function($zip, $why) use ($job, &$ended) {
 	$ended = true;
 	$state = $zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why);
-	// The page reads the run's state: one that can't be kept leaves it on the last one, so the log says so.
-	if (!zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of a run could not be kept in '.dirname(zfsmDiagJobFile('state.json')).', so Settings shows an older one');
+	// The page reads the run's state: a result that can't be kept is not shown there, so the log says so.
+	if (!zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of a run could not be kept in '.dirname(zfsmDiagJobFile('state.json')).', so Settings does not show it');
 	if (!$job && $zip !== null) echo "\nDiagnostics zip: $zip\n";
 	if (!$job && $why !== '') fwrite(STDERR, $why."\n");
 	exit($zip === null ? 1 : 0);
 };
 
-$work = zfsmDiagWorkDir();
-if ($work === null) $end(null, 'Unable to make a work folder in /tmp');
-// The folder holds real names and is root's alone: the run's end tries to remove it, and a later run tries again.
-register_shutdown_function(function() use ($work, $job, &$ended) {
-	if (is_dir($work) && !zfsmDiagStillOurs($work)) {
+// The folder holds real names and is root's alone: the run's end tries to remove it, and a later run tries again. Registered
+// before the folder is made, so a run that can't make one still removes the browser's report.
+$work = null;
+register_shutdown_function(function() use (&$work, $job, &$ended) {
+	$made = $work !== null && is_dir($work);
+	if ($made && !zfsmDiagStillOurs($work)) {
 		if (!$job) fwrite(STDERR, "The work folder is not this run's any more, so it was left as it is: $work\n");
-	} elseif (is_dir($work) && !zfsmDiagRemove($work) && !$job) {
+	} elseif ($made && !zfsmDiagRemove($work) && !$job) {
 		fwrite(STDERR, "The work folder could not be removed and still holds the files: $work\n");
 	}
 	// A run stopped before its end (Ctrl-C, a signal, a fatal error) says so on the page; the browser's report goes on every exit.
 	if (!$ended) zfsmDiagJobSet(array('state' => 'failed', 'why' => 'The run was stopped before it ended'));
 	if ($job && file_exists(zfsmDiagJobFile('browser.json')) && !@unlink(zfsmDiagJobFile('browser.json'))) zfsmLog('Diagnostics: the browser\'s report could not be removed from '.dirname(zfsmDiagJobFile('browser.json')));
 });
+$work = zfsmDiagWorkDir();
+if ($work === null) $end(null, 'Unable to make a work folder in /tmp');
 // Ctrl-C, a dropped session or a kill ends PHP without its shutdown functions: where it has pcntl, they end it with one.
 if (function_exists('pcntl_async_signals')) {
 	pcntl_async_signals(true);
