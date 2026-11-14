@@ -292,7 +292,6 @@ same(array('alerts are on every 60 minutes, but the last check was 180 minutes a
 
 // Jobs: a held lock is fine while one of the plugin's scripts runs.
 $hold = function() use ($work) { $GLOBALS['zfsm_held'] = fopen($work.'/jobs/rewrite/4711.lock', 'c'); flock($GLOBALS['zfsm_held'], LOCK_EX); };
-// Never this test's own process: the collector leaves that one out.
 $script_pid = getmypid() + 1;
 $running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  900    2 nginx: worker process\n";
 list($findings, $text) = $found('zfsmDiagJobs', $hold);

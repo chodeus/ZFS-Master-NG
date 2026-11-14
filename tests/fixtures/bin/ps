@@ -1,5 +1,12 @@
 #!/bin/sh
-# ps -eo pid=,etimes=,args= as diagnostics reads it: the lines of ZFSM_TEST_PS, or no processes.
+# ps -eo pid=,etimes=,args= as diagnostics reads it: the lines of ZFSM_TEST_PS, or no processes; "proc" lists this container's own.
 [ "${ZFSM_TEST_PS:-}" = fail ] && exit 1
+if [ "${ZFSM_TEST_PS:-}" = proc ]; then
+	for dir in /proc/[0-9]*; do
+		args=$(tr '\0' ' ' < "$dir/cmdline" 2>/dev/null | sed 's/ $//')
+		[ -n "$args" ] && printf '%s 0 %s\n' "${dir#/proc/}" "$args"
+	done
+	exit 0
+fi
 [ -n "${ZFSM_TEST_PS:-}" ] && cat "$ZFSM_TEST_PS"
 exit 0
