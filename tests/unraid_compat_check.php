@@ -257,6 +257,13 @@ switch ($check) {
 		}
 		// The Diagnostics section is after the form, so its tick box never arms Apply; its button and link are there for the script.
 		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-diag-unraid"') || !$row_has('Diagnostics Zip', 'id="zfsm-diag-start"') || strpos($rendered, 'id="zfsm-diag-link"') === false) { fwrite(STDERR, "settings page lost the Diagnostics controls, or they are inside the form\n"); exit(1); }
+		// Unraid runs Markdown before the page's PHP (generateContent), so PHP inside a code span would show as text.
+		$source = file_get_contents($docroot.'/plugins/zfs.master/ZFSMasterSettings.page');
+		if (strpos(Markdown(substr($source, strpos($source, "\n---\n") + 5)), '&lt;?') !== false) { fwrite(STDERR, "settings page has PHP inside Markdown code, which Unraid shows as text\n"); exit(1); }
+		if (!$row_has('This Server\'s Host Key', 'id="zfsm-replica-hostkey"')) { fwrite(STDERR, "settings page lost This Server's Host Key row\n"); exit(1); }
+		$from = strpos($rendered, 'Lets other servers running ZFS Master NG');
+		$help = $from === false ? '' : substr($rendered, $from, strpos($rendered, '</blockquote>', $from) - $from);
+		if (strpos($help, '<ol>') === false || substr_count($help, '<li>') !== 4) { fwrite(STDERR, "Accept Replicas Into help does not show its four steps as a list: $help\n"); exit(1); }
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
 		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }

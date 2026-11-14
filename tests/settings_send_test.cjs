@@ -1,4 +1,4 @@
-// The Settings page's Replicate To script on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give.
+// The Settings page's replication script (Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give.
 // Usage: settings_send_test.cjs <webgui-tree>
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -16,7 +16,8 @@ assert.equal(code.includes('<?'), false, 'no PHP in the Replicate To script');
 
 const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span><span id="zfsm-send-key-status"></span>'
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
-  + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span></body>',
+  + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
+  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span></body>',
   {url: 'http://localhost/', runScripts: 'outside-only'});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 const posts = [];
@@ -100,5 +101,31 @@ window.zfsmSendScan();
 posts.pop().done({key: 'ssh-ed25519 BBBB', fingerprint: 'SHA256:def'});
 late.done({servers_html: '<span>nas</span>'});
 assert.deepEqual([$('#zfsm-send-found input[type=button]').length, $('#zfsm-send-host').val(), text('zfsm-send-servers')], [1, '10.0.20.12', 'nas'], 'the newer read keeps its Add and address');
+
+// Accept Replicas Into: empty asks nothing; each answer shows what is wrong with the dataset typed.
+assert.equal(posts.length, 0, 'an empty setting is not checked on load');
+const accept = value => {
+  $('input[name="replica_accept"]').val(value).trigger('change');
+  return posts.pop();
+};
+const check = accept('backup/replicas');
+assert.deepEqual([check.data.cmd, check.data.dataset], ['validateaccept', 'backup/replicas']);
+check.done({valid: true, missing: true});
+assert.equal(text('zfsm-replica-accept-warning'), 'This dataset does not exist, so nothing is accepted: create it first (Main, Create Dataset).');
+accept('backup/replicas').done({valid: true, missing: false});
+assert.equal(text('zfsm-replica-accept-warning'), '', 'a dataset that exists has no warning');
+accept('backup/replicas').done({valid: true, missing: null});
+assert.equal(text('zfsm-replica-accept-warning'), 'Whether this dataset exists could not be read.');
+accept('backup').done({valid: false, missing: null});
+assert.equal(text('zfsm-replica-accept-warning'), 'Not a dataset inside a pool, so nothing is accepted.');
+accept('backup/replicas').done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
+assert.equal(text('zfsm-replica-accept-warning'), 'This dataset could not be checked: Unknown or missing command', 'a failed check says so');
+$('input[name="replica_accept"]').val('').trigger('change');
+assert.deepEqual([posts.length, text('zfsm-replica-accept-warning')], [0, ''], 'emptied, it asks nothing and warns of nothing');
+// An answer for a value changed since is dropped.
+const older = accept('backup/old');
+accept('backup/replicas').done({valid: true, missing: false});
+older.done({valid: true, missing: true});
+assert.equal(text('zfsm-replica-accept-warning'), '', 'the older answer does not replace the newer one');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

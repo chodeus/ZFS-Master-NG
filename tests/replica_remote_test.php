@@ -124,7 +124,8 @@ same(array('error' => 'No ed25519 host key came back from 10.0.20.11 port 22'), 
 $log();
 putenv('ZFSM_TEST_SCAN=10.0.20.11 '.$host_key);
 putenv('ZFSM_TEST_SCAN_EXIT=1');
-same(array('error' => 'ssh-keyscan failed for 10.0.20.11 port 22 (exit 1)'), zfsmReplicaScan('10.0.20.11', 22), 'a scan that failed offers no key, even one it printed');
+same(array('error' => 'No host key came back from 10.0.20.11 port 22 (ssh-keyscan exit 1): check the address and port, and that SSH is on there (Settings, Management Access, Use SSH)'),
+	zfsmReplicaScan('10.0.20.11', 22), 'a scan that failed offers no key, even one it printed, and says what to check');
 putenv('ZFSM_TEST_SCAN_EXIT');
 $log();
 same(array('error' => 'Give the server\'s IP address and its SSH port'), zfsmReplicaScan('-oProxyCommand=x', 22), 'an address that isn\'t one is refused');
@@ -225,8 +226,29 @@ same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), ar
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
 putenv('ZFSM_TEST_ACCEPT=');
 same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello($nas), 'a server that accepts nothing says so');
-putenv('ZFSM_TEST_SSH_FAIL=Host key verification failed.');
-same(array('error' => 'Host key verification failed.'), zfsmReplicaHello($nas), 'ssh\'s own error comes through');
+// ssh's own failures as OpenSSH 9.7 prints them: what to do, then ssh's last line.
+$ssh_fails = array(
+	'root@10.0.20.11: Permission denied (publickey,password,keyboard-interactive).' =>
+		'nas does not accept this server\'s key: copy the line shown under nas here into its root user\'s SSH authorized keys, and Apply there. If the line is there already, nas sees this server at another address than the line\'s from=. ssh said: root@10.0.20.11: Permission denied (publickey,password,keyboard-interactive).',
+	"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @\n@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n"
+		."IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!\nSomeone could be eavesdropping on you right now (man-in-the-middle attack)!\nIt is also possible that a host key has just been changed.\n"
+		."The fingerprint for the ED25519 key sent by the remote host is\nSHA256:OskrQvlTBbkDIDNmxf93Igs9kBX0KPvKLr21B1r6dWY.\nPlease contact your system administrator.\n"
+		."Add correct host key in /var/run/zfs.master.replica-send/ssh-x/known_hosts to get rid of this message.\nOffending ED25519 key in /var/run/zfs.master.replica-send/ssh-x/known_hosts:1\n"
+		."Host key for [10.0.20.11]:2222 has changed and you have requested strict checking.\nHost key verification failed." =>
+		'nas\'s host key is not the one read when it was added. If nas was reinstalled or its SSH keys renewed, remove it here and add it again; otherwise something else answers at 10.0.20.11, so don\'t trust it. ssh said: Host key verification failed.',
+	'ssh: connect to host 10.0.20.11 port 2222: Connection refused' =>
+		'Nothing answers SSH at 10.0.20.11 port 2222: turn SSH on there (Settings, Management Access, Use SSH), or check the port. ssh said: ssh: connect to host 10.0.20.11 port 2222: Connection refused',
+	'ssh: connect to host 10.0.20.11 port 2222: Connection timed out' =>
+		'10.0.20.11 port 2222 can\'t be reached: check the address, and that the server is on. ssh said: ssh: connect to host 10.0.20.11 port 2222: Connection timed out',
+	'ssh: connect to host 10.0.20.11 port 2222: No route to host' =>
+		'10.0.20.11 port 2222 can\'t be reached: check the address, and that the server is on. ssh said: ssh: connect to host 10.0.20.11 port 2222: No route to host',
+	// One with no advice comes through in ssh's own words.
+	'Connection closed by 10.0.20.11 port 2222' => 'Connection closed by 10.0.20.11 port 2222',
+);
+foreach ($ssh_fails as $said => $shown) {
+	putenv('ZFSM_TEST_SSH_FAIL='.$said);
+	same(array('error' => $shown), zfsmReplicaHello($nas), 'ssh\'s own failure, with what to do: '.strtok($said, "\n"));
+}
 putenv('ZFSM_TEST_SSH_FAIL');
 // A server that answers with far more than a hello: the answer is cut where it is read, not held whole.
 putenv('ZFSM_TEST_SSH_FLOOD=30000000');

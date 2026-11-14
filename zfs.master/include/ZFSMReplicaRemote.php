@@ -162,7 +162,8 @@ function zfsmReplicaRemotesChange($change) {
 function zfsmReplicaScan($host, $port) {
 	if (!zfsmReplicaHostValid($host) || !zfsmReplicaPortValid($port)) return array('error' => 'Give the server\'s IP address and its SSH port');
 	$scan = runProcess('ssh-keyscan', array('-T', '10', '-t', 'ed25519', '-p', (string)$port, $host));
-	if (($scan['code'] ?? 1) !== 0) return array('error' => 'ssh-keyscan failed for '.$host.' port '.$port.' (exit '.(int)($scan['code'] ?? 1).')');
+	// ssh-keyscan prints nothing and exits 1 for a wrong address and for SSH turned off alike.
+	if (($scan['code'] ?? 1) !== 0) return array('error' => 'No host key came back from '.$host.' port '.$port.' (ssh-keyscan exit '.(int)($scan['code'] ?? 1).'): check the address and port, and that SSH is on there (Settings, Management Access, Use SSH)');
 	foreach (preg_split('/\R/', (string)($scan['output'] ?? '')) as $line) {
 		$fields = preg_split('/\s+/', trim($line));
 		if (count($fields) < 3 || $fields[0][0] === '#') continue;
@@ -245,6 +246,27 @@ function zfsmReplicaSshArgs($remote, $files, $request) {
 	return array_merge($args, array('-p', (string)$remote['port'], '-l', 'root', '--', $remote['host'], $request));
 }
 
+// What to do about one of ssh's own failures, with ssh's last line; null for any other answer, such as the checker's refusal.
+// The patterns are OpenSSH's own lines; the timeouts are glibc's and musl's wording.
+function zfsmReplicaSshAdvice($remote, $result) {
+	$output = trim((string)($result['output'] ?? ''));
+	$name = $remote['name'];
+	$where = $remote['host'].' port '.$remote['port'];
+	$advice = array(
+		'/: Permission denied \(/' => $name.' does not accept this server\'s key: copy the line shown under '.$name.' here into its root user\'s SSH authorized keys, and Apply there. '
+			.'If the line is there already, '.$name.' sees this server at another address than the line\'s from=',
+		'/^Host key for .+ has changed and you have requested strict checking\.$/m' => $name.'\'s host key is not the one read when it was added. '
+			.'If '.$name.' was reinstalled or its SSH keys renewed, remove it here and add it again; otherwise something else answers at '.$remote['host'].', so don\'t trust it',
+		'/: Connection refused$/m' => 'Nothing answers SSH at '.$where.': turn SSH on there (Settings, Management Access, Use SSH), or check the port',
+		'/: (?:Connection timed out|Operation timed out|No route to host|Network is unreachable|Host is unreachable)$/m' => $where.' can\'t be reached: check the address, and that the server is on',
+	);
+	$lines = preg_split('/\R/', $output);
+	foreach ($advice as $pattern => $text) {
+		if (preg_match($pattern, $output) === 1) return $text.'. ssh said: '.end($lines);
+	}
+	return null;
+}
+
 // hello on the other server: the area its copies go into, or why there is none (ssh's own error or the checker's refusal).
 // runProcess trims the answer, so it ends at the area's name, which may hold spaces.
 function zfsmReplicaHello($remote) {
@@ -260,7 +282,7 @@ function zfsmReplicaHello($remote) {
 		zfsmReplicaSshCleanup($files);
 	}
 	if (($hello['code'] ?? 1) !== 0 || preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) !== 1 || !zfsmValidDatasetName($match[1])) {
-		return array('error' => zfsmCommandError($hello, 'No answer from '.$remote['name']));
+		return array('error' => zfsmReplicaSshAdvice($remote, $hello) ?? zfsmCommandError($hello, 'No answer from '.$remote['name']));
 	}
 	// The area is named for the sender the key line there names: another name is a line made for another name, as before a rename.
 	$named = zfsmReplicaAreaSender($match[1]);

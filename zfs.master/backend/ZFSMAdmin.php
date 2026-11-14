@@ -124,8 +124,10 @@ try {
 			break;
 
 		case 'validateaccept':
-			// Trimmed as loadConfig trims the saved setting.
-			echo zfsmJson(array('valid' => zfsmReplicaAcceptValid(trim(zfsmPostString('dataset')))));
+			// Trimmed as loadConfig trims the saved setting. missing is null for a name that isn't valid, or when ZFS could not be read.
+			$dataset = trim(zfsmPostString('dataset'));
+			$valid = zfsmReplicaAcceptValid($dataset);
+			echo zfsmJson(array('valid' => $valid, 'missing' => $valid ? zfsmDatasetMissing($dataset) : null));
 			break;
 
 		case 'replicakey':
