@@ -86,6 +86,7 @@ reviews:
     - path: "**"
       instructions: |
         Applies to every file:
+        - A finding in shipped code (zfs.master/) must be able to happen on a supported Unraid: 6.9.2 to current 7.x, or Unraid 8 on its Fedora base. Say how it comes about: what the owner does in Unraid's pages, in the plugin's pages, or with a tool owners commonly run. A setup no owner makes (a file edited by hand, a value no page offers, two runs timed to the same second) is not reported.
         - Comments are navigational or gotcha only, 1-2 lines. Flag narrative or history comments the change adds, and never ask for a docstring.
         - A comment, help text, log message or UI label that disagrees with what the code does is a correctness finding: report it and say which side is wrong.
         - Do not flag stylistic preferences that are consistent across the file, or code the change did not touch unless the change makes it wrong.
