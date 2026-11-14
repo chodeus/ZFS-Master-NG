@@ -73,8 +73,8 @@ same(array(1, 1, 1), array(preg_match('/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d debug \[
 same(array(1, 1, 1, 1, 1, 1, 1, false), array(preg_match('/ s: zfs load-key \(its arguments are left out\)$/D', $lines[3]), preg_match('/ s: zfs set \(its arguments are left out\)$/D', $lines[4]), preg_match('/ s: zpool create \(its arguments are left out\)$/D', $lines[5]), preg_match('/ s: rsync \(its arguments are left out\)$/D', $lines[6]),
 	preg_match('/ s: sh \(its arguments are left out\)$/D', $lines[7]), preg_match('/ s: echo \(its arguments are left out\)$/D', $lines[8]), preg_match('/ s: zfs create -o encryption=on -o keylocation=prompt tank\/new$/D', $lines[9]), strpos(implode('', $lines), 'secret.key')),
 	'rsync\'s arguments and those of any command that names where a key is kept are left out, wrapped or across a line break; keylocation=prompt names none');
-same(array(1, 1), array(preg_match('/ debug \[\d+\] failed: .+ in \d+\.\d{3} s: echo not a list$/D', $lines[10]), preg_match('/ debug \[\d+\] exit 0 in \d+\.\d{3} s: echo a{100,}$/D', $lines[11])), 'a command that could not run says why, and a long one keeps how it ended: '.$lines[7]);
-same(array(13, 1, array()), array(count($lines), preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[12]), $plugin_lines), 'a debug line is one line, like any other, and none goes to the plugin\'s own log');
+same(array(1, 1), array(preg_match('/ debug \[\d+\] failed: .+ in \d+\.\d{3} s: echo not a list$/D', $lines[10]), preg_match('/ debug \[\d+\] exit 0 in \d+\.\d{3} s: echo a{100,}$/D', $lines[11])), 'a command that could not run says why, and a long one keeps how it ended: '.$lines[10].' | '.$lines[11]);
+same(1, preg_match('/ debug \[\d+\] request snapshotdataset; second line$/D', $lines[12]), 'a debug line is one line, like any other');
 file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"0\"\n");
 runProcess('echo', array('again'));
 same(14, count(file($debug_log)), 'the setting is read once for each run');

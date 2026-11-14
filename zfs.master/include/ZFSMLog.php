@@ -33,7 +33,8 @@ function zfsmDebug($message) {
 	if (zfsmDebugOn()) zfsmLogKeep(zfsmSafeText($message), LOG_DEBUG, zfsmDebugFile());
 }
 
-// A command the plugin ran, for the debug log: how it ended and how long it took first, the result cut so the command still fits.
+// A command the plugin ran, for the debug log: how it ended and how long it took first, the result cut to 200 bytes so a long one
+// leaves room for the command (zfsmSafeText cuts a line at 500).
 // The time is taken before the setting is read: the first command of a run would carry that read.
 function zfsmDebugCommand($command, $args, $result, $began) {
 	$seconds = number_format(microtime(true) - $began, 3, '.', '');

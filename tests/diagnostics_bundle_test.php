@@ -603,7 +603,8 @@ $clear_logs();
 // no debug line of its own. In this test's container only, like /var/log/syslog above.
 @mkdir('/boot/config/plugins/zfs.master', 0700, true);
 file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\ndebug_log=\"1\"\n");
-$debug_line = "2026-01-02 10:00:02 debug [41] exit 1 in 0.200 s: zfs destroy -r gonepool/private\n";
+// The second line's command failed: the word it names is no pool, so it is a token like any other.
+$debug_line = "2026-01-02 10:00:02 debug [41] exit 0 in 0.200 s: zfs destroy -r gonepool/private\n2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename tank/a CanaryTyped/docs\n";
 file_put_contents('/var/log/zfs.master.debug.log', $debug_line);
 register_shutdown_function(function() { @unlink('/var/log/zfs.master.debug.log'); @unlink('/boot/config/plugins/zfs.master/zfs.master.cfg'); });
 $run = function($options, $arguments = '', $at = null) use ($docroot) {
