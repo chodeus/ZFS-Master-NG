@@ -383,6 +383,11 @@ putenv('ZFSM_TEST_SSH_FAIL');
 $nas = zfsmReplicaRemote('nas');
 same(array('', ''), array(zfsmReplicaRemoteRemove('nas'), zfsmReplicaRemoteAdd('nas', $nas['host'], $nas['port'], $nas['key'], zfsmKeyFingerprint($nas['key']))), 'nas removed and added again');
 same(array('area' => 'backup/replicas/tower'), zfsmReplicaHello(zfsmReplicaRemote('nas')), 'is tried at once');
+putenv('ZFSM_TEST_SSH_LOST=hello');
+same(array('error' => 'The connection to nas dropped'), zfsmReplicaHello(zfsmReplicaRemote('nas')), 'a hello whose end there is lost after its answer is no answer');
+putenv('ZFSM_TEST_SSH_LOST');
+same(1, preg_match('/^The connection to nas dropped\. It is tried again in (?:29|30) seconds$/D', zfsmReplicaHello(zfsmReplicaRemote('nas'))['error'] ?? ''), 'and the wait says so');
+touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 // Past the dialog's read limit: a connection being made or ended leaves no key file behind, and ending one doesn't throw.
 $timed_out = function($read) { try { zfsmWithDeadline(0, $read); return 'no throw'; } catch (ZFSMTimeout $timeout) { return $timeout->getMessage(); } };
 $ssh();
@@ -398,7 +403,7 @@ same(array('tank/data' => 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE), zfsmSt
 
 // A connection lost just as the receive ends there: the copy may hold the snapshot the run took, so the run keeps it as the next one's base.
 $reset();
-putenv('ZFSM_TEST_SSH_LOST=1');
+putenv('ZFSM_TEST_SSH_LOST=receive');
 same(1, zfsmRunReplicate('tank/data', 'f', 'data', null, true, 'nas'), 'a run whose end there is lost');
 putenv('ZFSM_TEST_SSH_LOST');
 same(array(true, true), array(in_array('backup/replicas/tower/data@f', $names('backup/replicas/tower/data', 'snapshot'), true), in_array('tank/data@f', $names('tank/data', 'snapshot'), true)), 'the copy holds the snapshot it took, and so does the dataset');

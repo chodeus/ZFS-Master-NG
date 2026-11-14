@@ -113,7 +113,9 @@ function zfsmReplicaAsk($link, $request, $keep_bytes = ZFSM_KEEP_OUTPUT) {
 	if (($answer['code'] ?? 1) === 0) return $answer;
 	$answer['error'] = zfsmCommandError($answer, 'No answer from '.$name);
 	if ($answer['code'] === 255) {
-		$answer['error'] = zfsmReplicaSshAdvice($link['remote'], $answer) ?? $answer['error'];
+		// After the checker's own first line, ssh's 255 is the connection dropping, as ssh riding it says nothing (zfsmReplicaTargetLost).
+		$answered = strpos((string)$answer['output'], "zfsm-replica 1\n") === 0;
+		$answer['error'] = $answered ? 'The connection to '.$name.' dropped' : zfsmReplicaSshAdvice($link['remote'], $answer) ?? $answer['error'];
 		@file_put_contents(zfsmReplicaDownFile($name), $answer['error']);
 	}
 	return $answer;
@@ -137,8 +139,8 @@ function zfsmReplicaConnect($remote) {
 		zfsmReplicaDisconnect($link);
 		throw $timeout;
 	}
-	// The answer ends at the area's name, which may hold spaces.
-	$area = preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) === 1 && zfsmValidDatasetName($match[1]) ? $match[1] : null;
+	// Only a hello that ended well counts. The answer ends at the area's name, which may hold spaces.
+	$area = ($hello['code'] ?? 1) === 0 && preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) === 1 && zfsmValidDatasetName($match[1]) ? $match[1] : null;
 	// The area is named for the sender the key line there names: another name is a line made for another name, as before a rename.
 	$named = $area === null ? null : zfsmReplicaAreaSender($area);
 	if ($named === $this_name) {
