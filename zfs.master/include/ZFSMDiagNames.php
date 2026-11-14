@@ -119,13 +119,14 @@ function zfsmDiagNamePattern() {
 		foreach (array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3)) as $path) $names['own'][] = zfsmStatePath(strstr($path.'*', '*', true));
 		// A key runs to its END line; one whose end was cut off is the rest of its line and the lines of key text after it, no more.
 		$names['pattern'] = '~(?<secret>-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:[A-Za-z0-9+/=\s;]*-----END [A-Z0-9 ]*PRIVATE KEY-----|[^\r\n]*(?:\r?\n[A-Za-z0-9+/=]{16,}(?=\r?\n|\z))*))'
-			// zfs send -t: the token of a copy that stopped names its snapshot to anyone who asks zfs.
-			.'|(?<resume>(?<= -t )\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
+			// A resume token names its snapshot to anyone who asks zfs: matched by its own shape, after -t in any form or alone.
+			.'|(?<resume>(?<![0-9a-f-])\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
 			.'|(?<key>\b(?:ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-[\w-]+|sk-[\w-]+@openssh\.com)[ \t]+(?<blob>AAAA[0-9A-Za-z+/]+=*))'
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
-			.'|(?<path>(?<![A-Za-z0-9_.:/-])/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
+			// A path starts after a colon (failed:/mnt/...) and after file://; not inside a link's //, nor at an IPv6 prefix (fe80::/10).
+			.'|(?<path>(?:(?<![A-Za-z0-9_./-]|::)|(?<=file://))/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
 			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
 			.'|(?<host>(?<![\w.+-])(?!feature@|unsupported@)[\w.+-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s"\',]+)?)'
 			.'|(?<ip>(?<![\w.])\d{1,3}(?:\.\d{1,3}){3}(?![\w]|\.\d)|(?<![\w:.])(?:(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}|[0-9A-Fa-f:]*::[0-9A-Fa-f:.]*)(?![\w:]))~s';
@@ -134,9 +135,9 @@ function zfsmDiagNamePattern() {
 }
 
 // $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
-// $ends: what ends a folder's path in $text: a tab or a line break in a file's tab-separated rows, only a line break in running text
-// (zfsmDiagRunningText) and in a message, nothing in a value that is a path itself (zfsmDiagAnonValue).
-function zfsmDiagAnonText($text, $ends = "\t\r\n") {
+// $ends: what ends a folder's path in $text: a tab or a line feed in a file's tab-separated rows (a name can hold a carriage return), a line break in running text
+// (zfsmDiagAnonRunning, the only caller that passes it), nothing in a JSON value that is a path itself (zfsmDiagAnonValue).
+function zfsmDiagAnonText($text, $ends = "\t\n") {
 	$pattern = zfsmDiagNamePattern();
 	$clean = '';
 	for ($at = 0; ($found = preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE | PREG_UNMATCHED_AS_NULL, $at)) === 1; $at = $end) {
@@ -149,7 +150,7 @@ function zfsmDiagAnonText($text, $ends = "\t\r\n") {
 }
 
 // What one find becomes, and where the search goes on: [its replacement, the offset after what it stands for].
-function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
+function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 	list($found, $at) = $match[0];
 	$end = $at + strlen($found);
 	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at, $ends);
@@ -171,15 +172,21 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\r\n") {
 	return filter_var($ip, FILTER_VALIDATE_IP) === false ? array($found, $end) : array(zfsmDiagToken($ip, 'ip').substr($found, strlen($ip)), $end);
 }
 
-// A path at $at, each name in it a token. A system path stays. A dataset's pool stays, and its names end where ZFS's few characters do.
+// A path at $at, each name in it a token. A system path keeps the system's own folders (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
 // A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end.
-function zfsmDiagAnonPath($text, $at, $ends = "\t\r\n") {
+function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
-	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) return array($system[0], $at + strlen($system[0]));
-	// One of the plugin's own paths, whole: in a row's field or a value the whole field, in running text up to its first space (the second
-	// net takes the words after it). Any other path under a shared top folder is a folder's, names and all.
-	$whole = rtrim(strpos($ends, "\t") !== false || $ends === '' ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
+	$field = strpos($ends, "\t") !== false || $ends === '';
+	// A path, whole: in a field (a row's, a JSON value's) the whole field, in running text up to its first space
+	// (zfsmDiagAnonRunning's second net takes the words after it).
+	$whole = rtrim($field ? $run : substr($run, 0, strcspn($run, ' ')), ':,;');
+	if (preg_match('~^/(?:'.ZFSM_DIAG_SYSTEM.')(?=[/\s]|$)~', $run, $system) === 1) {
+		// In running text a system path ends with its plain names; in a field, before a page's query (the query rule's).
+		$path = $field ? preg_replace('~\?[\w%.-]+=.*~s', '', $whole) : substr($run, 0, strspn($run, 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.+-/'));
+		return array(zfsmDiagSystemPath($system[0], substr($path, strlen($system[0]))), $at + strlen($path));
+	}
+	// One of the plugin's own paths stays whole. Any other path under a shared top folder is a folder's, names and all.
 	if (zfsmDiagOwnName($whole)) return array($whole, $at + strlen($whole));
 	foreach ($names['own'] as $own) {
 		// A listed path itself, or a log of it that was turned over (syslog.1): what is in or beside it is not, unless zfsmDiagOwnName says so.
@@ -227,6 +234,40 @@ function zfsmDiagOwnName($path) {
 	return false;
 }
 
+// A path under a system folder: the folders on the way to one of the system's own paths (zfsmDiagSystemKnown) stay; the first name off
+// that way and each after it is a token, as a dataset can be mounted there too (mountpoint=/usr/local/x). null when the list could not be made.
+function zfsmDiagSystemPath($top, $rest) {
+	$known = zfsmDiagSystemKnown();
+	if ($known === null) return null;
+	for ($kept = $top; preg_match('~^/([^/]+)~', $rest, $name) === 1 && isset($known[$kept.$name[0]]); $rest = substr($rest, strlen($name[0]))) $kept .= $name[0];
+	$tokens = zfsmDiagNameTokens($rest);
+	return $tokens === null ? null : $kept.$tokens;
+}
+
+// The system paths the plugin uses, with the folders on the way to each: tests/diagnostics_bundle_test.php checks every one its code
+// names is here. null when the plugin's files could not be listed or read.
+function zfsmDiagSystemKnown() {
+	static $known = null;
+	if ($known !== null) return $known ?: null;
+	$known = false;
+	$files = zfsmDiagPluginFiles();
+	if ($files === null) return null;
+	$web = array('webGui/include/Helpers.php', 'webGui/include/publish.php', 'webGui/scripts/diagnostics', 'webGui/javascript/dynamix.js', 'webGui/styles/default-base.css',
+		'webGui/styles/default-color-palette.css', 'webGui/styles/default-fonts.css', 'webGui/styles/default-popup.css', 'webGui/styles/font-awesome.css', 'plugins/dynamix/scripts/notify');
+	foreach (array('black', 'white', 'azure', 'gray') as $theme) $web[] = 'webGui/styles/themes/'.$theme.'.css';
+	foreach ($files as $file) $web[] = 'plugins/zfs.master/'.$file;
+	$paths = array('/dev/null', '/proc/self/mounts', '/proc/self/mountinfo', '/proc/self/ns/mnt', '/proc/locks', '/proc/uptime', '/sys/module/zfs/version',
+		'/sys/module/zfs/parameters/zfs_bclone_enabled', '/usr/share/zfs/compatibility.d', '/dev/disk/by-id', '/dev/disk/by-uuid', '/dev/disk/by-partuuid', '/dev/disk/by-path', '/dev/mapper');
+	foreach ($web as $file) array_push($paths, '/usr/local/emhttp/'.$file, '/'.$file);
+	foreach (array('/usr/local/sbin', '/usr/sbin', '/sbin', '/usr/local/bin', '/usr/bin', '/bin') as $folder) {
+		foreach (array('zfs', 'zpool', 'php', 'timeout', 'rsync', 'ssh', 'zip', 'cp', 'rm', 'rmdir', 'setsid', 'ps', 'sh', 'bash') as $program) $paths[] = $folder.'/'.$program;
+	}
+	$read = array_merge(array_keys(zfsmDiagNotCollected()), ...array_column(zfsmDiagCollectors(), 3));
+	$set = array();
+	foreach (array_merge($paths, $read) as $path) for ($at = rtrim($path, '/*'); $at !== ''; $at = substr($at, 0, (int)strrpos($at, '/'))) $set[$at] = true;
+	return $known = $set;
+}
+
 // The part of a path after what stays, each name in it a token.
 function zfsmDiagNameTokens($rest) {
 	return preg_replace_callback('~[^/@#,]+~', function($part) { return $part[0] === '.' || $part[0] === '..' ? $part[0] : zfsmDiagToken($part[0]); }, $rest);
@@ -267,8 +308,9 @@ function zfsmDiagAnonJson($text) {
 function zfsmDiagAnonValue($value, &$failed, $free = false) {
 	if (is_string($value)) {
 		// A value that stays as a number can still be an address.
-		// One value is one field: a path that is the whole value runs to its end, and a message's path to its line's end.
-		$clean = zfsmDiagAnonText($free ? zfsmDiagFreeValue($value) : $value, $value !== '' && $value[0] === '/' ? '' : "\r\n");
+		// A path that is the whole value runs to its end; a value with a space or a tab is running text; any other is one field.
+		$value = $free ? zfsmDiagFreeValue($value) : $value;
+		$clean = $value !== '' && $value[0] === '/' ? zfsmDiagAnonText($value, '') : (strpbrk($value, " \t") !== false ? zfsmDiagAnonRunning($value) : zfsmDiagAnonText($value));
 		$failed = $failed || $clean === null;
 		return $clean;
 	}

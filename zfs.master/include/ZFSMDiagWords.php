@@ -21,24 +21,39 @@ define('ZFSM_DIAG_BROWSER_WORDS', 'mozilla windows nt win64 x64 x86_64 x11 wow64
 	.' macintosh intel mac os linux ubuntu android iphone ipad cpu version mobile headlesschrome crios fxios rv trident msie wv');
 define('ZFSM_DIAG_THEME_WORDS', 'theme black white azure gray page');
 
-// Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run.
+// Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run, a failure too.
+// null when its files could not all be listed and read: a list with words missing is not kept.
 function zfsmDiagVocabulary() {
 	static $words = null;
-	if ($words !== null) return $words;
-	$words = array_flip(explode(' ', ZFSM_DIAG_WORDS));
-	foreach (zfsmDiagFilesUnder(dirname(__DIR__)) as $file) {
+	if ($words !== null) return $words ?: null;
+	$words = false;
+	$files = zfsmDiagPluginFiles();
+	if ($files === null) return null;
+	$read = array_flip(explode(' ', ZFSM_DIAG_WORDS));
+	foreach ($files as $file) {
 		// The plugin's own text only: an asset it bundles holds every word there is, and this file's lists are added as lists.
 		if (preg_match('~^(?!assets/).*\.(?:php|page|js)$~D', $file) !== 1 || $file === 'include/ZFSMDiagWords.php') continue;
-		preg_match_all('/[A-Za-z][A-Za-z0-9_]*/', (string)@file_get_contents(dirname(__DIR__).'/'.$file), $found);
-		foreach ($found[0] as $word) $words[strtolower($word)] = true;
+		$text = zfsmDiagWhole('file_get_contents', dirname(__DIR__).'/'.$file);
+		if ($text === false) return null;
+		preg_match_all('/[A-Za-z][A-Za-z0-9_]*/', $text, $found);
+		foreach ($found[0] as $word) $read[strtolower($word)] = true;
 	}
-	return $words;
+	return $words = $read;
+}
+
+// Running text, a file of it or a JSON value with a space or a tab: the rules, a folder's path ending at its line's end, then the second net for
+// the words after a path's first space and the rest. null when it could not be searched.
+function zfsmDiagAnonRunning($text) {
+	$clean = zfsmDiagAnonText($text, "\r\n");
+	return $clean === null ? null : zfsmDiagKnownWords($clean);
 }
 
 // $text, already through the rules, with each word that is no number, no token and no word of the plugin's or of $more a token itself.
 // A pool's name is matched whole, '-', '.' and ':' and all. null when it could not be searched.
 function zfsmDiagKnownWords($text, $more = '') {
-	$words = zfsmDiagVocabulary() + array_flip(array_filter(explode(' ', $more), 'strlen'));
+	$words = zfsmDiagVocabulary();
+	if ($words === null) return null;
+	$words += array_flip(array_filter(explode(' ', $more), 'strlen'));
 	$pools = zfsmDiagKnownPools();
 	$pool = zfsmDiagAnyOf(array_map('strval', array_keys($pools)));
 	// A token of this run and a key's fingerprint are matched whole: zfsmDiagToken gives a token of its own back as it is.
