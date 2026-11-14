@@ -8,7 +8,9 @@ define('ZFSM_DIAG_SHARED', 'boot|tmp|var|root');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
-define('ZFSM_DIAG_AFTER', '(?:succeeded|received)$|failed(?:: | after | with exit code |$)|(?:not )?started: |finished(?:: |\.| \(|$)|is not inside |\((?:in full|changes since|carried on)|\| ');
+define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$');
+define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
+define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |\((?:in full|changes since|carried on)|\| ');
 
 // A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
 function zfsmDiagNamesStart() {
@@ -63,14 +65,17 @@ function zfsmDiagKnow($name) {
 	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][strstr($name, ' ', true)][$name] = true;
 }
 
-// A pool nothing here knows, such as one exported since, is known once the plugin's own log lines or zfs's messages name one
-// of its datasets: after ": ", "of ", "to ", "into " or a quote, or as a word of its own in a zfs or zpool command a debug line
-// says ended well (zfsmDebugCommand). A failed one can name a pool that never was, such as a mistyped destination.
-function zfsmDiagLearnPools($text) {
-	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $text, $found);
-	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $text, $commands);
+// A pool nothing here knows, such as one exported since, is learned only from a line that proves it: a log line with a success and no failure
+// anywhere, as a name can hold either word, or a zfs or zpool command a debug line says ended well. Other lines' names only end the names before them.
+function zfsmDiagLearnPools($log, $debug) {
+	foreach (explode("\n", $log) as $line) {
+		preg_match_all('~(?<=: |of |to |into )(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $line, $found);
+		$proves = preg_match('~ (?:'.ZFSM_DIAG_DONE.')~', $line) === 1 && preg_match('~ (?:'.ZFSM_DIAG_FAILED.'|refused: )~', $line) === 0;
+		array_map($proves ? 'zfsmDiagKnowPool' : 'zfsmDiagKnowRoot', $found[0]);
+	}
+	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
 	preg_match_all('~(?<!\S)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $commands[0]), $named);
-	array_map('zfsmDiagKnowPool', array_unique(array_merge($found[0], $named[0])));
+	array_map('zfsmDiagKnowPool', array_unique($named[0]));
 }
 
 // A value its owner or another tool wrote freely, such as a user property's, can name anything, and no path marks it:
@@ -289,7 +294,7 @@ function zfsmDiagNameEnd($run) {
 		$next = (string)substr($run, strlen($known), 1);
 		if (strlen($known) > $from && strncmp($run, $known, strlen($known)) === 0 && ($next === '' || strpos(' /@#,', $next) !== false)) $from = strlen($known);
 	}
-	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
+	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].'|'.$names['root'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
 	for ($space = strpos($run, ' ', $from); $space !== false; $space = strpos($run, ' ', $space + 1)) {
 		if (preg_match($after, $run, $unused, 0, $space) === 1) return $space;
 	}
