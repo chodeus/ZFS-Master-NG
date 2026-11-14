@@ -337,7 +337,10 @@ function zfsmDiagReplicaSend($ctx) {
 	// A list that can't be read is a read that failed; one that was read and is no list is a finding.
 	$unread = $read === null && zfsmDiagWhole('file_get_contents', $dir.'/remotes.json') === false;
 	$servers = '';
-	foreach ($read['valid'] ?? array() as $remote) $servers .= implode("\t", array($remote['name'], $remote['host'], $remote['port'], zfsmKeyFingerprint($remote['key'])))."\n";
+	foreach ($read['valid'] ?? array() as $remote) {
+		zfsmDiagKnowWord($remote['name']);
+		$servers .= implode("\t", array($remote['name'], $remote['host'], $remote['port'], zfsmKeyFingerprint($remote['key'])))."\n";
+	}
 	$unused = count($read['other'] ?? array());
 	$wrong = array(
 		'this server\'s sending key has lost its public half; Make This Server\'s Key in Settings restores it' => $private && $public === null,

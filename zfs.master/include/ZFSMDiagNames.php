@@ -223,14 +223,14 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 // Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
 // the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$jobs = '(?:rewrite|replicate|replica-serve|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start)\.lock|state\.json(?:\.tmp)?|browser\.json))?';
+	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts))?))?';
 	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
 	$names = array(
 		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
 		zfsmJobDir('') => $jobs,
 		zfsmStatePath('/var/run/zfs.master.') => '(?:lock|alerts\.json(?:\.lock)?|'.$jobs.')',
 		zfsmStatePath(rtrim('/var/log/packages/zfs.master-*', '*')) => '\d[\d.]*-[a-z0-9_]+-\d\w*',
-		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z)');
+		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z|ssh(?:/(?:id_ed25519(?:\.pub)?|remotes\.json|new-[0-9a-f]{8}(?:\.pub)?))?)');
 	foreach ($names as $prefix => $name) {
 		if (preg_match('~^'.preg_quote($prefix, '~').$name.'$~D', $path) === 1) return true;
 	}
