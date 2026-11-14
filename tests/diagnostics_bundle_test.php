@@ -91,6 +91,7 @@ $log_lines = array(
 	$action('ZFS Replication', 'tank/CanaryDs One', 'The copy needs a dataset name inside a pool, such as backup/CanaryLeaf'),
 	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container chrome has it mounted"),
 	$action('ZFS Replication', 'tank/CanaryDs One', "The copy goes inside bakup/CanaryTyped, which doesn't exist"),
+	'Replication of tank/CanarySrc to canarytyped/CanaryDest not started: The copy goes inside canarytyped/CanaryDest, which doesn\'t exist',
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
 );
@@ -201,6 +202,9 @@ has('Using it now: container '.$token('canarycontainer').' has it mounted; proce
 has('such as backup/'.$token('CanaryLeaf')."\n", $log, 'the name in a refusal\'s example is a token');
 has('Using it now: container '.$token('chrome')." has it mounted\n", $log, 'a word of a browser\'s report is a name in the log: only that report takes those words');
 has('The copy goes inside '.$token('bakup').'/'.$token('CanaryTyped').', which doesn?t exist'."\n", $log, 'a dataset the user typed, of a pool there is not, is tokens');
+// No known pool ends the source's name, so the rules take "to" and the pool after it for more of it: all tokens.
+has('Replication of tank/'.$token('CanarySrc to canarytyped').'/'.$token('CanaryDest').' not started: The copy goes inside '.$token('canarytyped').'/'.$token('CanaryDest').', which doesn?t exist'."\n", $log,
+	'a scheduled run\'s mistyped destination is tokens: a line that did not start proves no pool');
 has('ZFS Dataset Creation: tank/'.$token('Canary').'?s '.$token('CanaryFiles').' ('.$token('CanarySmith').' 2024) failed: Invalid dataset name'."\n", $log, 'a name that was refused is tokens past the character that ended it for the rules');
 has("ZFS Master NG backend exception: (a private key, left out)\n", $log, 'a private key is left out');
 has('request: "POST /plugins/zfs.master/backend/ZFSMAdmin.php?(left out) HTTP/1.1", host: (left out), referrer: (left out)', $files['plugin/php-errors.txt'], 'a request\'s query and the site\'s name are left out');
@@ -255,10 +259,12 @@ foreach (zfsmDiagFilesUnder(__DIR__.'/../zfs.master') as $file) {
 $named = array_values(array_unique($named));
 same(array(true, $named), array(count($named) > 20, array_map('zfsmDiagAnonText', $named)), 'every system path the plugin names stays whole');
 zfsmDiagStart();
-$said = 'Snapshot: gonepool/a@b failed: I/O error on read/write; cannot open \'otherpool/a\'; zfs list gonepool/a';
-zfsmDiagLearnPools($said);
-same('Snapshot: gonepool/'.zfsmDiagToken('a').'@'.zfsmDiagToken('b').' failed: I/O error on read/write; cannot open \'otherpool/'.zfsmDiagToken('a').'\'; zfs list gonepool/'.zfsmDiagToken('a'), zfsmDiagAnonText($said),
-	'a pool nothing lists is learned from a line of the plugin\'s and from a name zfs quotes, then found anywhere; no other word with a slash is taken for one');
+// Lines as zfsmLog writes them: a scheduled run's saved destination, a request from another server and a failed command can name a pool that never was.
+$said = "ZFS Snapshot: gonepool/a@b succeeded\nReplication of gonepool/a@b to otherpool/a finished (in full). The bookmark that keeps the next run incremental could not be made: I/O error on read/write\n"
+	."Replication of gonepool/a to typedpool/a not started: The copy goes inside typedpool/a, which doesn?t exist\nReplication request from 203.0.113.7 refused: askedpool/x is not inside otherpool/area\n";
+zfsmDiagLearnPools($said, "2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename gonepool/a typedpool/b\n");
+same(array(array('gonepool' => true, 'otherpool' => true), 'zfs list gonepool/'.zfsmDiagToken('a').' otherpool/'.zfsmDiagToken('a')), array(zfsmDiagKnownPools(), zfsmDiagAnonText('zfs list gonepool/a otherpool/a')),
+	'a pool is learned only from a line whose first verb is a success, then found anywhere; no other word with a slash is taken for one');
 // Property rows: a value can hold tabs and line breaks, so the rows are read against the same read without its values.
 $heads = "tank/a\torg.znapzend:src_plan\ntank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\ntank/a\tmountpoint\ntank/a\tkeylocation\ntank/b\tkeylocation\ntank/b\tsharenfs\ntank/b\tcompression\n";
 $values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clientacme:owner_tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"

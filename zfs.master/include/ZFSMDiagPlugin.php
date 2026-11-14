@@ -355,7 +355,7 @@ function zfsmDiagLog($ctx) {
 	$newer = zfsmDiagFile(zfsmLogFile());
 	$debug_older = zfsmDiagFile(zfsmDebugFile().'.1');
 	$debug_newer = zfsmDiagFile(zfsmDebugFile());
-	zfsmDiagLearnPools($older.$newer.$lines.$debug_older.$debug_newer);
+	zfsmDiagLearnPools($older.$newer.$lines, $debug_older.$debug_newer);
 	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines)
 		.zfsmDiagSection(zfsmDebugFile().'.1', $debug_older).zfsmDiagSection(zfsmDebugFile(), $debug_newer);
 }

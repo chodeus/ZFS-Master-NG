@@ -63,12 +63,12 @@ function zfsmDiagKnow($name) {
 	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][strstr($name, ' ', true)][$name] = true;
 }
 
-// A pool nothing here knows, such as one exported since, is known once the plugin's own log lines or zfs's messages name one
-// of its datasets: after ": ", "of ", "to ", "into " or a quote, or as a word of its own in a zfs or zpool command a debug line
-// says ended well (zfsmDebugCommand). A failed one can name a pool that never was, such as a mistyped destination.
-function zfsmDiagLearnPools($text) {
-	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $text, $found);
-	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $text, $commands);
+// A pool nothing here knows, such as one exported since, is learned only from a line that proves it: a log line whose first verb
+// is started, finished, succeeded or received, or a zfs or zpool command a debug line says ended well. A failed line can name a mistyped pool.
+function zfsmDiagLearnPools($log, $debug) {
+	preg_match_all('~^(?:(?! (?:not started|failed|refused)\b).)*? (?:started|finished|succeeded|received)\b.*$~m', $log, $proved);
+	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $proved[0]), $found);
+	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
 	preg_match_all('~(?<!\S)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $commands[0]), $named);
 	array_map('zfsmDiagKnowPool', array_unique(array_merge($found[0], $named[0])));
 }
