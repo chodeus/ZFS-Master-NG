@@ -17,7 +17,8 @@ const styles = path.join(dynamix, 'styles');
 const base = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.css', 'default-base.css'].map(name => path.join(styles, name)).filter(fs.existsSync);
 const themes = ['black', 'white', 'azure', 'gray'].map(theme => [`themes/${theme}.css`, `default-${theme}.css`].map(name => path.join(styles, name)).find(fs.existsSync)).filter(Boolean);
 assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
-// Unraid's Markdown output for two rows of the General Settings section (MarkdownExtra on the page's definition lists).
+// Unraid's Markdown output for two rows of the General Settings section (MarkdownExtra on the page's definition lists),
+// and for the Diagnostics section, which is after the form and ends in a button.
 const section = `<form><details class="zfsm-section" open><summary>General Settings</summary>
 <dl>
 <dt>Refresh Interval:</dt>
@@ -25,7 +26,15 @@ const section = `<form><details class="zfsm-section" open><summary>General Setti
 <dt>Destructive Mode:</dt>
 <dd><select name="destructive_mode"><option>No</option></select></dd>
 </dl>
-</details></form>`;
+</details></form>
+<details class="zfsm-section" open><summary>Diagnostics</summary>
+<dl>
+<dt>Unraid Diagnostics:</dt>
+<dd><input type="checkbox" checked></dd>
+<dt>Diagnostics Zip:</dt>
+<dd><input type="button" value="Generate"> <span>Collecting. This can take a few minutes.</span></dd>
+</dl>
+</details>`;
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-settings-'));
 let checked = 0;
@@ -38,10 +47,11 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="file://${sheet}">`
 <link rel="stylesheet" href="file://${path.join(plugin, 'styles/zfsm-forms.css')}"></head><body>${section}
 <script>
 window.addEventListener('load', () => {
-  const box = document.querySelector('.zfsm-section');
-  const last = [...box.querySelectorAll('select')].pop();
-  const gap = box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(box).borderBottomWidth) - last.getBoundingClientRect().bottom;
-  const out = document.createElement('pre'); out.id = 'zfsm-result'; out.textContent = JSON.stringify({gap});
+  const gaps = [...document.querySelectorAll('.zfsm-section')].map(box => {
+    const last = [...box.querySelectorAll('select, input[type=button]')].pop();
+    return box.getBoundingClientRect().bottom - parseFloat(getComputedStyle(box).borderBottomWidth) - last.getBoundingClientRect().bottom;
+  });
+  const out = document.createElement('pre'); out.id = 'zfsm-result'; out.textContent = JSON.stringify({gaps});
   document.documentElement.appendChild(out);
 });
 </script></body></html>`);
@@ -49,8 +59,9 @@ window.addEventListener('load', () => {
       `--window-size=${width},800`, '--virtual-time-budget=3000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, `${path.basename(theme)} at ${width}: the section did not render`);
-    const {gap} = JSON.parse(match[1].replace(/&quot;/g, '"'));
-    assert.ok(gap >= 8, `${path.basename(theme)} at ${width}: the last control sits ${gap.toFixed(1)}px above the section's bottom border, under 8`);
+    const {gaps} = JSON.parse(match[1].replace(/&quot;/g, '"'));
+    assert.equal(gaps.length, 2, `${path.basename(theme)} at ${width}: both sections rendered`);
+    for (const gap of gaps) assert.ok(gap >= 8, `${path.basename(theme)} at ${width}: the last control sits ${gap.toFixed(1)}px above the section's bottom border, under 8`);
     checked++;
   }
 } finally {

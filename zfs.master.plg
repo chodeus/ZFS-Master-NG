@@ -346,14 +346,14 @@ done
 rm -rf /boot/config/plugins/&name;
 rm -rf &plugdir;
 rm -f /tmp/zfsm_reload /var/log/&name;.log /var/log/&name;.log.1
-# A diagnostics work folder goes only when it is root's own, has a name a run makes (16 hex digits) and holds no mount.
-# An unread or empty mount table removes nothing: what is mounted in a folder is not the plugin's.
+# A diagnostics work folder goes only when it is root's own, has a name a run makes (16 hex digits), holds no mount and no run
+# holds its lock. An unread or empty mount table removes nothing: what is mounted in a folder is not the plugin's.
 for d in /tmp/&name;-diag.[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]; do
   [ -d "$d" ] || continue
   [ ! -L "$d" ] || continue
   [ -O "$d" ] || continue
   awk -v d="$d" '$5 == d || index($5, d "/") == 1 { n = 1 } END { exit (n || NR == 0) }' /proc/self/mountinfo || continue
-  rm -rf --one-file-system -- "$d"
+  flock -n "$d" rm -rf --one-file-system -- "$d" || continue
 done
 echo ""
 echo "-----------------------------------------------------------"

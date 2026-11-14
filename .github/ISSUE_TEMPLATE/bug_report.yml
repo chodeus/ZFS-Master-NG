@@ -28,6 +28,14 @@ body:
       required: false
 
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics zip
+      description: "Settings, ZFS Master NG, Diagnostics, Generate, then drag the zip here. In the plugin's own files, dataset, snapshot and folder names are replaced by tokens. Unraid's own diagnostics zip, included when its box is ticked (the default), goes in as Unraid made it, and its system log can name datasets: untick the box to leave it out. If the page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal; the zip is in `/boot/logs`."
+    validations:
+      required: false
+
+  - type: textarea
     id: description
     attributes:
       label: What happened?

@@ -23,6 +23,8 @@ function launch({interval = 30, cache = null, storageThrows = false, missingSubs
         text(value) { if (value === undefined) return texts.get(selector); texts.set(selector, value); return this; },
         css() { return this; }, removeClass() { return this; }, addClass() { return this; },
         click() { return this; }, on() { return this; }, remove() { return this; }, removeAttr() { return this; }, hide() { return this; }, attr() { return this; },
+        // The header row the diagnostics record reads (zfsmRender): one cell.
+        length: 0, first() { return this; }, children() { return {map: () => ({get: () => ['Pool']})}; },
         ajaxSuccess(callback) { ajaxSuccess = callback; return this; }
       };
       elements.set(selector, element);
@@ -82,6 +84,7 @@ assert.equal(state.requests[0].options.data.csrf_token, 'fixture-token');
 state.requests[0].resolve({...empty(), publishing_paused: true});
 assert.match(state.body.innerHTML, /No imported ZFS pools/);
 assert.match(state.status(), /Last refresh.*push updates paused; inventory loaded directly/);
+assert.equal(JSON.parse(state.storage.get('zfsm-diagnostics') || '{}').render?.pools, 0, 'a table drawn from the server is in the diagnostics record');
 assert.equal([...state.timers.values()][0].ms, 30000);
 state.expire();
 assert.equal(state.requests.length, 2);
@@ -107,6 +110,8 @@ state = launch({cache: cachedInventory({errors: {tank: 'zpool failed'}}), interv
 assert.match(state.status(), /Last refresh at T.*Query errors: zpool failed/);
 state = launch({cache: cachedInventory({}), interval: 0});
 assert.equal(state.status(), 'Last refresh at T');
+const cachedRender = JSON.parse(state.storage.get('zfsm-diagnostics') || '{}').render;
+assert.deepEqual(cachedRender && [cachedRender.pools, cachedRender.headers], [0, ['Pool']], 'a table drawn from the cache is in the diagnostics record');
 
 state = launch({cache: '{bad json', interval: 0});
 assert.match(state.status(), /no cached data/);

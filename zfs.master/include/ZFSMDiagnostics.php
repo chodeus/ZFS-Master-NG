@@ -3,6 +3,10 @@
 // the rest. A time limit covers the commands a collector runs; a file read that stalls, as on a failing flash drive, has none.
 require_once __DIR__.'/ZFSMDiagPlugin.php';
 require_once __DIR__.'/ZFSMDiagZfs.php';
+require_once __DIR__.'/ZFSMDiagNames.php';
+require_once __DIR__.'/ZFSMDiagWords.php';
+require_once __DIR__.'/ZFSMDiagBundle.php';
+require_once __DIR__.'/ZFSMDiagJob.php';
 
 // [file, time limit in seconds, collector, the paths it covers]. A path under /boot, /var, /etc or /tmp named anywhere in the plugin
 // must be here or in zfsmDiagNotCollected (tests/diagnostics_test.php), so a feature that keeps new state adds its line.
@@ -17,8 +21,9 @@ function zfsmDiagCollectors() {
 		array('plugin/replication-receive.txt', 30, 'zfsmDiagReplicaReceive', array('/boot/config/ssh/root/authorized_keys', '/etc/ssh/ssh_host_ed25519_key.pub')),
 		array('plugin/replication-send.txt', 10, 'zfsmDiagReplicaSend', array('/boot/config/plugins/zfs.master/ssh', '/boot/config/ident.cfg')),
 		array('plugin/inventory.json.txt', 60, 'zfsmDiagInventory', array()),
-		array('plugin/log.txt', 30, 'zfsmDiagLog', array('/var/log/zfs.master.log', '/var/log/syslog')),
+		array('plugin/log.txt', 30, 'zfsmDiagLog', array('/var/log/zfs.master.log', '/var/log/syslog', '/var/log/zfs.master.debug.log')),
 		array('plugin/php-errors.txt', 30, 'zfsmDiagPhpErrors', array('/var/log/phplog', '/var/log/nginx/error.log')),
+		array('plugin/browser.json.txt', 5, 'zfsmDiagBrowser', array()),
 		array('unraid/context.txt', 20, 'zfsmDiagUnraid', array('/etc/unraid-version', '/var/local/emhttp', '/var/local/emhttp/var.ini', '/var/local/emhttp/disks.ini', '/tmp/publishPaused', '/var/log/plugins/*.plg')),
 		array('zfs/versions.txt', 20, 'zfsmDiagZfsVersions', array()),
 		array('zfs/zpool-list.txt', 30, 'zfsmDiagZpoolList', array()),
@@ -31,6 +36,7 @@ function zfsmDiagCollectors() {
 		array('zfs/processes.txt', 20, 'zfsmDiagZfsProcesses', array()),
 		// The slowest read, so last of the pool reads: a pool it times out on costs no other file.
 		array('zfs/snapshots-summary.txt', 150, 'zfsmDiagSnapshots', array()),
+		array('unraid/diagnostics.txt', 310, 'zfsmDiagUnraidZip', array('/boot/logs')),
 		array('zfs/timings.txt', 5, 'zfsmDiagTimings', array()),
 	);
 }
@@ -43,16 +49,18 @@ function zfsmDiagNotCollected() {
 	);
 }
 
-// What every collector gets: the settings as saved and as the plugin uses them, and the installed plugin's folder.
-function zfsmDiagContext($config) {
+// What every collector gets: the settings as saved and as the plugin uses them, the installed plugin's folder, whether
+// Unraid's own diagnostics are wanted with the files, and whether the Settings page started the run.
+function zfsmDiagContext($config, $unraid = true, $job = false) {
 	$saved = is_array($config) && is_array($config['general'] ?? null) ? $config['general'] : array();
-	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__));
+	return array('saved' => $saved, 'cfg' => loadConfig($config), 'dir' => dirname(__DIR__), 'unraid' => $unraid, 'job' => $job);
 }
 
 // What the collectors note as they go: summary.txt's facts and findings, each read's time, and the pools a read timed out on.
 function zfsmDiagStart() {
 	$facts = array_fill_keys(array('plugin', 'Unraid', 'PHP', 'OpenZFS', 'pools', 'datasets', 'snapshots', 'settings changed from default'), 'not read');
-	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false, 'unread' => false);
+	$GLOBALS['zfsm_diag'] = array('facts' => $facts, 'findings' => array(), 'timings' => array(), 'pools' => null, 'hung' => array(), 'timed_out' => false, 'unread' => false, 'unraid_zip' => null);
+	zfsmDiagNamesStart();
 }
 
 function zfsmDiagFact($name, $value) {
@@ -75,10 +83,14 @@ function zfsmDiagSeconds($seconds) {
 	return $seconds * ($GLOBALS['zfsm_diag_scale'] ?? 1);
 }
 
-// Writes every file into $dir; false when one could not be written. A collector that throws, runs out of time or could not
-// read something is noted in collectors.txt and the summary, and the rest still run.
+// Writes every file into $dir: false when one could not be written, null when the folder went under the run at any point. A collector
+// that throws, runs out of time or could not read is noted in collectors.txt and the summary.
 function zfsmDiagRun($dir, $ctx, $collectors = null) {
 	zfsmDiagStart();
+	if (!is_dir($dir) && !@mkdir($dir, 0700, true)) return false;
+	// The folder zfsmDiagWorkDir locked, else one opened now and kept to the run's end: while it is, no other can take its inode.
+	$began_in = zfsmDiagWorkHold($dir) ?? @fopen($dir, 'r');
+	if ($began_in === false) return false;
 	$report = "file\tresult\tseconds\n";
 	$unfinished = array('timed out' => array(), 'read failed' => array(), 'failed' => array());
 	$written = true;
@@ -96,15 +108,19 @@ function zfsmDiagRun($dir, $ctx, $collectors = null) {
 			$text = $result.': '.$error->getMessage();
 		}
 		if ($result !== 'ok') $unfinished[$result][] = $file;
-		$written = zfsmDiagWrite($dir.'/'.$file, $text) && $written;
+		// The run's lock is on the folder it began in: once that is gone, or another of its name is there, the run ends.
+		if (!zfsmDiagSameFolder($dir, $began_in)) return null;
+		$written = zfsmDiagWrite($dir, $file, $text) && $written;
 		$report .= $file."\t".$result."\t".number_format(microtime(true) - $began, 1, '.', '')."\n";
 	}
 	if ($unfinished['timed out']) zfsmDiagFinding('a read timed out, so these files are incomplete: '.implode(', ', $unfinished['timed out']));
 	if ($unfinished['read failed']) zfsmDiagFinding('a read failed, so these files are incomplete: '.implode(', ', $unfinished['read failed']));
 	if ($unfinished['failed']) zfsmDiagFinding('a collector failed, so these files hold only its error: '.implode(', ', $unfinished['failed']));
-	$written = zfsmDiagWrite($dir.'/collectors.txt', $report) && $written;
-	$written = zfsmDiagWrite($dir.'/summary.txt', zfsmDiagSummary()) && $written;
-	return zfsmDiagWrite($dir.'/README.txt', zfsmDiagReadme()) && $written;
+	if (!zfsmDiagSameFolder($dir, $began_in)) return null;
+	$written = zfsmDiagWrite($dir, 'collectors.txt', $report) && $written;
+	$written = zfsmDiagWrite($dir, 'summary.txt', zfsmDiagSummary()) && $written;
+	$written = zfsmDiagWrite($dir, 'README.txt', zfsmDiagReadme()) && $written;
+	return zfsmDiagSameFolder($dir, $began_in) ? $written : null;
 }
 
 // One screen: the versions and counts the collectors noted, then what they found wrong.
@@ -121,24 +137,43 @@ function zfsmDiagReadme() {
 	$text = "ZFS Master NG diagnostics\n\n"
 		."summary.txt     versions, counts and the FINDINGS: what looks wrong with the plugin, its settings, the pools or this run's own reads\n"
 		."collectors.txt  each file: ok, read failed, timed out or failed, and the seconds it took\n"
-		."plugin/         settings, install, alert schedule, jobs, replication and the plugin's log\n"
+		."plugin/         settings, install, alert schedule, jobs, replication, the plugin's log and what the browser reported\n"
 		."zfs/            pools, datasets, snapshot counts, bookmarks, mounts and running commands\n"
-		."unraid/         the Unraid version, array state, display settings and installed plugins\n\n"
+		."unraid/         the Unraid version, array state, the display settings the plugin uses and installed plugins; and Unraid's own diagnostics zip, when asked for\n"
+		."names.txt       each token in these files, and the shape of the name it stands for\n\n"
+		."In these files a dataset's, snapshot's, bookmark's or folder's name is a token (name-...), the same token wherever that name is.\n"
+		."So are this server's and a sender's name, a key's comment, a pattern or a value its owner wrote and the words of a user property's\nname that the plugin does not use; a user at a host (host-...);\n"
+		."and an address (ip-...). A key is only its fingerprint. A pool's name stays.\n"
+		."A folder's path in a line of text takes the rest of that line with it, because a folder's name can hold any character.\n"
+		."In a file's rows it ends at the next tab. A name that holds a tab or a line break can be cut there, and what follows it can stay.\n"
+		."In the logs, the command lines and the findings, any other word that the plugin itself does not use is a token too, numbers aside.\n"
+		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
+		."names one of its datasets, the name stays.\n"
+		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n\n"
 		."Left out, and why:\n";
 	foreach (zfsmDiagNotCollected() as $path => $why) $text .= $path.': '.$why."\n";
 	return $text;
 }
 
-function zfsmDiagWrite($file, $text) {
-	if (!is_dir(dirname($file)) && !@mkdir(dirname($file), 0700, true)) return false;
+// Whether the folder at $dir is still the one $open was opened on. lstat: the path itself, never what a link at it points to.
+function zfsmDiagSameFolder($dir, $open) {
+	clearstatcache(true, $dir);
+	$now = @lstat($dir);
+	$then = fstat($open);
+	return $now !== false && $now['dev'] === $then['dev'] && $now['ino'] === $then['ino'];
+}
+
+// Writes $file under a run's folder. It makes the file's own folder there, never the run's: one that went is not made again.
+function zfsmDiagWrite($dir, $file, $text) {
+	$folder = dirname($dir.'/'.$file);
+	if ($folder !== $dir && !is_dir($folder) && !@mkdir($folder, 0700)) return false;
 	$text = rtrim((string)$text, "\n")."\n";
-	return @file_put_contents($file, $text) === strlen($text);
+	return @file_put_contents($dir.'/'.$file, $text) === strlen($text);
 }
 
 // A new folder only root can read, for the files while they hold real names; null when it can't be made. Its run holds a lock on it
 // to its end. A killed run's folder has a free lock a minute after it was made: a new run first tries to remove those (zfsmDiagRemove).
 function zfsmDiagWorkDir() {
-	static $holds = array();
 	$prefix = zfsmStatePath('/tmp/zfs.master-diag.');
 	foreach (glob($prefix.'*') ?: array() as $old) {
 		// Kept in a variable: the lock must last through the removal.
@@ -148,8 +183,21 @@ function zfsmDiagWorkDir() {
 	$dir = $prefix.bin2hex(random_bytes(8));
 	$hold = @mkdir($dir, 0700) ? zfsmDiagHold($dir) : false;
 	if ($hold === false) return null;
-	$holds[] = $hold;
+	zfsmDiagWorkHold($dir, $hold);
 	return $dir;
+}
+
+// The lock zfsmDiagWorkDir holds on each folder it made, kept to the run's end.
+function zfsmDiagWorkHold($dir, $hold = null) {
+	static $holds = array();
+	if ($hold !== null) $holds[$dir] = $hold;
+	return $holds[$dir] ?? null;
+}
+
+// Whether $dir is still the folder zfsmDiagWorkDir made and locks: every step after the collectors asks before it reads or removes.
+function zfsmDiagStillOurs($dir) {
+	$hold = zfsmDiagWorkHold($dir);
+	return $hold !== null && zfsmDiagSameFolder($dir, $hold);
 }
 
 // The lock on a work folder, for the run that made it or the one removing it; false when another holds it ($wait is LOCK_NB),
@@ -158,11 +206,7 @@ function zfsmDiagHold($dir, $wait = 0) {
 	// 'e': a command the run starts must not carry the lock on past the run's end.
 	$hold = is_dir($dir) ? @fopen($dir, 're') : false;
 	if ($hold === false || !flock($hold, LOCK_EX | $wait)) return false;
-	clearstatcache(true, $dir);
-	// lstat: the path itself, never what a link at it points to.
-	$now = @lstat($dir);
-	$held = fstat($hold);
-	return $now !== false && $now['dev'] === $held['dev'] && $now['ino'] === $held['ino'] && $held['uid'] === 0 ? $hold : false;
+	return zfsmDiagSameFolder($dir, $hold) && fstat($hold)['uid'] === 0 ? $hold : false;
 }
 
 // Removes a work folder and says whether it did: only one zfsmDiagWorkDir made, never through a link, and never one that is
