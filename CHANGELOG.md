@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- fix: review — the jobs check knows the run's own lock whatever its command line; the process lists leave the run out again
+- fix: diagnostics count the run's own process, so its own lock is no finding; the summary's time zone is an offset, so it stays readable
+
 ## 2026.11.14.1 (beta)
 
 - New Diagnostics section in Settings: Generate makes a zip for bug reports
