@@ -202,9 +202,8 @@ has('Using it now: container '.$token('canarycontainer').' has it mounted; proce
 has('such as backup/'.$token('CanaryLeaf')."\n", $log, 'the name in a refusal\'s example is a token');
 has('Using it now: container '.$token('chrome')." has it mounted\n", $log, 'a word of a browser\'s report is a name in the log: only that report takes those words');
 has('The copy goes inside '.$token('bakup').'/'.$token('CanaryTyped').', which doesn?t exist'."\n", $log, 'a dataset the user typed, of a pool there is not, is tokens');
-// No known pool ends the source's name, so the rules take "to" and the pool after it for more of it: all tokens.
-has('Replication of tank/'.$token('CanarySrc to canarytyped').'/'.$token('CanaryDest').' not started: The copy goes inside '.$token('canarytyped').'/'.$token('CanaryDest').', which doesn?t exist'."\n", $log,
-	'a scheduled run\'s mistyped destination is tokens: a line that did not start proves no pool');
+has('Replication of tank/'.$token('CanarySrc').' to '.$token('canarytyped').'/'.$token('CanaryDest').' not started: The copy goes inside '.$token('canarytyped').'/'.$token('CanaryDest').', which doesn?t exist'."\n", $log,
+	'a scheduled run\'s mistyped destination is tokens, and still ends the name before it: a line that did not start proves no pool');
 has('ZFS Dataset Creation: tank/'.$token('Canary').'?s '.$token('CanaryFiles').' ('.$token('CanarySmith').' 2024) failed: Invalid dataset name'."\n", $log, 'a name that was refused is tokens past the character that ended it for the rules');
 has("ZFS Master NG backend exception: (a private key, left out)\n", $log, 'a private key is left out');
 has('request: "POST /plugins/zfs.master/backend/ZFSMAdmin.php?(left out) HTTP/1.1", host: (left out), referrer: (left out)', $files['plugin/php-errors.txt'], 'a request\'s query and the site\'s name are left out');
@@ -259,12 +258,17 @@ foreach (zfsmDiagFilesUnder(__DIR__.'/../zfs.master') as $file) {
 $named = array_values(array_unique($named));
 same(array(true, $named), array(count($named) > 20, array_map('zfsmDiagAnonText', $named)), 'every system path the plugin names stays whole');
 zfsmDiagStart();
-// Lines as zfsmLog writes them: a scheduled run's saved destination, a request from another server and a failed command can name a pool that never was.
-$said = "ZFS Snapshot: gonepool/a@b succeeded\nReplication of gonepool/a@b to otherpool/a finished (in full). The bookmark that keeps the next run incremental could not be made: I/O error on read/write\n"
-	."Replication of gonepool/a to typedpool/a not started: The copy goes inside typedpool/a, which doesn?t exist\nReplication request from 203.0.113.7 refused: askedpool/x is not inside otherpool/area\n";
-zfsmDiagLearnPools($said, "2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename gonepool/a typedpool/b\n");
-same(array(array('gonepool' => true, 'otherpool' => true), 'zfs list gonepool/'.zfsmDiagToken('a').' otherpool/'.zfsmDiagToken('a')), array(zfsmDiagKnownPools(), zfsmDiagAnonText('zfs list gonepool/a otherpool/a')),
-	'a pool is learned only from a line whose first verb is a success, then found anywhere; no other word with a slash is taken for one');
+// Lines as the plugin log and syslog hold them. A scheduled run's saved destination, a request from another server and a failed command
+// can name a pool that never was, and a name can hold a success word.
+$at = '2026-01-02 10:00:00 notice [41] ';
+$said = $at."ZFS Snapshot: gonepool/a@b succeeded\n"
+	.$at."Replication of gonepool/a@b to otherpool/a finished (in full). The bookmark that keeps the next run incremental could not be made: I/O error on read/write\n"
+	.$at."Replication of gonepool/Jobs finished 2024 to typedpool/a not started: The copy goes inside typedpool/a, which doesn?t exist\n"
+	."Jan  2 10:00:01 Tower zfs.master[41]: Replication request from 203.0.113.7 refused: askedpool/x is not inside otherpool/area (zfsm-replica 1 exists 616263)\n";
+zfsmDiagLearnPools($said, "2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename gonepool/a debugpool/b\n");
+same(array(array('gonepool' => true, 'otherpool' => true), array('typedpool' => true, 'askedpool' => true), 'zfs list gonepool/'.zfsmDiagToken('a').' otherpool/'.zfsmDiagToken('a')),
+	array(zfsmDiagKnownPools(), array_diff_key($GLOBALS['zfsm_diag_names']['roots'], zfsmDiagKnownPools()), zfsmDiagAnonText('zfs list gonepool/a otherpool/a')),
+	'a pool is learned only from a line whose first verb, with what follows it, is a success, then found anywhere; another line\'s names only end names');
 // Property rows: a value can hold tabs and line breaks, so the rows are read against the same read without its values.
 $heads = "tank/a\torg.znapzend:src_plan\ntank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\ntank/a\tmountpoint\ntank/a\tkeylocation\ntank/b\tkeylocation\ntank/b\tsharenfs\ntank/b\tcompression\n";
 $values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clientacme:owner_tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
@@ -612,7 +616,10 @@ file_put_contents('/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\n
 // The second line's command failed: the word it names is no pool, so it is a token like any other.
 $debug_line = "2026-01-02 10:00:02 debug [41] exit 0 in 0.200 s: zfs destroy -r gonepool/private\n2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename tank/a CanaryTyped/docs\n";
 file_put_contents('/var/log/zfs.master.debug.log', $debug_line);
-register_shutdown_function(function() { @unlink('/var/log/zfs.master.debug.log'); @unlink('/boot/config/plugins/zfs.master/zfs.master.cfg'); });
+// The older log's last line cut short, as a full /var/log leaves it: its success must not prove the pool the newer log's first line names.
+file_put_contents('/var/log/zfs.master.log.1', '2026-01-02 10:00:00 notice [41] Replication of tank/a@b to tank/x finished (in fu');
+file_put_contents('/var/log/zfs.master.log', "2026-01-02 10:00:01 error [41] Replication of tank/a to canaryjoin/x not started: The copy goes inside canaryjoin/x, which doesn?t exist\n");
+register_shutdown_function(function() { foreach (array('/var/log/zfs.master.debug.log', '/var/log/zfs.master.log', '/var/log/zfs.master.log.1') as $file) @unlink($file); @unlink('/boot/config/plugins/zfs.master/zfs.master.cfg'); });
 $run = function($options, $arguments = '', $at = null) use ($docroot) {
 	$at = $at ?? $docroot;
 	exec('ZFSM_TEST_DOCROOT='.escapeshellarg($at).' ZFSM_TEST_DIAG_LOGS=/boot/logs '.escapeshellarg(PHP_BINARY).' -n '.$options.' '.escapeshellarg($at.'/plugins/zfs.master/scripts/diagnostics.php').' '.$arguments.' 2>&1', $printed, $code);

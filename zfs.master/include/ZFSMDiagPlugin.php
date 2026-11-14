@@ -355,7 +355,8 @@ function zfsmDiagLog($ctx) {
 	$newer = zfsmDiagFile(zfsmLogFile());
 	$debug_older = zfsmDiagFile(zfsmDebugFile().'.1');
 	$debug_newer = zfsmDiagFile(zfsmDebugFile());
-	zfsmDiagLearnPools($older.$newer.$lines, $debug_older.$debug_newer);
+	// A last line cut short, as on a full /var/log, must not run into the next file's first.
+	zfsmDiagLearnPools($older."\n".$newer."\n".$lines, $debug_older."\n".$debug_newer);
 	return zfsmDiagSection(zfsmLogFile().'.1', $older).zfsmDiagSection(zfsmLogFile(), $newer).zfsmDiagSection('zfs.master lines in '.implode(', ', $syslogs), $lines)
 		.zfsmDiagSection(zfsmDebugFile().'.1', $debug_older).zfsmDiagSection(zfsmDebugFile(), $debug_newer);
 }

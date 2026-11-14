@@ -63,14 +63,17 @@ function zfsmDiagKnow($name) {
 	if (strpos($name, ' ') !== false) $GLOBALS['zfsm_diag_names']['spaced'][strstr($name, ' ', true)][$name] = true;
 }
 
-// A pool nothing here knows, such as one exported since, is learned only from a line that proves it: a log line whose first verb
-// is started, finished, succeeded or received, or a zfs or zpool command a debug line says ended well. A failed line can name a mistyped pool.
+// A pool nothing here knows, such as one exported since, is learned only from a line that proves it: a log line whose first verb, with what
+// follows it (ZFSM_DIAG_AFTER), is a success, or a zfs or zpool command a debug line says ended well. Other lines' names only end the names before them.
 function zfsmDiagLearnPools($log, $debug) {
-	preg_match_all('~^(?:(?! (?:not started|failed|refused)\b).)*? (?:started|finished|succeeded|received)\b.*$~m', $log, $proved);
-	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $proved[0]), $found);
+	foreach (explode("\n", $log) as $line) {
+		preg_match_all('~(?<=: |of |to |into )(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $line, $found);
+		$proves = preg_match('~ (?:(not started: |failed(?:: | after | with exit code |$)|refused: )|started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$)~', $line, $verb) === 1 && ($verb[1] ?? '') === '';
+		array_map($proves ? 'zfsmDiagKnowPool' : 'zfsmDiagKnowRoot', $found[0]);
+	}
 	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
 	preg_match_all('~(?<!\S)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', implode("\n", $commands[0]), $named);
-	array_map('zfsmDiagKnowPool', array_unique(array_merge($found[0], $named[0])));
+	array_map('zfsmDiagKnowPool', array_unique($named[0]));
 }
 
 // A value its owner or another tool wrote freely, such as a user property's, can name anything, and no path marks it:
@@ -289,7 +292,7 @@ function zfsmDiagNameEnd($run) {
 		$next = (string)substr($run, strlen($known), 1);
 		if (strlen($known) > $from && strncmp($run, $known, strlen($known)) === 0 && ($next === '' || strpos(' /@#,', $next) !== false)) $from = strlen($known);
 	}
-	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
+	$after = '~\G (?:'.ZFSM_DIAG_AFTER.'|(?:(?:to|into|from) )?(?:/[^/\s]|(?:'.$names['pool'].'|'.$names['root'].')[/@#]|[\w.+-]+@[\w-])| *$)~';
 	for ($space = strpos($run, ' ', $from); $space !== false; $space = strpos($run, ' ', $space + 1)) {
 		if (preg_match($after, $run, $unused, 0, $space) === 1) return $space;
 	}
