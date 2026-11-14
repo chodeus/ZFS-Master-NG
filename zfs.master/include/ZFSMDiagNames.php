@@ -8,7 +8,9 @@ define('ZFSM_DIAG_SHARED', 'boot|tmp|var|root');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
-define('ZFSM_DIAG_AFTER', '(?:succeeded|received)$|failed(?:: | after | with exit code |$)|(?:not )?started: |finished(?:: |\.| \(|$)|is not inside |\((?:in full|changes since|carried on)|\| ');
+define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$');
+define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
+define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |\((?:in full|changes since|carried on)|\| ');
 
 // A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
 function zfsmDiagNamesStart() {
@@ -64,11 +66,11 @@ function zfsmDiagKnow($name) {
 }
 
 // A pool nothing here knows, such as one exported since, is learned only from a line that proves it: a log line whose first verb, with what
-// follows it (ZFSM_DIAG_AFTER), is a success, or a zfs or zpool command a debug line says ended well. Other lines' names only end the names before them.
+// follows it, is a success (ZFSM_DIAG_DONE), or a zfs or zpool command a debug line says ended well. Other lines' names only end the names before them.
 function zfsmDiagLearnPools($log, $debug) {
 	foreach (explode("\n", $log) as $line) {
 		preg_match_all('~(?<=: |of |to |into )(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $line, $found);
-		$proves = preg_match('~ (?:(not started: |failed(?:: | after | with exit code |$)|refused: )|started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$)~', $line, $verb) === 1 && ($verb[1] ?? '') === '';
+		$proves = preg_match('~ (?:('.ZFSM_DIAG_FAILED.'|refused: )|'.ZFSM_DIAG_DONE.')~', $line, $verb) === 1 && ($verb[1] ?? '') === '';
 		array_map($proves ? 'zfsmDiagKnowPool' : 'zfsmDiagKnowRoot', $found[0]);
 	}
 	preg_match_all('~ exit 0 in [0-9.]+ s: (?:zfs|zpool) \K.*$~m', $debug, $commands);
