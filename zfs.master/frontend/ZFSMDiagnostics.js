@@ -68,8 +68,10 @@ function createZFSMDiagnostics(options) {
 		return xhr.status && xhr.status !== 200 ? 'the server answered HTTP ' + xhr.status : 'the server did not answer' + (xhr.status ? ' (HTTP 200)' : '');
 	}
 
+	// No answer says nothing of the run: it may go on, or never have started. "Failed" is only the server's word.
 	function unanswered(xhr) {
-		show({state: 'failed', why: failure(xhr) + '. Reload the page and try again.'});
+		show({});
+		options.status.text('The run\'s state is not known: ' + failure(xhr) + '. Reload the page to see it.');
 	}
 
 	function later() {

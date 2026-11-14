@@ -29,8 +29,8 @@ $ended = false;
 $end = function($zip, $why) use ($job, &$ended) {
 	$ended = true;
 	$state = $zip !== null ? array('state' => 'done', 'zip' => basename($zip), 'why' => $why) : array('state' => 'failed', 'why' => $why);
-	// The page reads the run's state: one that can't be kept leaves it on the last one, so the log says so.
-	if (!zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of a run could not be kept in '.dirname(zfsmDiagJobFile('state.json')).', so Settings shows an older one');
+	// The page reads the run's state: a result that can't be kept is not shown there, so the log says so.
+	if (!zfsmDiagJobSet($state)) zfsmLog('Diagnostics: the result of a run could not be kept in '.dirname(zfsmDiagJobFile('state.json')).', so Settings does not show it');
 	if (!$job && $zip !== null) echo "\nDiagnostics zip: $zip\n";
 	if (!$job && $why !== '') fwrite(STDERR, $why."\n");
 	exit($zip === null ? 1 : 0);

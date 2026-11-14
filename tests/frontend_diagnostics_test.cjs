@@ -68,7 +68,7 @@ page.posts[0].done({state: 'failed', why: 'no room'});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page.posts.length], ['Diagnostics failed: no room', false, 1], 'a start that fails says why and asks no more');
 page.diagnostics.start();
 page.posts[1].failed({status: 200});
-assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Diagnostics failed: the server did not answer (HTTP 200). Reload the page and try again.', false], 'a request with no answer is a failure, never a run');
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['The run\'s state is not known: the server did not answer (HTTP 200). Reload the page to see it.', false], 'a start with no answer is neither a run nor a failure');
 page.diagnostics.poll();
 assert.doesNotThrow(() => page.posts[2].done(null), 'an empty answer is no error');
 assert.deepEqual([page.status.state.text, page.link.state.shown, page.timers.length], ['', false, 0], 'an empty answer shows nothing');
@@ -183,7 +183,7 @@ for (let lost = 0; lost < 3; lost++) {
   page.timers[page.timers.length - 1]();
   page.posts[page.posts.length - 1].failed({status: 0});
 }
-assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Diagnostics failed: the server did not answer. Reload the page and try again.', false], 'four lost polls in a row are a failure');
+assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['The run\'s state is not known: the server did not answer. Reload the page to see it.', false], 'after four lost polls in a row the run\'s state is not known, not failed');
 page.diagnostics.poll();
 page.posts[page.posts.length - 1].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip', why: 'older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip'});
 assert.equal(page.status.state.text, 'Ready, and kept in /boot/logs (older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip): ', 'a finished run says what else it has to say');
