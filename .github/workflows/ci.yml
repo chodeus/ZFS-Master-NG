@@ -113,7 +113,7 @@ jobs:
           - {unraid: '6.12.15', php: '8.2'}
           - {unraid: '7.2.0', php: '8.3'}
           # renovate: newest Unraid
-          - {unraid: '7.3.4', php: '8.4'}
+          - {unraid: '7.3.5', php: '8.4'}
           # Pre-release under test; drop once Renovate moves the entry above to a stable 7.4.
           - {unraid: '7.4.0-rc.2.3', php: '8.4'}
     steps:
