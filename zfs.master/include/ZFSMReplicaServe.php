@@ -44,6 +44,12 @@ function zfsmReplicaArea($accept, $sender) {
 	return zfsmReplicaAcceptValid($accept) && zfsmReplicaSenderName($sender) ? $accept.'/'.$sender : null;
 }
 
+// The sender an area is for (zfsmReplicaArea), as the sending side reads it back from a hello.
+function zfsmReplicaAreaSender($area) {
+	$at = strrpos((string)$area, '/');
+	return $at === false ? (string)$area : substr($area, $at + 1);
+}
+
 // zfsmReplicaSenderName's rule in words, for each message that refuses a name.
 define('ZFSM_REPLICA_NAME_RULE', '1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
 function zfsmReplicaSenderName($sender) {

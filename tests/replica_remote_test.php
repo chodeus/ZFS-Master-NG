@@ -211,9 +211,13 @@ putenv('ZFSM_TEST_ACCEPT=backup/My Replicas');
 same(array('area' => 'backup/My Replicas/tower'), zfsmReplicaHello($nas), 'an area whose name holds a space');
 // This server renamed since the key line there was made: that line still names the old one, so it is not ready.
 file_put_contents($work.'/ident.cfg', "NAME=\"newtower\"\n");
-same(array('error' => 'The key line on nas is for tower, but this server is newtower now: put the line this page gives in its place'), zfsmReplicaHello($nas), 'an area for another name than this server\'s is no hello');
+same(array('error' => 'The key line on nas is for tower, but this server is newtower: nas needs this server\'s own line in its place. Copies already in tower\'s area stay there, and this server\'s area starts with full copies'),
+	zfsmReplicaHello($nas), 'an area for another name than this server\'s is no hello, and the message says what the new line means for the copies');
+// With no valid name of its own there is no line to give: the other server is not asked at all.
 file_put_contents($work.'/ident.cfg', "NAME=\"bad name\"\n");
-same(array('error' => 'The key line on nas is for tower, but this server has no valid name here: put the line this page gives in its place'), zfsmReplicaHello($nas), 'and with no valid name of its own, it says so');
+$log();
+same(array(array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification, then give nas its new line'), array()), array(zfsmReplicaHello($nas), $log()),
+	'with no valid name of its own it says how to give it one, and nothing reaches the other server');
 file_put_contents($work.'/ident.cfg', "NAME=\"tower\"\n");
 putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();

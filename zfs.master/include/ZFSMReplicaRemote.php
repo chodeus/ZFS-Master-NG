@@ -248,6 +248,9 @@ function zfsmReplicaSshArgs($remote, $files, $request) {
 // hello on the other server: the area its copies go into, or why there is none (ssh's own error or the checker's refusal).
 // runProcess trims the answer, so it ends at the area's name, which may hold spaces.
 function zfsmReplicaHello($remote) {
+	// With no valid name this server has no line to give, so nothing on the other server is asked.
+	$this_name = zfsmReplicaThisName();
+	if ($this_name === null) return array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification, then give '.$remote['name'].' its new line');
 	$files = zfsmReplicaSshFiles($remote);
 	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
 	try {
@@ -259,12 +262,11 @@ function zfsmReplicaHello($remote) {
 	if (($hello['code'] ?? 1) !== 0 || preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) !== 1 || !zfsmValidDatasetName($match[1])) {
 		return array('error' => zfsmCommandError($hello, 'No answer from '.$remote['name']));
 	}
-	// The area is named for the sender the key line there names: another name means a line made for another name, as before a rename.
-	$named = substr(strrchr('/'.$match[1], '/'), 1);
-	$this_name = zfsmReplicaThisName();
+	// The area is named for the sender the key line there names: another name is a line made for another name, as before a rename.
+	$named = zfsmReplicaAreaSender($match[1]);
 	if ($named === $this_name) return array('area' => $match[1]);
-	$now = $this_name === null ? 'this server has no valid name here' : 'this server is '.$this_name.' now';
-	return array('error' => 'The key line on '.$remote['name'].' is for '.$named.', but '.$now.': put the line this page gives in its place');
+	return array('error' => 'The key line on '.$remote['name'].' is for '.$named.', but this server is '.$this_name.': '.$remote['name'].' needs this server\'s own line in its place. '
+		.'Copies already in '.$named.'\'s area stay there, and this server\'s area starts with full copies');
 }
 
 function zfsmReplicaKeyHtml() {
