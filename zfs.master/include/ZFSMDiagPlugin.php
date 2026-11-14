@@ -335,6 +335,8 @@ function zfsmDiagReplicaSend($ctx) {
 	$private = is_file($dir.'/id_ed25519');
 	$public = zfsmReplicaPublicKey();
 	$name = zfsmReplicaThisName();
+	// From ident.cfg, which no other collector reads: var.ini's copy may be unread.
+	if ($name !== null) zfsmDiagKnowServer($name);
 	$read = zfsmReplicaRemotesRead();
 	// A list that can't be read is a read that failed; one that was read and is no list is a finding.
 	$unread = $read === null && zfsmDiagWhole('file_get_contents', $dir.'/remotes.json') === false;

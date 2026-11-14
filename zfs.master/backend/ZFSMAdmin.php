@@ -127,7 +127,8 @@ try {
 			// Trimmed as loadConfig trims the saved setting. missing is null for a name that isn't valid, or when ZFS could not be read.
 			$dataset = trim(zfsmPostString('dataset'));
 			$valid = zfsmReplicaAcceptValid($dataset);
-			echo zfsmJson(array('valid' => $valid, 'missing' => $valid ? zfsmDatasetMissing($dataset) : null));
+			$missing = $valid ? zfsmWithReadLimit(function() use ($dataset) { return zfsmDatasetMissing($dataset); }) : null;
+			echo zfsmJson(array('valid' => $valid, 'missing' => $missing));
 			break;
 
 		case 'replicakey':

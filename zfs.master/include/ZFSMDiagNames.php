@@ -5,6 +5,8 @@
 // Top folders that are the system's alone. Under ZFSM_DIAG_SHARED anyone keeps files beside the plugin's and Unraid's own.
 define('ZFSM_DIAG_SYSTEM', 'bin|etc|lib|lib64|proc|run|sbin|sys|usr|plugins|webGui|dev(?!/zvol/)');
 define('ZFSM_DIAG_SHARED', 'boot|tmp|var|root');
+// A key's fingerprint, kept whole: its base64 may hold "/" after ":" or "+", where a path would start.
+define('ZFSM_DIAG_FINGERPRINT', 'SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
@@ -133,6 +135,7 @@ function zfsmDiagNamePattern() {
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
 			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
+			.'|(?<fingerprint>'.ZFSM_DIAG_FINGERPRINT.')'
 			// A path starts after a colon (failed:/mnt/...) and after file://; not inside a link's //, nor at an IPv6 prefix (fe80::/10).
 			.'|(?<path>(?:(?<![A-Za-z0-9_./-]|::)|(?<=file://))/(?=[^/\s])|(?<![A-Za-z0-9_./-])(?:'.$names['pool'].'|'.$names['root'].')(?=[/@#]))'
 			.'|(?<word>(?<![A-Za-z0-9_.-])(?:'.zfsmDiagAnyOf(array_map('strval', array_keys($names['words']))).')(?![A-Za-z0-9_-]))'
@@ -163,6 +166,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 	$end = $at + strlen($found);
 	if ($match['path'][0] !== null) return zfsmDiagAnonPath($text, $at, $ends);
 	if ($match['secret'][0] !== null) return array('(a private key, left out)', $end);
+	if ($match['fingerprint'][0] !== null) return array($found, $end);
 	if ($match['resume'][0] !== null) return array('(a resume token, left out)', $end);
 	if ($match['key'][0] !== null) return array('(a key, SHA256:'.rtrim(base64_encode(hash('sha256', (string)base64_decode($match['blob'][0]), true)), '=').')', $end);
 	if ($match['query'][0] !== null) return array(($found[0] === '?' ? '?' : explode(':', $found, 2)[0].': ').'(left out)', $end);

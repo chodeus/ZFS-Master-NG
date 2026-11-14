@@ -440,6 +440,10 @@ same(zfsmDiagToken('name-0123abcd').' SHA256:'.zfsmDiagToken('Zebra77'), zfsmDia
 same(array('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') '.zfsmDiagToken('canaryuser@canaryhost'), "cut short (a private key, left out)\nthe next line", 'at backup:tank/'.zfsmDiagToken('Colon')),
 	array(zfsmDiagAnonText('key '.$public_key.' canaryuser@canaryhost'), zfsmDiagAnonText("cut short -----BEGIN OPENSSH PRIVATE KEY-----; CutKeyBody\nthe next line"), zfsmDiagAnonText('at backup:tank/Colon')),
 	'a key is its fingerprint and its comment a token; a private key whose end was cut off is left out, and the next line stays; a dataset right after a colon is found');
+$print = 'SHA256:/'.str_repeat('Ab+/', 10).'xy';
+same(array("pinned\t".$print."\t".zfsmDiagAnonText('/mnt/user/CanaryShare'), 'host key '.$print.'.'),
+	array(zfsmDiagAnonText("pinned\t".$print."\t/mnt/user/CanaryShare"), zfsmDiagAnonRunning('host key '.$print.'.')),
+	'a fingerprint whose base64 holds "/" after ":" or "+" stays whole, in a row and in running text; the path beside it is still a path');
 same(1, preg_match('/^from (ip-[0-9a-f]{8}) and \1, then ip-[0-9a-f]{8}$/D', (string)zfsmDiagAnonText('from 203.0.113.77 and 203.0.113.77, then 2001:db8::77')), 'an address is a token, the same one each time');
 same(array('2 characters, 3 bytes, non-ASCII, lower case', '2 bytes, not valid UTF-8, no letters', '3 characters, 3 bytes, upper case'), array_map('zfsmDiagShape', array("\xc3\xa9a", "\xff1", 'A-B')), 'a shape says what is not ASCII or not UTF-8, and the case');
 // Two names whose tokens would start alike get different ones.
@@ -455,6 +459,14 @@ same(false, zfsmDiagToken('one') === $first, 'each run has its own salt');
 list($zip, $why, $out) = $bundle('without', false);
 same(array(true, array(), "Unraid's own diagnostics were not asked for.\n"), array($zip !== null, glob($out.'/unraid/*.zip'), file_get_contents($out.'/unraid/diagnostics.txt')), 'Unraid\'s diagnostics left out when not asked for');
 has("unraid/diagnostics.txt\tok\t", file_get_contents($out.'/collectors.txt'), 'which is no failure');
+// Only ident.cfg names the server: the send report's own name is still a token.
+$build();
+$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\n");
+$put('/boot/config/ident.cfg', "NAME=\"CanaryIdentOnly\"\n");
+list($zip, $why, $out) = $bundle('ident-only', false, false);
+$files = $ours($out);
+same(array(array(), "this server's name as a sender: ".zfsmDiagToken('CanaryIdentOnly')), array($leaks($files), strtok($files['plugin/replication-send.txt'], "\n")),
+	'the server\'s name that only ident.cfg holds is a token in the send report');
 foreach (array('fail' => array('read failed', 'its script ended with exit code 1'), 'silent' => array('read failed', 'its script named no zip of its own in '), 'elsewhere' => array('read failed', 'its script named no zip of its own in '), 'link' => array('read failed', 'its script named no zip of its own in '), 'hang' => array('timed out', 'its script ran out of time')) as $mode => $expected) {
 	putenv('ZFSM_TEST_DIAG='.$mode);
 	// Its five minutes are two seconds here; the other limits shrink with them, so their reads time out too.

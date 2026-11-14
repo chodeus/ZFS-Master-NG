@@ -57,7 +57,7 @@ function zfsmDiagKnownWords($text, $more = '') {
 	$pools = zfsmDiagKnownPools();
 	$pool = zfsmDiagAnyOf(array_map('strval', array_keys($pools)));
 	// A token of this run and a key's fingerprint are matched whole: zfsmDiagToken gives a token of its own back as it is.
-	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])'
+	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|'.ZFSM_DIAG_FINGERPRINT
 		.'|(?<![A-Za-z0-9_\x80-\xff.:-])(?:'.$pool.')(?![A-Za-z0-9_\x80-\xff:-]|\.[A-Za-z0-9_])|[A-Za-z0-9_\x80-\xff]+~', function($word) use ($words, $pools) {
 		$word = $word[0];
 		return isset($pools[$word]) || strncmp($word, 'SHA256:', 7) === 0 || isset($words[strtolower($word)]) || zfsmDiagIsNumber($word) ? $word : zfsmDiagToken($word);

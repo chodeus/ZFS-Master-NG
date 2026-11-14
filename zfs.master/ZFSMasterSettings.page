@@ -206,7 +206,7 @@ _(Accept Replicas Into)_:
 > 3. The sender then shows one line under this server's name. Copy it unchanged into this server's Users, root, **SSH authorized keys**, and Apply there. Unraid 6.9 has no such field: add the line to `/boot/config/ssh/root/authorized_keys` instead.
 > 4. Press Test beside this server on the sender. It makes the sender's own dataset inside this one, and shows its name.
 >
-> That line lets the sender's key only list, check and receive copies inside its own dataset here: it can't destroy, roll back or replace anything, or run anything else. Any other line in SSH authorized keys is a key with no limits.
+> That line lets the sender's key only list, check and receive copies inside its own dataset here: it can't destroy, roll back or replace anything, or run anything else. Paste it unchanged: the sender's key on a line without these limits, such as the key alone, can run anything as root here.
 > Copies never mount or show as block devices, and run with setuid, devices and exec off. A quota on this dataset caps the space all copies use. Leave this empty to accept none.
 :end
 
