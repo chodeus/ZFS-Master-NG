@@ -794,10 +794,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
 				const server = popup.querySelector('#zfsm-replicate-server');
+				let filled = popup.querySelector('#zfsm-replicate-dest').value;
 				if (server) server.addEventListener('change', () => {
 					clearTimeout(timer);
 					const dest = popup.querySelector('#zfsm-replicate-dest');
-					dest.value = zfsmReplicateName(options.last_destination, server.value, zdataset);
+					// A name typed in stays; one the dialog filled in follows the server.
+					if (dest.value === filled) dest.value = filled = zfsmReplicateName(options.last_destination, server.value, zdataset);
 					dest.placeholder = server.value === '' ? 'pool/dataset' : 'name';
 					plan();
 				});

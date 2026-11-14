@@ -14,8 +14,8 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '') {
 	}
 	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
 	$resume = $plan['mode'] === 'resume';
-	$args = $resume ? array($zdataset, substr($plan['snapshot'], strlen($zdataset) + 1), $zdest) : ($new_name !== '' ? array($zdataset, $new_name, $zdest, 'new') : array($zdataset, $snapshot, $zdest));
-	if ($server !== '') array_push($args, ...(count($args) === 3 ? array('existing', $server) : array($server)));
+	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
+	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server);
 	list($state, $why) = zfsmStartJob('replicate.php', $args, zfsmJobLockFile($zdataset, 'replicate'));
 	if ($state === 'running') return zfsmFailure($zdataset, 'A replication of this dataset is already running');
 	if ($state !== 'started') return zfsmFailure($zdataset, 'The replication could not be started'.($why !== '' ? ': '.$why : ''));
@@ -106,10 +106,9 @@ function zfsmReplicaMark($zdataset, $plan) {
 	return '';
 }
 
-// The background run: one per dataset at a time, its progress on the row, a notification at the end, or saying why it didn't start.
+// The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
-// $server: zfsmReplicaTargetOpen's, opened under the lock.
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '') {
 	$title = 'ZFS Replication';
 	$to = zfsmReplicaTargetWhere(array('server' => $server), $zdest);

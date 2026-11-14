@@ -294,6 +294,9 @@ $remote_mark = function($snapshot) { return 'tank/data#'.zfsmReplicaBookmarkPref
 $preview = zfsmReplicatePreview('tank/data', '', '', $cfg);
 same(array(array('nas'), null), array($preview['servers'], $preview['area']), 'the dialog offers nas, and asks it nothing until it is picked');
 same(array(), $ssh(), 'so no ssh runs');
+same('', zfsmReplicaRemoteAdd('2024', '10.0.20.12', 22, $host_key, zfsmKeyFingerprint($host_key)), 'a server named with digits only');
+same('["nas","2024"]', json_encode(zfsmReplicatePreview('tank/data', '', '', $cfg)['servers']), 'is offered by its name, as the dialog compares names');
+same('', zfsmReplicaRemoteRemove('2024'), 'and removed again');
 $preview = zfsmReplicatePreview('tank/data', '', '', $cfg, 'nas');
 same(array('backup/replicas/tower', '', false), array($preview['area'], $preview['error'], $preview['can_proceed']), 'picking nas shows its area');
 $preview = zfsmReplicatePreview('tank/data', 'b', 'copies/data', $cfg, 'nas');
@@ -368,11 +371,26 @@ $refused = 'Nothing answers SSH at 10.0.20.11 port 22: turn SSH on there (Settin
 same(array('warning: Replication of tank/data to data on server nas not started: '.$refused), $read('notify-detail.log'), 'says what to do');
 same(array(1, 0, 0), $logins(array_map(function($line) { return strpos($line, 'known ') === 0 ? 'login' : $line; }, $ssh())), 'after one try');
 same(1, preg_match('/^'.preg_quote($refused, '/').'\. It is tried again in (?:29|30) seconds$/D', zfsmReplicatePreview('tank/data', 'e', 'data', $cfg, 'nas')['error']), 'the dialog says when it is tried again');
+same(1, preg_match('/^'.preg_quote($refused, '/').'\. It is tried again in (?:29|30) seconds$/D', zfsmReplicaHello(zfsmReplicaRemote('nas'))['error'] ?? ''), 'and so does Settings\' Test');
 same(array(), $ssh(), 'without trying');
 putenv('ZFSM_TEST_SSH_FAIL');
 touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 same(0, zfsmRunReplicate('tank/data', 'e', 'data', null, false, 'nas'), 'later it is tried again');
 same(false, file_exists(zfsmReplicaDownFile('nas')), 'and the wait is over once it answers');
+putenv('ZFSM_TEST_SSH_FAIL=ssh: connect to host 10.0.20.11 port 22: Connection refused');
+same(true, isset(zfsmReplicaHello(zfsmReplicaRemote('nas'))['error']), 'a Test that fails starts the wait again');
+putenv('ZFSM_TEST_SSH_FAIL');
+$nas = zfsmReplicaRemote('nas');
+same(array('', ''), array(zfsmReplicaRemoteRemove('nas'), zfsmReplicaRemoteAdd('nas', $nas['host'], $nas['port'], $nas['key'], zfsmKeyFingerprint($nas['key']))), 'nas removed and added again');
+same(array('area' => 'backup/replicas/tower'), zfsmReplicaHello(zfsmReplicaRemote('nas')), 'is tried at once');
+// Past the dialog's read limit: a connection being made or ended leaves no key file behind, and ending one doesn't throw.
+$timed_out = function($read) { try { zfsmWithDeadline(0, $read); return 'no throw'; } catch (ZFSMTimeout $timeout) { return $timeout->getMessage(); } };
+$ssh();
+same('ssh timed out before it started', $timed_out(function() { zfsmReplicaTargetOpen('nas'); }), 'the hello past the limit throws');
+same(array(), $left(), 'with the key\'s RAM copy already gone');
+$target = zfsmReplicaTargetOpen('nas');
+same(array('no throw', array()), array($timed_out(function() use ($target) { zfsmReplicaDisconnect($target); }), $left()), 'ending one past the limit keeps what was read, and its key files go');
+$ssh();
 same(array(), $left(), 'every connection\'s key files are gone');
 
 // A start in the background passes the server to the job, with a snapshot it takes or one picked. The job finds the key, the

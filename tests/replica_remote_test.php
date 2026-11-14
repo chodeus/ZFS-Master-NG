@@ -257,6 +257,8 @@ $ssh_fails = array(
 foreach ($ssh_fails as $said => $shown) {
 	putenv('ZFSM_TEST_SSH_FAIL='.$said);
 	same(array('error' => $shown), zfsmReplicaHello($nas), 'ssh\'s own failure, with what to do: '.strtok($said, "\n"));
+	// Each one as a while after the last: until then Test says when it is tried again (replicate_test.php).
+	touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 }
 putenv('ZFSM_TEST_SSH_FAIL');
 // A server that answers with far more than a hello: the answer is cut where it is read, not held whole.

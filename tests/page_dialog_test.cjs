@@ -407,7 +407,7 @@ async function confirm() {
   await settle();
   assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, 'Replicate starts with what is on screen');
   window.Swal2.close();
-  // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there.
+  // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there; a name typed in stays.
   const remoteOptions = {snapshots: ['b'], last_destination: {server: '', dest: 'backup/data'}, servers: ['nas']};
   replicateAnswer = data => data.server !== 'nas' ? {...remoteOptions, can_proceed: true, mode: 'incremental', since: 'b', size: 1, raw: false}
     : {...remoteOptions, server: 'nas', area: 'backup/replicas/tower', ...(data.destination === 'new' ? {can_proceed: true, mode: 'full', size: 1, raw: false} : {can_proceed: false, error: ''})};
@@ -415,18 +415,21 @@ async function confirm() {
   menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
   await settle();
   const server = () => window.document.getElementById('zfsm-replicate-server');
+  const pick = async name => { server().value = name; server().dispatchEvent(new window.Event('change')); await settle(); };
+  const type = text => { dest().value = text; dest().dispatchEvent(new window.Event('input')); };
   assert.deepEqual([server().value, server().labels[0].textContent.startsWith('Server:'), dest().value, dest().placeholder], ['', true, 'backup/data', 'pool/dataset'], 'This server is picked, with its last copy');
-  dest().value = 'backup/dat';
-  dest().dispatchEvent(new window.Event('input'));
-  server().value = 'nas';
-  server().dispatchEvent(new window.Event('change'));
-  await settle();
+  await pick('nas');
   assert.deepEqual([dest().value, dest().placeholder, posts.at(-1)], ['new', 'name', {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas'}], 'nas: the dataset\'s name, planned there');
   assert.deepEqual([/On nas, copies go inside backup\/replicas\/tower\./.test(planText()), held()], [true, false], 'its area shows, and the plan enables Replicate');
+  type('mine');
+  await pick('');
+  assert.deepEqual([dest().value, dest().placeholder, posts.at(-1)], ['mine', 'pool/dataset', {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'mine', server: ''}], 'a name typed in stays when the server changes');
   const asked = posts.length;
   await new Promise(resolve => window.setTimeout(resolve, 450));
   await settle();
-  assert.equal(posts.length, asked, 'what was typed before the server changed is not planned as well');
+  assert.equal(posts.length, asked, 'and is planned once, not again when the typing pause ends');
+  type('new');
+  await pick('nas');
   window.Swal2.clickConfirm();
   await settle();
   assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas'}, 'Replicate starts it there');
