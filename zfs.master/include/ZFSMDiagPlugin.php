@@ -267,13 +267,15 @@ function zfsmDiagJobs($ctx) {
 	$text = '';
 	foreach (array(zfsmStatePath('/var/run/zfs.master.lock'), zfsmStatePath('/var/run/zfs.master.alerts.json').'.lock') as $lock) $text .= $lock.': '.zfsmDiagLockState($lock)."\n";
 	$scripts = zfsmDiagProcesses('#'.zfsmDiagScriptPattern().'#');
+	// This run holds its own lock (zfsmDiagRunLock), however it was started.
+	$own = zfsmDiagJobFile('run.lock');
 	$orphaned = array();
 	foreach (glob(zfsmJobDir('').'*/*.lock') ?: array() as $lock) {
 		$state = zfsmDiagLockState($lock);
-		$text .= $lock.': '.$state."\n";
+		$text .= $lock.': '.$state.($lock === $own && $state === 'held' ? ' (this run)' : '')."\n";
 		// A job's folder is named for its script: scripts/rewrite.php holds the locks in the rewrite folder.
 		$script = substr(dirname($lock), strlen(zfsmJobDir(''))).'.php';
-		if ($state !== 'held' || $scripts === null || !is_file(dirname(__DIR__).'/scripts/'.$script)) continue;
+		if ($state !== 'held' || $lock === $own || $scripts === null || !is_file(dirname(__DIR__).'/scripts/'.$script)) continue;
 		$runs = array_filter($scripts, function($process) use ($script) { return preg_match('#'.zfsmDiagScriptPattern($script).'(\s|$)#', $process[2]) === 1; });
 		if (!$runs) $orphaned[] = $lock;
 	}
