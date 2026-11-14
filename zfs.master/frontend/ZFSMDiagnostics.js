@@ -79,10 +79,12 @@ function createZFSMDiagnostics(options) {
 	}
 
 	// One request at a time: one still on its way when the next is sent is cancelled, and only the newest one's answer is shown.
+	// One with no answer in a minute fails, as the inventory's does (ZFSMInventory.js).
 	function ask(data, done, fail) {
 		const ticket = ++asked;
 		if (pending) pending.abort();
-		pending = $.post(options.url, data, function(answer) { if (ticket === asked) done(answer); }, 'json');
+		pending = $.ajax({url: options.url, method: 'POST', data: data, dataType: 'json', timeout: 60000});
+		pending.done(function(answer) { if (ticket === asked) done(answer); });
 		pending.fail(function(xhr) { if (ticket === asked) fail(xhr); });
 	}
 

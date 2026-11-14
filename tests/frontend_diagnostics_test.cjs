@@ -21,9 +21,10 @@ function launch(stored = {}) {
   const storage = new Map(Object.entries(stored));
   const localStorage = {get length() { return storage.size; }, key: index => [...storage.keys()][index], getItem: key => storage.has(key) ? storage.get(key) : null,
     setItem: (key, value) => storage.set(key, String(value)), removeItem: key => storage.delete(key)};
-  const $ = {post(url, data, done) {
-    // As jQuery's: an aborted request's fail callbacks run at once, with status 0.
-    const post = {url, data, done, fail(callback) { this.failed = callback; return this; }, abort() { this.aborted = true; if (this.failed) this.failed({status: 0}); }};
+  const $ = {ajax(options) {
+    // As jQuery's: an aborted request's fail callbacks run at once, with status 0. answer() is the server's reply.
+    const post = {url: options.url, data: options.data, options, done(callback) { this.succeeded = callback; return this; }, answer(value) { this.succeeded(value); },
+      fail(callback) { this.failed = callback; return this; }, abort() { this.aborted = true; if (this.failed) this.failed({status: 0}); }};
     posts.push(post);
     return post;
   }};
@@ -50,12 +51,12 @@ page.diagnostics.start();
 assert.equal(page.posts.length, 1, 'a second click while it runs sends nothing');
 
 // The run is followed: asked again every two seconds while it runs, then the link to its zip.
-page.posts[0].done({state: 'started', why: ''});
+page.posts[0].answer({state: 'started', why: ''});
 assert.deepEqual([page.posts.length, page.posts[1].data.cmd], [2, 'diagnosticsstatus'], 'once started, the state is asked for');
-page.posts[1].done({state: 'running'});
+page.posts[1].answer({state: 'running'});
 assert.equal(page.timers.length, 1, 'a run still going is asked about again');
 page.timers[0]();
-page.posts[2].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
+page.posts[2].answer({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
 assert.deepEqual([page.button.state.props.disabled, page.link.state.shown, page.link.state.attrs.href, page.link.state.text, page.timers.length],
   [false, true, '/download?file=zfs.master-diagnostics-20260102-100000.zip', 'zfs.master-diagnostics-20260102-100000.zip', 1], 'a finished run shows its zip as a link, turns the button on and asks no more');
 
@@ -64,16 +65,18 @@ page = launch();
 page.box.prop('checked', false);
 page.diagnostics.start();
 assert.equal(page.posts[0].data.unraid, '0', 'the box off is sent as off');
-page.posts[0].done({state: 'failed', why: 'no room'});
+assert.deepEqual([page.posts[0].options.method, page.posts[0].options.dataType, page.posts[0].options.timeout], ['POST', 'json', 60000],
+  'each request is a POST read as JSON, and one with no answer in a minute fails');
+page.posts[0].answer({state: 'failed', why: 'no room'});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page.posts.length], ['Diagnostics failed: no room', false, 1], 'a start that fails says why and asks no more');
 page.diagnostics.start();
 page.posts[1].failed({status: 200});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['The run\'s state is not known: the server did not answer (HTTP 200). Reload the page to see it.', false], 'a start with no answer is neither a run nor a failure');
 page.diagnostics.poll();
-assert.doesNotThrow(() => page.posts[2].done(null), 'an empty answer is no error');
+assert.doesNotThrow(() => page.posts[2].answer(null), 'an empty answer is no error');
 assert.deepEqual([page.status.state.text, page.link.state.shown, page.timers.length], ['', false, 0], 'an empty answer shows nothing');
 page.diagnostics.poll();
-page.posts[3].done({state: 'running'});
+page.posts[3].answer({state: 'running'});
 page.diagnostics.start();
 assert.equal(page.posts.length, 4, 'a run found going when the page loads can\'t be started again');
 
@@ -138,16 +141,16 @@ assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page
 // The page is left while a run goes: its timer is cleared, and an answer still on its way is not shown.
 page = launch();
 page.diagnostics.start();
-page.posts[0].done({state: 'started', why: ''});
-page.posts[1].done({state: 'running'});
+page.posts[0].answer({state: 'started', why: ''});
+page.posts[1].answer({state: 'running'});
 page.diagnostics.poll();
 page.diagnostics.stop();
 assert.equal(page.posts[2].aborted, true, 'leaving the page cancels the request on its way');
-page.posts[2].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
+page.posts[2].answer({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
 assert.deepEqual([page.cleared, page.link.state.shown, page.timers.length], [[1], false, 1], 'leaving the page clears the pending poll\'s timer and drops the answer on its way');
 // Back from the browser's cache, the page asks again (ZFSMasterSettings.page on pageshow): that answer is shown.
 page.diagnostics.poll();
-page.posts[3].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
+page.posts[3].answer({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip'});
 assert.deepEqual([page.link.state.shown, page.button.state.props.disabled], [true, false], 'a poll after the page came back shows its answer');
 
 // The record as the Main tab writes it: twenty long script errors, then a render. Each part is bounded where it is written, so the
@@ -172,10 +175,10 @@ page.diagnostics.poll();
 page.diagnostics.start();
 assert.deepEqual([page.posts[0].aborted, page.posts[1].aborted, page.status.state.text], [true, undefined, 'Collecting. This can take a few minutes.'],
   'a start sent while the first poll is on its way cancels that poll, and its cancelling shows nothing');
-page.posts[0].done({state: 'none'});
+page.posts[0].answer({state: 'none'});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['Collecting. This can take a few minutes.', true], 'the answer to the poll sent before the start is stale');
-page.posts[1].done({state: 'started', why: ''});
-page.posts[2].done({state: 'running'});
+page.posts[1].answer({state: 'started', why: ''});
+page.posts[2].answer({state: 'running'});
 page.timers[0]();
 page.posts[3].failed({status: 0});
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled, page.timers.length], ['Collecting. The server did not answer; asking again.', true, 2], 'one lost poll while the run goes is asked again, not a failure');
@@ -185,7 +188,7 @@ for (let lost = 0; lost < 3; lost++) {
 }
 assert.deepEqual([page.status.state.text, page.button.state.props.disabled], ['The run\'s state is not known: the server did not answer. Reload the page to see it.', false], 'after four lost polls in a row the run\'s state is not known, not failed');
 page.diagnostics.poll();
-page.posts[page.posts.length - 1].done({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip', why: 'older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip'});
+page.posts[page.posts.length - 1].answer({state: 'done', zip: 'zfs.master-diagnostics-20260102-100000.zip', why: 'older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip'});
 assert.equal(page.status.state.text, 'Ready, and kept in /boot/logs (older zips could not be removed from /boot/logs: zfs.master-diagnostics-20250101-000000.zip): ', 'a finished run says what else it has to say');
 
 console.log('diagnostics button and record tests passed');
