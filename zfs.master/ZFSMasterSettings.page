@@ -96,7 +96,7 @@ _(Debug Log)_:
   </select>
 
 :zc_settings_debug_log_plug:
-> **Yes** also writes each command the plugin runs, with how it ended and its time, and the name of each request to its admin page, to a log of their own, `/var/log/zfs.master.debug.log`. A replication, a rewrite and a receive stream their commands and log their own lines in `/var/log/zfs.master.log` whether this is on or not. Each log is in RAM and never passes about 1 MB, so its oldest lines go first; a diagnostics zip holds both.
+> **Yes** also writes the commands the plugin runs, with how each ended and its time, and the name of each request to its admin page, to a log of their own, `/var/log/zfs.master.debug.log`. A replication, a rewrite and a receive stream their commands and log their own lines in `/var/log/zfs.master.log` whether this is on or not; a folder's copy into a dataset and a diagnostics run's own commands are in neither. Each log never passes about 1 MB, so its oldest lines go first; a diagnostics zip holds both.
 > Turn it on to reproduce a problem, make the zip, then turn it off again. rsync's arguments, and those of a command that names where a key is kept, are left out.
 :end
 

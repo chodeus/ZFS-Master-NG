@@ -64,7 +64,7 @@ function zfsmDiagKnow($name) {
 }
 
 // A pool nothing here knows, such as one exported since, is known once the plugin's own log lines or zfs's messages name one
-// of its datasets: after ": ", "of ", "to ", "into " or a quote, or anywhere in a debug line's zfs or zpool command (zfsmDebugCommand).
+// of its datasets: after ": ", "of ", "to ", "into " or a quote, or as a word of its own in a debug line's zfs or zpool command (zfsmDebugCommand).
 function zfsmDiagLearnPools($text) {
 	preg_match_all('~(?<=: |of |to |into |\')(?!I/O\b|Input/output\b)[A-Za-z][A-Za-z0-9_.:-]*(?=/[A-Za-z0-9])~', $text, $found);
 	preg_match_all('~ s: (?:zfs|zpool) \K.*$~m', $text, $commands);

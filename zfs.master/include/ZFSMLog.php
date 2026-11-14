@@ -52,7 +52,7 @@ function zfsmCommandShown($line) {
 }
 
 // At ZFSM_LOG_BYTES the file becomes .1, replacing the last one, so the two never pass about 1 MB. A line that can't be written
-// is dropped: syslog has it.
+// is dropped: syslog has the plugin's own (zfsmLog), not a debug line.
 function zfsmLogKeep($text, $priority, $file = null) {
 	$file = $file ?? zfsmLogFile();
 	$levels = array(LOG_EMERG => 'emergency', LOG_ALERT => 'alert', LOG_CRIT => 'critical', LOG_ERR => 'error', LOG_WARNING => 'warning', LOG_NOTICE => 'notice', LOG_INFO => 'info', LOG_DEBUG => 'debug');
