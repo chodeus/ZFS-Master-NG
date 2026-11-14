@@ -264,11 +264,12 @@ $at = '2026-01-02 10:00:00 notice [41] ';
 $said = $at."ZFS Snapshot: gonepool/a@b succeeded\n"
 	.$at."Replication of gonepool/a@b to otherpool/a finished (in full). The bookmark that keeps the next run incremental could not be made: I/O error on read/write\n"
 	.$at."Replication of gonepool/Jobs finished 2024 to typedpool/a not started: The copy goes inside typedpool/a, which doesn?t exist\n"
+	.$at."Replication of gonepool/Jobs finished.2024 to dottedpool/a not started: The copy goes inside dottedpool/a, which doesn?t exist\n"
 	."Jan  2 10:00:01 Tower zfs.master[41]: Replication request from 203.0.113.7 refused: askedpool/x is not inside otherpool/area (zfsm-replica 1 exists 616263)\n";
 zfsmDiagLearnPools($said, "2026-01-02 10:00:03 debug [41] exit 1 in 0.100 s: zfs rename gonepool/a debugpool/b\n");
-same(array(array('gonepool' => true, 'otherpool' => true), array('typedpool' => true, 'askedpool' => true), 'zfs list gonepool/'.zfsmDiagToken('a').' otherpool/'.zfsmDiagToken('a')),
+same(array(array('gonepool' => true, 'otherpool' => true), array('typedpool' => true, 'dottedpool' => true, 'askedpool' => true), 'zfs list gonepool/'.zfsmDiagToken('a').' otherpool/'.zfsmDiagToken('a')),
 	array(zfsmDiagKnownPools(), array_diff_key($GLOBALS['zfsm_diag_names']['roots'], zfsmDiagKnownPools()), zfsmDiagAnonText('zfs list gonepool/a otherpool/a')),
-	'a pool is learned only from a line whose first verb, with what follows it, is a success, then found anywhere; another line\'s names only end names');
+	'a pool is learned only from a line with a success and no failure, then found anywhere; another line\'s names only end names');
 // Property rows: a value can hold tabs and line breaks, so the rows are read against the same read without its values.
 $heads = "tank/a\torg.znapzend:src_plan\ntank/a\tcom.clientacme:owner_tab\ntank/a\tcompression\ntank/a\tmountpoint\ntank/a\tkeylocation\ntank/b\tkeylocation\ntank/b\tsharenfs\ntank/b\tcompression\n";
 $values = "tank/a\torg.znapzend:src_plan\t1d=>1h,1w=>1d\tlocal\ntank/a\tcom.clientacme:owner_tab\tfirst\tSecret After\tlocal\ntank/a\tcompression\tlz4\tlocal\ntank/a\tmountpoint\t/mnt/tank/My Data\tlocal\n"
