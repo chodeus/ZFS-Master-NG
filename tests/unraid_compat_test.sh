@@ -34,10 +34,14 @@ rm -rf /usr/local/emhttp/plugins/zfs.master
 rm -f "/var/log/packages/$1"
 STUB
 chmod +x /sbin/upgradepkg /sbin/removepkg
-# Unraid's crontab refresh: leaves a marker so the tests can tell it ran.
+# Unraid's crontab refresh: its own update_cron where the tree has it (6.12 on), else a stand-in that does as that one does.
+# crontab is faked: it keeps the crontab it is given in /tmp/zfsm-crontab. Unraid's /bin/sh is bash, which exec() runs it with.
 mkdir -p /usr/local/sbin
-printf '#!/bin/sh\ntouch /tmp/zfsm-update-cron-ran\n' > /usr/local/sbin/update_cron
-chmod +x /usr/local/sbin/update_cron
+if [ -f "$web/sbin/update_cron" ]; then cp "$web/sbin/update_cron" /usr/local/sbin/update_cron
+else printf '#/bin/bash\nfor p in /var/log/plugins/*.plg; do p=${p##*/}; cat "/boot/config/plugins/${p%%.*}/"*.cron 2>/dev/null; done | crontab -c /etc/cron.d -\n' > /usr/local/sbin/update_cron; fi
+printf '#!/bin/sh\ncase "$3" in -) cat > /tmp/zfsm-crontab ;; -d) : > /tmp/zfsm-crontab ;; esac\n' > /usr/bin/crontab
+chmod +x /usr/local/sbin/update_cron /usr/bin/crontab
+ln -sf bash /bin/sh
 
 work=$(mktemp -d)
 cp -R zfs.master zfs.master.plg pkg_build.sh "$work/"
@@ -133,13 +137,19 @@ for check in menu_order body_token no_token wrong_token main_page invalid_utf8_s
 done
 # Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.
 printf '[general]\nalert_interval="60"\n' > "$flash/zfs.master.cfg"
-rm -f /tmp/zfsm-update-cron-ran
+rm -f /tmp/zfsm-crontab
 "$live/scripts/alerts.php" schedule || fail 'alert script did not run from the package'
-[ -e /tmp/zfsm-update-cron-ran ] || fail 'alert schedule written but the crontab not refreshed'
+grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null' /tmp/zfsm-crontab || fail 'alert schedule written but not in the crontab'
 grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null' "$flash/alerts.cron" || fail 'alert schedule not written'
 printf '[general]\nalert_interval="0"\n' > "$flash/zfs.master.cfg"
 "$live/scripts/alerts.php" schedule && [ ! -e "$flash/alerts.cron" ] || fail 'alert schedule left behind when turned off'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
+# A schedule's cron file reaches Unraid's crontab through update_cron (zfsmScheduleCron).
+rm -f /tmp/zfsm-crontab
+php -n -d display_errors=stderr -r 'require "/usr/local/emhttp/webGui/include/Helpers.php"; require "/usr/local/emhttp/plugins/zfs.master/backend/ZFSMOperations.php";
+	$why = zfsmScheduleCron(array(array("id" => "0a1b2c3d", "every" => "hourly", "hour" => 0, "day" => 0))); echo $why; exit($why === "" ? 0 : 1);' || fail 'schedule written but the crontab not rebuilt'
+grep -q ' /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run 0a1b2c3d ' /tmp/zfsm-crontab || fail 'schedule line not in the crontab'
+rm -f "$flash/schedules.cron"
 # Diagnostics from the package. This version's own diagnostics script can't run to its end here (it reads Unraid's state and
 # runs its tools), so a stand-in holds the script's own line that names its zip: the plugin must find that zip and pack it as it is.
 unraid_script=$docroot/webGui/scripts/diagnostics
