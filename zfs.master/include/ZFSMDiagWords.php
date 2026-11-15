@@ -2,8 +2,9 @@
 // The second net for running text. Logs, command lines and findings are sentences, and no rule knows every shape a name takes
 // in one: after the rules of ZFSMDiagNames.php, a word there stays only when it is a number, a pool's name, a token, a fingerprint or a word the plugin uses.
 
-// Words of the system's own messages that the plugin's files may not hold: the calendar, zfs's, PHP's and nginx's errors.
+// Words of the system's own messages that the plugin's files may not hold: the calendar and the clock, zfs's, PHP's, nginx's and the browser's errors.
 define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon tue wed thu fri sat sun utc gmt notice info debug warning error critical'
+	.' monday tuesday wednesday thursday friday saturday sunday'
 	.' cannot open destroy create mount unmount receive send rollback rename promote hold release inherit snapshot bookmark clone dataset filesystem volume'
 	.' pool does not exist already exists is are was busy has have children dependent clones use the following and or of in on at by for from into with'
 	.' without no such file directory permission denied operation permitted invalid argument input output device resource space left out quota exceeded'
@@ -13,13 +14,18 @@ define('ZFSM_DIAG_WORDS', 'jan feb mar apr may jun jul aug sep oct nov dec mon t
 	.' broken pipe interrupted call supported memory php fatal parse deprecated uncaught exception stack trace thrown undefined variable array offset'
 	.' index constant function method class object string int float bool null given expects parameter type line main opening include require once'
 	.' fastcgi sent stderr message while reading response header upstream client server request host referrer get post http unix sock fpm'
-	.' kmod rc online degraded faulted offline unavail removed ssh connect port');
+	.' kmod rc online degraded faulted offline unavail removed ssh connect port'
+	.' typeerror referenceerror syntaxerror rangeerror evalerror urierror aggregateerror domexception valueerror argumentcounterror divisionbyzeroerror arithmeticerror jsonexception');
 
 // The words of a user agent's platform parts (zfsmDiagUserAgent), and of Unraid's themes in a browser's report. This file alone
 // names them: the vocabulary reads every other file of the plugin.
 define('ZFSM_DIAG_BROWSER_WORDS', 'mozilla windows nt win64 x64 x86_64 x11 wow64 applewebkit khtml like gecko chrome chromium safari edg edge firefox opr'
 	.' macintosh intel mac os linux ubuntu android iphone ipad cpu version mobile headlesschrome crios fxios rv trident msie wv');
-define('ZFSM_DIAG_THEME_WORDS', 'theme black white azure gray page');
+define('ZFSM_DIAG_THEME_WORDS', 'theme black white azure gray page sidebar nav top width boxed unlimited');
+// An ISO 8601 time, in UTC or at an offset: digits alone, so it holds no name. The browser's report stamps each record with one (toISOString()).
+define('ZFSM_DIAG_ISO_TIME', '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})');
+// A date or a clock as Unraid writes one (my_date): a month's full name before a number, am or pm after a time; alone, either may be a name.
+define('ZFSM_DIAG_DATE', '(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,4}|\d{1,2}:\d{2}(?::\d{2})? [AaPp][Mm]');
 
 // Every word in the plugin's own PHP, pages and scripts, lower case, with ZFSM_DIAG_WORDS: read once for a run, a failure too.
 // null when its files could not all be listed and read: a list with words missing is not kept.
@@ -41,7 +47,7 @@ function zfsmDiagVocabulary() {
 	return $words = $read;
 }
 
-// Running text, a file of it or a JSON value with a space or a tab: the rules, a folder's path ending at its line's end, then the second net for
+// Running text, a file of it or a JSON value with a space or a tab: the rules, a folder's path ending where zfsmDiagFolderEnd says or at its line's end, then the second net for
 // the words after a path's first space and the rest. null when it could not be searched.
 function zfsmDiagAnonRunning($text) {
 	$clean = zfsmDiagAnonText($text, "\r\n");
@@ -56,8 +62,8 @@ function zfsmDiagKnownWords($text, $more = '') {
 	$words += array_flip(array_filter(explode(' ', $more), 'strlen'));
 	$pools = zfsmDiagKnownPools();
 	$pool = zfsmDiagAnyOf(array_map('strval', array_keys($pools)));
-	// A token of this run and a key's fingerprint are matched whole: zfsmDiagToken gives a token of its own back as it is.
-	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|'.ZFSM_DIAG_FINGERPRINT
+	// A token of this run, a key's fingerprint, a time and a date are matched whole: zfsmDiagToken gives a token of its own back as it is.
+	return preg_replace_callback('~(?:name|host|ip)-[0-9a-f]{8,}|'.ZFSM_DIAG_FINGERPRINT.'|'.ZFSM_DIAG_ISO_TIME.'(?![A-Za-z0-9_\x80-\xff])|(?:'.ZFSM_DIAG_DATE.')(?![A-Za-z0-9_\x80-\xff])'
 		.'|(?<![A-Za-z0-9_\x80-\xff.:-])(?:'.$pool.')(?![A-Za-z0-9_\x80-\xff:-]|\.[A-Za-z0-9_])|[A-Za-z0-9_\x80-\xff]+~', function($word) use ($words, $pools) {
 		$word = $word[0];
 		return isset($pools[$word]) || strncmp($word, 'SHA256:', 7) === 0 || isset($words[strtolower($word)]) || zfsmDiagIsNumber($word) ? $word : zfsmDiagToken($word);
@@ -70,9 +76,9 @@ function zfsmDiagPropertyName($property) {
 	return $shown ?? zfsmDiagToken($property);
 }
 
-// A number, alone, with a unit of size, time or ratio, or as an ordinal; or a checksum: 12, 10G, 512KiB, 30s, 2x, 2nd, an md5.
+// A number, alone, with a unit of size, time or ratio, or as an ordinal; a checksum; a time or a date: 12, 10G, 512KiB, 30s, 2x, 2nd, an md5, 2026-01-02T10:00:00Z, November 15, 10:00 pm.
 function zfsmDiagIsNumber($word) {
-	return preg_match('/^(?:\d+(?:[KMGTPE]i?B?|B|[smhdwy]|x|st|nd|rd|th)?|[0-9a-f]{32,})$/D', $word) === 1;
+	return preg_match('/^(?:\d+(?:[KMGTPE]i?B?|B|[smhdwy]|x|st|nd|rd|th)?|[0-9a-f]{32,}|'.ZFSM_DIAG_ISO_TIME.'|'.ZFSM_DIAG_DATE.')$/D', $word) === 1;
 }
 
 // A user agent by the grammar browsers write it in: a name/version token stays, as does a bare word or a platform part whose

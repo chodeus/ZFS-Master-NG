@@ -311,6 +311,7 @@ _(Unraid Diagnostics)_:
 
 :zc_settings_diag_unraid_plug:
 > Put Unraid's own diagnostics zip inside the plugin's. It goes in as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.
+> Its disk list (`system/df.txt`) can show mounted datasets by name.
 :end
 
 _(Diagnostics Zip)_:

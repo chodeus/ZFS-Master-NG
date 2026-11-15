@@ -145,12 +145,14 @@ function zfsmDiagReadme() {
 		."In these files a dataset's, snapshot's, bookmark's or folder's name is a token (name-...), the same token wherever that name is.\n"
 		."So are this server's and a sender's name, a key's comment, a pattern or a value its owner wrote and the words of a user property's\nname that the plugin does not use; a user at a host (host-...);\n"
 		."and an address (ip-...). A key is only its fingerprint. A pool's name stays.\n"
-		."A folder's path in a line of text takes the rest of that line with it, because a folder's name can hold any character.\n"
+		."A folder's path in a line of text ends where an error that quotes it closes the quote before a colon, or before the words the plugin's\n"
+		."log puts after a folder, such as failed: and succeeded; else it takes the rest of that line with it, as a folder's name can hold any character.\n"
 		."In a file's rows it ends at the next tab. A name that holds a tab or a line break can be cut there, and what follows it can stay.\n"
-		."In the logs, the command lines and the findings, any other word that the plugin itself does not use is a token too, numbers aside.\n"
+		."In the logs, the command lines and the findings, any other word that the plugin itself does not use is a token too, numbers aside, and dates and times in Unraid's formats and the browser report's stamps (2026-01-02T10:00:00Z).\n"
 		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
 		."names one of its datasets, the name stays.\n"
-		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n\n"
+		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n"
+		."Its disk list (system/df.txt) can show mounted datasets by name.\n\n"
 		."Left out, and why:\n";
 	foreach (zfsmDiagNotCollected() as $path => $why) $text .= $path.': '.$why."\n";
 	return $text;

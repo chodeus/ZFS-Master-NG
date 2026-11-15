@@ -83,6 +83,14 @@ $log_lines = array(
 	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (changes since CanaryBase) started: zfs send -i tank/CanaryDs One@CanaryBase tank/CanaryDs One@CanarySnapA | zfs receive -s tank/CanaryCopy',
 	'Replication request from 203.0.113.77 refused: tank/CanaryElse/x is not inside tank/CanaryDs One/canarysender (zfsm-replica 1 exists '.bin2hex('tank/CanaryDs One/CanaryHex').')',
 	'Convert: cloning /mnt/tank/CanaryDs One/Canary Artist - Album (2019) failed, so rsync copies it: cp failed',
+	// A folder with spaces that one action was refused for and another did.
+	$action('ZFS Directory Delete', '/mnt/tank/CanaryDs One/Canary Old Folder', 'Destructive Mode is disabled in ZFS Master NG settings'),
+	$action('ZFS Directory Convert', '/mnt/tank/CanaryDs One/Canary Old Folder'),
+	// As deleteDirectory and zfsmNestedMountProblem refuse it, the error naming the folder again.
+	$action('ZFS Directory Delete', '/mnt/tank/CanaryDs One/Canary Old Folder', "rmdir: failed to remove '/mnt/tank/CanaryDs One/Canary Old Folder': Directory not empty"),
+	$action('ZFS Directory Delete', '/mnt/tank/CanaryDs One/Canary Old Folder', 'Another filesystem is mounted inside this directory at /mnt/tank/CanaryDs One/Canary Old Folder/Canary Inner; unmount or move it first'),
+	// A folder's name holding what ends a dataset's in a log line.
+	'Convert: cloning /mnt/tank/CanaryDs One/Canary Mix | Live (in full) failed, so rsync copies it: cp failed',
 	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received',
 	$action('ZFS Replication', 'tank/CanaryDs One', 'ssh: connect to host canarynas port 22: Connection refused, as root@canaryhost:backup/CanaryRemote'),
 	$action('ZFS Dataset Destroy', 'tank/Canary failed Vol'),
@@ -236,7 +244,14 @@ has('. Copies already in '.zfsmDiagToken('remote').'?s area stay there', $log, '
 has('Replication of tank/'.$token('CanarySrc').' to '.$token('Canary Name').' on server '.zfsmDiagToken('canary.backup').' not started: Nothing answers SSH at ', $log, 'the name it was given there, spaces and all, ends the dataset\'s; the server is the same token');
 has(' to tank/'.zfsmDiagToken('CanaryCopy').' (changes since '.$token('CanaryBase').') started: zfs send -i tank/'.$ds.'@'.zfsmDiagToken('CanaryBase'), $log, 'a snapshot the plugin names by its short name alone is a token, the one it has after its dataset');
 has(' refused: tank/'.$token('CanaryElse').'/'.$token('x').' is not inside tank/'.$ds.'/'.zfsmDiagToken('canarysender').' (zfsm-replica 1 exists (as hex) tank/'.$ds.'/'.$token('CanaryHex').')', $log, 'a dataset a request names as hex is read and replaced');
-has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Artist - Album (2019) failed').','.$token(' so rsync copies it: cp failed')."\n", $log, 'a folder\'s path takes the rest of its line');
+has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Artist - Album (2019)')." failed, so rsync copies it: cp failed\n", $log, 'a folder\'s path ends where the plugin\'s words follow it, and the why after them stays');
+$folder = $token('Canary Old Folder');
+has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: Destructive Mode is disabled in ZFS Master NG settings\n", $log, 'a folder with spaces that an action was refused for is one token, and the refusal stays');
+has("ZFS Directory Convert: /mnt/tank/$ds/$folder succeeded\n", $log, 'and the action that worked names it by the same token');
+has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: rmdir: failed to remove ?/mnt/tank/$ds/$folder?: Directory not empty\n", $log, 'a folder an error quotes ends at its closing quote: the same token, and the why stays');
+has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: Another filesystem is mounted inside this directory at /mnt/tank/$ds/$folder/".$token('Canary Inner')."; unmount or move it first\n", $log,
+	'a mount inside it ends before the refusal\'s last words');
+has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Mix | Live (in full)')." failed, so rsync copies it: cp failed\n", $log, 'a folder\'s name keeps the words that would end a dataset\'s');
 same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} refused: /', $log), preg_match('~Replication from ip-[0-9a-f]{8} into tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/'.$token('CanaryIn').' received\n~', $log)), 'an address is a token: '.$log);
 // No rule marks these names: they are tokens because they are no words of the plugin's.
 has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');
@@ -390,9 +405,9 @@ same(array('{"d":"/mnt/tank/'.zfsmDiagToken("Client\tSecret").'","e":"/mnt/tank/
 	'a folder\'s path in one JSON value takes its tabs and line breaks; in a row a tab ends it');
 // A message in one value is lines: a path in it ends at its line's end, and what the next line names is read as itself.
 $message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held';
-same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken("a': gone")."\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken('a')."': gone\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 	zfsmDiagAnonJson(json_encode(array('e' => $message), JSON_UNESCAPED_SLASHES)),
-	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay');
+	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay, and a quoted folder ends at its quote');
 // A message is running text in any JSON file: the second net takes the words after the plugin's own path, as in an inventory's error.
 $own = zfsmStatePath('/var/run/zfs.master.rewrite');
 same('{"data":{"errors":{"tank":"failed '.$own.' '.zfsmDiagToken('CanaryClient').' busy"}}}',
@@ -468,6 +483,29 @@ same(array(1, 'id '.zfsmDiagToken('192_168_1_20')), array(preg_match('~^via host
 same(array('container '.zfsmDiagToken('safari').' has it mounted', 'Mozilla/5.0 Safari/537.36'), array(zfsmDiagKnownWords('container safari has it mounted'), zfsmDiagKnownWords('Mozilla/5.0 Safari/537.36', ZFSM_DIAG_BROWSER_WORDS)),
 	'a browser\'s words pass only in the browser\'s report: a container named for one is a token elsewhere');
 same(zfsmDiagToken('name-0123abcd').' SHA256:'.zfsmDiagToken('Zebra77'), zfsmDiagKnownWords('name-0123abcd SHA256:Zebra77'), 'text that only looks like a token or a fingerprint is not one: a token is one this run made, a fingerprint has its length');
+same(array('at 2026-11-15T10:00:00Z, 2026-11-15T18:00:00+08:00 and 2026-11-15T10:00Z', 'at 2026-11-'.zfsmDiagToken('15T10').':00:00 or 2026-11-'.zfsmDiagToken('15T10').':00:'.zfsmDiagToken('00Zx')),
+	array(zfsmDiagKnownWords('at 2026-11-15T10:00:00Z, 2026-11-15T18:00:00+08:00 and 2026-11-15T10:00Z'), zfsmDiagKnownWords('at 2026-11-15T10:00:00 or 2026-11-15T10:00:00Zx')),
+	'a time stays whole, in UTC or at an offset; one with no zone, or joined to a word, is numbers and tokens');
+// Unraid's dates in each of its formats (my_date), then a month's name and am or pm that no date or time holds.
+same(array('Sunday, 15 November 2026, 22:00; Sunday, 2026 November 15, 10:00 pm; Sunday, November 15, 2026, 10:00:00 pm; Sun 15 Nov 2026 10:00 PM',
+	zfsmDiagToken('June').' and '.zfsmDiagToken('April').' at 10 '.zfsmDiagToken('PM').', 10:00 '.zfsmDiagToken('pmz')),
+	array(zfsmDiagKnownWords('Sunday, 15 November 2026, 22:00; Sunday, 2026 November 15, 10:00 pm; Sunday, November 15, 2026, 10:00:00 pm; Sun 15 Nov 2026 10:00 PM'),
+		zfsmDiagKnownWords('June and April at 10 PM, 10:00 pmz')),
+	'a date and a time as Unraid writes them stay; a month\'s name with no number after it, and am or pm with no time before it, are tokens');
+// The browser's report as zfsmDiagReport sends it: Unraid's theme classes, the record's times, a date as Unraid shows it and the browser's
+// own errors stay; a class and a name that are no one's words are tokens, as is a theme's word in another plugin's column header.
+$stamp = '2026-11-15T10:00:00.123Z';
+$record = array('status' => array('at' => $stamp, 'text' => 'Last refresh at Sunday, 15 November 2026 10:00 PM', 'error' => false),
+	'errors' => array(array('at' => $stamp, 'text' => "Uncaught TypeError: Cannot read properties of undefined (reading 'canaryProp')", 'where' => 'ZFSMFrontEnd.js:12')),
+	'render' => array('at' => $stamp, 'milliseconds' => 40, 'pools' => 1, 'rows' => 3, 'headers' => array('Name', 'Sidebar'), 'icons' => array('unmeasured' => 'TypeError: canaryBox is null')));
+$report = array('userAgent' => 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36', 'window' => array(1280, 800), 'pixelRatio' => 1.25,
+	'theme' => 'Theme--black Theme--sidebar Theme--nav-top Theme--width-boxed canaryclass', 'kept' => array('zfsm-diagnostics' => $record), 'leftOut' => 0);
+$shown = $report;
+$shown['kept']['zfsm-diagnostics']['render']['headers'][1] = zfsmDiagToken('Sidebar');
+$shown['theme'] = 'Theme--black Theme--sidebar Theme--nav-top Theme--width-boxed '.zfsmDiagToken('canaryclass');
+$shown['kept']['zfsm-diagnostics']['errors'][0]['text'] = str_replace('canaryProp', zfsmDiagToken('canaryProp'), $record['errors'][0]['text']);
+$shown['kept']['zfsm-diagnostics']['render']['icons']['unmeasured'] = 'TypeError: '.zfsmDiagToken('canaryBox').' is null';
+same($shown, json_decode((string)zfsmDiagAnonBrowser(json_encode($report)), true), 'the browser\'s report keeps Unraid\'s theme, its times, dates and errors, in its own order; the theme\'s words pass in the theme alone');
 same(array('key (a key, SHA256:'.rtrim(base64_encode(hash('sha256', base64_decode(substr($public_key, 12)), true)), '=').') '.zfsmDiagToken('canaryuser@canaryhost'), "cut short (a private key, left out)\nthe next line", 'at backup:tank/'.zfsmDiagToken('Colon')),
 	array(zfsmDiagAnonText('key '.$public_key.' canaryuser@canaryhost'), zfsmDiagAnonText("cut short -----BEGIN OPENSSH PRIVATE KEY-----; CutKeyBody\nthe next line"), zfsmDiagAnonText('at backup:tank/Colon')),
 	'a key is its fingerprint and its comment a token; a private key whose end was cut off is left out, and the next line stays; a dataset right after a colon is found');
