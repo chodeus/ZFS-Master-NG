@@ -194,11 +194,14 @@ function zfsmReplicaRemoteAdd($name, $host, $port, $key, $fingerprint) {
 
 function zfsmReplicaRemoteRemove($name) {
 	if (!zfsmReplicaSenderName($name)) return 'A server\'s name is '.ZFSM_REPLICA_NAME_RULE;
-	return zfsmReplicaRemotesChange(function($remotes) use ($name) {
+	$why = zfsmReplicaRemotesChange(function($remotes) use ($name) {
 		if (!isset($remotes[$name])) return 'No server here is named '.$name;
 		unset($remotes[$name]);
 		return $remotes;
 	});
+	// One added again under the name starts without the old one's wait (zfsmReplicaDown).
+	if ($why === '') @unlink(zfsmReplicaDownFile($name));
+	return $why;
 }
 
 // The address this server sends from to reach $host, as the kernel picks it; null when it can't be read.
@@ -237,7 +240,7 @@ function zfsmReplicaSshFiles($remote) {
 }
 
 function zfsmReplicaSshCleanup($files) {
-	foreach (array('key', 'known_hosts') as $file) @unlink($files[$file]);
+	foreach (array('key', 'known_hosts', 'control') as $file) if (isset($files[$file])) @unlink($files[$file]);
 	@rmdir($files['dir']);
 }
 
@@ -247,6 +250,8 @@ function zfsmReplicaSshArgs($remote, $files, $request) {
 	$options = array('IdentitiesOnly=yes', 'IdentityAgent=none', 'BatchMode=yes', 'StrictHostKeyChecking=yes', 'UserKnownHostsFile='.$files['known_hosts'],
 		'GlobalKnownHostsFile=/dev/null', 'CheckHostIP=no', 'HostKeyAlgorithms=ssh-ed25519', 'UpdateHostKeys=no', 'ForwardAgent=no', 'ForwardX11=no',
 		'ClearAllForwardings=yes', 'PermitLocalCommand=no', 'LogLevel=ERROR', 'ConnectTimeout=10', 'ServerAliveInterval=15', 'ServerAliveCountMax=2');
+	// One login for a connection's requests: the first starts it in the background, the rest ride it (zfsmReplicaConnect).
+	if (isset($files['control'])) array_push($options, 'ControlMaster=auto', 'ControlPath='.$files['control'], 'ControlPersist=60');
 	$args = array('-F', 'none', '-T', '-i', $files['key']);
 	foreach ($options as $option) array_push($args, '-o', $option);
 	return array_merge($args, array('-p', (string)$remote['port'], '-l', 'root', '--', $remote['host'], $request));
@@ -255,7 +260,8 @@ function zfsmReplicaSshArgs($remote, $files, $request) {
 // What to do about one of ssh's own failures, with ssh's last line; null for any other answer, such as the checker's refusal.
 // The patterns are OpenSSH's own lines; the timeouts are glibc's and musl's wording.
 function zfsmReplicaSshAdvice($remote, $result) {
-	$output = trim((string)($result['output'] ?? ''));
+	// ssh ends its own lines in \r\n, which /m's $ doesn't match before.
+	$output = str_replace("\r", '', trim((string)($result['output'] ?? '')));
 	$name = $remote['name'];
 	$where = $remote['host'].' port '.$remote['port'];
 	$advice = array(
@@ -273,28 +279,11 @@ function zfsmReplicaSshAdvice($remote, $result) {
 	return null;
 }
 
-// hello on the other server: the area its copies go into, or why there is none (ssh's own error or the checker's refusal).
-// runProcess trims the answer, so it ends at the area's name, which may hold spaces.
+// Settings' Test: the area on the other server, or why there is none.
 function zfsmReplicaHello($remote) {
-	// With no valid name this server has no line to give, so nothing on the other server is asked.
-	$this_name = zfsmReplicaThisName();
-	if ($this_name === null) return array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification, then give '.$remote['name'].' its new line');
-	$files = zfsmReplicaSshFiles($remote);
-	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
-	try {
-		// The other server decides how much it sends: no more than a hello's few lines is kept.
-		$hello = runProcess('ssh', zfsmReplicaSshArgs($remote, $files, 'zfsm-replica 1 hello'), null, 0, ZFSM_KEEP_OUTPUT);
-	} finally {
-		zfsmReplicaSshCleanup($files);
-	}
-	if (($hello['code'] ?? 1) !== 0 || preg_match('/\Azfsm-replica 1\narea (.+)\z/', (string)$hello['output'], $match) !== 1 || !zfsmValidDatasetName($match[1])) {
-		return array('error' => zfsmReplicaSshAdvice($remote, $hello) ?? zfsmCommandError($hello, 'No answer from '.$remote['name']));
-	}
-	// The area is named for the sender the key line there names: another name is a line made for another name, as before a rename.
-	$named = zfsmReplicaAreaSender($match[1]);
-	if ($named === $this_name) return array('area' => $match[1]);
-	return array('error' => 'The key line on '.$remote['name'].' is for '.$named.', but this server is '.$this_name.': '.$remote['name'].' needs this server\'s own line in its place. '
-		.'Copies already in '.$named.'\'s area stay there, and this server\'s area starts with full copies');
+	$link = zfsmReplicaConnect($remote);
+	zfsmReplicaDisconnect($link);
+	return isset($link['area']) ? array('area' => $link['area']) : $link;
 }
 
 function zfsmReplicaKeyHtml() {

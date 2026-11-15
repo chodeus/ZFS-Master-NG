@@ -123,6 +123,17 @@ function zfsmWithDeadline($seconds, $read) {
 	}
 }
 
+// Runs $run with no deadline: a quick local step that ends what a read past its deadline left running.
+function zfsmWithoutDeadline($run) {
+	$previous = $GLOBALS['zfsm_inventory_deadline'] ?? null;
+	unset($GLOBALS['zfsm_inventory_deadline']);
+	try {
+		return $run();
+	} finally {
+		if ($previous !== null) $GLOBALS['zfsm_inventory_deadline'] = $previous;
+	}
+}
+
 // The seconds left of the limit a read now runs under; INF when it runs under none.
 function zfsmDeadlineLeft() {
 	return ($GLOBALS['zfsm_inventory_deadline'] ?? INF) - microtime(true);

@@ -70,11 +70,26 @@ assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': pr
 const diff = popup.slice(popup.indexOf('function diffSnapshot('), popup.indexOf('function renameSnapshot('));
 assert.match(diff, /zfsmFetchReview\('[^']*', \{cmd: 'diffsnapshot'[\s\S]*\n\t\}, ''\);\n/, 'the changes dialog is read-only, so its failures do not say "Nothing was changed"');
 
-// The Replicate dialog (include/ZFSMReplicate.php's preview): names and plans are escaped; no destination yet shows no plan.
-const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_destination: 'backup/"data'});
+// The Replicate dialog (include/ZFSMReplicaPlan.php's preview): names and plans are escaped; no destination yet shows no plan.
+const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_destination: {server: '', dest: 'backup/"data'}, servers: []}, 'tank/data');
 assert.doesNotMatch(replicate, /new<b>/, 'a snapshot name cannot inject markup');
 assert.match(replicate, /<option value="new&lt;b&gt;">[\s\S]*<option value="old">[\s\S]*<option value="">Take one now<\/option>/, 'newest snapshot first, Take one now last');
-assert.match(replicate, /id="zfsm-replicate-dest"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
+assert.match(replicate, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
+assert.doesNotMatch(replicate, /zfsm-replicate-server/, 'with no trusted servers there is no Server select');
+// Trusted servers: the last copy's server is picked, and its name inside that server's area filled in.
+const remote = context.zfsmReplicateHtml({snapshots: [], servers: ['nas', 'x<y'], last_destination: {server: 'nas', dest: 'backup/replicas/tower/da"ta'}}, 'tank/data');
+assert.match(remote, /<select id="zfsm-replicate-server"[^>]*><option value="">This server<\/option><option value="nas" selected>nas<\/option><option value="x&lt;y">x&lt;y<\/option><\/select>/,
+  'This server, then each trusted server, escaped; the last copy\'s is picked');
+assert.match(remote, /id="zfsm-replicate-dest"[^>]*placeholder="name"[^>]*value="da&quot;ta"/, 'its name inside the area is filled in');
+const gone = context.zfsmReplicateHtml({snapshots: [], servers: ['nas'], last_destination: {server: 'old', dest: 'backup/replicas/tower/data'}}, 'tank/data');
+assert.match(gone, /<option value="">This server<\/option><option value="nas">nas<\/option>/, 'a last copy on a server no longer trusted picks This server');
+assert.match(gone, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value=""/, 'with nothing filled in');
+assert.match(context.zfsmReplicateHtml({snapshots: [], servers: [], servers_error: 'remotes.json <bad>'}, 'tank/data'), /color:#e22828[^>]*>remotes\.json &lt;bad&gt;</, 'servers that can\'t be read say so, escaped');
+assert.deepEqual([null, {server: '', dest: 'backup/data'}, {server: 'nas', dest: 'a/b/c'}, {server: 'nas', dest: 'a/b/c'}].map((last, at) => context.zfsmReplicateName(last, ['nas', 'nas', '', 'nas'][at], 'tank/media/photos')),
+  ['photos', 'photos', '', 'c'], 'each server\'s name: the dataset\'s last part on a server it has no copy on, the last copy\'s where it has one');
+assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: '', server: 'n<s', area: 'a/b'}), '<p style="margin:.5em 0">On n&lt;s, copies go inside a/b.</p>', 'a trusted server picked: its area shows before a name is given');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, server: 'nas', area: 'a/b'}), /^<p[^>]*>On nas, copies go inside a\/b\.<\/p><p[^>]*>The first replication/, 'and above the plan');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume', server: 'nas', area: 'a/b'}), /has no \/dev\/zvol device, so/, 'a volume\'s copy there never had a device to remove');
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);

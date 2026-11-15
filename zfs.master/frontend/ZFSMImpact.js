@@ -67,30 +67,50 @@ function zfsmRewriteSync(root) {
 	return keep;
 }
 
-// The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicate.php; zfsmReplicatePlanHtml fills its plan as the choices change.
-function zfsmReplicateHtml(options) {
+// The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicaPlan.php; zfsmReplicatePlanHtml fills its plan as the choices change.
+function zfsmReplicateHtml(options, zdataset) {
 	const esc = zfsmEscape;
 	// The control inside its label names it for screen readers.
 	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+field+'</label></p>';
 	const snapshots = (options.snapshots || []).map(name => '<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
 	let html = row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
-	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="pool/dataset" value="'+esc(options.last_destination || '')+'">');
+	const servers = options.servers || [];
+	const last = options.last_destination || null;
+	// The last copy's server, while this one still trusts it.
+	const server = last && servers.includes(last.server) ? last.server : '';
+	if (servers.length) {
+		const choices = servers.map(name => '<option value="'+esc(name)+'"'+(name === server ? ' selected' : '')+'>'+esc(name)+'</option>').join('');
+		html += row('Server:', '<select id="zfsm-replicate-server" style="width:100%"><option value="">This server</option>'+choices+'</select>');
+	}
+	if (options.servers_error) html += '<p style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
+	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p></div>';
+}
+
+// What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy
+// is named for the dataset's last part.
+function zfsmReplicateName(last, server, zdataset) {
+	const dest = last && last.server === server ? last.dest : (server === '' ? '' : String(zdataset || ''));
+	return server === '' ? dest : dest.slice(dest.lastIndexOf('/') + 1);
 }
 
 function zfsmReplicatePlanHtml(plan) {
 	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	if (plan.error) return '<p style="color:#e22828;margin:.5em 0">'+esc(plan.error)+'</p>';
-	if (plan.can_proceed !== true) return '';
+	// A trusted server's area, from its hello: the copy is one name inside it.
+	const area = plan.area ? say('On '+esc(plan.server)+', copies go inside '+esc(plan.area)+'.') : '';
+	if (plan.can_proceed !== true) return area;
 	const size = plan.size === null || plan.size === undefined ? '' : ', about '+zfsmSize(plan.size);
 	let html = say(plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');
 	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
-	// An incremental or resumed receive into a copy that has a /dev/zvol device removes it (volmode=none, zfsmReplicateReceiveArgs).
-	return html+say(plan.type === 'volume' ? 'The copy is read-only and has no /dev/zvol device'+(plan.mode !== 'full' ? ' (one it has now is removed)' : '')+', so nothing changes it between replications.'
+	html = area+html;
+	// An incremental or resumed receive into a copy here that has a /dev/zvol device removes it (volmode=none, zfsmReplicateReceiveArgs);
+	// one on another server never had one (zfsmReplicaAreaProps).
+	return html+say(plan.type === 'volume' ? 'The copy is read-only and has no /dev/zvol device'+(plan.mode !== 'full' && !plan.server ? ' (one it has now is removed)' : '')+', so nothing changes it between replications.'
 		: 'The copy is unmounted and read-only, so nothing changes it between replications.');
 }
 

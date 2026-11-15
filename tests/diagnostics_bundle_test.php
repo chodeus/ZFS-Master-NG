@@ -91,6 +91,13 @@ $log_lines = array(
 	$action('ZFS Dataset Destroy', 'tank/Canary Gone finished movies'),
 	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
 	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (carried on from where it stopped) started: zfs send -P -v -t '.$resume.' | zfs receive -s tank/CanaryCopy',
+	// To a server since removed from remotes.json: only "on server" names it, and the word net alone would keep its "backup".
+	'Replication of tank/CanaryDs One@CanarySnapA to remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy on server canary.backup (in full) started: zfs send -P -v tank/CanaryDs One@CanarySnapA | ssh 10.0.20.99 zfsm-replica 1 receive '.bin2hex('remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy'),
+	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryTyped/Name on server canary.backup not started: On canary.backup the copy goes inside remotepool/CanaryArea/CanaryTower, so give it one name with no slash, such as Canary Name'),
+	// Names the word net alone keeps, as each is one of its words: a server removed since, and this server's name before a rename.
+	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryGone on server media not started: media does not accept this server\'s key: copy the line shown under media here into its root user\'s SSH authorized keys, and Apply there'),
+	'Replication of tank/CanarySrc to Canary Name on server canary.backup not started: The key line on canary.backup is for remote, but this server is CanaryNas: canary.backup needs this server\'s own line in its place. Copies already in remote\'s area stay there, and this server\'s area starts with full copies',
+	'Replication of tank/CanarySrc to Canary Name on server canary.backup not started: Nothing answers SSH at 10.0.20.99 port 22: turn SSH on there (Settings, Management Access, Use SSH), or check the port',
 	// Names with nothing to mark them: a container and a process in the busy text, a refusal's example, a name that was refused.
 	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container canarycontainer has it mounted; process canary_backup.sh (pid 9) may be using it through /mnt/user"),
 	$action('ZFS Replication', 'tank/CanaryDs One', 'The copy needs a dataset name inside a pool, such as backup/CanaryLeaf'),
@@ -205,6 +212,16 @@ has("ZFS Snapshot Destroy: tank/$ds@".$token('CanaryA').','.$token('CanaryB').',
 $exported = 'exportedpool/'.$token('CanaryVol').'@'.zfsmDiagToken('CanaryA');
 has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
 has(' started: zfs send -P -v -t (a resume token, left out) | zfs receive -s tank/'.zfsmDiagToken('CanaryCopy')."\n", $log, 'a resume token is left out');
+$remote = 'remotepool/'.$token('CanaryArea').'/'.$token('CanaryTower').'/'.$token('CanaryRemoteCopy');
+same(1, preg_match('~ to '.preg_quote($remote.' on server '.$token('canary.backup').' (in full) started: zfs send -P -v tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' | ssh ', '~').'ip-[0-9a-f]{8} '
+	.preg_quote('zfsm-replica 1 receive (as hex) '.$remote, '~').'\n~', $log), 'a copy on another server: its pool stays as a pool here does, its server is a token though no longer in remotes.json, and its request is read from hex: '.$log);
+has('ZFS Replication: tank/'.$ds.' failed: Replication to '.$token('CanaryTyped').'/'.$token('Name').' on server '.zfsmDiagToken('canary.backup').' not started: On '.zfsmDiagToken('canary.backup').' the copy goes inside remotepool/'.$token('CanaryArea').'/'.zfsmDiagToken('CanaryTower').', so give it one name with no slash, such as '.$token('Canary Name')."\n", $log,
+	'a refusal to send there: its area is its pool and tokens, and the name it gives as its example is one token');
+has('ZFS Replication: tank/'.$ds.' failed: Replication to '.$token('CanaryGone').' on server '.zfsmDiagToken('media').' not started: '.zfsmDiagToken('media').' does not accept this server?s key: copy the line shown under '.zfsmDiagToken('media').' here', $log,
+	'a server removed since is a token wherever the start that failed names it, though it is one of the word net\'s words');
+has(' not started: The key line on '.zfsmDiagToken('canary.backup').' is for '.zfsmDiagToken('remote').', but this server is '.zfsmDiagToken('CanaryNas').': ', $log, 'this server\'s name before a rename is a token');
+has('. Copies already in '.zfsmDiagToken('remote').'?s area stay there', $log, 'wherever the line names it');
+has('Replication of tank/'.$token('CanarySrc').' to '.$token('Canary Name').' on server '.zfsmDiagToken('canary.backup').' not started: Nothing answers SSH at ', $log, 'the name it was given there, spaces and all, ends the dataset\'s; the server is the same token');
 has(' to tank/'.zfsmDiagToken('CanaryCopy').' (changes since '.$token('CanaryBase').') started: zfs send -i tank/'.$ds.'@'.zfsmDiagToken('CanaryBase'), $log, 'a snapshot the plugin names by its short name alone is a token, the one it has after its dataset');
 has(' refused: tank/'.$token('CanaryElse').'/'.$token('x').' is not inside tank/'.$ds.'/'.zfsmDiagToken('canarysender').' (zfsm-replica 1 exists (as hex) tank/'.$ds.'/'.$token('CanaryHex').')', $log, 'a dataset a request names as hex is read and replaced');
 has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Artist - Album (2019) failed').','.$token(' so rsync copies it: cp failed')."\n", $log, 'a folder\'s path takes the rest of its line');
@@ -321,16 +338,18 @@ $GLOBALS['zfsm_root'] = '';
 zfsmDiagStart();
 $private = array('/boot/config/plugins/ClientA/notes', '/var/log/syslog-private', '/boot/logs/tower-diagnostics-20260102-1000.zip', '/boot/config/plugins/zfs.masterClientA/notes', '/boot/config/plugins/zfs.master.plgClient',
 	'/tmp/zfs.master-diag.ClientA/notes', '/var/run/zfs.master.ClientA', '/var/log/packages/zfs.master-ClientA',
-	'/var/run/zfs.master.rewrite/ClientA', '/tmp/zfs.master-diag.0123456789abcdef/ClientA', '/boot/config/plugins/zfs.master/ClientA', '/boot/config/plugins/zfs.master/ssh/ClientA', '/var/run/zfs.master.replica-send/ssh-ClientA');
+	'/var/run/zfs.master.rewrite/ClientA', '/tmp/zfs.master-diag.0123456789abcdef/ClientA', '/boot/config/plugins/zfs.master/ClientA', '/boot/config/plugins/zfs.master/ssh/ClientA', '/var/run/zfs.master.replica-send/ssh-ClientA',
+	'/var/run/zfs.master.replica-send/down-'.bin2hex('ClientA'));
 $tokens = function($path) { return preg_replace_callback('~[^/]+~', function($part) { return zfsmDiagToken($part[0]); }, $path); };
 same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/log/syslog-private'), '/boot'.$tokens('/logs/tower-diagnostics-20260102-1000.zip'), '/boot'.$tokens('/config/plugins/zfs.masterClientA/notes'), '/boot'.$tokens('/config/plugins/zfs.master.plgClient'),
 	'/tmp'.$tokens('/zfs.master-diag.ClientA/notes'), '/var'.$tokens('/run/zfs.master.ClientA'), '/var'.$tokens('/log/packages/zfs.master-ClientA'),
 	'/var'.$tokens('/run/zfs.master.rewrite/ClientA'), '/tmp'.$tokens('/zfs.master-diag.0123456789abcdef/ClientA'), '/boot'.$tokens('/config/plugins/zfs.master/ClientA'),
-	'/boot'.$tokens('/config/plugins/zfs.master/ssh/ClientA'), '/var'.$tokens('/run/zfs.master.replica-send/ssh-ClientA')),
+	'/boot'.$tokens('/config/plugins/zfs.master/ssh/ClientA'), '/var'.$tokens('/run/zfs.master.replica-send/ssh-ClientA'), '/var'.$tokens('/run/zfs.master.replica-send/down-'.bin2hex('ClientA'))),
 	array_map('zfsmDiagAnonText', $private), 'only the paths the plugin makes are its own, whole: not a name that only starts as one of them, nor another name inside one of its folders');
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
 	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock'
-	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts';
+	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts'
+	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm';
 same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
 // In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
 same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');

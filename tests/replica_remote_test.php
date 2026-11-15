@@ -29,25 +29,10 @@ $script = function($name, $body) use ($work) {
 	file_put_contents($work.'/bin/'.$name, "#!/bin/sh\n".$body);
 	chmod($work.'/bin/'.$name, 0755);
 };
-// ssh-keyscan and ip answer from the test; ssh checks what it was given, then runs the checker as sshd's forced command would.
+// ssh-keyscan and ip answer from the test; ssh (fixtures/fake_ssh) checks what it was given, then runs the checker as sshd's forced command would.
 $script('ssh-keyscan', "printf '%s\\n' \"ssh-keyscan \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\necho \"# \$*: SSH-2.0-OpenSSH_10.0\" >&2\n[ -n \"\${ZFSM_TEST_SCAN:-}\" ] && printf '%s\\n' \"\$ZFSM_TEST_SCAN\"\nexit \"\${ZFSM_TEST_SCAN_EXIT:-0}\"\n");
 $script('ip', "printf '%s\\n' \"ip \$*\" >> \"\$ZFSM_TEST_SSH_LOG\"\n[ -n \"\${ZFSM_TEST_NO_ROUTE:-}\" ] && exit 2\nprintf '%s dev br0 src 10.0.20.5 uid 0 \\n    cache \\n' \"\$3\"\n");
-$script('ssh', implode("\n", array(
-	'printf "%s\n" "ssh $*" >> "$ZFSM_TEST_SSH_LOG"',
-	"key=''; known=''; prev=''",
-	'for a in "$@"; do',
-	'	[ "$prev" = -i ] && key=$a',
-	'	case "$prev:$a" in -o:UserKnownHostsFile=*) known=${a#UserKnownHostsFile=} ;; esac',
-	'	prev=$a',
-	'done',
-	'for last in "$@"; do :; done',
-	'printf "key-mode %s\n" "$(stat -c %a "$key")" >> "$ZFSM_TEST_SSH_LOG"',
-	'cmp -s "$key" "$ZFSM_TEST_FLASH_KEY" && echo key-same >> "$ZFSM_TEST_SSH_LOG"',
-	'printf "known %s\n" "$(cat "$known")" >> "$ZFSM_TEST_SSH_LOG"',
-	'[ -n "${ZFSM_TEST_SSH_FAIL:-}" ] && { echo "$ZFSM_TEST_SSH_FAIL" >&2; exit 255; }',
-	'[ -n "${ZFSM_TEST_SSH_FLOOD:-}" ] && { head -c "$ZFSM_TEST_SSH_FLOOD" /dev/zero | tr "\\000" x; exit 0; }',
-	'SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"',
-	'')));
+copy(__DIR__.'/fixtures/fake_ssh', $work.'/bin/ssh') && chmod($work.'/bin/ssh', 0755);
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/bin');
 putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 putenv('ZFSM_TEST_SSH_LOG='.$work.'/ssh.log');
@@ -244,7 +229,9 @@ same(array(array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RUL
 file_put_contents($work.'/ident.cfg', "NAME=\"tower\"\n");
 putenv('ZFSM_TEST_ACCEPT=backup/replicas');
 $log();
-same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key), array_slice($seen, 1), 'ssh got a 0600 copy of the key and only the pinned host key');
+same(array('key-mode 600', 'key-same', 'known [10.0.20.11]:2222 '.$host_key, 'login'), array_slice($seen, 1, 4), 'ssh got a 0600 copy of the key and only the pinned host key');
+same(1, preg_match('~^ssh -F none -o ControlPath=\S+/replica-send/ssh-[0-9a-f]{12}/cm -O exit -- 10\.0\.20\.11$~D', $seen[5] ?? ''), 'and the connection it logged in with is ended: '.($seen[5] ?? ''));
+same(array('connection ends'), array_slice($seen, 6), 'once');
 same(array(), glob(zfsmJobDir('replica-send').'/ssh-*'), 'and the copies are gone after');
 putenv('ZFSM_TEST_ACCEPT=');
 same(array('error' => 'This server does not accept replicas from this key'), zfsmReplicaHello($nas), 'a server that accepts nothing says so');
@@ -270,6 +257,8 @@ $ssh_fails = array(
 foreach ($ssh_fails as $said => $shown) {
 	putenv('ZFSM_TEST_SSH_FAIL='.$said);
 	same(array('error' => $shown), zfsmReplicaHello($nas), 'ssh\'s own failure, with what to do: '.strtok($said, "\n"));
+	// Each one as a while after the last: until then Test says when it is tried again (replicate_test.php).
+	touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 }
 putenv('ZFSM_TEST_SSH_FAIL');
 // A server that answers with far more than a hello: the answer is cut where it is read, not held whole.

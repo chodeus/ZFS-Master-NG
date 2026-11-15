@@ -771,10 +771,12 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		}
 		let asked = 0;
 		let timer = null;
-		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim()});
+		// Without trusted servers there is no Server select: the copy stays on this server.
+		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim(),
+			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value});
 		Swal2.fire({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
-			html: zfsmReplicateHtml(options),
+			html: zfsmReplicateHtml(options, zdataset),
 			showCancelButton: true,
 			confirmButtonText: 'Replicate',
 			didOpen: (popup) => {
@@ -783,7 +785,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					const ask = ++asked;
 					const chosen = choices(popup);
 					confirm.disabled = true;
-					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination}, function(answer) {
+					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination, server: chosen.server}, function(answer) {
 						if (ask !== asked) return;
 						popup.querySelector('#zfsm-replicate-plan').innerHTML = zfsmReplicatePlanHtml(answer);
 						confirm.disabled = answer.can_proceed !== true;
@@ -791,13 +793,23 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				};
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				const server = popup.querySelector('#zfsm-replicate-server');
+				let filled = popup.querySelector('#zfsm-replicate-dest').value;
+				if (server) server.addEventListener('change', () => {
+					clearTimeout(timer);
+					const dest = popup.querySelector('#zfsm-replicate-dest');
+					// A name typed in stays; one the dialog filled in follows the server.
+					if (dest.value === filled) dest.value = filled = zfsmReplicateName(options.last_destination, server.value, zdataset);
+					dest.placeholder = server.value === '' ? 'pool/dataset' : 'name';
+					plan();
+				});
 				plan();
 			},
 			preConfirm: () => choices(Swal2.getPopup())
 		}).then((result) => {
 			clearTimeout(timer);
 			if (!result.isConfirmed) return;
-			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, destination: result.value.destination}, function(data) {
+			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, destination: result.value.destination, server: result.value.server}, function(data) {
 				Swal2.fire({title: 'Replication Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
 			});
 		});
