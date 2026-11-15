@@ -25,6 +25,7 @@ window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMSize.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMDiagRecord.js'), 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));

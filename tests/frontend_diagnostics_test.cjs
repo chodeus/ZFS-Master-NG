@@ -1,11 +1,11 @@
 // The Settings page's Diagnostics button through the real ZFSMDiagnostics.js, and the Main tab's record through the real
-// zfsmDiagRecord (ZFSMFrontEnd.js); only $.post (HTTP), timers and localStorage are faked.
+// zfsmDiagRecord (ZFSMDiagRecord.js); only $.post (HTTP), timers and localStorage are faked.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const root = path.resolve(process.argv[2] || path.join(__dirname, '../zfs.master'));
-const source = ['ZFSMFrontEnd.js', 'ZFSMDiagnostics.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
+const source = ['ZFSMFrontEnd.js', 'ZFSMDiagRecord.js', 'ZFSMDiagnostics.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
 
 function element() {
   const state = {text: '', attrs: {}, props: {}, shown: false};
