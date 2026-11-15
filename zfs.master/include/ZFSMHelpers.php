@@ -353,6 +353,11 @@ function zfsmValidDatasetName($name) {
 	return zfsmValidPoolName($parts[0]);
 }
 
+// Unraid's cron file format (dynamix monitor.cron), each line's output dropped; '' with no lines.
+function zfsmCronText($what, $lines) {
+	return $lines ? '# Generated ZFS Master NG '.$what.":\n".implode('', array_map(function($line) { return $line." &> /dev/null\n"; }, $lines))."\n" : '';
+}
+
 function zfsmNewSnapshotName($cfg, $now) {
 	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));

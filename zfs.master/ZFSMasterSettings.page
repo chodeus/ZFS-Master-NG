@@ -298,7 +298,7 @@ _(Schedules)_:
 > - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. Its snapshots are kept on both sides; remove old ones by hand.
 > - A run that finds its copy gone doesn't send it in full again: replicate it once by hand to make a new copy.
 > - The first run with a problem sends a notification. Later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so.
-> - A run that falls due while the last one is still sending is skipped, and the next one runs at its usual time.
+> - A run that falls due while another replication of its dataset is still sending waits for it, up to 55 minutes. One that can't start in that time is skipped, and counts as a problem.
 :end
 
 </details>

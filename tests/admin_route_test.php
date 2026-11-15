@@ -22,7 +22,7 @@ $routes = array(
 	'previewreplicate' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data'),
 	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data'),
 	'schedulepicked' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'every' => 'daily', 'hour' => '3', 'day' => '0'),
-	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'weekly', 'hour' => '3', 'day' => '2'),
+	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'weekly', 'hour' => '13', 'day' => '2'),
 	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x'),
 	'scheduleremovesaved' => array('cmd' => 'scheduleremove', 'id' => '0a1b2c3d')
 );

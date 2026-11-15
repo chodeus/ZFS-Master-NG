@@ -20,16 +20,10 @@ function zfsmPostString($key, $default = '') {
 	return is_string($value) ? $value : $default;
 }
 
-// 0, which no check accepts, unless the field holds a number.
-function zfsmPostPort() {
-	$port = zfsmPostString('port');
-	return preg_match('/^[0-9]{1,5}$/D', $port) === 1 ? (int)$port : 0;
-}
-
-// -1, which no schedule accepts, unless the field holds a number of one or two digits.
-function zfsmPostSmall($key) {
+// $default, which no check accepts, unless the field holds a number of up to $digits digits.
+function zfsmPostDigits($key, $digits, $default) {
 	$value = zfsmPostString($key);
-	return preg_match('/^[0-9]{1,2}$/D', $value) === 1 ? (int)$value : -1;
+	return preg_match('/^[0-9]{1,'.$digits.'}$/D', $value) === 1 ? (int)$value : $default;
 }
 
 function zfsmResolveAnswerCodes($answer) {
@@ -144,14 +138,14 @@ try {
 
 		case 'replicascan':
 			$host = zfsmPostString('host');
-			$port = zfsmPostPort();
+			$port = zfsmPostDigits('port', 5, 0);
 			echo zfsmJson(zfsmWithReadLimit(function() use ($host, $port) { return zfsmReplicaScan($host, $port); }));
 			break;
 
 		case 'replicaadd':
 		case 'replicaremove':
 			$why = $command === 'replicaadd'
-				? zfsmReplicaRemoteAdd(zfsmPostString('name'), zfsmPostString('host'), zfsmPostPort(), zfsmPostString('key'), zfsmPostString('fingerprint'))
+				? zfsmReplicaRemoteAdd(zfsmPostString('name'), zfsmPostString('host'), zfsmPostDigits('port', 5, 0), zfsmPostString('key'), zfsmPostString('fingerprint'))
 				: zfsmReplicaRemoteRemove(zfsmPostString('name'));
 			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
 			break;
@@ -217,7 +211,7 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
 			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
-				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostSmall('hour'), zfsmPostSmall('day'), $zfsm_cfg);
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostDigits('hour', 2, -1), zfsmPostDigits('day', 2, -1), $zfsm_cfg);
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
