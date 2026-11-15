@@ -31,6 +31,9 @@ def advisories(pairs, post):
     results = json.loads(post(json.dumps({'queries': queries}).encode()))['results']
     if len(results) != len(pairs):
         raise ValueError(f'OSV answered {len(results)} of {len(pairs)} queries')
+    paged = sum(1 for result in results if result.get('next_page_token'))
+    if paged:
+        raise ValueError(f'OSV answered {paged} queries only in part (next_page_token)')
     return [(name, version, [vuln['id'] for vuln in result['vulns']]) for (name, version), result in zip(pairs, results) if result.get('vulns')]
 
 

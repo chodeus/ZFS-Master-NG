@@ -30,7 +30,7 @@ locked = {(path[path.rindex('node_modules/') + len('node_modules/'):], meta['ver
 pairs = osv.packages(root)
 assert pairs == sorted(libraries | locked), 'each bundled library and locked package once, by its name, and not the lock\'s own entry'
 assert set(json.loads((root / 'tests/package.json').read_text())['devDependencies'].items()) <= set(pairs), 'the test packages are among them'
-assert json.loads((root / '.github/osv-accepted.json').read_text())['accepted'] == {}, 'no advisory is accepted yet'
+assert isinstance(osv.accepted(root), dict), 'the repo\'s accept list reads, with a why for each advisory it accepts'
 
 asked = []
 clean = lambda body: asked.append(json.loads(body)) or json.dumps({'results': [{} for query in json.loads(body)['queries']]}).encode()
@@ -52,6 +52,9 @@ except SystemExit as error:
 assert 'osv-accepted.json could not be read' in (missing or ''), 'nor is a missing one'
 short = lambda body: json.dumps({'results': [{}]}).encode()
 assert 'OSV could not be read' in (stopped(short) or ''), 'an answer to fewer queries than asked is no pass'
+for page in ({'next_page_token': 'more'}, {'vulns': [{'id': 'GHSA-xxxx-yyyy-zzzz'}], 'next_page_token': 'more'}):
+    paged = lambda body: json.dumps({'results': [page] + [{}] * (len(pairs) - 1)}).encode()
+    assert 'only in part' in (stopped(paged, {'accepted': {'GHSA-xxxx-yyyy-zzzz': 'test-only package with no fix'}}) or ''), 'nor is a paged answer: ' + json.dumps(page)
 
 
 def down(body):
