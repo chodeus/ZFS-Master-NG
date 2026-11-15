@@ -40,6 +40,7 @@ try {
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><script src="dynamix.js"></script>
 <script src="file://${path.join(plugin, 'frontend/ZFSMSize.js')}"></script>
 <script src="file://${path.join(plugin, 'frontend/ZFSMFrontEnd.js')}"></script>
+<script src="file://${path.join(plugin, 'frontend/ZFSMDiagRecord.js')}"></script>
 <style>${sheets}\n${pageCss}\n#zfs_master .fa-clone{position:relative;top:10px}</style></head><body><div id="tab3">${table}</div>
 <script>
 ${folding}
