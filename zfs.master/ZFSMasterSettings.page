@@ -75,7 +75,7 @@ _(Size Units)_:
 :zc_settings_size_units_plug:
 > **ZFS** shows sizes in powers of 1024 (GiB, TiB), the units zfs and zpool print.
 > **Unraid** shows them in powers of 1000 (GB, TB), rounded as Unraid's Main page does, so the same pool reads the same in both tables.
-> Either way a pool's Size, Used and Free are its usable space, as in Unraid's pool tables; zpool's raw total shows only while the pool's top dataset can't be read.
+> Either way, a pool's Size, Used and Free are the space you can use, as in Unraid's pool tables. The raw size zpool prints, which on raidz counts parity too, shows only while the pool's top dataset can't be read.
 :end
 
 
@@ -97,8 +97,14 @@ _(Debug Log)_:
   </select>
 
 :zc_settings_debug_log_plug:
-> **Yes** also writes the commands the plugin runs, with how each ended and its time, and the name of each request to its admin page, to a log of their own, `/var/log/zfs.master.debug.log`. A replication, a rewrite and a receive stream their commands and log their own lines in `/var/log/zfs.master.log` whether this is on or not; the rsync that copies a folder into a dataset, and a diagnostics run's own commands, are in neither. Each log never passes about 1 MB, so its oldest lines go first; a diagnostics zip holds both.
-> Turn it on to reproduce a problem, make the zip, then turn it off again. rsync's arguments, and those of a command that names where a key is kept, are left out.
+> **Yes** also writes a debug log, `/var/log/zfs.master.debug.log`: the commands the plugin runs, how each ended and how long it took, and the name of each request to its admin page.
+> Turn it on to reproduce a problem, make the diagnostics zip, then turn it off again.
+>
+> - A replication and a rewrite run their copy or rewrite commands outside the debug log, and log their own lines in `/var/log/zfs.master.log` whether this is on or not.
+> - On a server receiving copies, a sender's requests run outside the debug log too: `/var/log/zfs.master.log` has each copy received or failed, and each request refused.
+> - The rsync that copies a folder into a dataset, and a diagnostics run's own commands, are in neither log.
+> - The arguments of rsync, and of a command that loads a key or names where one is kept, are left out.
+> - Each log keeps about 1 MB at most, its oldest lines going first. A diagnostics zip holds both.
 :end
 
 
@@ -107,19 +113,25 @@ _(Debug Log)_:
 <details class="zfsm-section" open markdown="1">
 <summary>_(Datasets)_</summary>
 
-_(Datasets Exclusion Patterns (Just One!))_:
+_(Dataset Exclusion Pattern)_:
 : <textarea name="exclusion" cols="40" rows="1" placeholder="/dockerfiles/.*"><?=zfsmHtml($zfsm_cfg['dataset_exclusion'])?></textarea> <span id="zfsm-exclusion-warning" style="color:#e22828"></span>
 
 :zc_settings_datasets_exclusion_plug:
-> Hides datasets whose names match this regular expression, with their child datasets, snapshots and any matching folders. Matching ignores case, except in a pattern with `%`.
-> For example `/docker` hides every dataset with /docker in its name. A `.` matches any character, so write `\.` for a dot. A pattern with `%` is read as a Lua pattern, the format older versions used; there a dot is `%.`.
+> Hides datasets whose names match this regular expression, with their child datasets, their snapshots and any matching folders. Leave it empty to hide nothing.
+>
+> - `/docker` hides every dataset with `/docker` in its name, such as `cache/system/docker`.
+> - It is one pattern: join several with `|`, such as `/docker|/vms`.
+> - Case is ignored. A `.` matches any character, so write `\.` for a dot.
+> - A pattern with `%` is read as a Lua pattern, the format older versions used: there a dot is `%.`, `|` is a plain character, and case counts.
+>
+> A pattern that isn't valid is ignored, and the Main tab says so.
 :end
 
-_(Directory Listing (Dataset names, one per line!))_:
+_(Directory Listing)_:
 : <textarea name="directory_listing" cols="40" rows="10" placeholder="mypool/docker&#10;mypool/otherdataset"><?=zfsmHtml(implode(PHP_EOL, $zfsm_cfg['directory_listing']))?></textarea>
 
 :zc_settings_directory_listing_plug:
-> One dataset name per line, such as `cache/appdata`. The Main tab then lists the folders directly inside each one.
+> One dataset name per line, such as `cache/appdata`. The Main tab then lists the folders directly inside each one, with a menu to move or rename each folder; with **Destructive Mode** on, also to convert it into a dataset or delete it.
 :end
 
 
@@ -132,15 +144,15 @@ _(Dataset Icon Alert Max Days)_:
 : <input type="text" name="snap_max_days_alert" value="<?=$zfsm_cfg['snap_max_days_alert']?>">
 
 :zc_settings_dataset_icon_color_plug:
-> Days since a dataset's last snapshot before its camera icon turns orange. Datasets with no snapshots stay grey.
+> Days since a dataset's last snapshot before its camera icon turns orange. Datasets with no snapshots stay grey. **Stale Snapshot Alerts** use the same number.
 :end
 
 _(Snapshots Pattern)_:
 : <input type="text" name="snap_pattern" value="<?=zfsmHtml($zfsm_cfg['snap_pattern'])?>" placeholder="default Y-m-d-His">
 
 :zc_settings_snapshots_pattern_plug:
-> Date format for snapshots taken from the Main tab, written with [PHP date letters](https://www.php.net/manual/en/function.date.php).
-> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`.
+> Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab and those **Replicate** takes.
+> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`: one with any other character is refused.
 :end
 
 _(Snapshot Time)_:
@@ -175,8 +187,13 @@ _(Pool Health Alerts)_:
   </select>
 
 :zc_settings_alerts_interval_plug:
-> Sends an Unraid notification when a pool is not ONLINE, has read, write or checksum errors or damaged files, or is still not imported 10 minutes after the array starts; and again when it recovers.
-> Checks start once the array has started. With **Off**, ZFS is read only while the Main tab is open.
+> Checks the pools this often and sends an Unraid notification when a pool:
+>
+> - is not ONLINE,
+> - has read, write or checksum errors, or damaged files,
+> - or is not imported while the array is started, once 10 minutes have passed since the server booted or a check last saw the array stopped.
+>
+> It notifies again when the pool recovers. Checks start once the array has started. With **Off**, nothing checks the pools on a schedule, so none of these notifications is sent.
 :end
 
 _(Stale Snapshot Alerts)_:
@@ -221,8 +238,13 @@ _(Sender Keys)_:
 : <span id="zfsm-replica-keys"><?=zfsmReplicaKeysHtml(zfsmReplicaKeys())?></span>
 
 :zc_settings_replica_keys_plug:
-> The lines in root's SSH authorized keys that run replica-serve.php. Each must hold `restrict` with no limit turned back on after it, a `from=` of the sender's exact IP addresses (commas between several; no ranges, wildcards, `!` or host names), and `command=` naming exactly replica-serve.php and its sender.
-> A line shown in red lacks one of these limits: replace it with the line the sender shows.
+> The lines in root's SSH authorized keys that run replica-serve.php, which receives copies here. A line limits its key to replication only when it has all three:
+>
+> - `restrict`, and none of `pty`, `port-forwarding`, `agent-forwarding`, `x11-forwarding` or `user-rc`: each gives back something `restrict` takes away.
+> - `from=` with the sender's exact IP addresses, commas between several: no ranges, wildcards, `!` or host names.
+> - `command=` with exactly `/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php`, a space and the sender's name.
+>
+> A line shown in red lacks one of these: replace it with the line the sender shows, unchanged.
 :end
 
 </details>
@@ -238,22 +260,27 @@ _(This Server's Key)_:
 : <span id="zfsm-send-key"><?=zfsmReplicaKeyHtml()?></span> <span id="zfsm-send-key-status" style="color:#e22828"></span>
 
 :zc_settings_send_key_plug:
-> This server's own SSH key for sending copies, made here once. Its private half is kept on the flash drive, unencrypted: keep the flash share and every flash backup private. A server added below accepts copies from it once its own Settings name a dataset under **Accept Replicas Into** and its root adds the line shown under it to SSH authorized keys (Users, root).
+> This server's own SSH key for sending copies, made here once. Its private half is kept on the flash drive, unencrypted: keep the flash share and every flash backup private. To set up a server to send to, follow the steps under **Accept Replicas Into** in that server's ZFS Master NG Settings.
 :end
 
 _(Servers)_:
 : <span id="zfsm-send-servers"><?=zfsmReplicaRemotesHtml(zfsmReplicaRemotes())?></span> <span id="zfsm-send-servers-status" style="color:#e22828"></span>
 
 :zc_settings_send_servers_plug:
-> The servers this one may send copies to, each with the host key read when it was added. A server whose host key changes is refused until it is removed and added again. Test makes this server's dataset there if it is missing, and shows its name.
-> The line's `from=` is the address this server reaches that server from. Where a router between them changes that address (source NAT), that server sees another one and refuses the key: set `from=` there to the exact address it sees.
+> The servers this one may send copies to. Under each is the line to add to that server's SSH authorized keys (see **Accept Replicas Into** there), or what stops this server showing it.
+>
+> - Test makes this server's dataset there if it is missing, and shows its name.
+> - Each server's host key is kept from when it was added. If it changes, that server is refused until you remove it and add it again.
+> - The line's `from=` is the address this server sends from to reach that server. If this server's address changes, replace the line there with the new one. If a router between them changes the address (source NAT), that server refuses the key: set `from=` there to the exact address it sees.
+>
+> To send a copy, choose **Actions**, **Replicate** on a dataset in the Main tab, and pick the server under Server.
 :end
 
 _(Add A Server)_:
 : <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address" aria-label="IP address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
 
 :zc_settings_send_add_plug:
-> The name is how this list shows the server. Compare the host key read here with **This Server's Host Key** in that server's ZFS Master NG Settings, under Replication; tick that they match, then Add.
+> Give the server a name for this list and the Replicate dialog, its IP address and its SSH port, then press **Read Host Key**. Compare the host key read here with **This Server's Host Key** in that server's ZFS Master NG Settings, under Replication; tick that they match, then Add.
 :end
 
 </details>

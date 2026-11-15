@@ -180,13 +180,14 @@ same(array(
 	array('sender' => '', 'comment' => 'zfs.master@first', 'restrict' => true, 'from' => true),
 	array('sender' => '', 'comment' => 'zfs.master@copy', 'restrict' => true, 'from' => true),
 	array('sender' => 'six', 'comment' => 'zfs.master@six', 'restrict' => true, 'from' => true),
-), zfsmReplicaKeys($work.'/authorized_keys'), 'every key naming the checker is listed with what holds it: a limit turned back on after restrict (in any case), a from= that isn\'t exact IP addresses, or a command that isn\'t exactly the installed checker and a name, doesn\'t hold');
+), zfsmReplicaKeys($work.'/authorized_keys'), 'every key naming the checker is listed with what holds it: an option after restrict that gives back what it took away (in any case), a from= that isn\'t exact IP addresses, or a command that isn\'t exactly the installed checker and a name, doesn\'t hold');
 $listed = zfsmReplicaKeysHtml(array(
 	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
 	array('sender' => 'odd', 'comment' => "zfs.master@\xff<b>", 'restrict' => false, 'from' => true),
 ));
 same(true, strpos($listed, '<span style="display:block">tower (zfs.master@tower): limited to replication</span>') !== false, 'a held key reads as limited');
 same(true, strpos($listed, '<span style="display:block;color:#e22828">odd (zfs.master@'."\u{FFFD}".'&lt;b&gt;): its line needs restrict') !== false, 'one that isn\'t shows in red, escaped, even when its comment isn\'t valid UTF-8: '.$listed);
+same(true, strpos($listed, 'command= exactly /usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php and a name</span>') !== false, 'the red line names the full path the parser accepts: '.$listed);
 same('None yet', zfsmReplicaKeysHtml(array()), 'no keys yet');
 same(array(), zfsmReplicaKeys($work.'/missing'), 'no file, no keys');
 

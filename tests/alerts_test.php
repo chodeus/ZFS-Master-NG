@@ -48,6 +48,7 @@ $stale = zfsmStaleProblem($listing, $now, 30, 'docker');
 same(array('tank/a', 'tank/c'), $stale['items'], 'newest snapshot more than 30 whole days old, as the Main tab counts; an old snapshot beside a new one and excluded datasets left out');
 same('2 dataset(s) have no snapshot in the last 30 days: tank/a, tank/c', $stale['detail'], 'one notice listing them');
 same(null, zfsmStaleProblem("tank/b@new\t".($now - $day)."\n", $now, 30, ''), 'all recent');
+same(null, zfsmStaleProblem("tank/docker/x@old\t".($now - 90 * $day)."\n", $now, 30, 'docker$'), 'a child of a dataset the pattern hides is left out, as on the Main tab');
 $many = '';
 for ($i = 0; $i < 12; $i++) $many .= "tank/d$i@old\t".($now - 40 * $day)."\n";
 same(1, preg_match('/: tank\/d0, [^ ]+(, [^ ]+){8} and 2 more$/', zfsmStaleProblem($many, $now, 30, '')['detail']), 'a long list shows 10 and counts the rest');
