@@ -1,10 +1,6 @@
 <?php
 // What a destroy or rollback would remove, read with dry runs, and who is keeping a dataset busy. Reads only.
 
-function zfsmImpactRows($output) {
-	return preg_split('/\r\n|\r|\n/', trim((string)$output), -1, PREG_SPLIT_NO_EMPTY) ?: array();
-}
-
 // Binds a confirmation to the target, the mode and what the dialog showed: a change to any refuses the action.
 function zfsmImpactToken($target, $mode, $objects, $others) {
 	sort($objects, SORT_STRING);
@@ -28,7 +24,7 @@ function zfsmClonesOf($objects, $pool) {
 	if (($result['code'] ?? 1) !== 0) return null;
 	$known = array_flip($objects);
 	$clones = array();
-	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
+	foreach (zfsmLines($result['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) === 2 && isset($known[$parts[1]]) && !isset($known[$parts[0]])) $clones[] = $parts[0].' (from '.$parts[1].')';
 	}
@@ -42,7 +38,7 @@ function zfsmHeldOf($objects, $dataset) {
 	if (($result['code'] ?? 1) !== 0) return null;
 	$known = array_flip($objects);
 	$held = array();
-	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
+	foreach (zfsmLines($result['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) === 2 && (int)$parts[1] > 0 && isset($known[$parts[0]])) $held[] = $parts[0];
 	}
@@ -67,7 +63,7 @@ function zfsmDestroyTargetRefusal($target) {
 function zfsmDestroyDryRun($output) {
 	$objects = array();
 	$reclaim = null;
-	foreach (zfsmImpactRows($output) as $row) {
+	foreach (zfsmLines($output) as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) !== 2) continue;
 		if ($parts[0] === 'destroy') $objects[] = $parts[1];
@@ -84,7 +80,7 @@ function zfsmIsAutomaticSnapshot($name) {
 // The pool of the ZFS dataset mounted at /boot; '' when /boot is not ZFS; null when the mount list can't be read.
 // Pool names hold nothing /proc/mounts escapes, so the source needs no unescaping before the first slash.
 function zfsmBootPool($mounts = '/proc/self/mounts') {
-	$lines = zfsmImpactRows(@file_get_contents($mounts));
+	$lines = zfsmLines(@file_get_contents($mounts));
 	if (!$lines) return null;
 	foreach ($lines as $line) {
 		$fields = explode(' ', $line);
@@ -157,7 +153,7 @@ function zfsmRollbackPreview($snapshot) {
 		return $preview;
 	}
 	$rows = array();
-	foreach (zfsmImpactRows($result['output'] ?? '') as $row) {
+	foreach (zfsmLines($result['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) === 2 && ctype_digit($parts[1])) $rows[$parts[0]] = $parts[1];
 	}
@@ -202,7 +198,7 @@ function zfsmUnescapeMount($field) {
 // [filesystem type, source, root inside that filesystem] for each mountinfo line.
 function zfsmMountinfoRows($mountinfo) {
 	$rows = array();
-	foreach (zfsmImpactRows($mountinfo) as $line) {
+	foreach (zfsmLines($mountinfo) as $line) {
 		$sides = explode(' - ', $line, 2);
 		$after = explode(' ', $sides[1] ?? '');
 		if (isset($after[1])) $rows[] = array($after[0], zfsmUnescapeMount($after[1]), zfsmUnescapeMount(explode(' ', $sides[0])[3] ?? ''));
@@ -232,7 +228,7 @@ function zfsmShareViews($paths) {
 
 function zfsmContainerNames($ps_output) {
 	$names = array();
-	foreach (zfsmImpactRows($ps_output) as $row) {
+	foreach (zfsmLines($ps_output) as $row) {
 		$parts = explode(' ', $row, 2);
 		if (count($parts) === 2) $names[$parts[0]] = $parts[1];
 	}
@@ -261,7 +257,7 @@ function zfsmDatasetPaths($dataset) {
 	$mounts = runProcess('zfs', array('list', '-H', '-r', '-t', 'filesystem', '-o', 'name,mountpoint', $dataset));
 	if (($mounts['code'] ?? 1) !== 0) return null;
 	$paths = array();
-	foreach (zfsmImpactRows($mounts['output'] ?? '') as $row) {
+	foreach (zfsmLines($mounts['output'] ?? '') as $row) {
 		$parts = explode("\t", $row);
 		if (count($parts) === 2 && ($parts[1][0] ?? '') === '/' && $parts[1] !== '/') $paths[] = rtrim($parts[1], '/');
 	}

@@ -314,7 +314,7 @@ function zfsmDiagProcesses($pattern) {
 	$result = zfsmDiagRead('ps', array('-eo', 'pid=,etimes=,args='));
 	if ($result['code'] !== 0) return null;
 	$found = array();
-	foreach (zfsmImpactRows($result['output']) as $line) {
+	foreach (zfsmLines($result['output']) as $line) {
 		if (preg_match('/^\s*(\d+)\s+(\d+)\s+(.*)$/', $line, $match) !== 1 || (int)$match[1] === getmypid() || preg_match($pattern, $match[3]) !== 1) continue;
 		$found[] = array((int)$match[1], (int)$match[2], $match[3]);
 	}

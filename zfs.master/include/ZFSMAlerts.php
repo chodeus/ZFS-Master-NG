@@ -14,7 +14,7 @@ function zfsmParsePoolStatus($output) {
 	$pools = array();
 	$name = null;
 	$in_config = false;
-	foreach (zfsmImpactRows($output) as $line) {
+	foreach (zfsmLines($output) as $line) {
 		if (preg_match('/^\s*pool:\s*(\S+)/', $line, $match)) {
 			$name = $match[1];
 			$in_config = false;
@@ -70,7 +70,7 @@ function zfsmCarriedProblems($previous, $prefixes) {
 // One notice for the datasets whose newest snapshot is older than $max_days; null when none is.
 function zfsmStaleProblem($output, $now, $max_days, $exclusion) {
 	$newest = array();
-	foreach (zfsmImpactRows($output) as $line) {
+	foreach (zfsmLines($output) as $line) {
 		$fields = explode("\t", $line);
 		if (count($fields) < 2 || strpos($fields[0], '@') === false) continue;
 		$dataset = explode('@', $fields[0], 2)[0];

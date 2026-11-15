@@ -56,15 +56,10 @@ function zfsmDiagAllRows($results) {
 	$rows = array();
 	foreach ($results as $result) {
 		if ($result['code'] !== 0) return null;
-		$rows = array_merge($rows, zfsmDiagLines($result['output']));
+		$rows = array_merge($rows, zfsmLines($result['output']));
 	}
 	foreach ($rows as $row) zfsmDiagKnow(explode("\t", $row, 2)[0]);
 	return $rows;
-}
-
-// A read's lines, split only at a line feed: a value in zfs's rows and a path in mountinfo can hold a carriage return.
-function zfsmDiagLines($text) {
-	return preg_split('/\n/', (string)$text, -1, PREG_SPLIT_NO_EMPTY);
 }
 
 // Every dataset's name, those the exclusion pattern hides too; null when they can't all be listed.
@@ -157,7 +152,7 @@ function zfsmDiagBookmarks($ctx) {
 			$unread = true;
 			continue;
 		}
-		foreach (zfsmImpactRows($result['output']) as $row) {
+		foreach (zfsmLines($result['output']) as $row) {
 			$field = explode("\t", $row);
 			if (count($field) === 2 && $field[1] !== '-') $partial[] = $field[0];
 		}
@@ -188,8 +183,8 @@ function zfsmDiagPropertyRows($command, $args, $head) {
 // The rows of $output: the $heads, each with its value and source after it. Only when every line of one is a row of the other is it
 // known which text is a value. If not, a value holds a line break or a property changed between the reads, and no value is shown.
 function zfsmDiagFreeRows($output, $heads) {
-	$lines = zfsmDiagLines($output);
-	$heads = zfsmDiagLines($heads);
+	$lines = zfsmLines($output);
+	$heads = zfsmLines($heads);
 	$exact = count($lines) === count($heads);
 	$rows = array();
 	foreach ($exact ? $heads : array() as $at => $head) {
@@ -236,7 +231,7 @@ function zfsmDiagFreeRow($head, $value, $source) {
 function zfsmDiagMounts($ctx) {
 	$list = zfsmDiagWhole('file_get_contents', zfsmStatePath('/proc/self/mountinfo'));
 	$mounts = array();
-	foreach (zfsmDiagLines($list) as $line) {
+	foreach (zfsmLines($list) as $line) {
 		if (preg_match('/ - zfs (\S+)/', $line, $source) !== 1) continue;
 		zfsmDiagKnow(str_replace('\\040', ' ', $source[1]));
 		$mounts[] = str_replace(array(' ', '\\040'), array("\t", ' '), $line);
