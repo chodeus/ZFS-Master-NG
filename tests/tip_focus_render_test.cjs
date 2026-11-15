@@ -20,6 +20,8 @@ const styles = path.join(dynamix, 'styles');
 const base = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.css', 'default-base.css'].map(name => path.join(styles, name)).filter(fs.existsSync);
 const themes = ['black', 'white', 'azure', 'gray'].map(theme => [`themes/${theme}.css`, `default-${theme}.css`].map(name => path.join(styles, name)).find(fs.existsSync)).filter(Boolean);
 assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
+const jquery = path.join(dynamix, 'javascript/dynamix.js');
+assert.ok(fs.existsSync(jquery), 'no dynamix.js (Unraid\'s jQuery) under ' + dynamix);
 
 // A Settings row as Unraid's Markdown leaves it, help block after it, marked by the page's own script (ZFSMasterSettings.page) on Unraid's jQuery;
 // and the Create Dataset dialog's Mount row as the plugin ships it.
@@ -84,7 +86,7 @@ async function check(theme, width, work) {
   fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sheet).href}">`).join('\n')}
 <link rel="stylesheet" href="${pathToFileURL(path.join(plugin, 'styles/zfsm-forms.css')).href}">
-<script src="${pathToFileURL(path.join(dynamix, 'javascript/dynamix.js')).href}"></script></head><body>${body}</body></html>`);
+<script src="${pathToFileURL(jquery).href}"></script></head><body>${body}</body></html>`);
   const {child, send, exited} = launch(file, width, path.join(work, `profile-${width}`));
   const where = `${path.basename(theme)} at ${width}`;
   try {
@@ -117,7 +119,8 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
       await send('Input.dispatchKeyEvent', {type: 'rawKeyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9}, sessionId);
       await send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9}, sessionId);
     };
-    const away = () => mouse('mouseMoved', width - 5, 595);
+    const corner = [width - 5, 595];
+    const away = () => mouse('mouseMoved', ...corner);
 
     for (const [index, label] of labels.entries()) {
       await away();
@@ -125,7 +128,7 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
       assert.equal(await shown(index), JSON.stringify(label.tip), `${where}: hovering ${label.name} shows its hint`);
       await mouse('mousePressed', label.x, label.y);
       await mouse('mouseReleased', label.x, label.y);
-      assert.equal(await focused(), label.name, `${where}: the click focused ${label.name}, as a click to open its help does`);
+      assert.equal(await focused(), label.name, `${where}: the click focused ${label.name}`);
       await away();
       assert.equal(await shown(index), 'none', `${where}: the pointer left ${label.name} after a click, and its hint stayed up`);
     }
@@ -146,8 +149,8 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
       await mouse('mouseReleased', label.x, label.y);
       await away();
       assert.equal(await shown(index), JSON.stringify(label.tip), `${where}: on a touch screen, focus on ${label.name} shows its hint with no hover`);
-      await mouse('mousePressed', width - 5, 595);
-      await mouse('mouseReleased', width - 5, 595);
+      await mouse('mousePressed', ...corner);
+      await mouse('mouseReleased', ...corner);
       assert.equal(await shown(index), 'none', `${where}: on a touch screen, focus leaving ${label.name} hides its hint`);
     }
     await send('Browser.close').catch(() => {});
