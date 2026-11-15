@@ -152,9 +152,11 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null));
 			if (!$plan['can_proceed']) return $refused($plan['error']);
 			if ($started !== null) $started();
-			$code = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $notify);
-			// A scheduled run that carried on a stopped one then sends the snapshot it took, as each run sends its own (help: Schedules).
-			if ($code !== 0 || $schedule === null || $plan['mode'] !== 'resume' || $pass === 2) return $code;
+			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target);
+			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
+			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) continue;
+			$notify($title, $text, $type);
+			return $code;
 		}
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
@@ -162,9 +164,8 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	}
 }
 
-// One plan of zfsmRunReplicate's sent, with its log lines, the row's progress and a notification at the end: 0 when it landed.
-function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $notify) {
-	$title = 'ZFS Replication';
+// One plan of zfsmRunReplicate's sent, with its log lines and the row's progress: array(0 when it landed, its notification's text and type).
+function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target) {
 	$plan['size'] = zfsmReplicateEstimate($plan);
 	$what = $plan['snapshot'].' to '.zfsmReplicaTargetWhere($target, $plan['dest']);
 	$how = $plan['mode'] === 'resume' ? ' (carried on from where it stopped)' : ($plan['base'] !== null ? ' (changes since '.zfsmReplicaShortName($zdataset, $plan['base']).')' : ' (in full)');
@@ -185,12 +186,10 @@ function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $notify)
 		if ($take && $token === '' && $lost) $then = '; the copy there may hold it already, so the snapshot it took is kept.';
 		if ($take && $token === '' && !$lost) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
 		zfsmLog('Replication of '.$what.$how.' failed: '.$why);
-		$notify($title, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, 'warning');
-		return 1;
+		return array(1, 'Replication of '.$what.' failed: '.zfsmSafeText($why).$then, 'warning');
 	}
 	$marked = zfsmReplicaMark($zdataset, $plan);
 	$note = $marked === '' ? '' : 'The bookmark that keeps the next run incremental could not be made: '.$marked;
 	zfsmLog('Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.$note : ''), LOG_NOTICE);
-	$notify($title, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), $note === '' ? 'normal' : 'warning');
-	return 0;
+	return array(0, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), $note === '' ? 'normal' : 'warning');
 }

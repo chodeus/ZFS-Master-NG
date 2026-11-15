@@ -42,12 +42,12 @@ function zfsmScheduleUnreadable() {
 	return zfsmScheduleFile().' could not be read as a list of schedules; fix or remove it first';
 }
 
-// schedules.json as 'valid' schedules by id and 'other' entries, kept as they are for a write; null when it can't be read or isn't a list.
-function zfsmScheduleRead() {
+// schedules.json, or $text read from it, as 'valid' schedules by id and 'other' entries kept for a write; null when unread or no list.
+function zfsmScheduleRead($text = null) {
 	$file = zfsmScheduleFile();
-	if (!file_exists($file)) return array('valid' => array(), 'other' => array());
+	if ($text === null && !file_exists($file)) return array('valid' => array(), 'other' => array());
+	if ($text === null) $text = (string)@file_get_contents($file);
 	// Read as objects first: as arrays, {} is an empty list and one schedule's record a list of its fields.
-	$text = (string)@file_get_contents($file);
 	if (!is_array(json_decode($text))) return null;
 	$read = array('valid' => array(), 'other' => array());
 	foreach (json_decode($text, true) as $job) {

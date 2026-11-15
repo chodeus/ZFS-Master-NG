@@ -215,11 +215,21 @@ $reset();
 same(0, zfsmScheduleRun($id, $cfg, $at + 3600), 'the next run');
 same(array('send -P -v -t tok:'.$stopped, 'send -P -v -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
 same(array('backup/data@'.zfsmNewSnapshotName($cfg, $at + 3600)), array_slice($names('backup/data', 'snapshot'), -1), 'so the copy holds this run\'s snapshot');
-same(array('normal: Replication of '.$stopped.' to backup/data finished (carried on from where it stopped). It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says it works again');
+same(array('normal: Replication of '.$own.' to backup/data finished (changes since '.substr($stopped, strlen('tank/data@')).'). It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says once, for its own snapshot, that it works again');
+// Until its own snapshot lands too, the run is a problem, and nothing says it works again.
+putenv('ZFSM_TEST_SEND_CUT=1');
+zfsmScheduleRun($id, $cfg, $at + 7200);
+putenv('ZFSM_TEST_SEND_CUT');
+$reset();
+putenv('ZFSM_TEST_RECV_FAIL=changes');
+same(1, zfsmScheduleRun($id, $cfg, $at + 10800), 'a run that carries the stopped one on, then can\'t send its own');
+putenv('ZFSM_TEST_RECV_FAIL');
+same(array(2, array(), 2), array(count($sends()), $read('notify-detail.log'), zfsmScheduleFailures($id)), 'sent both, notified nothing, and counted a second problem in a row');
+@unlink(zfsmScheduleStateFile($id));
 // An error that ends a run is a problem like any other, and the dataset is free for the next.
 $reset();
 $GLOBALS['zfsm_publish_throws'] = true;
-same(1, zfsmScheduleRun($id, $cfg, $at + 7200), 'a run that an error ends');
+same(1, zfsmScheduleRun($id, $cfg, $at + 14400), 'a run that an error ends');
 $error = 'warning: Replication of tank/data to backup/data failed: nchan is down. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
 same(array(array($error), 1, false), array($read('notify-detail.log'), zfsmScheduleFailures($id), zfsmJobRunning($lock_file)), 'says why, counts it and lets go of the lock');
 @unlink(zfsmScheduleStateFile($id));

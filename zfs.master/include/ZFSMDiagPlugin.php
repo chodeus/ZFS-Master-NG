@@ -234,8 +234,10 @@ function zfsmDiagCronLine($lines, $command) {
 function zfsmDiagReplicaSchedules($ctx) {
 	$file = zfsmScheduleFile();
 	$cron = zfsmScheduleCronFile();
-	$read = zfsmScheduleRead();
-	$unread = $read === null && zfsmDiagWhole('file_get_contents', $file) === false;
+	// One read: a flash drive's read that fails once is a failed read, whatever a second one gets.
+	$text = file_exists($file) ? zfsmDiagWhole('file_get_contents', $file) : null;
+	$unread = $text === false;
+	$read = $unread ? null : zfsmScheduleRead($text);
 	list($live, $live_unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'scripts/schedule.php run ', 200);
 	list($kept, $kept_unread) = zfsmDiagMatchingLines(array($cron), 'scripts/schedule.php run ', 200);
 	$rows = '';

@@ -411,6 +411,34 @@ list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(true, tru
 same(array('schedules.json is not a list of schedules, so none run: '.$root.'/boot/config/plugins/zfs.master/schedules.json'), $findings, 'a list of schedules that is no list');
 has("(schedules.json is not a list of schedules)\n", $text, 'is not "no schedules"');
 same(array('1 record(s) in schedules.json are not schedules the plugin can use'), $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array($job, array('id' => 'zz')))))[0], 'a record the plugin does not use');
+// A flash drive's read that fails once: plain files through this wrapper, whose one open of $fail fails.
+class ZfsmFlakyFile {
+	public static $fail = '';
+	public $context;
+	private $handle;
+	private static function real($call) {
+		stream_wrapper_restore('file');
+		try { return $call(); } finally { stream_wrapper_unregister('file'); stream_wrapper_register('file', self::class); }
+	}
+	public function stream_open($path, $mode) {
+		if (in_array($path, array(self::$fail, 'file://'.self::$fail), true)) { self::$fail = ''; return false; }
+		$this->handle = self::real(function() use ($path, $mode) { return @fopen($path, $mode); });
+		return $this->handle !== false;
+	}
+	public function stream_read($count) { return fread($this->handle, $count); }
+	public function stream_eof() { return feof($this->handle); }
+	public function stream_stat() { return fstat($this->handle); }
+	public function stream_close() { fclose($this->handle); }
+	public function url_stat($path, $flags) { return self::real(function() use ($path) { return @stat($path); }); }
+}
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled) {
+	$scheduled()($root);
+	ZfsmFlakyFile::$fail = zfsmScheduleFile();
+	stream_wrapper_unregister('file');
+	stream_wrapper_register('file', 'ZfsmFlakyFile');
+});
+stream_wrapper_restore('file');
+same(array('', array(), 1), array(ZfsmFlakyFile::$fail, $findings, substr_count($text, '(schedules.json could not be read)')), 'a read of schedules.json that fails once is a failed read, not a list that is no list: '.$text);
 
 // The pools and the commands running on them.
 putenv('ZFSM_TEST_POOL_HEALTH=DEGRADED');
