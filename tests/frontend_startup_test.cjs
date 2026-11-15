@@ -5,7 +5,10 @@ const path = require('node:path');
 const root = path.resolve(process.argv[2] || path.join(__dirname, '../zfs.master'));
 const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
 // ZFSMSize.js first, as ZFSMaster.page loads it: the rows format their sizes with it.
-const frontend = ['ZFSMSize.js', 'ZFSMFrontEnd.js'].map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
+const mainFiles = ['ZFSMSize.js', 'ZFSMFrontEnd.js', 'ZFSMDiagRecord.js'];
+const pageFiles = [...page.matchAll(/autov\('\/plugins\/zfs\.master\/frontend\/(ZFSM\w+\.js)'\)/g)].map(match => match[1]);
+assert.deepEqual(pageFiles.filter(file => mainFiles.includes(file)), mainFiles, 'ZFSMaster.page loads each file this test runs, in this order');
+const frontend = mainFiles.map(file => fs.readFileSync(path.join(root, 'frontend', file), 'utf8')).join('\n');
 const inventory = fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8');
 const keys = fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8');
 const mainScript = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)]

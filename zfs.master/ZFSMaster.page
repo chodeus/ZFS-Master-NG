@@ -146,6 +146,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMSize.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMFrontEnd.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMDiagRecord.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMKeys.js'); ?>"></script>
