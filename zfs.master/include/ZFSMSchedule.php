@@ -87,7 +87,7 @@ function zfsmScheduleMinute($id) {
 	return hexdec(substr($id, 0, 4)) % 60;
 }
 
-// A new id at a minute no other schedule of $dataset runs at: two at once share its lock, and one is skipped (zfsmRunReplicate).
+// A new id at a minute no other schedule of $dataset runs at: two at once wait on one lock and can get one snapshot name (zfsmRunReplicate).
 function zfsmScheduleNewId($jobs, $dataset) {
 	$free = range(0, 59);
 	foreach ($jobs as $job) if ($job['dataset'] === $dataset) unset($free[zfsmScheduleMinute($job['id'])]);
@@ -256,7 +256,15 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		zfsmLog('Scheduled replication '.$id.' not started: Settings has no such schedule');
 		return 0;
 	}
-	return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait));
+	try {
+		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait));
+	} catch (Throwable $error) {
+		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
+		$what = $job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']);
+		zfsmLog('Replication of '.$what.' failed: '.zfsmOneLine($error->getMessage()));
+		$notify('ZFS Replication', 'Replication of '.$what.' failed: '.zfsmSafeText(zfsmOneLine($error->getMessage())), 'warning');
+		return 1;
+	}
 }
 
 // Settings' list; $cfg for Snapshots Pattern, which can change after a schedule was saved.

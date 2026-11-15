@@ -12,6 +12,10 @@ require __DIR__.'/fixtures/fake_bin_guard.php';
 
 $GLOBALS['zfsm_feed'] = array();
 function publish($channel, $message) {
+	if ($GLOBALS['zfsm_publish_throws'] ?? false) {
+		$GLOBALS['zfsm_publish_throws'] = false;
+		throw new RuntimeException('nchan is down');
+	}
 	$GLOBALS['zfsm_feed'][] = json_decode($message, true)['op'];
 }
 
@@ -87,7 +91,7 @@ same(array(true, true, false, false, false, false, false), array_map('zfsmSchedu
 	array('server' => 'nas', 'dest' => 'a/b') + $hourly, array('dest' => 'data') + $hourly, array('every' => 'minutely') + $hourly, array('hour' => 24) + $daily, array('hour' => '3') + $daily)),
 	'a copy here is a dataset in a pool, one on a server a name in its area, and nothing runs more often than hourly');
 
-// A new schedule's minute is one no other schedule of its dataset runs at, as two at once would skip one; others may share it.
+// A new schedule's minute is one no other schedule of its dataset runs at, as two at once can get one snapshot name; others may share it.
 $taken = array();
 foreach (range(0, 58) as $minute) $taken[sprintf('%04x', $minute).'0000'] = array('id' => sprintf('%04x', $minute).'0000') + $hourly;
 foreach (range(1, 20) as $try) same(59, zfsmScheduleMinute(zfsmScheduleNewId($taken, 'tank/data')), 'the one minute left for tank/data');
@@ -199,6 +203,25 @@ $reset();
 same(1, zfsmScheduleRun($id, $cfg, time() + 15800), 'a run of a dataset that is gone');
 same(array('warning: Replication of tank/data to backup/data not started: it no longer exists; remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'says it is gone');
 foreach ($kept as $file => $text) file_put_contents($work.'/pool/'.$file, $text);
+@unlink(zfsmScheduleStateFile($id));
+// A run that finds the one before it stopped part-way carries that on, then sends its own snapshot.
+$reset();
+$at = time() + 16000;
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmScheduleRun($id, $cfg, $at), 'a scheduled run cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+list($stopped, $own) = array('tank/data@'.zfsmNewSnapshotName($cfg, $at), 'tank/data@'.zfsmNewSnapshotName($cfg, $at + 3600));
+$reset();
+same(0, zfsmScheduleRun($id, $cfg, $at + 3600), 'the next run');
+same(array('send -P -v -t tok:'.$stopped, 'send -P -v -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
+same(array('backup/data@'.zfsmNewSnapshotName($cfg, $at + 3600)), array_slice($names('backup/data', 'snapshot'), -1), 'so the copy holds this run\'s snapshot');
+same(array('normal: Replication of '.$stopped.' to backup/data finished (carried on from where it stopped). It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says it works again');
+// An error that ends a run is a problem like any other, and the dataset is free for the next.
+$reset();
+$GLOBALS['zfsm_publish_throws'] = true;
+same(1, zfsmScheduleRun($id, $cfg, $at + 7200), 'a run that an error ends');
+$error = 'warning: Replication of tank/data to backup/data failed: nchan is down. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
+same(array(array($error), 1, false), array($read('notify-detail.log'), zfsmScheduleFailures($id), zfsmJobRunning($lock_file)), 'says why, counts it and lets go of the lock');
 @unlink(zfsmScheduleStateFile($id));
 
 // Where the count can't be kept, each problem notifies, without saying later ones won't.
