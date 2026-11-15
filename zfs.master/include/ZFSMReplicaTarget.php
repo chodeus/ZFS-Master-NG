@@ -98,9 +98,12 @@ function zfsmReplicaDownFile($name) {
 // Why ssh to $name failed less than ZFSM_REPLICA_RETRY seconds ago, and when it is tried again; null when it may be tried now.
 function zfsmReplicaDown($name) {
 	$file = zfsmReplicaDownFile($name);
+	// Read fresh: PHP's stat cache can hold an mtime from before a touch() or another process's write.
+	clearstatcache(true, $file);
 	$left = (int)@filemtime($file) + ZFSM_REPLICA_RETRY - time();
 	$why = $left > 0 ? @file_get_contents($file) : false;
-	return is_string($why) && $why !== '' ? $why.'. It is tried again in '.$left.' seconds' : null;
+	// ssh's own line may end its sentence already (Permission denied (publickey).).
+	return is_string($why) && $why !== '' ? rtrim($why, '.').'. It is tried again in '.$left.' seconds' : null;
 }
 
 // One request on a connection, keeping no more than $keep_bytes of the answer, which the other server decides the size of.

@@ -388,6 +388,12 @@ same(array('error' => 'The connection to nas dropped'), zfsmReplicaHello(zfsmRep
 putenv('ZFSM_TEST_SSH_LOST');
 same(1, preg_match('/^The connection to nas dropped\. It is tried again in (?:29|30) seconds$/D', zfsmReplicaHello(zfsmReplicaRemote('nas'))['error'] ?? ''), 'and the wait says so');
 touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
+putenv('ZFSM_TEST_SSH_FAIL=root@10.0.20.11: Permission denied (publickey,password,keyboard-interactive).');
+zfsmReplicaHello(zfsmReplicaRemote('nas'));
+putenv('ZFSM_TEST_SSH_FAIL');
+$waited = zfsmReplicaHello(zfsmReplicaRemote('nas'))['error'] ?? '';
+same(1, preg_match('/ssh said: root@10\.0\.20\.11: Permission denied \(publickey,password,keyboard-interactive\)\. It is tried again in (?:29|30) seconds$/D', $waited), 'a wait after ssh\'s own sentence ends it once: '.$waited);
+touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 // Past the dialog's read limit: a connection being made or ended leaves no key file behind, and ending one doesn't throw.
 $timed_out = function($read) { try { zfsmWithDeadline(0, $read); return 'no throw'; } catch (ZFSMTimeout $timeout) { return $timeout->getMessage(); } };
 $ssh();
