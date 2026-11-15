@@ -242,7 +242,7 @@ _(Sender Keys)_:
 >
 > - `restrict`, and none of `pty`, `port-forwarding`, `agent-forwarding`, `x11-forwarding` or `user-rc`: each gives back something `restrict` takes away.
 > - `from=` with the sender's exact IP addresses, commas between several: no ranges, wildcards, `!` or host names.
-> - `command=` naming exactly replica-serve.php and the sender's name.
+> - `command=` with exactly `/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php`, a space and the sender's name.
 >
 > A line shown in red lacks one of these: replace it with the line the sender shows, unchanged.
 :end

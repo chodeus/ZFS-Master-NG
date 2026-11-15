@@ -187,6 +187,7 @@ $listed = zfsmReplicaKeysHtml(array(
 ));
 same(true, strpos($listed, '<span style="display:block">tower (zfs.master@tower): limited to replication</span>') !== false, 'a held key reads as limited');
 same(true, strpos($listed, '<span style="display:block;color:#e22828">odd (zfs.master@'."\u{FFFD}".'&lt;b&gt;): its line needs restrict') !== false, 'one that isn\'t shows in red, escaped, even when its comment isn\'t valid UTF-8: '.$listed);
+same(true, strpos($listed, 'command= exactly /usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php and a name</span>') !== false, 'the red line names the full path the parser accepts: '.$listed);
 same('None yet', zfsmReplicaKeysHtml(array()), 'no keys yet');
 same(array(), zfsmReplicaKeys($work.'/missing'), 'no file, no keys');
 
