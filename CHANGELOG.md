@@ -2,21 +2,16 @@
 
 ## Unreleased
 
-- fix(replication): a scheduled run that carries on a stopped one notifies once, at its end; diagnostics read schedules.json once
-- fix(replication): a scheduled run sends its own snapshot after carrying on a stopped one, and reports errors
-- fix(replication): scheduled runs wait out a busy dataset, and clash checks cover its other schedules
-- fix(replication): a schedule's minute, next run and snapshot names hold
-- feat(replication): schedule a replication from the Replicate dialog
-- fix(diagnostics): keep any slot number of a guid lock; say what the OSV check fails on
-- fix(diagnostics): name receive-slot locks by the area's guid, not a hash of its name
-- fix: measure icon offsets wholly inside their try, so a failure keeps the render record
-- fix: keep icon offsets while the Main tab section is hidden; fold only its box
-- fix: keep row badges level next to another plugin's fa-append rule
-- fix: label hints show on touch focus again, and in browsers without :focus-visible
-- fix: label hints no longer stay up after a click opens Unraid's help
-- fix: the help says Unraid's disk list can name mounted datasets, which is true on every release
-- fix: keep times, dates, error names and Unraid's theme in diagnostics; end a folder's path at its quote or the log's words
-- fix: a carriage return inside a mountpoint or a property's value no longer splits its line
+- Replicate can now run on a schedule: set one up in the Replicate dialog
+- A new schedule gets a minute of its own, and Settings marks a schedule whose snapshot names repeat after Snapshots Pattern changes
+- A scheduled run waits out a busy dataset, and clash checks cover that dataset's other schedules
+- A scheduled run that carries on a stopped one still sends its own snapshot, reports errors and notifies once, at its end
+- Diagnostics name receive-slot locks by the area's guid, so they no longer give the receiving dataset's name away
+- Diagnostics keep times, dates, error names and the page's theme readable, and a folder's failed line keeps its reason
+- The Unraid Diagnostics help now says Unraid's disk list can show mounted datasets by name
+- Row badges stay level next to another plugin's icons on the Main tab
+- A dataset whose mount point holds a carriage return now shows on the Main tab
+- Label hints no longer stay up after a click opens Unraid's help
 
 ## 2026.11.15.1 (beta)
 
