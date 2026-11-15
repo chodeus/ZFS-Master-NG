@@ -1,7 +1,7 @@
 /* The Main tab's diagnostics record (zfsmDiagRecord) and the icon offsets it keeps. */
 
-// What the Main tab last showed, for a diagnostics run to send (ZFSMDiagnostics.js); make gets the part's last entry. Its JSON stays under
-// 13,000 characters (40 KB at 3 bytes each; the report keeps 50 KB): strings cut to 200, lists to 40, errors to 8,000 oldest first, render 3,000.
+// What the Main tab last showed, for a diagnostics run to send (ZFSMDiagnostics.js); make gets the part's last entry. Strings are cut
+// to 200, lists to 40, errors to 8,000 characters of JSON oldest first, and render's headers until it is 3,000 (the report keeps 50 KB).
 function zfsmDiagRecord(part, make) {
 	try {
 		const record = zfsmDiagBounded(loadFromLocalStorage('zfsm-diagnostics') || {});
