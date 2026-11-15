@@ -49,9 +49,11 @@ ${mount[0]}
 ${settings.slice(from, to)}</script>`;
 
 // Chrome's DevTools protocol over --remote-debugging-pipe: requests on fd 3, answers on fd 4, each JSON message ended by a NUL.
+// A machine with no mouse, such as a CI runner, reports hover: none: --blink-settings gives the page one, and touch emulation still takes it away.
 function launch(file, width, profile) {
   const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${profile}`,
-    `--window-size=${width},600`, '--remote-debugging-pipe', pathToFileURL(file).href], {stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe']});
+    `--window-size=${width},600`, '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
+    '--remote-debugging-pipe', pathToFileURL(file).href], {stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe']});
   const waiting = new Map();
   let id = 0;
   let buffer = '';
@@ -121,6 +123,7 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
     };
     const corner = [width - 5, 595];
     const away = () => mouse('mouseMoved', ...corner);
+    assert.equal(await run(`matchMedia('(hover: hover) and (pointer: fine)').matches`), true, `${where}: the page sees a mouse`);
 
     for (const [index, label] of labels.entries()) {
       await away();
