@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Replicate can now run on a schedule: set one up in the Replicate dialog
+- A new schedule gets a minute of its own, and Settings marks a schedule whose snapshot names repeat after Snapshots Pattern changes
+- A scheduled run waits out a busy dataset, and clash checks cover that dataset's other schedules
+- A scheduled run that carries on a stopped one still sends its own snapshot, reports errors and notifies once, at its end
+- Diagnostics name receive-slot locks by the area's guid, so they no longer give the receiving dataset's name away
+- Diagnostics keep times, dates, error names and the page's theme readable, and a folder's failed line keeps its reason
+- The Unraid Diagnostics help now says Unraid's disk list can show mounted datasets by name
+- Row badges stay level next to another plugin's icons on the Main tab
+- A dataset whose mount point holds a carriage return now shows on the Main tab
+- Label hints no longer stay up after a click opens Unraid's help
+
 ## 2026.11.15.1 (beta)
 
 - Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
