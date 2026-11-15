@@ -152,7 +152,7 @@ function zfsmDiagReadme() {
 		."A pool that is not imported and that Unraid does not list is not known to these files: where a line that is not the plugin's own\n"
 		."names one of its datasets, the name stays.\n"
 		."Unraid's own zip is Unraid's file, as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.\n"
-		."Its disk list (system/df.txt) hides only a share's own name, so a dataset below a share, or one that is no share, shows there by name.\n\n"
+		."Its disk list (system/df.txt) can show mounted datasets by name.\n\n"
 		."Left out, and why:\n";
 	foreach (zfsmDiagNotCollected() as $path => $why) $text .= $path.': '.$why."\n";
 	return $text;
