@@ -50,6 +50,9 @@ function zfsmReplicaAreaSender($area) {
 	return $at === false ? (string)$area : substr($area, $at + 1);
 }
 
+// The command= a sender's key runs: zfsmReplicaKeyLine writes it, and zfsmReplicaKeys reads a sender's name only after it.
+define('ZFSM_REPLICA_SERVE', '/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php');
+
 // zfsmReplicaSenderName's rule in words, for each message that refuses a name.
 define('ZFSM_REPLICA_NAME_RULE', '1 to 64 letters, digits, _ . : or -, starting with a letter or digit');
 function zfsmReplicaSenderName($sender) {
@@ -182,7 +185,7 @@ function zfsmReplicaKeys($file = '/boot/config/ssh/root/authorized_keys') {
 		foreach ($options as $option) $named[strtolower($option[1])] = $option[2] ?? '';
 		$command = $named['command'] ?? '';
 		if (strpos($command, 'replica-serve.php') === false) continue;
-		$exact = preg_match('#^/usr/local/emhttp/plugins/zfs\.master/scripts/replica-serve\.php (\S+)$#D', $command, $sender) === 1;
+		$exact = preg_match('#^'.preg_quote(ZFSM_REPLICA_SERVE, '#').' (\S+)$#D', $command, $sender) === 1;
 		$keys[] = array('sender' => $exact ? $sender[1] : '', 'comment' => $match[2], 'restrict' => zfsmReplicaKeyRestricted($named), 'from' => zfsmReplicaKeyFrom($named['from'] ?? ''));
 	}
 	return $keys;
@@ -210,7 +213,7 @@ function zfsmReplicaKeysHtml($keys) {
 	$html = '';
 	foreach ($keys as $key) {
 		$held = zfsmReplicaKeyHeld($key);
-		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict and no pty, forwarding or user-rc option, a from= of exact IP addresses, and command= exactly /usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php and a name');
+		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict and no pty, forwarding or user-rc option, a from= of exact IP addresses, and command= exactly '.ZFSM_REPLICA_SERVE.' and a name');
 		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.zfsmHtml($text).'</span>';
 	}
 	return $html;

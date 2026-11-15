@@ -214,7 +214,7 @@ function zfsmReplicaSourceAddress($host) {
 function zfsmReplicaKeyLine($remote, $sender) {
 	$from = $sender === null ? null : zfsmReplicaSourceAddress($remote['host']);
 	if ($from === null) return null;
-	return 'restrict,from="'.$from.'",command="/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php '.$sender['name'].'" '.$sender['public'];
+	return 'restrict,from="'.$from.'",command="'.ZFSM_REPLICA_SERVE.' '.$sender['name'].'" '.$sender['public'];
 }
 
 // A RAM copy at 0600 of the private key, in a folder of its own: ssh and ssh-keygen refuse a key on the flash drive's modes.
