@@ -40,7 +40,7 @@ def main(root):
     for name, version, ids in hits:
         print(f'{name}@{version}: {", ".join(ids)}')
     if hits:
-        raise SystemExit(f'{len(hits)} package(s) have an advisory on OSV: update them before this merges')
+        raise SystemExit(f'{len(hits)} package(s) have an advisory on OSV: update them')
     print(f'OSV: no advisory for any of {len(pairs)} packages')
 
 
