@@ -2,37 +2,14 @@
 
 ## Unreleased
 
-- fix: review — the jobs check knows the run's own lock whatever its command line; the process lists leave the run out again
-- fix: diagnostics count the run's own process, so its own lock is no finding; the summary's time zone is an offset, so it stays readable
-- fix: a server's address is saved and pinned in the short form ssh looks it up by
-- fix: Sender Keys help lists every line that runs replica-serve.php, red ones too
-- fix: the accept check runs under the read limit, fingerprints stay whole in diagnostics, this server's name is a token in the send report, help on other key lines
-- feat: replication help as steps, this server's host key in its own row, a missing accept dataset warned, plain advice for ssh failures
-- fix: a diagnostics zip keeps the sending side's key folder and RAM copies as the plugin's own paths, and a server it sends to is a token
-- fix: with no valid name of its own, hello asks nothing of the other server and says how to get one; a renamed server's message says what the new line means for the copies
-- fix: the hello message holds when the line was made for another server and when this one has no valid name
-- fix: review round 6 — hello is ready only when the other server's area is named for this server's current name; a key line made before a rename says so
-- fix: review round 5 — a name no server can have is neither looked up nor said back, and three comments say what their code does
-- fix: review round 4 — the hello's answer from another server is cut where it is read, and the Servers help says what source NAT does to from=
-- fix: the sending side's diagnostics read ident.cfg through the whole-file read, so a read that fails part-way is a failed read
-- fix: the sending side's diagnostics mark a read that failed
-- feat: diagnostics list the sending side: this server's key by its fingerprint, the servers it sends to and each one's pinned host key
-- fix: review round 3 — a server list that is not a list is refused, a failed host key scan offers no key, the key's help says where its private half is kept
-- fix: review round 2 — an unreadable server list says so, a removed server's second record goes with it, a refused Add keeps its host key read
-- fix: review round 1 — a remotes.json that can't be read is never written over and entries in other shapes are written back, Add is off while it runs, the remote test's header is two lines
-- fix: audit findings — a lost public half is read back from the key, an unusable lock folder is named, Make can't run twice, a late Add leaves a newer read alone, Test's help says it makes the dataset
-- fix: local review — servers by IP address only, a pinned key is exactly one ed25519 key, hello takes an area with spaces and no banner, a half-made key can be made again, the page drops stale and failed answers
-- feat: this server's own key and the servers it trusts, each host key pinned, ready to send copies to
-- fix: the wait after a refused key ends ssh's sentence once, and reads its file's age fresh
-- fix: a hello counts only when it ends well; a connection that drops after the checker answered says so
-- fix: a failed Replicate click names only a valid server and copy name; the ssh wait's comment claims only what holds
-- fix: audit — a lost connection keeps the snapshot the run took, a hung server's connection ends past the read limit, diagnostics learn a removed server and this server's old name
-- fix: review — Settings' Test waits after a failure too, a typed copy name stays when the server changes, the key's RAM copy goes past the read limit
-- feat: replicate to a trusted server: a Server choice in the Replicate dialog, one ssh login per plan or run, a wait after ssh fails
-- refactor: the replica-serve.php path has one owner, shared by the key line, its parser and the red message
-- fix: Sender Keys help and the red key message name the full replica-serve.php path the parser accepts
-- fix: help gives the missing-pool alert's real 10-minute rule, and says options after restrict give back what it takes away
-- fix: stale snapshot alerts leave out a hidden dataset's children; help says a receiving server's requests skip the debug log and a Lua pipe is plain; the red sender key message names what it refuses
+- Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
+- Settings makes this server's SSH key and keeps a list of servers it sends to, with each one's host key pinned
+- Each server in that list shows the one line to add on the other server, and Test makes the dataset the copies go into there
+- Accept Replicas Into's setup is now numbered steps, and Sender Keys shows in red any line not limited to replication
+- Diagnostics now cover the sending side: this server's key fingerprint, and the servers it sends to as tokens
+- A diagnostics zip no longer reports its own run as a stuck job, and the time zone shows as an offset
+- Stale Snapshot Alerts leave out the children of a dataset the exclusion pattern hides, as the Main tab does
+- Settings help reads as short lists, and Pool Health Alerts' Off now says that no checks run
 
 ## 2026.11.14.1 (beta)
 
