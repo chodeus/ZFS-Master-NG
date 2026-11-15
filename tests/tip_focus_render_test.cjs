@@ -1,5 +1,5 @@
-// Real browser, real input: a label's hint shows on hover and on keyboard focus, and goes when the pointer leaves a label a click focused
-// (a click on a Settings label opens Unraid's help). Usage: tip_focus_render_test.cjs <webgui-tree>. Set CHROME to override the browser path.
+// Real browser, real input: a label's hint shows on hover, on keyboard focus and on any focus on a touch screen, and goes when the pointer leaves
+// a label a click focused (a click on a Settings label opens Unraid's help). Usage: tip_focus_render_test.cjs <webgui-tree>. Set CHROME to override the browser path.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -21,13 +21,19 @@ const base = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.cs
 const themes = ['black', 'white', 'azure', 'gray'].map(theme => [`themes/${theme}.css`, `default-${theme}.css`].map(name => path.join(styles, name)).find(fs.existsSync)).filter(Boolean);
 assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);
 
-// A Settings row as the page's script leaves it (ZFSMasterSettings.page), with the help block Unraid's Markdown puts after it,
+// A Settings row as Unraid's Markdown leaves it, help block after it, marked by the page's own script (ZFSMasterSettings.page) on Unraid's jQuery;
 // and the Create Dataset dialog's Mount row as the plugin ships it.
+const settings = fs.readFileSync(path.join(plugin, 'ZFSMasterSettings.page'), 'utf8');
+const from = settings.indexOf("$('details.zfsm-section dl').each(");
+const to = settings.indexOf(`$('textarea[name="exclusion"]')`);
+assert.ok(from > 0 && to > from, 'the script that marks the labels found in ZFSMasterSettings.page');
+const sizeTip = settings.match(/'size_units' => _\('([^']+)'\)/);
+assert.ok(sizeTip, 'ZFSMasterSettings.page has a hint for Size Units');
 const mount = fs.readFileSync(path.join(plugin, 'frontend/ZFSMCreateDataset.php'), 'utf8').match(/<dl><dt class="zfsm-tip"[^>]*>Mount:<\/dt>.*?<\/dl>/);
 assert.ok(mount, 'the Create Dataset dialog has no Mount row with a hint');
 const body = `<form><details class="zfsm-section" open><summary>General Settings</summary>
 <dl>
-<dt class="zfsm-tip" data-tip="Show sizes in ZFS units (GiB) or Unraid units (GB)." tabindex="0">Size Units:</dt>
+<dt>Size Units:</dt>
 <dd><select name="size_units"><option>Unraid (GB)</option></select></dd>
 </dl>
 <blockquote class='inline_help'>
@@ -36,7 +42,9 @@ const body = `<form><details class="zfsm-section" open><summary>General Settings
 </details></form>
 <form class="zfsm-form"><details class="zfsm-section" open><summary>Basic</summary><div>
 ${mount[0]}
-</div></details></form>`;
+</div></details></form>
+<script>var zfsm_tips = ${JSON.stringify({size_units: sizeTip[1]})};
+${settings.slice(from, to)}</script>`;
 
 // Chrome's DevTools protocol over --remote-debugging-pipe: requests on fd 3, answers on fd 4, each JSON message ended by a NUL.
 function launch(file, width, profile) {
@@ -48,6 +56,7 @@ function launch(file, width, profile) {
   const fail = why => { for (const wait of waiting.values()) wait.reject(new Error(why)); waiting.clear(); };
   const exited = new Promise(resolve => child.on('exit', code => { fail(`Chrome exited (${code})`); resolve(); }));
   child.on('error', error => fail(`Chrome did not start: ${error.message}`));
+  child.stdio[3].on('error', error => fail(`Chrome's pipe closed: ${error.message}`));
   child.stdio[4].setEncoding('utf8');
   child.stdio[4].on('data', chunk => {
     buffer += chunk;
@@ -62,9 +71,10 @@ function launch(file, width, profile) {
     }
   });
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { waiting.delete(id); reject(new Error(`${method}: no answer in 15 s`)); }, 15000);
-    waiting.set(++id, {resolve, reject, method, timer});
-    child.stdio[3].write(JSON.stringify({id, method, params, sessionId}) + '\0');
+    const mine = ++id;
+    const timer = setTimeout(() => { waiting.delete(mine); reject(new Error(`${method}: no answer in 15 s`)); }, 15000);
+    waiting.set(mine, {resolve, reject, method, timer});
+    child.stdio[3].write(JSON.stringify({id: mine, method, params, sessionId}) + '\0');
   });
   return {child, send, exited};
 }
@@ -73,7 +83,8 @@ async function check(theme, width, work) {
   const file = path.join(work, `tips-${width}.html`);
   fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sheet).href}">`).join('\n')}
-<link rel="stylesheet" href="${pathToFileURL(path.join(plugin, 'styles/zfsm-forms.css')).href}"></head><body>${body}</body></html>`);
+<link rel="stylesheet" href="${pathToFileURL(path.join(plugin, 'styles/zfsm-forms.css')).href}">
+<script src="${pathToFileURL(path.join(dynamix, 'javascript/dynamix.js')).href}"></script></head><body>${body}</body></html>`);
   const {child, send, exited} = launch(file, width, path.join(work, `profile-${width}`));
   const where = `${path.basename(theme)} at ${width}`;
   try {
@@ -127,6 +138,18 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
     assert.equal(await shown(1), JSON.stringify(labels[1].tip), `${where}: keyboard focus on Mount shows its hint`);
     await tab();
     assert.equal(await shown(1), 'none', `${where}: Tab away from Mount hides its hint`);
+    // A touch screen (no hover), where a tap may focus the label without hovering it: clicks with the pointer moved off, so only focus shows the hint.
+    await send('Emulation.setTouchEmulationEnabled', {enabled: true, maxTouchPoints: 1}, sessionId);
+    assert.equal(await run(`matchMedia('(hover: none)').matches`), true, `${where}: the page sees a screen with no hover`);
+    for (const [index, label] of labels.entries()) {
+      await mouse('mousePressed', label.x, label.y);
+      await mouse('mouseReleased', label.x, label.y);
+      await away();
+      assert.equal(await shown(index), JSON.stringify(label.tip), `${where}: on a touch screen, focus on ${label.name} shows its hint with no hover`);
+      await mouse('mousePressed', width - 5, 595);
+      await mouse('mouseReleased', width - 5, 595);
+      assert.equal(await shown(index), 'none', `${where}: on a touch screen, focus leaving ${label.name} hides its hint`);
+    }
     await send('Browser.close').catch(() => {});
   } finally {
     // Its profile folder is removed next: Chrome must be gone first.
@@ -147,6 +170,6 @@ ${[...base, theme].map(sheet => `<link rel="stylesheet" href="${pathToFileURL(sh
   } finally {
     fs.rmSync(work, {recursive: true, force: true, maxRetries: 5, retryDelay: 200});
   }
-  console.log(`label hints show on hover and keyboard focus and go once the pointer leaves a clicked label: ${checked} renders in ${themes.length} themes, phone and desktop`);
+  console.log(`label hints show on hover, keyboard focus and any focus on a touch screen, and go once the pointer leaves a clicked label: ${checked} renders in ${themes.length} themes, phone and desktop`);
   process.exitCode = 0;
 })().catch(error => { console.error(error); process.exitCode = 1; });
