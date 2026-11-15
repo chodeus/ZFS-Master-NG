@@ -29,10 +29,8 @@ function zfsmSnapshotAccessTree($zdataset) {
 	if (!zfsmValidDatasetName($zdataset)) return null;
 	$result = runProcess('zfs', array('get', '-H', '-r', '-t', 'filesystem', '-o', 'name,property,value', 'mounted,mountpoint', $zdataset));
 	if (($result['code'] ?? 1) !== 0) return null;
-	$lines = preg_split('/\R/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY);
-	if ($lines === false) return null;
 	$values = array();
-	foreach ($lines as $line) {
+	foreach (zfsmLines($result['output'] ?? '') as $line) {
 		$parts = explode("\t", $line, 3);
 		if (count($parts) === 3) $values[$parts[0]][$parts[1]] = $parts[2];
 	}
@@ -57,7 +55,7 @@ function zfsmSnapshotDiff($snapshot) {
 	if (!zfsmValidSnapshotName($snapshot)) return array('error' => 'Invalid snapshot name');
 	$result = runProcess('zfs', array('diff', '-H', '-F', $snapshot), null, ZFSM_DIFF_LIMIT);
 	if (($result['code'] ?? 1) !== 0) {
-		$lines = array_merge(zfsmImpactRows($result['output']), isset($result['next_line']) ? array($result['next_line']) : array());
+		$lines = array_merge(zfsmLines($result['output']), isset($result['next_line']) ? array($result['next_line']) : array());
 		$errors = array_filter($lines, function($line) { return zfsmDiffChange($line) === null; });
 		return array('error' => zfsmCommandError(array('code' => $result['code'], 'output' => implode("\n", $errors)), 'Unable to compare the snapshot'));
 	}
@@ -65,7 +63,7 @@ function zfsmSnapshotDiff($snapshot) {
 	// The line after the limit tells a longer diff from zfs failing right there.
 	if ($truncated && zfsmDiffChange($result['next_line']) === null) return array('error' => zfsmOneLine($result['next_line']));
 	$changes = array();
-	foreach (zfsmImpactRows($result['output']) as $line) {
+	foreach (zfsmLines($result['output']) as $line) {
 		$change = zfsmDiffChange($line);
 		if ($change === null) return array('error' => zfsmOneLine($line));
 		$changes[] = $change;

@@ -322,6 +322,11 @@ function zfsmSafeText($text) {
 	return substr(preg_replace('/[^\x20-\x7E]|[<>&"\']/', '?', zfsmOneLine($text)), 0, 500);
 }
 
+// A read's lines, empty ones left out, split only at a line feed: a mountpoint or a property's value in zfs's rows can hold a carriage return.
+function zfsmLines($text) {
+	return preg_split('/\n/', (string)$text, -1, PREG_SPLIT_NO_EMPTY) ?: array();
+}
+
 // Command output as one line: dialogs run lines together and syslog prints a newline as ?.
 // CR and LF by name: without /u, \R also matches the 0x85 byte inside UTF-8 such as Å.
 function zfsmOneLine($text) {

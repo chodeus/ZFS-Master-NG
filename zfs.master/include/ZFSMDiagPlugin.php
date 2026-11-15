@@ -329,7 +329,7 @@ function zfsmDiagHostKey($file) {
 function zfsmDiagAreasRefused($output, $accept, $senders) {
 	$areas = array_map(function($sender) use ($accept) { return zfsmReplicaArea($accept, $sender); }, $senders);
 	$found = array();
-	foreach (zfsmImpactRows($output) as $row) {
+	foreach (zfsmLines($output) as $row) {
 		$field = explode("\t", $row);
 		if (count($field) >= 3 && in_array($field[0], $areas, true)) $found[$field[0]][$field[1]] = $field[2];
 	}

@@ -99,7 +99,7 @@ function zfsmReplicaAreaHolds($area, $again = true) {
 		return $missing === false && $again ? zfsmReplicaAreaHolds($area, false) : 'The copies\' dataset '.$area.' could not be read';
 	}
 	$found = array();
-	foreach (preg_split('/\R/', trim((string)$read['output'])) as $line) {
+	foreach (zfsmLines($read['output'] ?? '') as $line) {
 		$field = explode("\t", $line);
 		if (count($field) === 2) $found[$field[0]] = $field[1];
 	}

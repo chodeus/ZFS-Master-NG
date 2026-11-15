@@ -96,7 +96,7 @@ function zfsmNormalizeProperty($property, $value) {
 
 function zfsmParseTable($output, $columns) {
 	$rows = array();
-	foreach (preg_split('/\r\n|\r|\n/', trim((string)$output), -1, PREG_SPLIT_NO_EMPTY) ?: array() as $line) {
+	foreach (zfsmLines($output) as $line) {
 		$parts = explode("\t", $line);
 		if (count($parts) !== count($columns)) continue;
 		$row = array();
@@ -175,7 +175,7 @@ function zfsmMatchesExclusion($name, $pattern) {
 function zfsmLoadUserProperties($dataset_root, &$datasets) {
 	$result = runProcess('zfs', array('get', '-H', '-p', '-r', '-t', 'filesystem,volume', '-o', 'name,property,value,source', 'all', $dataset_root));
 	if (($result['code'] ?? 1) !== 0) return;
-	foreach (preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array() as $line) {
+	foreach (zfsmLines($result['output'] ?? '') as $line) {
 		$parts = explode("\t", $line, 4);
 		if (count($parts) < 3 || strpos($parts[1], ':') === false || !isset($datasets[$parts[0]])) continue;
 		$datasets[$parts[0]][$parts[1]] = $parts[2];
@@ -412,7 +412,7 @@ function getZFSPools($strict = false) {
 		}
 		return $ret_pools;
 	}
-	foreach (preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array() as $line) {
+	foreach (zfsmLines($result['output'] ?? '') as $line) {
 		$parts = explode("\t", $line);
 		if (count($parts) < 5 || !zfsmValidPoolName($parts[0])) continue;
 		$ret_pools[$parts[0]] = array('Pool' => $parts[0], 'Health' => $parts[4], 'Name' => '', 'Size' => $parts[1], 'MountPoint' => '', 'Refer' => '', 'Used' => $parts[2], 'Free' => $parts[3], 'Snapshots' => 0, 'Origin' => '');
@@ -457,7 +457,7 @@ function getZFSPoolDevices($zpool) {
 	$devices = array();
 	$in_config = false;
 	$skipped_pool = false;
-	foreach (preg_split('/\r\n|\r|\n/', $result['output'] ?? '') ?: array() as $line) {
+	foreach (zfsmLines($result['output'] ?? '') as $line) {
 		if (trim($line) === 'config:') { $in_config = true; continue; }
 		if (!$in_config) continue;
 		if (zfsmStartsWith(trim($line), 'errors:')) break;
@@ -680,7 +680,7 @@ function zfsmFilesystemMounts() {
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name,mountpoint', '-t', 'filesystem'));
 	$mounts = array();
 	if (($result['code'] ?? 1) !== 0) return $mounts;
-	foreach (preg_split('/\r\n|\r|\n/', trim($result['output'] ?? ''), -1, PREG_SPLIT_NO_EMPTY) ?: array() as $line) {
+	foreach (zfsmLines($result['output'] ?? '') as $line) {
 		$parts = explode("\t", $line, 2);
 		if (count($parts) !== 2 || $parts[1] === 'none' || $parts[1] === 'legacy' || $parts[1] === '/' || !is_dir($parts[1])) continue;
 		$real = realpath($parts[1]);

@@ -210,6 +210,12 @@ same(true, zfsmMountinfoHasShare("97 80 0:44 /data/tv /tv rw - fuse.shfs shfs rw
 same(false, zfsmMountinfoHasShare($shfs, array('/dat')), 'a similar share name');
 same(false, zfsmMountinfoHasShare("97 80 0:44 / /mnt/user rw - fuse.shfs shfs rw\n", array('/data')), 'binding all of /mnt/user is not a user of every share');
 same(false, zfsmMountinfoHasShare("36 35 0:30 /data /x rw - zfs tank/data rw\n", array('/data')), 'only shfs counts here');
+// A carriage return is no line end: a mountpoint, a bind's root or a property's value may hold one.
+same(true, zfsmMountinfoHasShare("97 80 0:44 /da\rta /tv rw - fuse.shfs shfs rw\n", array("/da\rta")), 'a bind whose root holds a carriage return');
+env(array('ZFSM_TEST_USERS_MOUNT' => "/mnt/cache/da\rta"));
+same(array(array("/mnt/cache/da\rta", "/mnt/user/da\rta"), array("/da\rta")), zfsmDatasetPaths('tank/data'), 'a mountpoint holding a carriage return is one path');
+env(array('ZFSM_TEST_USERS_MOUNT' => ''));
+same(array(array('name' => 'tank/a', 'mountpoint' => "/mnt/a\rb"), array('name' => 'tank/c', 'mountpoint' => "/mnt/c\r")), zfsmParseTable("tank/a\t/mnt/a\rb\ntank/c\t/mnt/c\r\n", array('name', 'mountpoint')), 'a carriage return stays in its row, as a value\'s last byte too');
 same(array('/data', '/data/tv'), zfsmShareViews(array('/mnt/cache/data', '/mnt/cache/data/tv', '/mnt/cache', '/elsewhere/data')), 'share views: a pool root is no share');
 same('a?b?; c?d', zfsmSafeText("a<b>\nc'd"), 'unsafe characters, and a new line becomes a separator');
 same(500, strlen(zfsmSafeText(str_repeat('x', 900))), 'length cap');
