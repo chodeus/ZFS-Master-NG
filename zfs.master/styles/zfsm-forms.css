@@ -13,7 +13,7 @@
 .zfsm-section[open]{padding-bottom:10px}
 
 /* A label with a hint shows the help cursor; hover or keyboard focus shows the hint, styled like Unraid's tooltips.
-   :focus only on touch screens: a click focuses the label (on Settings, to open Unraid's help) and kept the hint up: tests/tip_focus_render_test.cjs. */
+   :focus only where nothing hovers, as on a touch screen: a click focuses the label (on Settings, to open Unraid's help) and kept the hint up: tests/tip_focus_render_test.cjs. */
 .zfsm-tip{position:relative;cursor:help}
 .zfsm-tip::after{content:none;position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
 /* One rule each: a browser without :focus-visible drops only its own rule. */
