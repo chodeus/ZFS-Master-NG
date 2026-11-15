@@ -1,0 +1,4 @@
+{
+  "$comment": "OSV advisories reviewed and accepted, each id mapped to why: osv_check.py passes these and fails every other.",
+  "accepted": {}
+}

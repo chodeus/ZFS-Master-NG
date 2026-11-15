@@ -344,12 +344,12 @@ $ssh();
 // Why a run fails: the checker's refusal, even after send's own error; send's error when the checker only saw no stream.
 $reset();
 $slots = array();
-for ($slot = 0; $slot < 4; $slot++) $slots[] = zfsmJobLock(zfsmJobDir('replica-serve').'/'.hash('sha256', 'backup/replicas/tower').'.'.$slot.'.lock', false);
+for ($slot = 0; $slot < 4; $slot++) $slots[] = zfsmReplicaReceiveSlot('backup/replicas/tower');
 runProcess('zfs', array('snapshot', 'tank/data@e'));
 putenv('ZFSM_TEST_SEND_FAIL_PART=1');
 same(1, zfsmRunReplicate('tank/data', 'e', 'data', null, false, 'nas'), 'a receive the checker refuses fails the run');
 putenv('ZFSM_TEST_SEND_FAIL_PART');
-array_map('fclose', $slots);
+array_map('zfsmJobUnlock', $slots);
 same(true, strpos($read('notify-detail.log')[0] ?? '', 'failed: No receive into backup/replicas/tower can start while four are running.') !== false, 'with the checker\'s reason: '.($read('notify-detail.log')[0] ?? ''));
 $reset();
 putenv('ZFSM_TEST_SEND_FAIL=1');
