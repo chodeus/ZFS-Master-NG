@@ -6,13 +6,23 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.14.1">
-<!ENTITY md5 "102d4750b07b0b538e5c6b695aa3b208">
+<!ENTITY version "2026.11.15.1">
+<!ENTITY md5 "7c0d50d80913cc5cac4ada3e70b30052">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.15.1
+- Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
+- Settings makes this server's SSH key and keeps a list of servers it sends to, with each one's host key pinned
+- Each server in that list shows the one line to add on the other server, and Test makes the dataset the copies go into there
+- Accept Replicas Into's setup is now numbered steps, and Sender Keys shows in red any line not limited to replication
+- Diagnostics now cover the sending side: this server's key fingerprint, and the servers it sends to as tokens
+- A diagnostics zip no longer reports its own run as a stuck job, and the time zone shows as an offset
+- Stale Snapshot Alerts leave out the children of a dataset the exclusion pattern hides, as the Main tab does
+- Settings help reads as short lists, and Pool Health Alerts' Off now says that no checks run
 
 ###2026.11.14.1
 - New Diagnostics section in Settings: Generate makes a zip for bug reports

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.15.1 (beta)
 
 - Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
 - Settings makes this server's SSH key and keeps a list of servers it sends to, with each one's host key pinned
