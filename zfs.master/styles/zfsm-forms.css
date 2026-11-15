@@ -12,9 +12,10 @@
 /* Room under the last control: Unraid 7's phone layout otherwise sets it on the section's bottom border. */
 .zfsm-section[open]{padding-bottom:10px}
 
-/* A label with a hint shows the help cursor; hovering it shows the hint, styled like Unraid's tooltips. */
+/* A label with a hint shows the help cursor; hover or keyboard focus shows the hint, styled like Unraid's tooltips.
+   Not :focus: a click focuses the label (on Settings, to open Unraid's help) and would keep the hint up: tests/tip_focus_render_test.cjs. */
 .zfsm-tip{position:relative;cursor:help}
-.zfsm-tip:hover::after,.zfsm-tip:focus::after{content:attr(data-tip);position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
+.zfsm-tip:hover::after,.zfsm-tip:focus-visible::after{content:attr(data-tip);position:absolute;left:100%;top:100%;margin-left:-16px;z-index:20;white-space:nowrap;padding:6px 10px;border-radius:3px;border-bottom:2px solid #ff8c2f;background:#2b2b2b;color:#f2f2f2;font-size:12px;font-weight:normal;line-height:1.35;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.35);pointer-events:none}
 
 /* Label and control rows for the dialogs; Unraid's own input styles do the rest. */
 .zfsm-form dl{display:grid;grid-template-columns:minmax(120px,32%) minmax(0,1fr);align-items:center;gap:0 16px;margin:0;padding:6px 0}
@@ -22,4 +23,4 @@
 .zfsm-form dd{float:none;width:auto;margin:0;display:flex;flex-direction:row;align-items:center;gap:8px;min-width:0}
 .zfsm-form dd .zfsm-wide,.zfsm-form dd>select:only-child{flex:1;min-width:8em;max-width:480px}
 /* Labels take the full row on narrow screens, so the hint drops under them and wraps. */
-@media (max-width:768px){.zfsm-tip:hover::after,.zfsm-tip:focus::after{left:0;margin-left:0;white-space:normal;max-width:calc(100vw - 48px)}}
+@media (max-width:768px){.zfsm-tip:hover::after,.zfsm-tip:focus-visible::after{left:0;margin-left:0;white-space:normal;max-width:calc(100vw - 48px)}}
