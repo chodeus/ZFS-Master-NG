@@ -349,7 +349,7 @@ runProcess('zfs', array('snapshot', 'tank/data@e'));
 putenv('ZFSM_TEST_SEND_FAIL_PART=1');
 same(1, zfsmRunReplicate('tank/data', 'e', 'data', null, false, 'nas'), 'a receive the checker refuses fails the run');
 putenv('ZFSM_TEST_SEND_FAIL_PART');
-array_map('fclose', $slots);
+array_map('zfsmJobUnlock', $slots);
 same(true, strpos($read('notify-detail.log')[0] ?? '', 'failed: No receive into backup/replicas/tower can start while four are running.') !== false, 'with the checker\'s reason: '.($read('notify-detail.log')[0] ?? ''));
 $reset();
 putenv('ZFSM_TEST_SEND_FAIL=1');

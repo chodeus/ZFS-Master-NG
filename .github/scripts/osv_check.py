@@ -1,4 +1,5 @@
-"""The bundled libraries (vendor.json) and the locked test packages (tests/package-lock.json) against OSV's live advisories."""
+"""The bundled libraries (vendor.json) and the locked test packages (tests/package-lock.json) against OSV's live advisories;
+an advisory passes only when .github/osv-accepted.json accepts it, with why."""
 import json
 import sys
 import urllib.request
@@ -14,6 +15,14 @@ def packages(root):
         if path:
             found.append((path.rsplit('node_modules/', 1)[-1], meta['version']))
     return sorted(set(found))
+
+
+def accepted(root):
+    """Each accepted advisory's id, with why it is accepted."""
+    found = json.loads((root / '.github/osv-accepted.json').read_text())['accepted']
+    if not isinstance(found, dict) or not all(isinstance(why, str) and why for why in found.values()):
+        raise ValueError('accepted must map each advisory id to why')
+    return found
 
 
 def advisories(pairs, post):
@@ -34,14 +43,19 @@ def post(body):
 def main(root):
     pairs = packages(root)
     try:
+        allowed = accepted(root)
+    except (OSError, ValueError, KeyError) as error:
+        raise SystemExit(f'.github/osv-accepted.json could not be read, so nothing was checked: {error}')
+    try:
         hits = advisories(pairs, post)
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         raise SystemExit(f'OSV could not be read, so nothing was checked: {error}')
     for name, version, ids in hits:
-        print(f'{name}@{version}: {", ".join(ids)}')
-    if hits:
-        raise SystemExit(f'{len(hits)} package(s) have an advisory on OSV: update them')
-    print(f'OSV: no advisory for any of {len(pairs)} packages')
+        print(f'{name}@{version}: ' + ', '.join(f'{id} (accepted: {allowed[id]})' if id in allowed else id for id in ids))
+    unaccepted = [name for name, version, ids in hits if set(ids) - set(allowed)]
+    if unaccepted:
+        raise SystemExit(f'{len(unaccepted)} package(s) have an advisory on OSV that .github/osv-accepted.json does not accept: update them, or accept it there with why')
+    print(f'OSV: no advisory past those accepted for any of {len(pairs)} packages')
 
 
 if __name__ == '__main__':
