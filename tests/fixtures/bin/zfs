@@ -53,7 +53,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
-			exists "$last_arg" && { echo "$last_arg"; exit 0; }
+			{ exists "$last_arg" || [ -n "$(mark "$last_arg" 2)" ]; } && { echo "$last_arg"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi ;;
 	get)

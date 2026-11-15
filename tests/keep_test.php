@@ -88,8 +88,8 @@ same(array(2, true), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($cfg), 'ev
 $first = array_slice($short('tank/data'), -1)[0];
 same(array(array('snapshot -o zfs.master:schedule='.$tag.' tank/data@'.$first), array($first)), array(array_values(preg_grep('/^snapshot /', $read('calls.log'))), $short('backup/data')), 'the first run tags its snapshot and makes the copy');
 $t0 = time();
-$run = function($k) use ($id, $cfg, $t0) { return zfsmScheduleRun($id, $cfg, $t0 + 3600 * $k); };
-$n = function($k) use ($cfg, $t0) { return zfsmNewSnapshotName($cfg, $t0 + 3600 * $k); };
+$run = function($k) use ($id, $cfg, $t0) { return zfsmScheduleRun($id, $cfg, (int)($t0 + 3600 * $k)); };
+$n = function($k) use ($cfg, $t0) { return zfsmNewSnapshotName($cfg, (int)($t0 + 3600 * $k)); };
 $notified = function() use ($read) { return $read('notify-detail.log'); };
 
 // Past the newest 2 it tagged, a snapshot goes: from the copy first, then here. Nothing else counts or goes.
@@ -150,7 +150,7 @@ putenv('ZFSM_TEST_KEEP_LIST_FAIL=tank/data');
 $reset();
 $run(10);
 putenv('ZFSM_TEST_KEEP_LIST_FAIL');
-same(array(array(), 1), array($destroys(), preg_match('/finished \(changes since [^)]+\)\. The hold a stopped run put on its snapshots may still be on, so they stay until a run that lands takes it off: the snapshots of tank\/data could not be read\. Keep could not read the snapshots of tank\/data\./', $notified()[0] ?? '')),
+same(array(array(), 1), array($destroys(), preg_match('/finished \(changes since [^)]+\)\. A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: the snapshots of tank\/data could not be read\. Keep could not read the snapshots of tank\/data\./', $notified()[0] ?? '')),
 	'nor does a dataset whose own can\'t, and the run says its holds may be on');
 @unlink(zfsmScheduleStateFile($id));
 $reset();
@@ -165,6 +165,8 @@ same(1, $run(12), 'a run cut off part-way');
 putenv('ZFSM_TEST_SEND_CUT');
 same(array(array('tank/data@'.$n(12)."\t".$hold, 'tank/data@'.$n(11)."\t".$hold), 1), array($read('pool/holds'), preg_match('/^warning: Replication of tank\/data@'.$n(12).' to backup\/data failed: .+\. Replicate it again to carry on from where it stopped\. Later/', $notified()[0] ?? '')), 'both are held, and the notification asks for nothing else');
 same(1, preg_match('/dataset is busy/', runProcess('zfs', array('destroy', 'tank/data@'.$n(11)))['output']), 'a removal by hand is refused');
+$order = array_values(preg_grep('/^(hold |send (?!.* -n ))/', $read('calls.log')));
+same(array('hold '.$hold.' tank/data@'.$n(12), 'hold '.$hold.' tank/data@'.$n(11)), array_slice($order, 0, 2), 'they are held before the send starts, so a run killed part-way leaves them held too: '.implode(' | ', $order));
 // Another hold on one of them is its owner's: it stays, and so does that snapshot.
 $append('holds', "tank/data@".$n(11)."\tmine");
 $reset();
@@ -172,6 +174,19 @@ same(0, $run(13), 'the next run');
 same(array(array('tank/data@'.$n(11)."\tmine"), array($n(11), $n(12), $n(13)), array($n(1), $n(11), $n(12), $n(13)), 1), array($read('pool/holds'), array_slice($short('tank/data'), 3), $short('backup/data'), preg_match('/^normal: .+ It works again after 1 run\(s\) with a problem\.$/D', $notified()[0] ?? '')),
 	'carries it on and takes its own holds off; the one held by another stays; it works again');
 $pool('holds', array());
+// A run whose copy has nothing to carry on (zfs receive -A cleared its token) that fails takes the copy's holds off, so the snapshot
+// it took goes.
+putenv('ZFSM_TEST_SEND_CUT=1');
+$run(13.5);
+putenv('ZFSM_TEST_SEND_CUT');
+$pool('props', array_values(array_filter($read('pool/props'), function($line) { return strpos($line, "\treceive_resume_token\t") === false; })));
+putenv('ZFSM_TEST_SEND_FAIL=1');
+$reset();
+same(1, $run(13.75), 'a run that fails with nothing to carry on');
+putenv('ZFSM_TEST_SEND_FAIL');
+same(array(array(), array('destroy tank/data@'.$n(13.75)), array($n(13), $n(13.5))), array($read('pool/holds'), $destroys(), array_slice($short('tank/data'), -2)), 'no hold stays, and the snapshot it took goes');
+$reset();
+$run(13.9);
 // A hold that can't be put on says so.
 putenv('ZFSM_TEST_SEND_CUT=1');
 putenv('ZFSM_TEST_HOLD_FAIL=1');
@@ -179,11 +194,12 @@ $reset();
 $run(14);
 putenv('ZFSM_TEST_HOLD_FAIL');
 putenv('ZFSM_TEST_SEND_CUT');
-$unheld = ' What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/data@'.$n(14).': cannot hold snapshot \'tank/data@'.$n(14).'\': permission denied; tank/data@'.$n(13).': cannot hold snapshot \'tank/data@'.$n(13).'\': permission denied.';
-same(array(array(), 1, 1), array($read('pool/holds'), substr_count($notified()[0] ?? '', zfsmSafeText($unheld)), substr_count($log(), zfsmSafeText($unheld))), 'the notification and the log say which');
+$unheld = ' What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/data@'.$n(14).': cannot hold snapshot \'tank/data@'.$n(14).'\': permission denied; tank/data@'.$n(13.9).': cannot hold snapshot \'tank/data@'.$n(13.9).'\': permission denied.';
+same(array(array(), 1, 1, array()), array($read('pool/holds'), substr_count($notified()[0] ?? '', zfsmSafeText($unheld)), substr_count($log(), zfsmSafeText($unheld)), $destroys()),
+	'the notification and the log say which, and Keep removes nothing after a run that did not land, held or not');
 $reset();
 $run(15);
-// A hold that can't come off: the run says its snapshots stay held, and they do.
+// A hold that can't come off: the run says its snapshots stay held, and they do, its own with them.
 putenv('ZFSM_TEST_SEND_CUT=1');
 $run(16);
 putenv('ZFSM_TEST_SEND_CUT');
@@ -192,7 +208,7 @@ putenv('ZFSM_TEST_RELEASE_FAIL=1');
 $reset();
 $run(17);
 putenv('ZFSM_TEST_RELEASE_FAIL');
-same(array(2, 1), array(count($read('pool/holds')), preg_match('/The hold a stopped run put on its snapshots may still be on, so they stay until a run that lands takes it off: tank\/data@'.$n(15).': cannot release hold from snapshot \?tank\/data@'.$n(15).'\?: permission denied; tank\/data@'.$n(16).': /', $notified()[0] ?? '')), 'says so');
+same(array(3, 1), array(count($read('pool/holds')), preg_match('/A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: tank\/data@'.$n(15).': cannot release hold from snapshot \?tank\/data@'.$n(15).'\?: permission denied; tank\/data@'.$n(16).': /', $notified()[0] ?? '')), 'says so');
 $reset();
 $run(18);
 same(array(array(), array($n(17), $n(18))), array($read('pool/holds'), array_slice($short('tank/data'), 3)), 'the next run takes them off, and Keep catches up');
@@ -212,6 +228,32 @@ $far = zfsmKeepTag('nas', 'copy');
 foreach (array('r1', 'r2') as $name) createDatasetSnapshot('tank/data', $name, 0, array(ZFSM_KEEP_TAG => $far));
 $reset();
 same(array('', array('destroy tank/data@r1'), array()), array(zfsmKeepPrune('tank/data', array('server' => 'nas', 'dest' => 'copy', 'snapshot' => 'tank/data@r2'), 1, $far), $destroys(), preg_grep('/ copy$/', $read('calls.log'))), 'to a server, only here, and the copy is not asked');
+// A run removes at most 50, oldest first; the next removes more.
+$append('datasets', "tank/many\tfilesystem");
+for ($k = 1; $k <= 60; $k++) {
+	$append('marks', "tank/many@m$k\t".(9000 + $k)."\t".(9000 + $k));
+	$append('props', "tank/many@m$k\tzfs.master:schedule\t".$tag);
+}
+$surplus = array_column(zfsmKeepSurplus('tank/many', 1, $tag), 'name');
+same(array(50, 'tank/many@m1', 'tank/many@m50'), array(count($surplus), $surplus[0], $surplus[49]), 'at most 50 a run, oldest first');
+
+// Release in Snapshots takes the plugin's holds off, Hold's and a stopped run's; another tool's stay, and alone are refused.
+$pool('holds', array("tank/data@a\tzfsmaster", "tank/data@a\t".$hold, "tank/data@a\tmine", "tank/data@b\tmine"));
+same(array(array('tank/data@a' => 0), array("tank/data@a\tmine", "tank/data@b\tmine")), array(releaseDatasetSnapshot('tank/data@a')['succeeded'], $read('pool/holds')), 'Release takes off its own holds, not another\'s');
+same(array(array('tank/data@b' => 'Its holds are another tool\'s (mine), so they stay'), array('tank/data@c' => 'It has no hold')), array(releaseDatasetSnapshot('tank/data@b')['failed'], releaseDatasetSnapshot('tank/data@c')['failed']), 'and says why it takes none off');
+$pool('holds', array());
+
+// A schedule added again for the copy counts the snapshots of the one before; its first run, saved or not, removes none of them.
+$tagged = function() use ($tag) { return count(array_filter(zfsmKeepSnapshots('tank/data'), function($snapshot) use ($tag) { return $snapshot['tag'] === $tag; })); };
+$run(19);
+$run(20);
+same(array(2, true), array($tagged(), zfsmScheduleRemove($id)['saved']), 'two of the schedule\'s snapshots, and it is removed');
+$reset();
+$add('tank/data', '', 'backup/data', '', 'hourly', -1, -1, 1, $cfg);
+$again = $stored()[0]['id'];
+same(array(array(), 3), array($destroys(), $tagged()), 'the first run of one added again removes nothing');
+$reset();
+same(array(0, 6, 1), array(zfsmScheduleRun($again, $cfg, (int)($t0 + 3600 * 21)), count($destroys()), $tagged()), 'the next keeps the newest 1, removing the rest here and in the copy');
 $reset();
 foreach (array('1x', '10000', '') as $keep) {
 	$said = array();

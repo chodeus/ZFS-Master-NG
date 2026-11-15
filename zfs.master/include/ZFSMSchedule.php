@@ -167,8 +167,8 @@ function zfsmScheduleKeepText($job) {
 	return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' of its snapshots' : 'keeps all its snapshots';
 }
 
-// Saves a schedule for a copy and starts its first run now, through zfsmStartReplicate: a schedule whose first run can't start
-// is never saved. $hour, $day and $keep are -1 when the page sent no number; $keep 0 keeps all.
+// Saves a schedule for a copy and starts its first run now, through zfsmStartReplicate, with Keep 0 as it may never be saved: one
+// whose first run can't start isn't. $hour, $day and $keep are -1 when what the page sent is no number; an empty Keep is 0, which keeps all.
 function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $hour, $day, $keep, $cfg) {
 	$job = array('id' => '00000000', 'dataset' => $zdataset, 'dest' => $zdest, 'server' => $server, 'every' => $every,
 		'hour' => $every === 'hourly' ? 0 : $hour, 'day' => $every === 'weekly' ? $day : 0, 'keep' => $keep);
@@ -182,7 +182,7 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $hour, $
 	$job['id'] = zfsmScheduleNewId($read['valid'], $zdataset);
 	$clash = zfsmScheduleClash($job, $read['valid'], $cfg, time(), true);
 	if ($clash !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$clash.'; add the time to it in Settings');
-	$started = zfsmStartReplicate($zdataset, '', $zdest, $cfg, $server, $keep);
+	$started = zfsmStartReplicate($zdataset, '', $zdest, $cfg, $server, 0);
 	if (!isset($started['succeeded'][$zdataset])) return zfsmFailure($zdataset, 'Nothing was scheduled: '.($started['failed'][$zdataset] ?? 'the first run did not start'));
 	$changed = zfsmScheduleChange(function($jobs) use ($job) {
 		$same = zfsmScheduleSame($jobs, $job);

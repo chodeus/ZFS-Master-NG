@@ -1,9 +1,12 @@
 <?php
-// Keep: after a schedule's run lands, its snapshots past the newest N go; a run that stops part-way holds what the next one carries on from.
-// zfsmRunReplicate (ZFSMReplicate.php) calls both.
+// Keep: after a schedule's run lands, its snapshots past the newest N go; a run holds what it sends until one to the copy lands.
+// zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases.
 
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');
 define('ZFSM_KEEP_MAX', 9999);
+define('ZFSM_KEEP_HOLD', 'zfsm-resume-');
+// A run removes at most this many, oldest first: the next one removes more.
+define('ZFSM_KEEP_PER_RUN', 50);
 
 function zfsmKeepValid($keep) {
 	return is_int($keep) && $keep >= 0 && $keep <= ZFSM_KEEP_MAX;
@@ -15,32 +18,38 @@ function zfsmKeepTag($server, $zdest) {
 	return substr(hash('sha256', zfsmReplicaTargetMark(array('server' => $server), $zdest)), 0, 16);
 }
 
-function zfsmKeepHoldTag($tag) {
-	return 'zfsm-resume-'.$tag;
+// The properties a run's snapshot is taken with: a schedule's run ($keep not null) tags it for the copy.
+function zfsmKeepProps($keep, $tag) {
+	return $keep === null ? array() : array(ZFSM_KEEP_TAG => $tag);
 }
 
-// $zdataset's snapshots, oldest first, with guid, createtxg, held, cloned and Keep's tag; null when they can't be read. A row that
-// doesn't parse is left out, so Keep neither removes nor counts it and keeps more, never fewer.
+function zfsmKeepHoldTag($tag) {
+	return ZFSM_KEEP_HOLD.$tag;
+}
+
+// $zdataset's snapshots (zfsmReplicaMarks), oldest first, with held, cloned and Keep's tag; null when they can't be read. A row
+// that doesn't parse is left out, so Keep neither removes nor counts it and keeps more, never fewer.
 function zfsmKeepSnapshots($zdataset) {
-	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg,userrefs,clones,'.ZFSM_KEEP_TAG, '-s', 'createtxg', $zdataset));
-	if (($result['code'] ?? 1) !== 0) return null;
+	$marks = zfsmReplicaMarks($zdataset, 'snapshot', array('userrefs', 'clones', ZFSM_KEEP_TAG));
+	if ($marks === null) return null;
 	$snapshots = array();
-	foreach (zfsmLines($result['output']) as $line) {
-		$parts = explode("\t", $line, 6);
-		if (count($parts) !== 6 || strncmp($parts[0], $zdataset.'@', strlen($zdataset) + 1) !== 0 || !preg_match('/^[0-9]+\t[0-9]+\t[0-9]+$/D', $parts[1]."\t".$parts[2]."\t".$parts[3])) continue;
-		$snapshots[] = array('name' => $parts[0], 'guid' => $parts[1], 'txg' => (int)$parts[2], 'held' => $parts[3] !== '0', 'cloned' => $parts[4] !== '' && $parts[4] !== '-', 'tag' => $parts[5]);
+	foreach ($marks as $mark) {
+		if (!preg_match('/^[0-9]+$/D', $mark['userrefs'])) continue;
+		$snapshots[] = array('name' => $mark['name'], 'guid' => $mark['guid'], 'txg' => $mark['txg'], 'held' => $mark['userrefs'] !== '0',
+			'cloned' => $mark['clones'] !== '' && $mark['clones'] !== '-', 'tag' => $mark[ZFSM_KEEP_TAG]);
 	}
 	return $snapshots;
 }
 
-// The snapshots $tag marks past the newest $keep of them (0: none), oldest first, never one held or cloned; null when they can't be read.
+// The snapshots $tag marks past the newest $keep of them (0: none), oldest first and ZFSM_KEEP_PER_RUN at most, never one held or
+// cloned; null when they can't be read.
 function zfsmKeepSurplus($zdataset, $keep, $tag) {
 	if ($keep <= 0) return array();
 	$snapshots = zfsmKeepSnapshots($zdataset);
 	if ($snapshots === null) return null;
 	$counted = array_values(array_filter($snapshots, function($snapshot) use ($tag) { return $snapshot['tag'] === $tag; }));
 	$past = array_slice($counted, 0, max(0, count($counted) - $keep));
-	return array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; }));
+	return array_slice(array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; })), 0, ZFSM_KEEP_PER_RUN);
 }
 
 // Destroys $snapshot only while it is still the one read ($guid), and logs it with $why: '' when it is gone, else why it stays.
@@ -55,18 +64,21 @@ function zfsmKeepDestroy($snapshot, $guid, $why) {
 	return '';
 }
 
+// The snapshots of $plan's copy by guid; none for a copy on another server, which keeps what that server decides; null when
+// they can't be read.
+function zfsmKeepCopies($plan) {
+	if ($plan['server'] !== '') return array();
+	$listed = zfsmKeepSnapshots($plan['dest']);
+	return $listed === null ? null : array_column($listed, null, 'guid');
+}
+
 // After a run to $plan's copy landed: $zdataset's snapshots $tag marks, past the newest $keep, go; from a copy on this server the
 // same snapshots (by guid) go first, and a source snapshot stays when removing its copy's fails. '' or what stayed and why.
 function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, $tag);
 	if ($surplus === null) return 'Keep could not read the snapshots of '.$zdataset;
-	// A copy on another server keeps what that server decides.
-	$copies = array();
-	if ($surplus && $plan['server'] === '') {
-		$listed = zfsmKeepSnapshots($plan['dest']);
-		if ($listed === null) return 'Keep could not read the snapshots of '.$plan['dest'];
-		foreach ($listed as $copy) $copies[$copy['guid']] = $copy;
-	}
+	$copies = $surplus ? zfsmKeepCopies($plan) : array();
+	if ($copies === null) return 'Keep could not read the snapshots of '.$plan['dest'];
 	$why = 'past the newest '.$keep.' its schedule keeps';
 	$stayed = array();
 	foreach ($surplus as $snapshot) {
@@ -87,8 +99,8 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 	return $stayed ? 'Keep could not remove '.implode('; ', array_slice($stayed, 0, 3)).$more.'; the next run tries again' : '';
 }
 
-// A run that stopped part-way, or may have: its snapshot and the snapshot it sent the changes since are held for the copy, so
-// nothing removes them before a run carries it on (zfsmKeepRelease). One the copy's hold is on already counts. '' or why not.
+// Before a send: its snapshot and the snapshot it sends the changes since are held for the copy, so nothing removes them before a
+// run carries on one that stops (zfsmKeepRelease). One the copy's hold is on already counts. '' or why not.
 function zfsmKeepHold($plan, $tag) {
 	$hold = zfsmKeepHoldTag($tag);
 	$failed = array();
@@ -100,21 +112,53 @@ function zfsmKeepHold($plan, $tag) {
 	return implode('; ', $failed);
 }
 
-// After a run to the copy landed: the copy's holds (zfsmKeepHold) come off every snapshot of $zdataset. '' or why not.
+// The holds on $snapshots (zfs holds -H) as array(snapshot, tag) pairs; a string when they can't be read.
+function zfsmKeepHolds($snapshots) {
+	$holds = runProcess('zfs', array_merge(array('holds', '-H'), $snapshots));
+	if (($holds['code'] ?? 1) !== 0) return zfsmCommandError($holds, 'zfs holds failed');
+	$pairs = array();
+	foreach (zfsmLines($holds['output']) as $line) {
+		$parts = explode("\t", $line, 3);
+		if (count($parts) === 3 && in_array($parts[0], $snapshots, true)) $pairs[] = array($parts[0], $parts[1]);
+	}
+	return $pairs;
+}
+
+// After a run to the copy landed, or stopped with nothing to carry on: the copy's holds (zfsmKeepHold) come off every snapshot of
+// $zdataset. '' or why not.
 function zfsmKeepRelease($zdataset, $tag) {
 	$hold = zfsmKeepHoldTag($tag);
 	$snapshots = zfsmKeepSnapshots($zdataset);
 	if ($snapshots === null) return 'the snapshots of '.$zdataset.' could not be read';
 	$held = array_column(array_filter($snapshots, function($snapshot) { return $snapshot['held']; }), 'name');
-	if (!$held) return '';
-	$holds = runProcess('zfs', array_merge(array('holds', '-H'), $held));
-	if (($holds['code'] ?? 1) !== 0) return zfsmCommandError($holds, 'zfs holds failed');
+	$holds = $held ? zfsmKeepHolds($held) : array();
+	if (is_string($holds)) return $holds;
 	$failed = array();
-	foreach (zfsmLines($holds['output']) as $line) {
-		$parts = explode("\t", $line, 3);
-		if (count($parts) !== 3 || $parts[1] !== $hold || !in_array($parts[0], $held, true)) continue;
-		$released = runProcess('zfs', array('release', $hold, $parts[0]));
-		if (($released['code'] ?? 1) !== 0) $failed[] = $parts[0].': '.zfsmCommandError($released, 'zfs release failed');
+	foreach ($holds as list($snapshot, $on)) {
+		if ($on !== $hold) continue;
+		$released = runProcess('zfs', array('release', $hold, $snapshot));
+		if (($released['code'] ?? 1) !== 0) $failed[] = $snapshot.': '.zfsmCommandError($released, 'zfs release failed');
 	}
 	return implode('; ', $failed);
+}
+
+function zfsmKeepReleaseNote($released) {
+	return $released === '' ? '' : 'A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: '.$released;
+}
+
+// A run that stopped: what it carries on from stays held ($held: zfsmKeepHold's answer); with nothing to carry on ($token ''), the
+// copy's holds come off. '' or what its log line and notification add.
+function zfsmKeepStopped($zdataset, $tag, $token, $held) {
+	$unheld = $held === '' ? '' : 'What it carries on from could not be held, so a Keep or a removal by hand can take it first: '.$held;
+	$note = $token === '' ? zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag)) : $unheld;
+	return $note === '' ? '' : ' '.$note.'.';
+}
+
+// After a run ends ($code 0: it landed), its Keep ($keep null: a run that is no schedule's), logged and added to its notification's
+// $text and $type.
+function zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type) {
+	$kept = $code !== 0 || $keep === null ? '' : zfsmKeepPrune($zdataset, $plan, $keep, $tag);
+	if ($kept === '') return array($text, $type);
+	zfsmLog('Replication of '.$zdataset.' to '.$to.': '.$kept);
+	return array(rtrim($text, '.').'. '.zfsmSafeText($kept).'.', 'warning');
 }

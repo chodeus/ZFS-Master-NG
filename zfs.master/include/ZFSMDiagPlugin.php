@@ -245,7 +245,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 		zfsmDiagKnowWord($job['server']);
 		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
 		$failures = zfsmScheduleFailures($id);
-		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $job['keep'] > 0 ? $job['keep'] : 'all', $failures))."\n";
+		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $job['keep'], $failures))."\n";
 		$wrong = array(
 			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
 			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
@@ -258,7 +258,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
 	$listed = $read === null ? ($unread ? zfsmDiagUnread('(schedules.json could not be read)') : '(schedules.json is not a list of schedules)') : ($rows !== '' ? $rows : '(none)');
 	return 'records in schedules.json the plugin does not use: '.$unused."\n\n"
-		.zfsmDiagSection('schedules (id, dataset, copy, when, keep, runs in a row with a problem)', $listed)
+		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)', $listed)
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))
 		.zfsmDiagSection('their lines in the live crontab', $live_unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
 }

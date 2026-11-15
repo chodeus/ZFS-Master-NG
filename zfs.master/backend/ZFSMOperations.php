@@ -909,14 +909,25 @@ function renameDatasetSnapshot($zpool, $snapshot, $new_name) {
 	return commandAnswer($destination, runProcess('zfs', array('rename', $snapshot, $destination)));
 }
 
+define('ZFSM_HOLD', 'zfsmaster');
+
 function holdDatasetSnapshot($snapshot) {
 	if (!zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
-	return commandAnswer($snapshot, runProcess('zfs', array('hold', 'zfsmaster', $snapshot)));
+	return commandAnswer($snapshot, runProcess('zfs', array('hold', ZFSM_HOLD, $snapshot)));
 }
 
+// The plugin's own holds come off: Hold's and a stopped replication's (zfsmKeepHold). Another tool's stay.
 function releaseDatasetSnapshot($snapshot) {
 	if (!zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
-	return commandAnswer($snapshot, runProcess('zfs', array('release', 'zfsmaster', $snapshot)));
+	$holds = zfsmKeepHolds(array($snapshot));
+	if (is_string($holds)) return zfsmFailure($snapshot, $holds);
+	$ours = array_column(array_filter($holds, function($hold) { return $hold[1] === ZFSM_HOLD || strpos($hold[1], ZFSM_KEEP_HOLD) === 0; }), 1);
+	if (!$ours) return zfsmFailure($snapshot, $holds ? 'Its holds are another tool\'s ('.implode(', ', array_column($holds, 1)).'), so they stay' : 'It has no hold');
+	foreach ($ours as $tag) {
+		$released = runProcess('zfs', array('release', $tag, $snapshot));
+		if (($released['code'] ?? 1) !== 0) break;
+	}
+	return commandAnswer($snapshot, $released);
 }
 
 function cloneDatasetSnapshot($snapshot, $clone) {

@@ -7,21 +7,24 @@ function zfsmReplicaBookmarkPrefix($mark) {
 	return 'zfsm_'.bin2hex($mark).'_';
 }
 
-// The dataset's snapshots (and bookmarks), oldest first, with their guid and createtxg; null when they can't be read.
-function zfsmReplicaMarks($zdataset, $types = 'snapshot,bookmark') {
-	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', $types, '-o', 'name,guid,createtxg', '-s', 'createtxg', $zdataset));
-	return ($result['code'] ?? 1) === 0 ? zfsmReplicaMarksIn($zdataset, $result['output']) : null;
+// The dataset's snapshots (and bookmarks), oldest first, with their guid, createtxg and the $extra properties by name; null when
+// they can't be read.
+function zfsmReplicaMarks($zdataset, $types = 'snapshot,bookmark', $extra = array()) {
+	$columns = implode(',', array_merge(array('name', 'guid', 'createtxg'), $extra));
+	$result = runProcess('zfs', array('list', '-H', '-p', '-d', '1', '-t', $types, '-o', $columns, '-s', 'createtxg', $zdataset));
+	return ($result['code'] ?? 1) === 0 ? zfsmReplicaMarksIn($zdataset, $result['output'], $extra) : null;
 }
 
 // That list's lines, as this server's zfs or the checker's (zfsmReplicaTargetSnapshots) prints them.
-function zfsmReplicaMarksIn($zdataset, $output) {
+function zfsmReplicaMarksIn($zdataset, $output, $extra = array()) {
 	$marks = array();
+	$count = 3 + count($extra);
 	foreach (preg_split('/\R/', trim((string)$output), -1, PREG_SPLIT_NO_EMPTY) as $line) {
-		$parts = explode("\t", $line);
-		if (count($parts) !== 3 || !preg_match('/^[0-9]+$/D', $parts[1]) || !preg_match('/^[0-9]+$/D', $parts[2])) continue;
+		$parts = explode("\t", $line, $count);
+		if (count($parts) !== $count || !preg_match('/^[0-9]+$/D', $parts[1]) || !preg_match('/^[0-9]+$/D', $parts[2])) continue;
 		$own = strncmp($parts[0], $zdataset.'@', strlen($zdataset) + 1) === 0 || strncmp($parts[0], $zdataset.'#', strlen($zdataset) + 1) === 0;
 		// guids are 64-bit, past PHP's integers: compared as text.
-		if ($own) $marks[] = array('name' => $parts[0], 'guid' => $parts[1], 'txg' => (int)$parts[2]);
+		if ($own) $marks[] = array('name' => $parts[0], 'guid' => $parts[1], 'txg' => (int)$parts[2]) + ($extra ? array_combine($extra, array_slice($parts, 3)) : array());
 	}
 	return $marks;
 }
