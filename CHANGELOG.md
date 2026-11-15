@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
+- Settings makes this server's SSH key and keeps a list of servers it sends to, with each one's host key pinned
+- Each server in that list shows the one line to add on the other server, and Test makes the dataset the copies go into there
+- Accept Replicas Into's setup is now numbered steps, and Sender Keys shows in red any line not limited to replication
+- Diagnostics now cover the sending side: this server's key fingerprint, and the servers it sends to as tokens
+- A diagnostics zip no longer reports its own run as a stuck job, and the time zone shows as an offset
+- Stale Snapshot Alerts leave out the children of a dataset the exclusion pattern hides, as the Main tab does
+- Settings help reads as short lists, and Pool Health Alerts' Off now says that no checks run
+
 ## 2026.11.14.1 (beta)
 
 - New Diagnostics section in Settings: Generate makes a zip for bug reports
