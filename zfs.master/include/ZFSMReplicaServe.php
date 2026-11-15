@@ -188,7 +188,7 @@ function zfsmReplicaKeys($file = '/boot/config/ssh/root/authorized_keys') {
 	return $keys;
 }
 
-// sshd reads options left to right, so a pty or forwarding option anywhere after restrict turns that limit back on.
+// sshd reads options left to right, so a pty or forwarding option after restrict gives back what restrict took away.
 function zfsmReplicaKeyRestricted($named) {
 	return array_key_exists('restrict', $named) && !array_intersect(array_keys($named), array('pty', 'port-forwarding', 'agent-forwarding', 'x11-forwarding', 'user-rc'));
 }

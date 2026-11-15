@@ -191,7 +191,7 @@ _(Pool Health Alerts)_:
 >
 > - is not ONLINE,
 > - has read, write or checksum errors, or damaged files,
-> - or is still not imported 10 minutes after the array starts.
+> - or is not imported while the array is started, once 10 minutes have passed since the server booted or a check last saw the array stopped.
 >
 > It notifies again when the pool recovers. Checks start once the array has started. With **Off**, nothing checks the pools on a schedule, so none of these notifications is sent.
 :end
@@ -240,7 +240,7 @@ _(Sender Keys)_:
 :zc_settings_replica_keys_plug:
 > The lines in root's SSH authorized keys that run replica-serve.php, which receives copies here. A line limits its key to replication only when it has all three:
 >
-> - `restrict`, and none of `pty`, `port-forwarding`, `agent-forwarding`, `x11-forwarding` or `user-rc`: each turns a limit back on.
+> - `restrict`, and none of `pty`, `port-forwarding`, `agent-forwarding`, `x11-forwarding` or `user-rc`: each gives back something `restrict` takes away.
 > - `from=` with the sender's exact IP addresses, commas between several: no ranges, wildcards, `!` or host names.
 > - `command=` naming exactly replica-serve.php and the sender's name.
 >

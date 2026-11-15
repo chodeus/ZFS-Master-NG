@@ -180,7 +180,7 @@ same(array(
 	array('sender' => '', 'comment' => 'zfs.master@first', 'restrict' => true, 'from' => true),
 	array('sender' => '', 'comment' => 'zfs.master@copy', 'restrict' => true, 'from' => true),
 	array('sender' => 'six', 'comment' => 'zfs.master@six', 'restrict' => true, 'from' => true),
-), zfsmReplicaKeys($work.'/authorized_keys'), 'every key naming the checker is listed with what holds it: a limit turned back on after restrict (in any case), a from= that isn\'t exact IP addresses, or a command that isn\'t exactly the installed checker and a name, doesn\'t hold');
+), zfsmReplicaKeys($work.'/authorized_keys'), 'every key naming the checker is listed with what holds it: an option after restrict that gives back what it took away (in any case), a from= that isn\'t exact IP addresses, or a command that isn\'t exactly the installed checker and a name, doesn\'t hold');
 $listed = zfsmReplicaKeysHtml(array(
 	array('sender' => 'tower', 'comment' => 'zfs.master@tower', 'restrict' => true, 'from' => true),
 	array('sender' => 'odd', 'comment' => "zfs.master@\xff<b>", 'restrict' => false, 'from' => true),
