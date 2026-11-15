@@ -82,6 +82,11 @@ jobs:
           python3 tests/vendor_test.py
           python3 .github/scripts/vendor.py check
 
+      - name: No bundled or test package has an advisory on OSV
+        run: |
+          python3 tests/osv_check_test.py
+          python3 .github/scripts/osv_check.py
+
   php:
     name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest

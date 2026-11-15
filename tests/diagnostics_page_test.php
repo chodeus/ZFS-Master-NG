@@ -70,7 +70,7 @@ same(array('Unknown or missing command', array('state' => 'none'), array()), arr
 // A run: the page is answered at once, a second start while it runs is told so, and its state follows it to the zip.
 putenv('ZFSM_TEST_ZPOOL_STATUS_SLOW=1');
 $report = json_encode(array('userAgent' => 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36',
-	'kept' => array('zfsm-datasetsHidden' => '["tank/data"]', 'zfsm-diagnostics' => '{"status":{"text":"Loading CanaryShare failed"}}')));
+	'kept' => array('zfsm-datasetsHidden' => '["tank/data"]', 'zfsm-diagnostics' => array('status' => array('text' => 'Loading CanaryShare failed'), 'render' => array('icons' => array('fa-hdd-o' => 1.1, 'fa-minus-square' => 10.6))))));
 same(array('state' => 'started', 'why' => ''), $ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => $report)), 'the first start');
 same(array(array('state' => 'running', 'why' => ''), array('state' => 'running')), array($ask(array('cmd' => 'diagnosticsstart', 'unraid' => '0', 'report' => 'another')), $state()), 'a second start while it runs starts nothing, and the state says running');
 // The job itself, started beside the one that runs, and a run from a terminal: each ends, says why, and leaves the first one's state.
@@ -92,6 +92,7 @@ exec('unzip -q '.escapeshellarg('/boot/logs/'.$done['zip']).' -d '.escapeshellar
 $browser = (string)@file_get_contents($work.'/first/plugin/browser.json.txt');
 same(array(true, true, false, false, array()), array(strpos($browser, 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36') !== false, preg_match('~tank/name-[0-9a-f]{8}~', $browser) === 1, strpos($browser, 'tank/data'), stripos($browser, 'canary'), glob($work.'/first/unraid/*.zip')),
 	'the zip holds the first request\'s report, a browser\'s version left as it is, a dataset and a word of a status text as tokens, and no Unraid zip when the box was off: '.$browser);
+same(array('fa-hdd-o' => 1.1, 'fa-minus-square' => 10.6), json_decode($browser, true)['kept']['zfsm-diagnostics']['render']['icons'] ?? null, 'the Main tab\'s icon offsets come through as they are: '.$browser);
 same(array(), glob('/tmp/zfs.master-diag.*'), 'the job removes its work folder');
 
 // With the box on, Unraid's zip is in it; a report longer than 64 KB is kept to that.

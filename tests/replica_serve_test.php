@@ -136,10 +136,14 @@ same(array(1, '', "Not a send stream\n"), $serve($req('receive', 'backup/replica
 // At most four receives into an area run at once.
 $slots = array();
 for ($slot = 0; $slot < 4; $slot++) $slots[] = zfsmReplicaReceiveSlot('backup/replicas/tower');
-same(4, count(array_filter($slots)), 'four slots');
+same(4, count(array_filter($slots, 'is_resource')), 'four slots');
+$guid = getDatasetProperty('backup', 'backup/replicas/tower', 'guid');
+same(array($guid.'.0.lock', $guid.'.1.lock', $guid.'.2.lock', $guid.'.3.lock'), array_map('basename', glob(zfsmJobDir('replica-serve').'/*.lock')), 'each named by the area\'s guid, which names nothing');
 same(array(1, '', "No receive into backup/replicas/tower can start while four are running\n"), $serve($req('receive', 'backup/replicas/tower/data5'), $work.'/stream'), 'a fifth receive is refused');
 foreach ($slots as $held) zfsmJobUnlock($held);
-same(true, zfsmReplicaReceiveSlot('backup/replicas/other') !== null, 'and another area has its own');
+same('No receive into backup/replicas/other can start: its guid could not be read', zfsmReplicaReceiveSlot('backup/replicas/other'), 'an area whose guid can\'t be read has none');
+file_put_contents($work.'/pool/datasets', "backup/replicas/other\tfilesystem\n", FILE_APPEND);
+same(true, is_resource(zfsmReplicaReceiveSlot('backup/replicas/other')), 'and another area has its own');
 // Once the area could mount or run anything, nothing more goes in.
 foreach (array('mountpoint' => '/mnt/backup/replicas/tower', 'exec' => 'on') as $property => $value) {
 	file_put_contents($work.'/pool/props', "backup/replicas/tower\t$property\t$value\n", FILE_APPEND);

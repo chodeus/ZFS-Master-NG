@@ -135,6 +135,10 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $send_ke
 	$put('/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nfsState=\"Started\"\nNAME=\"CanaryNas\"\n");
 	$put('/var/local/emhttp/disks.ini', "[\"tank\"]\nname=\"tank\"\ntype=\"Cache\"\nfsType=\"zfs\"\n[\"otherpool\"]\nname=\"otherpool\"\ntype=\"Cache\"\nfsType=\"zfs\"\n");
 	mkdir($root.'/tmp');
+	// A receive slot's lock from before slots were named by the area's guid holds a hash of its name; one named by its guid holds none.
+	mkdir($work.'/jobs/replica-serve', 0700, true);
+	touch($work.'/jobs/replica-serve/'.hash('sha256', 'tank/CanaryArea/canarysender').'.0.lock');
+	touch($work.'/jobs/replica-serve/4711.2.lock');
 };
 $settings = array('refresh_interval' => '60', 'znapzend_data' => '1', 'exclusion' => '^.*CanaryPattern.*$', 'mystery' => 'CanaryValue one', 'snap_prefix' => 'CanaryPrefix_', 'directory_listing' => "tank/CanaryDs One\ntank/CanaryGone Two\nghostpool/CanaryGhost\nCanaryBare\nCanaryClient/photos", 'replica_accept' => 'tank/CanaryDs One', 'size_units' => 'Canary Customer');
 // A run on that server, rewritten and packed: [the zip's path or null, why not, the folder its zip was unpacked into].
@@ -168,6 +172,11 @@ same(1, preg_match('~^'.preg_quote($root, '~').'/boot/logs/zfs\.master-diagnosti
 same(array(array(), ''), array(glob($root.'/boot/logs/*.part'), $why), 'and nothing of its packing is left beside it, with nothing left undone to say');
 $files = $ours($out);
 same(array(), $leaks($files), 'no name, address, host or key is in the plugin\'s files');
+// A lock left from before receive slots were named by the area's guid: its hash of the area's name is in no file, as it is a name.
+$hashed = hash('sha256', 'tank/CanaryArea/canarysender');
+same(array(array(), 1, 1), array(array_keys(array_filter($files, function($text) use ($hashed) { return strpos($text, $hashed) !== false; })),
+	preg_match('~/jobs/replica-serve/4711\.2\.lock: free$~m', $files['plugin/jobs.txt']), preg_match('~^/tmp(?:/name-[0-9a-f]{8,}){4}$~m', $files['plugin/jobs.txt'])),
+	'a lock named by a hash of a name is tokens, one named by a guid stays as it is: '.$files['plugin/jobs.txt']);
 foreach (array_merge(array_column(zfsmDiagCollectors(), 0), array('names.txt', 'README.txt', 'summary.txt', 'collectors.txt')) as $file) same(true, isset($files[$file]), $file.' is in the zip');
 // The token the run gave $name: it must have met the name, and names.txt must have the token with the name's shape.
 $token = function($name) use ($files) {
