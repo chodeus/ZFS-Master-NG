@@ -6,13 +6,25 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.15.1">
-<!ENTITY md5 "7c0d50d80913cc5cac4ada3e70b30052">
+<!ENTITY version "2026.11.16.1">
+<!ENTITY md5 "47423da148041f17d398b49770337873">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16.1
+- Replicate can now run on a schedule: set one up in the Replicate dialog
+- A new schedule gets a minute of its own, and Settings marks a schedule whose snapshot names repeat after Snapshots Pattern changes
+- A scheduled run waits out a busy dataset, and clash checks cover that dataset's other schedules
+- A scheduled run that carries on a stopped one still sends its own snapshot, reports errors and notifies once, at its end
+- Diagnostics name receive-slot locks by the area's guid, so they no longer give the receiving dataset's name away
+- Diagnostics keep times, dates, error names and the page's theme readable, and a folder's failed line keeps its reason
+- The Unraid Diagnostics help now says Unraid's disk list can show mounted datasets by name
+- Row badges stay level next to another plugin's icons on the Main tab
+- A dataset whose mount point holds a carriage return now shows on the Main tab
+- Label hints no longer stay up after a click opens Unraid's help
 
 ###2026.11.15.1
 - Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server

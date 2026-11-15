@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.16.1 (beta)
 
 - Replicate can now run on a schedule: set one up in the Replicate dialog
 - A new schedule gets a minute of its own, and Settings marks a schedule whose snapshot names repeat after Snapshots Pattern changes
