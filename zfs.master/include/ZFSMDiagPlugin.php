@@ -224,10 +224,10 @@ function zfsmDiagPluginFiles() {
 	return $sums === false ? null : array_values(array_filter(array_keys($sums), function($file) use ($dir) { return is_file($dir.'/'.$file); }));
 }
 
-// Whether a crontab's lines hold the alert check as zfsmAlertCron writes it, not commented out: another of the plugin's jobs
-// is not the alert check.
-function zfsmDiagAlertLine($lines) {
-	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/alerts\.php check(\s|$)~', $lines);
+// Whether a crontab's lines run the plugin's script $command (a pattern, as 'alerts\.php check'), not commented out: another
+// of the plugin's jobs is not that one.
+function zfsmDiagCronLine($lines, $command) {
+	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/'.$command.'(\s|$)~', $lines);
 }
 
 // Scheduled replication: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
@@ -238,7 +238,6 @@ function zfsmDiagReplicaSchedules($ctx) {
 	$unread = $read === null && zfsmDiagWhole('file_get_contents', $file) === false;
 	list($live, $live_unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'scripts/schedule.php run ', 200);
 	list($kept, $kept_unread) = zfsmDiagMatchingLines(array($cron), 'scripts/schedule.php run ', 200);
-	$has = function($lines, $id) { return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/schedule\.php run '.$id.'(\s|$)~', $lines); };
 	$rows = '';
 	foreach ($read['valid'] ?? array() as $id => $job) {
 		zfsmDiagKnowWord($job['server']);
@@ -246,8 +245,8 @@ function zfsmDiagReplicaSchedules($ctx) {
 		$failures = zfsmScheduleFailures($id);
 		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $failures))."\n";
 		$wrong = array(
-			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !$has($live, $id),
-			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !$has($kept, $id),
+			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
+			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
 			'replication schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
 		);
 		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
@@ -274,10 +273,10 @@ function zfsmDiagSchedule($ctx) {
 	$uptime = zfsmUptime();
 	$quiet = time() - max((int)@filemtime($state), (int)@filemtime($cron), $uptime > 0 ? time() - $uptime : 0);
 	if ($interval > 0 && $unread) zfsmDiagFinding('alerts are on, but the crontab could not be read');
-	elseif ($interval > 0 && !zfsmDiagAlertLine($live)) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
+	elseif ($interval > 0 && !zfsmDiagCronLine($live, 'alerts\.php check')) zfsmDiagFinding('alerts are on, but the crontab has no line for them');
 	elseif ($interval > 0 && $quiet > 120 * $interval) zfsmDiagFinding('alerts are on every '.$interval.' minutes, but the last check was '.(int)($quiet / 60).' minutes ago');
 	// A restart builds the crontab from the flash drive's file: without the line there, the checks stop then.
-	if ($interval > 0 && !$unkept && !zfsmDiagAlertLine($kept)) zfsmDiagFinding('alerts are on, but the schedule file on the flash drive has no line for them, so they stop at the next restart');
+	if ($interval > 0 && !$unkept && !zfsmDiagCronLine($kept, 'alerts\.php check')) zfsmDiagFinding('alerts are on, but the schedule file on the flash drive has no line for them, so they stop at the next restart');
 	return 'alerts: '.($interval > 0 ? 'every '.$interval.' minutes' : 'off')."\n"
 		.'last check: '.($checked === null ? 'never' : $checked.' seconds ago')."\n\n"
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))

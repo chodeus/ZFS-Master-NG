@@ -87,9 +87,28 @@ same(array(true, true, false, false, false, false, false), array_map('zfsmSchedu
 	array('server' => 'nas', 'dest' => 'a/b') + $hourly, array('dest' => 'data') + $hourly, array('every' => 'minutely') + $hourly, array('hour' => 24) + $daily, array('hour' => '3') + $daily)),
 	'a copy here is a dataset in a pool, one on a server a name in its area, and nothing runs more often than hourly');
 
+// A new schedule's minute is one no other schedule of its dataset runs at, as two at once would skip one; others may share it.
+$taken = array();
+foreach (range(0, 58) as $minute) $taken[sprintf('%04x', $minute).'0000'] = array('id' => sprintf('%04x', $minute).'0000') + $hourly;
+foreach (range(1, 20) as $try) same(59, zfsmScheduleMinute(zfsmScheduleNewId($taken, 'tank/data')), 'the one minute left for tank/data');
+same(true, count(array_unique(array_map(function() use ($taken) { return zfsmScheduleMinute(zfsmScheduleNewId($taken, 'tank/other')); }, range(1, 40)))) > 1, 'any minute for another dataset');
+
+// Cron's next run after a time, here in UTC, and the snapshot names it gives against Repeat's own run and the run after it.
+$at = function($text) { return (new DateTime($text, new DateTimeZone('UTC')))->getTimestamp(); };
+date_default_timezone_set('UTC');
+same(array($at('2026-11-15 10:15'), $at('2026-11-15 11:15'), $at('2026-11-16 03:07'), $at('2026-11-17 23:00'), $at('2026-11-24 23:00')),
+	array(zfsmScheduleNext($hourly, $at('2026-11-15 10:05')), zfsmScheduleNext($hourly, $at('2026-11-15 10:15')), zfsmScheduleNext($daily, $at('2026-11-15 10:05')), zfsmScheduleNext($weekly, $at('2026-11-15 10:05')), zfsmScheduleNext($weekly, $at('2026-11-17 23:00'))),
+	'the next minute it names, past the hour, day or weekday it names');
+$hours = array('snap_pattern' => 'Y-m-d-H') + $cfg;
+same(array('Snapshots Pattern would give this run and the next, at 10:15, the same snapshot name', '', 'Snapshots Pattern would give two runs an hour apart the same snapshot name', 'Snapshots Pattern would give two runs a week apart the same snapshot name', ''),
+	array(zfsmScheduleClash($hourly, $hours, $at('2026-11-15 10:05'), true), zfsmScheduleClash($hourly, $hours, $at('2026-11-15 10:20'), true), zfsmScheduleClash($hourly, array('snap_pattern' => 'Y-m-d') + $cfg, $at('2026-11-15 10:20'), false),
+		zfsmScheduleClash($weekly, array('snap_pattern' => 'D-H') + $cfg, $at('2026-11-15 10:05'), true), zfsmScheduleClash($daily, array('snap_pattern' => 'Y-m-d') + $cfg, $at('2026-11-15 10:05'), true)),
+	'an hourly one at :15 made at 10:05 would name its 10:15 run as the first, and made at 10:20 would not; a day\'s name repeats each hour and a weekday\'s each week, but a daily one\'s does not');
+same('Snapshots Pattern would give this run and the next, at 03:07, the same snapshot name', zfsmScheduleClash($daily, array('snap_pattern' => 'Y-m-d') + $cfg, $at('2026-11-15 01:00'), true), 'a daily one at 03:07 made at 01:00 runs again that day');
+
 // Repeat saves the schedule and runs it now: the first run is the dialog's own, so it may send in full.
 $reset();
-$answer = $add('tank/data', 'backup/data', '', 'hourly', -1, -1, $cfg);
+$answer = $add('tank/data', '', 'backup/data', '', 'hourly', -1, -1, $cfg);
 $jobs = $stored();
 same(array(1, 'tank/data', 'backup/data', '', 'hourly', 0, 0), array(count($jobs), $jobs[0]['dataset'], $jobs[0]['dest'], $jobs[0]['server'], $jobs[0]['every'], $jobs[0]['hour'], $jobs[0]['day']), 'the schedule is saved');
 $id = $jobs[0]['id'];
@@ -100,11 +119,13 @@ $taken = count($names('tank/data', 'snapshot'));
 
 // Refused before anything runs: a second schedule for that copy, one that runs no copy, and one whose snapshot names would repeat.
 $reset();
-same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', 'backup/data', '', 'daily', 4, 0, $cfg)['failed'], 'a second schedule for one copy');
-same(array('tank/data' => 'Nothing was scheduled: pick how often and when, and give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', 'backup/two', '', 'daily', -1, 0, $cfg)['failed'], 'a daily one with no hour');
-same(array('tank/data' => 'Nothing was scheduled: pick how often and when, and give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', 'backup/two', '', 'minutely', 0, 0, $cfg)['failed'], 'one more often than hourly');
-same(array('tank/data' => 'Nothing was scheduled: Snapshots Pattern would give two runs an hour apart the same snapshot name; add the time to it in Settings'), zfsmScheduleAdd('tank/data', 'backup/two', '', 'hourly', 0, 0, array('snap_pattern' => 'Ymd') + $cfg)['failed'], 'an hourly one whose pattern has no hour');
-same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', 'nowhere/data', '', 'weekly', 3, 2, $cfg)['failed'], 'one whose first run can\'t start says why');
+same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'daily', 4, 0, $cfg)['failed'], 'a second schedule for one copy');
+same(array('tank/data' => 'Nothing was scheduled: pick how often and when, and give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'daily', -1, 0, $cfg)['failed'], 'a daily one with no hour');
+same(array('tank/data' => 'Nothing was scheduled: pick how often and when, and give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'minutely', 0, 0, $cfg)['failed'], 'one more often than hourly');
+same(1, preg_match('/^Nothing was scheduled: Snapshots Pattern would give (?:this run and the next, at [0-2][0-9]:[0-5][0-9],|two runs an hour apart) the same snapshot name; add the time to it in Settings$/D', zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', 0, 0, array('snap_pattern' => 'Ymd') + $cfg)['failed']['tank/data'] ?? ''), 'an hourly one whose pattern has no hour');
+same(array('tank/data' => 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now'), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'daily', 3, 0, $cfg)['failed'], 'one with a snapshot picked');
+same(array('tank/data' => 'Nothing was scheduled: pick how often and when, and give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'often', 3, 0, $cfg)['failed'], 'and one that repeats no way it knows, with a snapshot picked too');
+same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'weekly', 3, 2, $cfg)['failed'], 'one whose first run can\'t start says why');
 same(array($jobs, array(), array(), $taken), array($stored(), $read('cron.log'), $sends(), count($names('tank/data', 'snapshot'))), 'and none of them saves, runs or takes a snapshot');
 
 // Cron's runs take a snapshot and send the changes; one that works sends no notification.
@@ -122,14 +143,15 @@ same(array($gone.'. Later problems of this schedule are logged in /var/log/zfs.m
 same(array(array(), $taken + 1), array($sends(), count($names('tank/data', 'snapshot'))), 'sends nothing and removes the snapshot it took');
 same(1, zfsmScheduleRun($id, $cfg, time() + 10800), 'the next one fails too');
 same(array(1, 2), array(count($read('notify-detail.log')), zfsmScheduleFailures($id)), 'without another notification; the problems are counted');
-same(true, strpos(zfsmSchedulesHtml(), '2 run(s) in a row with a problem') !== false, 'and Settings shows the count: '.zfsmSchedulesHtml());
+same(true, strpos(zfsmSchedulesHtml($cfg), '2 run(s) in a row with a problem') !== false, 'and Settings shows the count: '.zfsmSchedulesHtml($cfg));
+same(array(false, true), array(strpos(zfsmSchedulesHtml($cfg), 'Snapshots Pattern'), strpos(zfsmSchedulesHtml(array('snap_pattern' => 'Y-m-d') + $cfg), 'Snapshots Pattern would give two runs an hour apart the same snapshot name, so that run fails: add the time to Snapshots Pattern') !== false), 'and, with Snapshots Pattern changed since, that its runs\' names repeat');
 same(1, preg_match('/Scheduled replication '.$id.': 2 run\(s\) in a row with a problem$/m', (string)@file_get_contents(zfsmLogFile())), 'each problem is logged with its count');
 // Replicated once by hand, the next scheduled run works and says so.
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a run by hand makes a new copy');
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, time() + 14400), 'and the next scheduled run works');
 same(1, preg_match('/^normal: Replication of tank\/data@repl-[0-9]{14} to backup\/data finished \(changes since b\)\. It works again after 2 run\(s\) with a problem\.$/D', $read('notify-detail.log')[0] ?? ''), 'its notification says it works again: '.implode(' | ', $read('notify-detail.log')));
-same(array(0, false), array(zfsmScheduleFailures($id), strpos(zfsmSchedulesHtml(), 'with a problem')), 'the count is cleared');
+same(array(0, false), array(zfsmScheduleFailures($id), strpos(zfsmSchedulesHtml($cfg), 'with a problem')), 'the count is cleared');
 // Where the count can't be kept, each problem notifies, without saying later ones won't.
 $state = zfsmJobDir('schedule');
 rename($state, $state.'.away');
@@ -163,29 +185,29 @@ same(array(2, 'Usage: schedule.php run <schedule id>'), $run('run ../x'), 'anyth
 $saved = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), '{"id":"'.$id.'"}');
 $unreadable = zfsmScheduleFile().' could not be read as a list of schedules; fix or remove it first';
-same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', 'backup/two', '', 'daily', 1, 0, $cfg)['failed'], zfsmScheduleRemove($id), file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
-same(true, strpos(zfsmSchedulesHtml(), zfsmHtml($unreadable)) !== false, 'Settings says so');
+same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'daily', 1, 0, $cfg)['failed'], zfsmScheduleRemove($id)['why'], file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
+same(true, strpos(zfsmSchedulesHtml($cfg), zfsmHtml($unreadable)) !== false, 'Settings says so');
 $reset();
 same(1, zfsmScheduleRun($id, $cfg, time()), 'and a run can\'t start');
 same(array('warning: Scheduled replication not started: '.zfsmSafeText($unreadable).'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'which it notifies');
 @unlink(zfsmScheduleStateFile($id));
 file_put_contents(zfsmScheduleFile(), '[{"id":"zz"},'.substr($saved, 1));
-same(true, strpos(zfsmSchedulesHtml(), '1 record(s) in '.zfsmHtml(zfsmScheduleFile()).' are not schedules the plugin can use') !== false, 'a record it can\'t use is counted in Settings');
+same(true, strpos(zfsmSchedulesHtml($cfg), '1 record(s) in '.zfsmHtml(zfsmScheduleFile()).' are not schedules the plugin can use') !== false, 'a record it can\'t use is counted in Settings');
 
 // Remove takes the schedule out of the list and the cron file, and Unraid rebuilds its crontab; Settings is refused while another change is saved.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same('Another change to the schedules is being saved; try again', zfsmScheduleRemove($id), 'a change while another is being saved');
+same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id), 'a change while another is being saved');
 zfsmJobUnlock($lock);
 $reset();
-same('', zfsmScheduleRemove($id), 'removed');
+same(array('saved' => true, 'why' => ''), zfsmScheduleRemove($id), 'removed');
 same(array(array(array('id' => 'zz')), null, array('ran')), array($stored(), $cron(), $read('cron.log')), 'the record it can\'t use stays; the cron file goes, and the crontab is rebuilt');
-same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id), zfsmScheduleRemove('../x')), 'removing it again, or something that is no id');
+same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id)['why'], zfsmScheduleRemove('../x')['why']), 'removing it again, or something that is no id');
 
 // A crontab that can't be rebuilt: the schedule is saved and its first run started, and the answer says cron runs the ones it had.
 $reset();
 touch($work.'/cron-fail');
 // Its own prefix: the test's first run took a snapshot named for this same second.
-$answer = $add('tank/data', 'backup/data', '', 'weekly', 5, 6, array('snap_prefix' => 'weekly-') + $cfg);
+$answer = $add('tank/data', '', 'backup/data', '', 'weekly', 5, 6, array('snap_prefix' => 'weekly-') + $cfg);
 unlink($work.'/cron-fail');
 same(array('succeeded' => array('tank/data' => 'Replication to backup/data started; a notification says when it is done'), 'failed' => array('tank/data' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts')),
 	$answer, 'the answer says both');
@@ -194,8 +216,8 @@ same(array(2, 1), array(count($stored()), preg_match('/^every Saturday at 05:[0-
 $weekly_id = $stored()[0]['id'];
 file_put_contents(zfsmScheduleStateFile($weekly_id), '{"failures":1}');
 touch($work.'/cron-fail');
-same('The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts', zfsmScheduleRemove($weekly_id), 'a removal whose crontab can\'t be rebuilt');
+same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id), 'a removal whose crontab can\'t be rebuilt');
 unlink($work.'/cron-fail');
-same(array(array(array('id' => 'zz')), false, 0), array($stored(), strpos(zfsmSchedulesHtml(), 'tank/data'), zfsmScheduleFailures($weekly_id)), 'is removed from the list and Settings, with its count');
+same(array(array(array('id' => 'zz')), false, 0), array($stored(), strpos(zfsmSchedulesHtml($cfg), 'tank/data'), zfsmScheduleFailures($weekly_id)), 'is removed from the list and Settings, with its count');
 
 echo "schedule tests passed\n";

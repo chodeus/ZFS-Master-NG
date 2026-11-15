@@ -92,7 +92,7 @@ function zfsmReplicateHtml(options, zdataset) {
 	html += '<p id="zfsm-replicate-hour-row" style="margin:.5em 0;display:none"><label style="display:block">Starts between:<select id="zfsm-replicate-hour" style="width:100%">'+hours+'</select></label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p>'
-		+'<p style="margin:.5em 0">A repeat runs now, then at the same minute each time in this server\'s time zone, taking a new snapshot each run. Settings lists the schedules. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
+		+'<p style="margin:.5em 0">A repeat runs now, then each hour, day or week at a minute of its own, in this server\'s time zone (the answer and Settings show when), taking a new snapshot each run. Settings lists the schedules. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
 }
 
 // Repeat's rows: the day for a weekly run, the hour for a daily or weekly one. A repeat takes its own snapshot, so Snapshot shows Take one now.

@@ -23,7 +23,8 @@ $routes = array(
 	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data'),
 	'schedulepicked' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'every' => 'daily', 'hour' => '3', 'day' => '0'),
 	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'weekly', 'hour' => '3', 'day' => '2'),
-	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x')
+	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x'),
+	'scheduleremovesaved' => array('cmd' => 'scheduleremove', 'id' => '0a1b2c3d')
 );
 $replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere');
 
@@ -47,6 +48,15 @@ if (in_array($route, $replication, true)) {
 	file_put_contents($pool.'/marks', "tank/data@a\t11\t10\ntank/data@b\t12\t20\n");
 	file_put_contents($pool.'/props', '');
 	putenv('ZFSM_TEST_REPL_DIR='.$pool);
+}
+
+// A schedule to remove, on the tmpfs the runner mounts on /boot/config. No update_cron here, so Unraid's crontab is not rebuilt.
+if ($route === 'scheduleremovesaved') {
+	zfsmTestScratch('/boot/config');
+	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
+	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
+	file_put_contents('/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('id' => '0a1b2c3d', 'dataset' => 'tank/data', 'dest' => 'backup/data', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0))));
+	register_shutdown_function(function() { @unlink('/boot/config/plugins/zfs.master/schedules.json'); });
 }
 
 // These need a token from the review the dialogs show first.
@@ -74,7 +84,7 @@ if ($route === 'snapshotdataset_utc') {
 }
 // Replication: the preview plans a first, full copy; a start or schedule whose copy has nowhere to go says why and starts nothing,
 // and a schedule names no snapshot of its own, as each run takes one. A remove of something that is no schedule's id says so.
-if (in_array($route, $replication, true) || $route === 'scheduleremove') {
+if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') === 0) {
 	$failed = $answer['failed']['tank/data'] ?? '';
 	$ok = array(
 		'previewreplicate' => ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full',
@@ -82,6 +92,8 @@ if (in_array($route, $replication, true) || $route === 'scheduleremove') {
 		'schedulepicked' => $failed === 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now',
 		'schedulenowhere' => $failed === 'Nothing was scheduled: The copy goes inside nowhere, which doesn\'t exist' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremove' => $answer === array('error' => 'No such schedule'),
+		'scheduleremovesaved' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && ($answer['schedules_html'] ?? null) === 'None yet'
+			&& file_get_contents('/boot/config/plugins/zfs.master/schedules.json') === "[]\n",
 	)[$route];
 	if (!$ok) {
 		fwrite(STDERR, $route.' answered: '.$output."\n");

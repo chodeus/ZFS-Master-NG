@@ -213,19 +213,18 @@ try {
 			break;
 
 		case 'replicatedataset':
-			// Repeat (every) is empty for Once; a schedule takes a new snapshot each run, from its first.
+			// Repeat (every) is empty for Once.
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
-			if ($every === '') $answer = zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'));
-			elseif (zfsmPostString('snapshot') !== '') $answer = zfsmFailure($zdataset, 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now');
-			else $answer = zfsmScheduleAdd($zdataset, zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostSmall('hour'), zfsmPostSmall('day'), $zfsm_cfg);
+			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostSmall('hour'), zfsmPostSmall('day'), $zfsm_cfg);
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
 		case 'scheduleremove':
 			// Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$why = zfsmScheduleRemove(zfsmPostString('id'));
-			echo zfsmJson(($why !== '' ? array('error' => $why) : array()) + (zfsmScheduleSaved($why) ? array('schedules_html' => zfsmSchedulesHtml()) : array()));
+			$removed = zfsmScheduleRemove(zfsmPostString('id'));
+			echo zfsmJson(($removed['why'] !== '' ? array('error' => $removed['why']) : array()) + ($removed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 
 		case 'convertdirectory':

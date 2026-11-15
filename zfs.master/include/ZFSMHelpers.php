@@ -334,7 +334,6 @@ function zfsmCommandError($result, $fallback) {
 	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
 }
 
-// A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
 function zfsmValidPoolName($name) {
 	return is_string($name) && strlen($name) > 0 && strlen($name) <= 255
 		&& preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $name) === 1;
@@ -354,6 +353,12 @@ function zfsmValidDatasetName($name) {
 	return zfsmValidPoolName($parts[0]);
 }
 
+function zfsmNewSnapshotName($cfg, $now) {
+	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
+	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
+// A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
 function zfsmStatePath($path) {
 	return ($GLOBALS['zfsm_root'] ?? '').$path;
 }

@@ -290,10 +290,10 @@ _(Add A Server)_:
 <summary>_(Scheduled Replication)_</summary>
 
 _(Schedules)_:
-: <span id="zfsm-schedules"><?=zfsmSchedulesHtml()?></span> <span id="zfsm-schedules-status" style="color:#e22828"></span>
+: <span id="zfsm-schedules"><?=zfsmSchedulesHtml($zfsm_cfg)?></span> <span id="zfsm-schedules-status" style="color:#e22828"></span>
 
 :zc_settings_schedules_plug:
-> The replications that run on their own. To add one, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again at the same minute past each hour, day or week, in this server's time zone.
+> The replications that run on their own. To add one, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again each hour, day or week at a minute of its own, in this server's time zone. This list shows when.
 >
 > - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. Its snapshots are kept on both sides; remove old ones by hand.
 > - A run that finds its copy gone doesn't send it in full again: replicate it once by hand to make a new copy.
