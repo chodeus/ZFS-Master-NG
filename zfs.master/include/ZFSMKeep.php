@@ -1,5 +1,6 @@
 <?php
-// Keep: after a schedule's run lands, its snapshots past the newest N go; a run holds what it sends until one to the copy lands.
+// Keep: after a schedule's run lands, its snapshots past the newest N go; a run holds what it sends until a run to the copy lands
+// or none is left to carry on.
 // zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases.
 
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');

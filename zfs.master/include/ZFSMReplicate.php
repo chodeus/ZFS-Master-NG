@@ -170,7 +170,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 }
 
 // One plan of zfsmRunReplicate's sent, with its log lines and the row's progress: array(0 when it landed, its notification's text and type).
-// $tag: the copy's (zfsmKeepTag), whose holds a stopped run puts on and a landed one takes off.
+// $tag: the copy's (zfsmKeepTag), whose holds each run puts on before its send and a landed one takes off.
 function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag) {
 	$plan['size'] = zfsmReplicateEstimate($plan);
 	$what = $plan['snapshot'].' to '.zfsmReplicaTargetWhere($target, $plan['dest']);
