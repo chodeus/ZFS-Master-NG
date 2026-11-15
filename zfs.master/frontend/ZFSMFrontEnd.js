@@ -177,6 +177,31 @@ function zfsmDiagRecord(part, make) {
 	} catch (error) {}
 }
 
+// The first shown icon of each kind, its middle against its name's first line in CSS px, down positive. Kinds that sit level
+// read alike; one far from the rest was moved by another sheet's rule.
+function zfsmIconOffsets() {
+	const offsets = {};
+	try {
+		for (const label of document.querySelectorAll('#zfs_master tbody .zfsm-name-label')) {
+			const kinds = Array.from(label.querySelectorAll('i.fa'), icon => [icon, Array.from(icon.classList).find(name => name.startsWith('fa-'))])
+				.filter(([, kind]) => kind && !(kind in offsets));
+			const name = Array.from(label.childNodes).filter(node => node.nodeType === 3 && node.textContent.trim()).pop();
+			if (!kinds.length || !name) continue;
+			const range = document.createRange();
+			range.selectNodeContents(name);
+			const line = range.getClientRects()[0];
+			for (const [icon, kind] of kinds) {
+				const box = icon.getBoundingClientRect();
+				// A folded row's icons, and one a sheet hides, have no box: they are not shown.
+				if (box.height) offsets[kind] = Math.round((box.top + box.height / 2 - line.top - line.height / 2) * 10) / 10;
+			}
+		}
+	} catch (error) {
+		offsets.unmeasured = String(error);
+	}
+	return offsets;
+}
+
 function zfsmDiagBounded(value) {
 	if (typeof value === 'string') return value.slice(0, 200);
 	if (Array.isArray(value)) return value.slice(0, 40).map(zfsmDiagBounded);
@@ -414,19 +439,19 @@ function datasetBadges(zdataset) {
 	const znap_properties = getZnapProperties(zdataset);
 
 	if (Object.keys(znap_properties).length > 0) {
-		html += detailsLink('znapzend plan of '+zdataset['name'], '<i class="fa fa-clock-o fa-append"></i>', implodeWithKeys('<br>', znap_properties));
+		html += detailsLink('znapzend plan of '+zdataset['name'], '<i class="fa fa-clock-o zfsm-row-badge"></i>', implodeWithKeys('<br>', znap_properties));
 	}
 
 	if (Object.keys(zdataset.child).length > 0 || hasDirectories(zdataset)) {
-		html += '<i class="fa fa-minus-square fa-append" name="'+escapeHtml(zdataset['name'])+'" role="button" tabindex="0" aria-expanded="true" aria-label="'+escapeHtml('Contents of '+zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
+		html += '<i class="fa fa-minus-square zfsm-row-badge" name="'+escapeHtml(zdataset['name'])+'" role="button" tabindex="0" aria-expanded="true" aria-label="'+escapeHtml('Contents of '+zdataset['name'])+'" style="cursor:pointer" onclick="toggleDataset('+safeJsArg(zdataset['name'])+');"></i>';
 	}
 
 	if (zdataset['origin'] !== undefined) {
-		html += '<i class="fa fa-clone fa-append"></i>';
+		html += '<i class="fa fa-clone zfsm-row-badge"></i>';
 	}
 
 	if (zdataset['keystatus'] != 'none') {
-		html += zdataset['keystatus'] == 'available' ? '<i class="fa fa-unlock fa-append"></i>' : '<i class="fa fa-lock fa-append"></i>';
+		html += zdataset['keystatus'] == 'available' ? '<i class="fa fa-unlock zfsm-row-badge"></i>' : '<i class="fa fa-lock zfsm-row-badge"></i>';
 	}
 
 	return html;

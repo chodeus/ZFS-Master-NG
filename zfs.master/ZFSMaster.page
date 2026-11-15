@@ -61,8 +61,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
   #zfs_master.zfs_table .zfsm-lead-row{display:flex;align-items:center}
   #zfs_master.zfs_table .zfsm-row-progress{flex:1 1 auto;min-width:0}
   #zfs_master.zfs_table .fa-plus-square,#zfs_master.zfs_table .fa-minus-square{font-size:calc(1em + 1px)}
-  /* Unraid's i.icon rule centres and spaces the drive, folder and camera; the badges and fold box need the same: tests/row_icon_render_test.cjs. */
-  #zfs_master.zfs_table .fa-append{vertical-align:middle;margin-right:4px}
+  /* Unraid's i.icon rule centres and spaces the drive, folder and camera; the badges and fold box need the same: tests/row_icon_render_test.cjs.
+     Not fa-append: other plugins move that class page-wide. */
+  #zfs_master.zfs_table .zfsm-row-badge{vertical-align:middle;margin-right:4px}
   /* A row's details show from the end of the page instead (zfsmShowTip), where nothing cuts them off. */
   #zfs_master a.info:hover>span{display:none}
   
@@ -344,10 +345,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	zfsmRestoreCopyProgress();
 	processHiddenDatasets();
 	zfsmRestoreRowFocus(focus);
-	// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here.
+	// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here, its icon rules in icons.
 	zfsmDiagRecord('render', function() {
 		return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
-			headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get()};
+			headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get(), icons: zfsmIconOffsets()};
 	});
   }
 
@@ -437,7 +438,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   // A folded dataset shows a plus, and says it is collapsed to a screen reader.
   function zfsmFoldIcon(zdataset, folded) {
-	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' fa-append', 'aria-expanded': folded ? 'false' : 'true'});
+	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' zfsm-row-badge', 'aria-expanded': folded ? 'false' : 'true'});
   }
 
   function toggleDataset(zdataset) {
