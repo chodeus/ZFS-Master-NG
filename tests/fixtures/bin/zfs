@@ -87,8 +87,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		stream=$(tail -c +313)
 		header=$(printf '%s\n' "$stream" | head -1)
 		[ -n "$header" ] || { printf 'cannot receive: failed to read from stream\n' >&2; exit 1; }
+		# ZFSM_TEST_RECV_FAIL: 1 fails every receive, changes only an incremental one.
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = 1 ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
+		[ "${ZFSM_TEST_RECV_FAIL:-0}" = changes ] && [ "$base" != - ] && [ "$base" != RESUME ] && { printf 'cannot receive incremental stream: out of space\n' >&2; exit 1; }
 		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
 		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
 			printf 'cannot receive incremental stream: most recent snapshot of %s does not match incremental source\n' "$dest" >&2; exit 1

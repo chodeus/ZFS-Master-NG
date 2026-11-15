@@ -773,7 +773,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		let timer = null;
 		// Without trusted servers there is no Server select: the copy stays on this server.
 		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim(),
-			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value});
+			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value, every: popup.querySelector('#zfsm-replicate-every').value,
+			hour: popup.querySelector('#zfsm-replicate-hour').value, day: popup.querySelector('#zfsm-replicate-day').value});
 		Swal2.fire({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options, zdataset),
@@ -793,6 +794,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				};
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				popup.querySelector('#zfsm-replicate-every').addEventListener('change', () => {
+					const snapshot = popup.querySelector('#zfsm-replicate-snapshot').value;
+					// Repeat sets Snapshot to Take one now: the plan changes only when Snapshot did.
+					if (zfsmReplicateRepeatSync(popup) !== '' && snapshot !== '') plan();
+				});
 				const server = popup.querySelector('#zfsm-replicate-server');
 				let filled = popup.querySelector('#zfsm-replicate-dest').value;
 				if (server) server.addEventListener('change', () => {
@@ -809,7 +815,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		}).then((result) => {
 			clearTimeout(timer);
 			if (!result.isConfirmed) return;
-			$.post('<?=$urlzmadmin?>', {cmd: 'replicatedataset', zdataset: zdataset, snapshot: result.value.snapshot, destination: result.value.destination, server: result.value.server}, function(data) {
+			$.post('<?=$urlzmadmin?>', $.extend({cmd: 'replicatedataset', zdataset: zdataset}, result.value), function(data) {
 				Swal2.fire({title: 'Replication Result', icon: 'info', html: formatAnswer(parseJSONResponse(data))});
 			});
 		});

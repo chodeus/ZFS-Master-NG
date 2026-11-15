@@ -3,11 +3,10 @@
 
 define('ZFSM_ALERT_GRACE', 600);
 
-// The cron file for the setting: Unraid's own format (dynamix monitor.cron); '' when alerts are off.
+// The cron file for the setting; '' when alerts are off.
 function zfsmAlertCron($interval, $script) {
 	$when = array(15 => '*/15 * * * *', 60 => '7 * * * *', 1440 => '17 4 * * *');
-	if (!isset($when[(int)$interval])) return '';
-	return "# Generated ZFS Master NG alert schedule:\n".$when[(int)$interval].' '.$script." check &> /dev/null\n\n";
+	return isset($when[(int)$interval]) ? zfsmCronText('alert schedule', array($when[(int)$interval].' '.$script.' check')) : '';
 }
 
 // Each pool in `zpool status -p` output: its state, devices that are not ONLINE or have errors, and its errors: line.

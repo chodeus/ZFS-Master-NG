@@ -334,6 +334,35 @@ function zfsmCommandError($result, $fallback) {
 	return $text !== '' ? $text : $fallback.' (exit '.(int)($result['code'] ?? 1).')';
 }
 
+function zfsmValidPoolName($name) {
+	return is_string($name) && strlen($name) > 0 && strlen($name) <= 255
+		&& preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $name) === 1;
+}
+
+// Mirrors valid_char() in OpenZFS zfs_namecheck.c; Unraid shares with spaces become datasets.
+function zfsmValidNameComponent($part) {
+	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
+}
+
+function zfsmValidDatasetName($name) {
+	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
+	$parts = explode('/', $name);
+	foreach ($parts as $part) {
+		if (!zfsmValidNameComponent($part)) return false;
+	}
+	return zfsmValidPoolName($parts[0]);
+}
+
+// Unraid's cron file format (dynamix monitor.cron), each line's output dropped; '' with no lines.
+function zfsmCronText($what, $lines) {
+	return $lines ? '# Generated ZFS Master NG '.$what.":\n".implode('', array_map(function($line) { return $line." &> /dev/null\n"; }, $lines))."\n" : '';
+}
+
+function zfsmNewSnapshotName($cfg, $now) {
+	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
+	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
 // A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
 function zfsmStatePath($path) {
 	return ($GLOBALS['zfsm_root'] ?? '').$path;

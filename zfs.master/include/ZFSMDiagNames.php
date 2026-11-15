@@ -239,14 +239,14 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 // Whether $path is one the plugin makes in its own places, whole: a run's work folder and its files, a job's folder and its locks,
 // the plugin's lock and alert state, a package record, its files on the flash drive. Nothing else in or beside them is its own.
 function zfsmDiagOwnName($path) {
-	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts|cm))?))?';
+	$jobs = '(?:rewrite|replicate|replica-serve|replica-send|schedule|diagnostics)(?:/(?:(?:\d+|[0-9a-f]{64}\.\d+|pack|run|start|settings)\.lock|state\.json(?:\.tmp)?|[0-9a-f]{8}\.json|browser\.json|ssh-[0-9a-f]{12}(?:/(?:id_ed25519|known_hosts|cm))?))?';
 	// zfsmJobDir('') is /var/run/zfs.master. but in a test: listed after it, the fuller entry wins where they are one.
 	$names = array(
 		zfsmStatePath('/tmp/zfs.master-diag.') => '[0-9a-f]{16}(?:/(?:(?:plugin|zfs)/[a-z0-9._-]+|unraid/(?:context|diagnostics)\.txt|(?:names|README|collectors|summary)\.txt))?',
 		zfsmJobDir('') => $jobs,
 		zfsmStatePath('/var/run/zfs.master.') => '(?:lock|alerts\.json(?:\.lock)?|'.$jobs.')',
 		zfsmStatePath(rtrim('/var/log/packages/zfs.master-*', '*')) => '\d[\d.]*-[a-z0-9_]+-\d\w*',
-		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|zfs\.master-\d[\w.-]*\.t[gx]z|ssh(?:/(?:id_ed25519(?:\.pub)?|remotes\.json|new-[0-9a-f]{8}(?:\.pub)?))?)');
+		zfsmStatePath('/boot/config/plugins/zfs.master') => '/(?:zfs\.master\.cfg|alerts\.cron|schedules\.(?:json|cron)|zfs\.master-\d[\w.-]*\.t[gx]z|ssh(?:/(?:id_ed25519(?:\.pub)?|remotes\.json|new-[0-9a-f]{8}(?:\.pub)?))?)');
 	foreach ($names as $prefix => $name) {
 		if (preg_match('~^'.preg_quote($prefix, '~').$name.'$~D', $path) === 1) return true;
 	}
@@ -276,7 +276,8 @@ function zfsmDiagSystemKnown() {
 	foreach (array('black', 'white', 'azure', 'gray') as $theme) $web[] = 'webGui/styles/themes/'.$theme.'.css';
 	foreach ($files as $file) $web[] = 'plugins/zfs.master/'.$file;
 	$paths = array('/dev/null', '/proc/self/mounts', '/proc/self/mountinfo', '/proc/self/ns/mnt', '/proc/locks', '/proc/uptime', '/sys/module/zfs/version',
-		'/sys/module/zfs/parameters/zfs_bclone_enabled', '/usr/share/zfs/compatibility.d', '/dev/disk/by-id', '/dev/disk/by-uuid', '/dev/disk/by-partuuid', '/dev/disk/by-path', '/dev/mapper');
+		'/sys/module/zfs/parameters/zfs_bclone_enabled', '/usr/share/zfs/compatibility.d', '/dev/disk/by-id', '/dev/disk/by-uuid', '/dev/disk/by-partuuid', '/dev/disk/by-path', '/dev/mapper',
+		'/usr/local/sbin/update_cron');
 	foreach ($web as $file) array_push($paths, '/usr/local/emhttp/'.$file, '/'.$file);
 	foreach (array('/usr/local/sbin', '/usr/sbin', '/sbin', '/usr/local/bin', '/usr/bin', '/bin') as $folder) {
 		foreach (array('zfs', 'zpool', 'php', 'timeout', 'rsync', 'ssh', 'zip', 'cp', 'rm', 'rmdir', 'setsid', 'ps', 'sh', 'bash') as $program) $paths[] = $folder.'/'.$program;

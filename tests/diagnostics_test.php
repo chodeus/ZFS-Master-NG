@@ -381,6 +381,65 @@ same(array('1 record(s) in remotes.json are not servers the plugin can use'), $f
 has("records in remotes.json the plugin does not use: 1\n\n== servers this one sends to (name, address, port, pinned host key)\nnas4\t10.0.0.10\t22\t", $text, 'beside the servers it does');
 has("key copies in RAM: 1\n", $found('zfsmDiagReplicaSend', function() use ($work) { mkdir($work.'/jobs/replica-send/ssh-0123456789ab', 0700, true); })[1], 'a copy of the key left in RAM is counted');
 
+// Replication schedules: each by its id, its names as tokens, and its lines in schedules.cron and the live crontab.
+$job = array('id' => '0a1b2c3d', 'dataset' => 'tank/data', 'dest' => 'private copy', 'server' => 'nas3', 'every' => 'daily', 'hour' => 3, 'day' => 0);
+$scheduled = function($cron = true, $live = true, $list = null) use ($job) {
+	return function($root) use ($job, $cron, $live, $list) {
+		$line = zfsmScheduleCronText(array($job));
+		file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', $list ?? json_encode(array($job)));
+		if ($cron) file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', $line);
+		if ($live) file_put_contents($root.'/etc/cron.d/root', $line, FILE_APPEND);
+	};
+};
+has("== schedules (id, dataset, copy, when, runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
+same(array(), $found('zfsmDiagReplicaSchedules', $scheduled())[0], 'a schedule with its lines in both has no findings');
+// Through a whole run: its pools are read first, so a dataset there is named by its pool.
+$build();
+$scheduled()($root);
+zfsmDiagRun($work.'/out-schedules', $context());
+$text = (string)@file_get_contents($work.'/out-schedules/plugin/replication-schedules.txt');
+same(1, preg_match('~^0a1b2c3d\ttank/name-[0-9a-f]{8}\tname-[0-9a-f]{8} on server nas3\tevery day at 03:07\t0$~m', $text), 'each schedule by its id, with its dataset and copy as tokens and its server as a word the bundle replaces: '.$text);
+same(false, strpos($text, 'private'), 'no name of the copy');
+same(array('replication schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'replication schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
+	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');
+same(array('replication schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
+	$scheduled()($root);
+	mkdir($work.'/jobs/schedule', 0700, true);
+	file_put_contents($work.'/jobs/schedule/0a1b2c3d.json', '{"failures":3}');
+})[0], 'a schedule whose runs keep failing');
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(true, true, '{"id":"0a1b2c3d"}'));
+same(array('schedules.json is not a list of schedules, so none run: '.$root.'/boot/config/plugins/zfs.master/schedules.json'), $findings, 'a list of schedules that is no list');
+has("(schedules.json is not a list of schedules)\n", $text, 'is not "no schedules"');
+same(array('1 record(s) in schedules.json are not schedules the plugin can use'), $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array($job, array('id' => 'zz')))))[0], 'a record the plugin does not use');
+// A flash drive's read that fails once: plain files through this wrapper, whose one open of $fail fails.
+class ZfsmFlakyFile {
+	public static $fail = '';
+	public $context;
+	private $handle;
+	private static function real($call) {
+		stream_wrapper_restore('file');
+		try { return $call(); } finally { stream_wrapper_unregister('file'); stream_wrapper_register('file', self::class); }
+	}
+	public function stream_open($path, $mode) {
+		if (in_array($path, array(self::$fail, 'file://'.self::$fail), true)) { self::$fail = ''; return false; }
+		$this->handle = self::real(function() use ($path, $mode) { return @fopen($path, $mode); });
+		return $this->handle !== false;
+	}
+	public function stream_read($count) { return fread($this->handle, $count); }
+	public function stream_eof() { return feof($this->handle); }
+	public function stream_stat() { return fstat($this->handle); }
+	public function stream_close() { fclose($this->handle); }
+	public function url_stat($path, $flags) { return self::real(function() use ($path) { return @stat($path); }); }
+}
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled) {
+	$scheduled()($root);
+	ZfsmFlakyFile::$fail = zfsmScheduleFile();
+	stream_wrapper_unregister('file');
+	stream_wrapper_register('file', 'ZfsmFlakyFile');
+});
+stream_wrapper_restore('file');
+same(array('', array(), 1), array(ZfsmFlakyFile::$fail, $findings, substr_count($text, '(schedules.json could not be read)')), 'a read of schedules.json that fails once is a failed read, not a list that is no list: '.$text);
+
 // The pools and the commands running on them.
 putenv('ZFSM_TEST_POOL_HEALTH=DEGRADED');
 list($findings) = $found('zfsmDiagZpoolList');
@@ -554,6 +613,8 @@ $failed_reads = array(
 	'the list of servers to send to can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/ssh/remotes.json'); }),
 	'ident.cfg can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/ident.cfg'); }),
 	'the sending key\'s public half can\'t be opened' => array('plugin/replication-send.txt', function($root) use ($unopenable) { $unopenable($root.'/boot/config/plugins/zfs.master/ssh/id_ed25519.pub'); }),
+	'the schedules can\'t be opened' => array('plugin/replication-schedules.txt', function($root) use ($unopenable, $scheduled) { $scheduled()($root); $unopenable($root.'/boot/config/plugins/zfs.master/schedules.json'); }),
+	'schedules.cron can\'t be opened' => array('plugin/replication-schedules.txt', function($root) use ($unopenable, $scheduled) { $scheduled()($root); $unopenable($root.'/boot/config/plugins/zfs.master/schedules.cron'); }),
 	'the Main tab\'s read fails on a pool' => array('plugin/inventory.json.txt', $with('ZFSM_TEST_CHILD_LIST_FAIL', '1')),
 	'Unraid\'s version file is gone' => array('unraid/context.txt', function($root) { unlink($root.'/etc/unraid-version'); }),
 	'var.ini is gone' => array('unraid/context.txt', function($root) { unlink($root.'/var/local/emhttp/var.ini'); }),
