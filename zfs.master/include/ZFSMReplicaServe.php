@@ -210,7 +210,7 @@ function zfsmReplicaKeysHtml($keys) {
 	$html = '';
 	foreach ($keys as $key) {
 		$held = zfsmReplicaKeyHeld($key);
-		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict with no limit turned back on after it, a from= of exact IP addresses, and command= exactly replica-serve.php and a name');
+		$text = ($key['sender'] !== '' ? $key['sender'] : '?').' ('.$key['comment'].'): '.($held ? 'limited to replication' : 'its line needs restrict and no pty, forwarding or user-rc option, a from= of exact IP addresses, and command= exactly replica-serve.php and a name');
 		$html .= '<span style="display:block'.($held ? '' : ';color:#e22828').'">'.zfsmHtml($text).'</span>';
 	}
 	return $html;

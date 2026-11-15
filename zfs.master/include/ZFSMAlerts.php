@@ -80,7 +80,7 @@ function zfsmStaleProblem($output, $now, $max_days, $exclusion) {
 	$stale = array();
 	// The Main tab's rule (datasetSnapInfo in ZFSMFrontEnd.js): whole days since the newest snapshot, more than the setting.
 	foreach ($newest as $dataset => $creation) {
-		if (intdiv($now - $creation, 86400) > $max_days && !zfsmMatchesExclusion($dataset, $exclusion)) $stale[] = $dataset;
+		if (intdiv($now - $creation, 86400) > $max_days && !zfsmDatasetExcluded($dataset, $exclusion)) $stale[] = $dataset;
 	}
 	if (!$stale) return null;
 	sort($stale, SORT_STRING);

@@ -100,7 +100,8 @@ _(Debug Log)_:
 > **Yes** also writes a debug log, `/var/log/zfs.master.debug.log`: the commands the plugin runs, how each ended and how long it took, and the name of each request to its admin page.
 > Turn it on to reproduce a problem, make the diagnostics zip, then turn it off again.
 >
-> - A replication, a rewrite and a copy received from another server run their copy or rewrite commands outside the debug log, and log their own lines in `/var/log/zfs.master.log` whether this is on or not.
+> - A replication and a rewrite run their copy or rewrite commands outside the debug log, and log their own lines in `/var/log/zfs.master.log` whether this is on or not.
+> - On a server receiving copies, a sender's requests run outside the debug log too: `/var/log/zfs.master.log` has each copy received or failed, and each request refused.
 > - The rsync that copies a folder into a dataset, and a diagnostics run's own commands, are in neither log.
 > - The arguments of rsync, and of a command that loads a key or names where one is kept, are left out.
 > - Each log keeps about 1 MB at most, its oldest lines going first. A diagnostics zip holds both.
@@ -121,7 +122,7 @@ _(Dataset Exclusion Pattern)_:
 > - `/docker` hides every dataset with `/docker` in its name, such as `cache/system/docker`.
 > - It is one pattern: join several with `|`, such as `/docker|/vms`.
 > - Case is ignored. A `.` matches any character, so write `\.` for a dot.
-> - A pattern with `%` is read as a Lua pattern, the format older versions used: there a dot is `%.`, and case counts.
+> - A pattern with `%` is read as a Lua pattern, the format older versions used: there a dot is `%.`, `|` is a plain character, and case counts.
 >
 > A pattern that isn't valid is ignored, and the Main tab says so.
 :end
