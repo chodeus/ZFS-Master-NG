@@ -420,6 +420,15 @@ $plan = zfsmReplicatePlan('tank/data', 'g', 'data', array('target' => $target, '
 zfsmReplicaDisconnect($target);
 same(array('incremental', 'tank/data@f'), array($plan['mode'] ?? $plan['error'], $plan['base'] ?? null), 'and the next run there is incremental from it');
 $ssh();
+// A scheduled run there whose copy is gone sends it in full no more than one here does (tests/schedule_test.php): it notifies through its schedule.
+$reset();
+foreach (array('datasets', 'marks') as $file) file_put_contents($work.'/pool/'.$file, implode('', preg_grep('~^backup/replicas/tower/data[@\t]~', file($work.'/pool/'.$file), PREG_GREP_INVERT)));
+$notes = array();
+same(1, zfsmRunReplicate('tank/data', 'h', 'data', null, true, 'nas', array('notify' => function($title, $text, $type) use (&$notes) { $notes[] = $type.': '.$text; })), 'a scheduled run to nas whose copy is gone');
+same(array('warning: Replication of tank/data to data on server nas not started: backup/replicas/tower/data on server nas is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy'),
+	$notes, 'is refused, and says so through its schedule');
+same(array(array(), false, array()), array($read('notify-detail.log'), in_array('tank/data@h', $names('tank/data', 'snapshot'), true), $calls('send')), 'with no other notification, no send, and without the snapshot it took');
+$ssh();
 
 // A start in the background passes the server to the job, with a snapshot it takes or one picked. The job finds the key, the
 // servers and this server's name where Unraid keeps them: here the tmpfs run_http_inventory_tests.sh mounts on /boot/config.

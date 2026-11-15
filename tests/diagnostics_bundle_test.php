@@ -115,6 +115,9 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $send_ke
 	// A server this one sends to: in a row of its file, only the collector's zfsmDiagKnowWord makes its bare name a token.
 	$put('/boot/config/plugins/zfs.master/ssh/remotes.json', json_encode(array(array('name' => 'canarybackup', 'host' => '203.0.113.9', 'port' => 2222, 'key' => $remote_key))));
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519', "CanaryPrivateKey\n");
+	// Schedules here and to a server not in remotes.json, and a record the plugin can't use: only their collector names them.
+	$put('/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('id' => '0a1b2c3d', 'dataset' => 'tank/CanaryDs One', 'dest' => 'backup/CanarySchedCopy', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0),
+		array('id' => '0a1b2c3e', 'dataset' => 'tank/CanarySchedSrc', 'dest' => 'CanarySchedRemote', 'server' => 'canaryschedserver', 'every' => 'hourly', 'hour' => 0, 'day' => 0), array('id' => 'zz', 'dataset' => 'tank/CanaryOdd'))));
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $send_key." zfs.master@CanaryNas\n");
 	$put('/boot/config/ident.cfg', "NAME=\"CanaryNas\"\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
@@ -358,7 +361,7 @@ same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/lo
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
 	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock'
 	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts'
-	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm';
+	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm /boot/config/plugins/zfs.master/schedules.json /boot/config/plugins/zfs.master/schedules.cron /var/run/zfs.master.schedule/0a1b2c3d.json /var/run/zfs.master.schedule/settings.lock';
 same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
 // In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
 same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');

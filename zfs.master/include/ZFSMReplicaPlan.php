@@ -133,6 +133,11 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 		if ($base['txg'] > $snap['txg']) return $refuse($where.' already holds '.$base['name'].', which is newer than '.$from);
 		$plan = array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
 	}
+	// A bookmark for this copy means a run made it before: a schedule's full send there would refill what someone removed.
+	if ($missing && ($with['scheduled'] ?? false)) {
+		$prefix = $zdataset.'#'.zfsmReplicaBookmarkPrefix($key);
+		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.' is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
+	}
 	return array_merge($plan, array('size' => $from === null || ($with['estimate'] ?? true) === false ? null : zfsmReplicateEstimate($plan)));
 }
 

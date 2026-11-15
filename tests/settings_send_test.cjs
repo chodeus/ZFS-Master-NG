@@ -17,7 +17,8 @@ assert.equal(code.includes('<?'), false, 'no PHP in the Replicate To script');
 const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span><span id="zfsm-send-key-status"></span>'
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
-  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span></body>',
+  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span>'
+  + '<span id="zfsm-schedules"><span>tank/data to backup/data</span></span><span id="zfsm-schedules-status"></span></body>',
   {url: 'http://localhost/', runScripts: 'outside-only'});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 const posts = [];
@@ -127,5 +128,21 @@ const older = accept('backup/old');
 accept('backup/replicas').done({valid: true, missing: false});
 older.done({valid: true, missing: true});
 assert.equal(text('zfsm-replica-accept-warning'), '', 'the older answer does not replace the newer one');
+
+// Scheduled Replication: Remove asks for the schedule by its id; a refusal says why and keeps the list, and the list it answers replaces it.
+window.zfsmScheduleRemove('0a1b2c3d');
+const remove = posts.pop();
+assert.deepEqual([remove.data.cmd, remove.data.id, Object.keys(remove.data).length], ['scheduleremove', '0a1b2c3d', 2]);
+remove.done({error: 'No such schedule; it may have been removed already'});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['No such schedule; it may have been removed already', 'tank/data to backup/data'], 'a refusal says why and keeps the list');
+window.zfsmScheduleRemove('0a1b2c3d');
+posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['Unknown or missing command', 'tank/data to backup/data'], 'as does a backend failure');
+window.zfsmScheduleRemove('0a1b2c3d');
+posts.pop().done({schedules_html: 'None yet'});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', 'None yet'], 'a removal shows the list it answers, and clears the last refusal');
+window.zfsmScheduleRemove('0a1b2c3d');
+posts.pop().done({error: 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', schedules_html: 'tank/a to backup/a'});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', 'tank/a to backup/a'], 'one saved whose crontab was not rebuilt says so, and shows the list it saved');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);
