@@ -107,13 +107,17 @@ function zfsmReplicaAreaHolds($area, $again = true) {
 	return array_diff_assoc($props, $found) === array() ? '' : $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
 }
 
-// One of four receive slots per area, held until the receive ends; null when all are taken or none can be opened.
+// One of four receive slots per area, held until the receive ends, or why none is: named by the area's guid, as no name may be
+// read back from a lock (zfsmDiagOwnName).
 function zfsmReplicaReceiveSlot($area) {
+	$file = zfsmJobLockFile($area, 'replica-serve');
+	if ($file === null) return 'No receive into '.$area.' can start: its guid could not be read';
 	for ($slot = 0; $slot < 4; $slot++) {
-		$lock = zfsmJobLock(zfsmJobDir('replica-serve').'/'.hash('sha256', $area).'.'.$slot.'.lock');
+		$lock = zfsmJobLock(substr($file, 0, -strlen('.lock')).'.'.$slot.'.lock');
+		if ($lock === null) return 'No receive into '.$area.' can start: its lock could not be opened in '.dirname($file);
 		if ($lock) return $lock;
 	}
-	return null;
+	return 'No receive into '.$area.' can start while four are running';
 }
 
 function zfsmReplicaRefuse($why, $request, $from, $io) {
@@ -156,7 +160,7 @@ function zfsmServeReplica($request, $area, $io = null) {
 	}
 	if ($checked['verb'] !== 'receive') return zfsmReplicaRun($checked['args'], $io);
 	$slot = zfsmReplicaReceiveSlot($area);
-	if ($slot === null) return zfsmReplicaRefuse('No receive into '.$area.' can start while four are running', $request, $from, $io);
+	if (is_string($slot)) return zfsmReplicaRefuse($slot, $request, $from, $io);
 	try {
 		$record = '';
 		while (strlen($record) < 312) {
