@@ -44,8 +44,8 @@ $GLOBALS['zfsm_root'] = $root;
 mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
 mkdir($root.'/usr/local/sbin', 0700, true);
 mkdir($root.'/var/log', 0700, true);
-// Unraid's crontab rebuild: logs each run, and fails while cron-fail is there.
-file_put_contents($root.'/usr/local/sbin/update_cron', "#!/bin/sh\necho ran >> ".escapeshellarg($work.'/cron.log')."\n[ ! -e ".escapeshellarg($work.'/cron-fail')." ] || { echo 'crontab: cannot write' >&2; exit 1; }\n");
+// Unraid's crontab rebuild, which begins as Unraid's does (no "!"): logs each run, and fails while cron-fail is there.
+file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n[ ! -e ".escapeshellarg($work.'/cron-fail')." ] || { echo 'crontab: cannot write' >&2; exit 1; }\n");
 chmod($root.'/usr/local/sbin/update_cron', 0755);
 
 $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$file, $lines ? implode("\n", $lines)."\n" : ''); };

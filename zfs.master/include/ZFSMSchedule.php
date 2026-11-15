@@ -148,7 +148,8 @@ function zfsmScheduleCron($jobs) {
 	$text = zfsmScheduleCronText($jobs);
 	$written = $text === '' ? !file_exists($file) || @unlink($file) : zfsmWriteFileAtomic($file, $text);
 	if (!$written) return 'The schedules were saved, but '.$file.' could not be written, so cron still runs the ones it had';
-	$built = runProcess(zfsmStatePath('/usr/local/sbin/update_cron'));
+	// Unraid's update_cron begins "#/bin/bash", with no "!": PHP 8.3 and later can't start it on its own (Exec format error).
+	$built = runProcess('/bin/bash', array(zfsmStatePath('/usr/local/sbin/update_cron')));
 	if (($built['code'] ?? 1) === 0) return '';
 	return 'The schedules were saved, but Unraid\'s crontab could not be rebuilt ('.zfsmCommandError($built, 'update_cron failed').'), so it runs the ones it had until the server restarts';
 }
