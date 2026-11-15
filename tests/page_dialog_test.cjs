@@ -405,8 +405,31 @@ async function confirm() {
   assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, 'Take one now is planned too');
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, 'Replicate starts with what is on screen');
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: '', hour: '0', day: '0'}, 'Replicate starts with what is on screen');
   window.Swal2.close();
+  // Repeat: a weekly run shows its day and hour, takes its own snapshot each run, and starts with its schedule.
+  {
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+    menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+    await settle();
+    const every = () => window.document.getElementById('zfsm-replicate-every');
+    const repeat = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
+    const shown = id => window.document.getElementById(id).style.display !== 'none';
+    const rows = () => [shown('zfsm-replicate-day-row'), shown('zfsm-replicate-hour-row'), snap().value, snap().disabled];
+    assert.deepEqual([every().value, rows(), every().labels[0].textContent.startsWith('Repeat:')], ['', [false, false, 'b', false], true], 'Once, with no day or hour, and the newest snapshot picked');
+    await repeat('weekly');
+    assert.deepEqual([rows(), posts.at(-1), held()], [[true, true, '', true], {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, false], 'Every week: its day and hour show, and Snapshot is Take one now, planned');
+    const planned = posts.length;
+    await repeat('hourly');
+    assert.deepEqual([rows(), posts.length], [[false, false, '', true], planned], 'Every hour: no day or hour, and no new plan, as Snapshot did not change');
+    await repeat('weekly');
+    window.document.getElementById('zfsm-replicate-day').value = '2';
+    window.document.getElementById('zfsm-replicate-hour').value = '5';
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'weekly', hour: '5', day: '2'}, 'Replicate starts it with its schedule');
+    window.Swal2.close();
+  }
   // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there; a name typed in stays.
   const remoteOptions = {snapshots: ['b'], last_destination: {server: '', dest: 'backup/data'}, servers: ['nas']};
   replicateAnswer = data => data.server !== 'nas' ? {...remoteOptions, can_proceed: true, mode: 'incremental', since: 'b', size: 1, raw: false}
@@ -432,7 +455,7 @@ async function confirm() {
   await pick('nas');
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas'}, 'Replicate starts it there');
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas', every: '', hour: '0', day: '0'}, 'Replicate starts it there');
   window.Swal2.close();
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.

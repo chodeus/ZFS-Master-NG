@@ -335,6 +335,25 @@ function zfsmCommandError($result, $fallback) {
 }
 
 // A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.
+function zfsmValidPoolName($name) {
+	return is_string($name) && strlen($name) > 0 && strlen($name) <= 255
+		&& preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $name) === 1;
+}
+
+// Mirrors valid_char() in OpenZFS zfs_namecheck.c; Unraid shares with spaces become datasets.
+function zfsmValidNameComponent($part) {
+	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
+}
+
+function zfsmValidDatasetName($name) {
+	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
+	$parts = explode('/', $name);
+	foreach ($parts as $part) {
+		if (!zfsmValidNameComponent($part)) return false;
+	}
+	return zfsmValidPoolName($parts[0]);
+}
+
 function zfsmStatePath($path) {
 	return ($GLOBALS['zfsm_root'] ?? '').$path;
 }

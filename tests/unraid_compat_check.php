@@ -246,7 +246,7 @@ switch ($check) {
 			foreach ($rows as $row) if (preg_match('#<dt>[^\n]*'.preg_quote($label, '#').'#', $row) === 1 && strpos($row, $control) !== false) return true;
 			return false;
 		};
-		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Scheduled Replication' => 'Schedules', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
 			$from = preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>#', $rendered, $found, PREG_OFFSET_CAPTURE) === 1 ? $found[0][1] : false;
 			$to = $from === false ? false : strpos($rendered, '</details>', $from);
 			if ($to === false || preg_match('#<dt>[^\n]*'.$field.'#', substr($rendered, $from, $to - $from)) !== 1) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
@@ -257,6 +257,7 @@ switch ($check) {
 		}
 		// The Diagnostics section is after the form, so its tick box never arms Apply; its button and link are there for the script.
 		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-diag-unraid"') || !$row_has('Diagnostics Zip', 'id="zfsm-diag-start"') || strpos($rendered, 'id="zfsm-diag-link"') === false) { fwrite(STDERR, "settings page lost the Diagnostics controls, or they are inside the form\n"); exit(1); }
+		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-schedules"') || !$row_has('Schedules', 'None yet')) { fwrite(STDERR, "settings page lost the Schedules list, or it is inside the form\n"); exit(1); }
 		// Unraid runs Markdown before the page's PHP (generateContent), so PHP inside a code span would show as text.
 		$source = file_get_contents($docroot.'/plugins/zfs.master/ZFSMasterSettings.page');
 		if (strpos(Markdown(substr($source, strpos($source, "\n---\n") + 5)), '&lt;?') !== false) { fwrite(STDERR, "settings page has PHP inside Markdown code, which Unraid shows as text\n"); exit(1); }

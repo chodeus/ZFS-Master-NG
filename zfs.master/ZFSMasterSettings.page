@@ -9,6 +9,7 @@ $plugin = "zfs.master";
 require_once "$docroot/plugins/$plugin/include/ZFSMHelpers.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaRemote.php";
+require_once "$docroot/plugins/$plugin/include/ZFSMSchedule.php";
 
 $zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
 $zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
@@ -151,7 +152,7 @@ _(Snapshots Pattern)_:
 : <input type="text" name="snap_pattern" value="<?=zfsmHtml($zfsm_cfg['snap_pattern'])?>" placeholder="default Y-m-d-His">
 
 :zc_settings_snapshots_pattern_plug:
-> Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab and those **Replicate** takes.
+> Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab, those **Replicate** takes, and each scheduled run's.
 > `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`: one with any other character is refused.
 :end
 
@@ -286,6 +287,23 @@ _(Add A Server)_:
 </details>
 
 <details class="zfsm-section" open markdown="1">
+<summary>_(Scheduled Replication)_</summary>
+
+_(Schedules)_:
+: <span id="zfsm-schedules"><?=zfsmSchedulesHtml()?></span> <span id="zfsm-schedules-status" style="color:#e22828"></span>
+
+:zc_settings_schedules_plug:
+> The replications that run on their own. To add one, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again at the same minute past each hour, day or week, in this server's time zone.
+>
+> - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. Its snapshots are kept on both sides; remove old ones by hand.
+> - A run that finds its copy gone doesn't send it in full again: replicate it once by hand to make a new copy.
+> - The first run with a problem sends a notification. Later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so.
+> - A run that falls due while the last one is still sending is skipped, and the next one runs at its usual time.
+:end
+
+</details>
+
+<details class="zfsm-section" open markdown="1">
 <summary>_(Diagnostics)_</summary>
 
 _(Unraid Diagnostics)_:
@@ -407,6 +425,12 @@ function zfsmSendRemove(name) {
 	zfsmSendPost({cmd: 'replicaremove', name: name}, function(answer) {
 		$('#zfsm-send-servers-status').text(answer.error || '');
 		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+	});
+}
+function zfsmScheduleRemove(id) {
+	zfsmSendPost({cmd: 'scheduleremove', id: id}, function(answer) {
+		$('#zfsm-schedules-status').text(answer.error || '');
+		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
 }
 function zfsmSendTest(name, id) {

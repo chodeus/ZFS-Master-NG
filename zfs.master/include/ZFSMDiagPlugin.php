@@ -230,6 +230,38 @@ function zfsmDiagAlertLine($lines) {
 	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/alerts\.php check(\s|$)~', $lines);
 }
 
+// Scheduled replication: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
+function zfsmDiagReplicaSchedules($ctx) {
+	$file = zfsmScheduleFile();
+	$cron = zfsmScheduleCronFile();
+	$read = zfsmScheduleRead();
+	$unread = $read === null && zfsmDiagWhole('file_get_contents', $file) === false;
+	list($live, $live_unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'scripts/schedule.php run ', 200);
+	list($kept, $kept_unread) = zfsmDiagMatchingLines(array($cron), 'scripts/schedule.php run ', 200);
+	$has = function($lines, $id) { return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/schedule\.php run '.$id.'(\s|$)~', $lines); };
+	$rows = '';
+	foreach ($read['valid'] ?? array() as $id => $job) {
+		zfsmDiagKnowWord($job['server']);
+		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
+		$failures = zfsmScheduleFailures($id);
+		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $failures))."\n";
+		$wrong = array(
+			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !$has($live, $id),
+			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !$has($kept, $id),
+			'replication schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
+		);
+		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
+	}
+	$unused = count($read['other'] ?? array());
+	if ($read === null && !$unread) zfsmDiagFinding('schedules.json is not a list of schedules, so none run: '.$file);
+	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
+	$listed = $read === null ? ($unread ? zfsmDiagUnread('(schedules.json could not be read)') : '(schedules.json is not a list of schedules)') : ($rows !== '' ? $rows : '(none)');
+	return 'records in schedules.json the plugin does not use: '.$unused."\n\n"
+		.zfsmDiagSection('schedules (id, dataset, copy, when, runs in a row with a problem)', $listed)
+		.zfsmDiagSection($cron, zfsmDiagFile($cron))
+		.zfsmDiagSection('their lines in the live crontab', $live_unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
+}
+
 // The alert schedule: Unraid builds the live crontab from the cron file, and each check rewrites the state file.
 function zfsmDiagSchedule($ctx) {
 	$cron = zfsmStatePath('/boot/config/plugins/zfs.master/alerts.cron');

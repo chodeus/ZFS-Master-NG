@@ -26,6 +26,12 @@ function zfsmPostPort() {
 	return preg_match('/^[0-9]{1,5}$/D', $port) === 1 ? (int)$port : 0;
 }
 
+// -1, which no schedule accepts, unless the field holds a number of one or two digits.
+function zfsmPostSmall($key) {
+	$value = zfsmPostString($key);
+	return preg_match('/^[0-9]{1,2}$/D', $value) === 1 ? (int)$value : -1;
+}
+
 function zfsmResolveAnswerCodes($answer) {
 	if (!is_array($answer)) return zfsmFailure('request', 'The operation returned no usable result');
 	$answer['succeeded'] = is_array($answer['succeeded'] ?? null) ? $answer['succeeded'] : array();
@@ -207,7 +213,19 @@ try {
 			break;
 
 		case 'replicatedataset':
-			zfsmReturnAnswer(zfsmStartReplicate(zfsmPostString('zdataset'), zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server')), 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			// Repeat (every) is empty for Once; a schedule takes a new snapshot each run, from its first.
+			$zdataset = zfsmPostString('zdataset');
+			$every = zfsmPostString('every');
+			if ($every === '') $answer = zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'));
+			elseif (zfsmPostString('snapshot') !== '') $answer = zfsmFailure($zdataset, 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now');
+			else $answer = zfsmScheduleAdd($zdataset, zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostSmall('hour'), zfsmPostSmall('day'), $zfsm_cfg);
+			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			break;
+
+		case 'scheduleremove':
+			// Saved with only its cron step failed, the list changed all the same: the answer has both.
+			$why = zfsmScheduleRemove(zfsmPostString('id'));
+			echo zfsmJson(($why !== '' ? array('error' => $why) : array()) + (zfsmScheduleSaved($why) ? array('schedules_html' => zfsmSchedulesHtml()) : array()));
 			break;
 
 		case 'convertdirectory':

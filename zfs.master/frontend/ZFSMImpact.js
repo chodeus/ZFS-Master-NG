@@ -84,8 +84,26 @@ function zfsmReplicateHtml(options, zdataset) {
 	}
 	if (options.servers_error) html += '<p style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
+	const options_of = (names, label) => names.map((name, value) => '<option value="'+value+'">'+label(name, value)+'</option>').join('');
+	const hours = options_of(Array.from({length: 24}), (name, hour) => String(hour).padStart(2, '0')+':00 to '+String(hour).padStart(2, '0')+':59');
+	const days = options_of(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], name => name);
+	html += row('Repeat:', '<select id="zfsm-replicate-every" style="width:100%"><option value="">Once</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select>');
+	html += '<p id="zfsm-replicate-day-row" style="margin:.5em 0;display:none"><label style="display:block">On:<select id="zfsm-replicate-day" style="width:100%">'+days+'</select></label></p>';
+	html += '<p id="zfsm-replicate-hour-row" style="margin:.5em 0;display:none"><label style="display:block">Starts between:<select id="zfsm-replicate-hour" style="width:100%">'+hours+'</select></label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
-	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p></div>';
+	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p>'
+		+'<p style="margin:.5em 0">A repeat runs now, then at the same minute each time in this server\'s time zone, taking a new snapshot each run. Settings lists the schedules. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
+}
+
+// Repeat's rows: the day for a weekly run, the hour for a daily or weekly one. A repeat takes its own snapshot, so Snapshot shows Take one now.
+function zfsmReplicateRepeatSync(root) {
+	const every = root.querySelector('#zfsm-replicate-every').value;
+	root.querySelector('#zfsm-replicate-day-row').style.display = every === 'weekly' ? '' : 'none';
+	root.querySelector('#zfsm-replicate-hour-row').style.display = every === 'daily' || every === 'weekly' ? '' : 'none';
+	const snapshot = root.querySelector('#zfsm-replicate-snapshot');
+	if (every !== '') snapshot.value = '';
+	snapshot.disabled = every !== '';
+	return every;
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy

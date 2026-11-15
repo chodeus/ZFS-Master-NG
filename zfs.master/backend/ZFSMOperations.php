@@ -15,6 +15,7 @@ require_once __ROOT__."/include/ZFSMReplicate.php";
 require_once __ROOT__."/include/ZFSMReplicaServe.php";
 require_once __ROOT__."/include/ZFSMReplicaRemote.php";
 require_once __ROOT__."/include/ZFSMReplicaTarget.php";
+require_once __ROOT__."/include/ZFSMSchedule.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
@@ -40,25 +41,6 @@ function zfsmFailure($subject, $message) {
 	$ret = buildArrayRet();
 	$ret['failed'][$subject] = $message;
 	return $ret;
-}
-
-function zfsmValidPoolName($name) {
-	return is_string($name) && strlen($name) > 0 && strlen($name) <= 255
-		&& preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $name) === 1;
-}
-
-// Mirrors valid_char() in OpenZFS zfs_namecheck.c; Unraid shares with spaces become datasets.
-function zfsmValidNameComponent($part) {
-	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
-}
-
-function zfsmValidDatasetName($name) {
-	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
-	$parts = explode('/', $name);
-	foreach ($parts as $part) {
-		if (!zfsmValidNameComponent($part)) return false;
-	}
-	return zfsmValidPoolName($parts[0]);
 }
 
 function zfsmValidSnapshotName($name) {
