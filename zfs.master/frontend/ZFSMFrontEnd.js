@@ -181,11 +181,11 @@ function zfsmDiagRecord(part, make) {
 // Each icon kind's middle against its name's first line in CSS px, down positive, in the first row that shows it. Kinds that sit
 // level read alike; one far from the rest was moved by another sheet's rule.
 function zfsmIconOffsets(last) {
-	const table = document.getElementById('zfs_master');
-	// A Main tab section not shown (Unraid's tabbed view) has no box: keep what the last render on screen measured.
-	if (!table || !table.getClientRects().length) return last || {};
 	const offsets = {};
 	try {
+		const table = document.getElementById('zfs_master');
+		// A Main tab section not shown (Unraid's tabbed view) has no box: keep what the last render on screen measured.
+		if (!table.getClientRects().length) return last || {};
 		for (const label of table.querySelectorAll('tbody .zfsm-name-label')) {
 			const kinds = Array.from(label.querySelectorAll('i.fa'), icon => [icon, Array.from(icon.classList).find(name => name.startsWith('fa-'))])
 				.filter(([, kind]) => kind && !(kind in offsets));
