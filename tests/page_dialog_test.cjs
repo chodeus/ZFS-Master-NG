@@ -285,7 +285,7 @@ async function confirm() {
   assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
   // The expand and collapse box is a pixel larger, with a gap before the name.
   assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\)\}/);
-  assert.match(page, /#zfs_master\.zfs_table \.fa-append\{vertical-align:middle;margin-right:4px\}/, 'the box and every badge keep a gap before what follows');
+  assert.match(page, /#zfs_master\.zfs_table \.zfsm-row-badge\{vertical-align:middle;margin-right:4px\}/, 'the box and every badge keep a gap before what follows');
   // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
   window.eval(handlers('function addDatasetContext(', 'function removeContext('));
   window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
@@ -522,7 +522,7 @@ async function confirm() {
   assert.equal(key(fold(), 'a'), true, 'other keys pass through');
   assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
   assert.equal(key(fold(), 'Enter'), false, 'Enter is taken by the icon');
-  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square')], ['false', true], 'Enter folds the dataset');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square'), fold().classList.contains('fa-minus-square'), fold().classList.contains('zfsm-row-badge')], ['false', true, false, true], 'Enter folds the dataset, and the box keeps its badge class');
   redraw();
   assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
   assert.deepEqual([keyEvent(fold(), 'keydown', ' '), fold().getAttribute('aria-expanded')], [false, 'false'], 'Space down is taken, so the page does not scroll, and presses nothing yet');
