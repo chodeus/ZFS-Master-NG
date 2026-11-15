@@ -522,7 +522,7 @@ async function confirm() {
   assert.equal(key(fold(), 'a'), true, 'other keys pass through');
   assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
   assert.equal(key(fold(), 'Enter'), false, 'Enter is taken by the icon');
-  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square')], ['false', true], 'Enter folds the dataset');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square'), fold().classList.contains('fa-minus-square'), fold().classList.contains('zfsm-row-badge')], ['false', true, false, true], 'Enter folds the dataset, and the box keeps its badge class');
   redraw();
   assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
   assert.deepEqual([keyEvent(fold(), 'keydown', ' '), fold().getAttribute('aria-expanded')], [false, 'false'], 'Space down is taken, so the page does not scroll, and presses nothing yet');

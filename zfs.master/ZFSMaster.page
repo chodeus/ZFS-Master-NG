@@ -346,9 +346,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	processHiddenDatasets();
 	zfsmRestoreRowFocus(focus);
 	// The header row's cells as they are (td, as Unraid's tables have them): another plugin's column shows here, its icon rules in icons.
-	zfsmDiagRecord('render', function() {
+	zfsmDiagRecord('render', function(last) {
 		return {at: new Date().toISOString(), milliseconds: Date.now() - began, pools: Object.keys(data.pools).length, rows: $('#zfs_master tbody tr').length,
-			headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get(), icons: zfsmIconOffsets()};
+			headers: $('#zfs_master thead tr').first().children().map(function() { return $(this).text().trim(); }).get(), icons: zfsmIconOffsets(last && last.icons)};
 	});
   }
 
@@ -438,7 +438,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   // A folded dataset shows a plus, and says it is collapsed to a screen reader.
   function zfsmFoldIcon(zdataset, folded) {
-	$('i[name=\''+zdataset+'\']').attr({'class': 'fa '+(folded ? 'fa-plus-square' : 'fa-minus-square')+' zfsm-row-badge', 'aria-expanded': folded ? 'false' : 'true'});
+	$('i[name=\''+zdataset+'\']').toggleClass('fa-plus-square', folded).toggleClass('fa-minus-square', !folded).attr('aria-expanded', folded ? 'false' : 'true');
   }
 
   function toggleDataset(zdataset) {

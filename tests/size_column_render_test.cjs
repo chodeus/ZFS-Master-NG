@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const {inlineSheet} = require('./unraid_sheets.cjs');
 const vm = require('node:vm');
 const {execFileSync} = require('node:child_process');
 const plugin = path.resolve(__dirname, '../zfs.master');
@@ -67,16 +68,7 @@ const ourTable = units => {
     + `<div class="TableContainer">${ourHead}<tbody>${rows.replace(errorRow, '')}</tbody></table></div>`;
 };
 
-// Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
-const sheet = name => {
-  const file = path.join(styles, name);
-  return fs.readFileSync(file, 'utf8').replace(/url\((['"]?)([^'")]+)\1\)/g, (match, quote, ref) => {
-    if (/^(data|https?|file):/.test(ref)) return match;
-    const bare = ref.split(/[?#]/)[0];
-    const target = bare.startsWith('/webGui/styles/') ? path.join(styles, bare.slice('/webGui/styles/'.length)) : path.resolve(path.dirname(file), bare);
-    return `url('file://${target}')`;
-  });
-};
+const sheet = name => inlineSheet(styles, name);
 const base = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.css', 'default-base.css'].filter(name => fs.existsSync(path.join(styles, name)));
 const themes = ['black', 'white', 'azure', 'gray'].map(theme => [`themes/${theme}.css`, `default-${theme}.css`].find(name => fs.existsSync(path.join(styles, name)))).filter(Boolean);
 assert.ok(themes.length > 0, 'no Unraid theme found under ' + styles);

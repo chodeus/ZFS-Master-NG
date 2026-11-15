@@ -1,10 +1,10 @@
-// Real browser: every row icon sits level with the dataset or folder name, on this Unraid version's sheets, and with another plugin's
-// page-wide rule for i.fa-append, which moved the fold box and badges while they had that class.
-// Usage: row_icon_render_test.cjs <webgui-tree>. Set CHROME to override the browser path. Rows come from the real ZFSMFrontEnd.js.
+// Real browser: every row icon from the real ZFSMFrontEnd.js sits level with its name, on this Unraid version's sheets alone and with
+// another plugin's page-wide i.fa-append rule. Usage: row_icon_render_test.cjs <webgui-tree>. Set CHROME to override the browser path.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const {inlineSheet} = require('./unraid_sheets.cjs');
 const vm = require('node:vm');
 const {execFileSync} = require('node:child_process');
 const plugin = path.resolve(__dirname, '../zfs.master');
@@ -25,16 +25,7 @@ const rows = context.generateDatasetRow('cache', ds('cache', {child: {'cache/app
   + context.generateDatasetRow('cache', ds('cache/isos'), 'zdataset-cache', true, 0, 30, {text: 1})
   + context.generateDatasetDirectoryRows('cache', ds('cache/isos', {directories: ['/mnt/cache/isos/dir']}), 'zdataset-cache', true, 0);
 const pageCss = fs.readFileSync(path.join(plugin, 'ZFSMaster.page'), 'utf8').match(/<style type="text\/css">([\s\S]*?)<\/style>/)[1];
-// Inlined, a sheet's font URLs must become file paths: /webGui/styles ones point at the styles folder, relative ones sit beside their sheet.
-const sheet = name => {
-  const file = path.join(styles, name);
-  return fs.readFileSync(file, 'utf8').replace(/url\((['"]?)([^'")]+)\1\)/g, (match, quote, ref) => {
-    if (/^(data|https?|file):/.test(ref)) return match;
-    const bare = ref.split(/[?#]/)[0];
-    const target = bare.startsWith('/webGui/styles/') ? path.join(styles, bare.slice('/webGui/styles/'.length)) : path.resolve(path.dirname(file), bare);
-    return `url('file://${target}')`;
-  });
-};
+const sheet = name => inlineSheet(styles, name);
 // A plugin's sheet for its own corner badges, loaded after the page: it names no table.
 const others = {'Unraid alone': '', 'with another plugin\'s i.fa-append rule': 'i.fa-append{margin:0px;font-size:0.8em;position:relative;left:-0.3em;top:0.7em}'};
 const sheets = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.css', 'default-base.css', 'default-black.css', 'themes/black.css'].filter(name => fs.existsSync(path.join(styles, name))).map(sheet).join('\n');
@@ -42,7 +33,7 @@ const sheets = ['default-fonts.css', 'font-awesome.css', 'default-color-palette.
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-icons-'));
 let checked = 0;
 try {
-  for (const [where, other] of Object.entries(others)) {
+  for (const [index, [where, other]] of Object.entries(others).entries()) {
     const file = path.join(work, 'rows.html');
     fs.writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${sheets}\n${pageCss}\n${other}</style></head><body>
   <table id="zfs_master" class="zfs_table"><tbody>${rows}</tbody></table>
@@ -80,7 +71,7 @@ try {
     const out = document.createElement('pre'); out.id = 'zfsm-result'; out.textContent = JSON.stringify({fontAwesome: document.fonts.check('16px FontAwesome'), rows}); document.documentElement.appendChild(out);
   });
   </script></body></html>`);
-    const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile')}`,
+    const dom = execFileSync(chrome, ['--headless=new', '--disable-gpu', '--no-sandbox', '--allow-file-access-from-files', `--user-data-dir=${path.join(work, 'profile-' + index)}`,
       '--window-size=1280,800', '--virtual-time-budget=5000', '--dump-dom', `file://${file}`], {encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 50 * 1024 * 1024});
     const match = dom.match(/<pre id="zfsm-result">([^<]+)<\/pre>/);
     assert.ok(match, 'the rows did not render');

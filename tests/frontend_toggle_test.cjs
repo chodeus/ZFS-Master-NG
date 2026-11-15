@@ -22,7 +22,7 @@ function wrap(row) {
     show() { row.visible = true; return this; },
   };
 }
-function $(selector) { return typeof selector === 'object' ? wrap(selector) : {attr() { return this; }}; }
+function $(selector) { return typeof selector === 'object' ? wrap(selector) : {attr() { return this; }, toggleClass() { return this; }}; }
 const button = {firstChild: {data: 'Hide Datasets'}};
 const context = vm.createContext({
   $, console, encodeURIComponent, decodeURIComponent, Date,

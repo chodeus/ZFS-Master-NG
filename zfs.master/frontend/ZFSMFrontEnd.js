@@ -166,10 +166,11 @@ function loadFromLocalStorage(key, decode=true) {
 
 // What the Main tab last showed, for a diagnostics run to send (ZFSMDiagnostics.js). Its JSON stays under 13,000 characters, 40 KB
 // at three bytes a character (the report keeps 50 KB): strings cut to 200, lists to 40, errors to 8,000 oldest first, the render 3,000.
+// make gets the part's last entry.
 function zfsmDiagRecord(part, make) {
 	try {
 		const record = zfsmDiagBounded(loadFromLocalStorage('zfsm-diagnostics') || {});
-		const entry = zfsmDiagBounded(make());
+		const entry = zfsmDiagBounded(make(record[part]));
 		record[part] = part === 'errors' ? (record.errors || []).concat([entry]).slice(-20) : entry;
 		while (JSON.stringify(record.errors || []).length > 8000) record.errors.shift();
 		while (record.render && JSON.stringify(record.render).length > 3000 && (record.render.headers || []).length) record.render.headers.pop();
@@ -177,12 +178,15 @@ function zfsmDiagRecord(part, make) {
 	} catch (error) {}
 }
 
-// The first shown icon of each kind, its middle against its name's first line in CSS px, down positive. Kinds that sit level
-// read alike; one far from the rest was moved by another sheet's rule.
-function zfsmIconOffsets() {
+// Each icon kind's middle against its name's first line in CSS px, down positive, in the first row that shows it. Kinds that sit
+// level read alike; one far from the rest was moved by another sheet's rule.
+function zfsmIconOffsets(last) {
+	const table = document.getElementById('zfs_master');
+	// A Main tab section not shown (Unraid's tabbed view) has no box: keep what the last render on screen measured.
+	if (!table || !table.getClientRects().length) return last || {};
 	const offsets = {};
 	try {
-		for (const label of document.querySelectorAll('#zfs_master tbody .zfsm-name-label')) {
+		for (const label of table.querySelectorAll('tbody .zfsm-name-label')) {
 			const kinds = Array.from(label.querySelectorAll('i.fa'), icon => [icon, Array.from(icon.classList).find(name => name.startsWith('fa-'))])
 				.filter(([, kind]) => kind && !(kind in offsets));
 			const name = Array.from(label.childNodes).filter(node => node.nodeType === 3 && node.textContent.trim()).pop();
