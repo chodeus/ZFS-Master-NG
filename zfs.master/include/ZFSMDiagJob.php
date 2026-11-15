@@ -59,8 +59,8 @@ function zfsmDiagRunLock() {
 	return 'Another diagnostics run is going: wait for it to end, then try again';
 }
 
-// The browser's report rewritten: its user agent by its own grammar (zfsmDiagUserAgent), the rest as any running text. Text that is
-// not a report (a terminal run's sentence, a report cut at 64 KB) is running text whole.
+// The browser's report rewritten: its user agent by its own grammar (zfsmDiagUserAgent), its theme alone by the theme's words, the rest as any
+// running text. Text that is not a report (a terminal run's sentence, a report cut at 64 KB) is running text whole.
 function zfsmDiagAnonBrowser($text) {
 	$report = json_decode($text, true);
 	if (!is_array($report) || !is_string($report['userAgent'] ?? null)) {
@@ -69,9 +69,14 @@ function zfsmDiagAnonBrowser($text) {
 	}
 	$agent = zfsmDiagUserAgent($report['userAgent']);
 	unset($report['userAgent']);
+	// Unraid's classes for its theme hold spaces (ThemeHelper.php): as running text their words would meet the second net without the theme's.
+	$theme = is_string($report['theme'] ?? null) ? zfsmDiagAnonText($report['theme']) : false;
+	$theme = is_string($theme) ? zfsmDiagKnownWords($theme, ZFSM_DIAG_THEME_WORDS) : $theme;
 	$rest = zfsmDiagAnonJson(zfsmJson($report));
-	$rest = $rest === null ? null : json_decode((string)zfsmDiagKnownWords($rest, ZFSM_DIAG_THEME_WORDS), true);
-	return is_array($rest) ? zfsmJson(array('userAgent' => $agent) + $rest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+	$rest = $rest === null ? null : json_decode((string)zfsmDiagKnownWords($rest), true);
+	if ($theme === null || !is_array($rest)) return null;
+	if ($theme !== false) $rest['theme'] = $theme;
+	return zfsmJson(array('userAgent' => $agent) + $rest, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
 
 // What the browser said of itself when it asked for the run; a run from a terminal has none.

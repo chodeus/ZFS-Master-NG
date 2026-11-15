@@ -13,6 +13,8 @@ define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$');
 define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
 define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
+// And after a folder's path: an action's result (zfsmActionLogLines), Convert's fallback to rsync and a nested mount's refusal (backend/ZFSMOperations.php).
+define('ZFSM_DIAG_FOLDER_AFTER', ' succeeded$| failed(?:: |, so rsync copies it: )|; unmount or move it first$');
 
 // A run's map: its salt, each name's token, each token's shape, and what the collectors told it of this server.
 function zfsmDiagNamesStart() {
@@ -154,7 +156,7 @@ function zfsmDiagNamePattern() {
 
 // $text with every name, address, host and key in it replaced; null when it could not be searched, and then it must not be kept.
 // $ends: what ends a folder's path in $text: a tab or a line feed in a file's tab-separated rows (a name can hold a carriage return), a line break in running text
-// (zfsmDiagAnonRunning, the only caller that passes it), nothing in a JSON value that is a path itself (zfsmDiagAnonValue).
+// (zfsmDiagAnonRunning, the only caller that passes it; zfsmDiagFolderEnd ends it sooner there), nothing in a JSON value that is a path itself (zfsmDiagAnonValue).
 function zfsmDiagAnonText($text, $ends = "\t\n") {
 	$pattern = zfsmDiagNamePattern();
 	$clean = '';
@@ -192,7 +194,7 @@ function zfsmDiagAnonMatch($text, $match, $ends = "\t\n") {
 }
 
 // A path at $at, each name in it a token. A system path keeps the system's own folders (zfsmDiagSystemPath). A dataset's pool stays, and its names end where ZFS's few characters do.
-// A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end.
+// A folder's name may hold any character: its path runs to the first of $ends (zfsmDiagAnonText) or the text's end, in running text sooner where zfsmDiagFolderEnd says.
 function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 	$names = &$GLOBALS['zfsm_diag_names'];
 	$run = (string)substr($text, $at, strcspn($text, $ends, $at));
@@ -218,6 +220,8 @@ function zfsmDiagAnonPath($text, $at, $ends = "\t\n") {
 		preg_match('~^/(?:mnt|dev/zvol)(?=[/\s]|$)(?:/(?:'.$names['pool'].'|'.ZFSM_DIAG_MOUNTS.')(?=[/\s]|$))?|^/(?:'.ZFSM_DIAG_SHARED.')(?=[/\s]|$)|^~', $run, $kept);
 		// PHP ends an error with where it was raised: that is no part of the folder's name.
 		$name = preg_replace('~ in /usr/local/emhttp/\S+ on line \d+$~', '', $run);
+		// <path> failed: <why> and <path> succeeded: the why stays, and both lines name the folder by one token.
+		if (!$field) $name = substr($name, 0, zfsmDiagFolderEnd($name, $at > 0 ? $text[$at - 1] : ''));
 	} else {
 		// A pool's name stays; a setting's first word on no pool is a token in its place: [what it is, what is written].
 		if (preg_match('~^(?:'.$names['pool'].')(?=[/@#])~', $run, $kept) !== 1 && preg_match('~^(?:'.$names['root'].')(?=[/@#])~', $run, $root) === 1) $kept = array($root[0], zfsmDiagToken($root[0]));
@@ -311,6 +315,14 @@ function zfsmDiagNameEnd($run) {
 		if (preg_match($after, $run, $unused, 0, $space) === 1) return $space;
 	}
 	return strlen($run);
+}
+
+// Where a folder's name ends in running text: at the quote that opened it, where a colon follows (rmdir: failed to remove '<path>': ...;
+// the plugin's log writes a quote as ?); else before what the plugin's log lines put after it; else at the run's end.
+function zfsmDiagFolderEnd($run, $before) {
+	$closed = in_array($before, array("'", '"', '?'), true) ? strpos($run, $before.':') : false;
+	if ($closed !== false) return $closed;
+	return preg_match('~(?:'.ZFSM_DIAG_FOLDER_AFTER.')~', $run, $after, PREG_OFFSET_CAPTURE) === 1 ? $after[0][1] : strlen($run);
 }
 
 // A JSON file's text with the names in its keys and values replaced; text that is no JSON is rewritten as text, its \/ read as /.
