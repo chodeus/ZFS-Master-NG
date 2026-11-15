@@ -90,14 +90,16 @@ function zfsmReplicateHtml(options, zdataset) {
 	html += row('Repeat:', '<select id="zfsm-replicate-every" style="width:100%"><option value="">Once</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select>');
 	html += '<p id="zfsm-replicate-day-row" style="margin:.5em 0;display:none"><label style="display:block">On:<select id="zfsm-replicate-day" style="width:100%">'+days+'</select></label></p>';
 	html += '<p id="zfsm-replicate-hour-row" style="margin:.5em 0;display:none"><label style="display:block">Starts between:<select id="zfsm-replicate-hour" style="width:100%">'+hours+'</select></label></p>';
+	html += '<p id="zfsm-replicate-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Keep:<input id="zfsm-replicate-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all"></label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p>'
-		+'<p style="margin:.5em 0">A repeat runs now, then each hour, day or week at a minute of its own, in this server\'s time zone (the answer and Settings show when), taking a new snapshot each run. Settings lists the schedules. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
+		+'<p style="margin:.5em 0">A repeat runs now, then each hour, day or week at a minute of its own, in this server\'s time zone (the answer and Settings show when), taking a new snapshot each run. Settings lists the schedules. Keep: after each run lands, only the newest this many of the snapshots its runs take stay, here and in a copy on this server; empty keeps all. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
 }
 
-// Repeat's rows: the day for a weekly run, the hour for a daily or weekly one. A repeat takes its own snapshot, so Snapshot shows Take one now.
+// Repeat's rows: the day for a weekly run, the hour for a daily or weekly one, Keep for any. A repeat takes its own snapshot, so Snapshot shows Take one now.
 function zfsmReplicateRepeatSync(root) {
 	const every = root.querySelector('#zfsm-replicate-every').value;
+	root.querySelector('#zfsm-replicate-keep-row').style.display = every !== '' ? '' : 'none';
 	root.querySelector('#zfsm-replicate-day-row').style.display = every === 'weekly' ? '' : 'none';
 	root.querySelector('#zfsm-replicate-hour-row').style.display = every === 'daily' || every === 'weekly' ? '' : 'none';
 	const snapshot = root.querySelector('#zfsm-replicate-snapshot');

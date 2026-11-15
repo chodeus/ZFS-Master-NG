@@ -114,6 +114,12 @@ $log_lines = array(
 	'Replication of tank/CanarySrc to canarytyped/CanaryDest not started: The copy goes inside canarytyped/CanaryDest, which doesn\'t exist',
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
+	// A schedule's Keep: what it removed, what stayed and why, and holds a stopped run could not put on.
+	'Removed tank/CanaryDs One@CanaryKeepOld: past the newest 3 its schedule keeps',
+	'Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not read the snapshots of tank/CanaryCopy',
+	"Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy finished (changes since CanaryBase). The hold a stopped run put on its snapshots may still be on, so they stay until a run that lands takes it off: tank/CanaryDs One@CanaryKeepHeld: cannot release hold from snapshot 'tank/CanaryDs One@CanaryKeepHeld': permission denied",
+	"Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not remove tank/CanaryCopy@CanaryKeepCopy (cannot destroy 'tank/CanaryCopy@CanaryKeepCopy': Input/output error), so tank/CanaryDs One@CanaryKeepCopy stays too; the next run tries again",
+	"Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (changes since CanaryBase) failed: cut. What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/CanaryDs One@CanarySnapA: cannot hold snapshot 'tank/CanaryDs One@CanarySnapA': permission denied.",
 );
 $build = function() use ($work, $root, $put, $private_key, $public_key, $send_key, $remote_key, $log_lines) {
 	exec('rm -rf '.escapeshellarg($root).' '.escapeshellarg($work.'/jobs'));

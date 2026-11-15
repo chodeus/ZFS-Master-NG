@@ -6,9 +6,9 @@ $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 
-// "new": take the snapshot first (zfsmStartReplicate names it). A trusted server's name sends the copy there.
-if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '') {
-	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server]]\n");
+// "new": take the snapshot first (zfsmStartReplicate names it). A trusted server's name sends the copy there; keep is a schedule's first run's.
+if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '' || (isset($argv[6]) && !(ctype_digit($argv[6]) && zfsmKeepValid((int)$argv[6])))) {
+	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep]]]\n");
 	exit(2);
 }
-exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? ''));
+exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? '', null, isset($argv[6]) ? (int)$argv[6] : null));

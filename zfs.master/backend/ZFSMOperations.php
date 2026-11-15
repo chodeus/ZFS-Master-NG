@@ -12,6 +12,7 @@ require_once __ROOT__."/include/ZFSMJobs.php";
 require_once __ROOT__."/include/ZFSMRewrite.php";
 require_once __ROOT__."/include/ZFSMReplicaPlan.php";
 require_once __ROOT__."/include/ZFSMReplicate.php";
+require_once __ROOT__."/include/ZFSMKeep.php";
 require_once __ROOT__."/include/ZFSMReplicaServe.php";
 require_once __ROOT__."/include/ZFSMReplicaRemote.php";
 require_once __ROOT__."/include/ZFSMReplicaTarget.php";
@@ -883,10 +884,12 @@ function convertDirectory($directory, $pool, $clone = true) {
 }
 
 // A new snapshot's name: the prefix, then the date in local time or, when set, UTC.
-function createDatasetSnapshot($zdataset, $snapshot_name, $recursive) {
+// $props: properties the snapshot is made with (zfs snapshot -o).
+function createDatasetSnapshot($zdataset, $snapshot_name, $recursive, $props = array()) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
 	$args = array('snapshot');
 	if ((string)$recursive === '1') $args[] = '-r';
+	foreach ($props as $property => $value) array_push($args, '-o', $property.'='.$value);
 	$full_name = $zdataset.'@'.$snapshot_name;
 	$args[] = $full_name;
 	return commandAnswer($full_name, runProcess('zfs', $args));
