@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- fix(replication): a scheduled run that carries on a stopped one notifies once, at its end; diagnostics read schedules.json once
+- fix(replication): a scheduled run sends its own snapshot after carrying on a stopped one, and reports errors
+- fix(replication): scheduled runs wait out a busy dataset, and clash checks cover its other schedules
+- fix(replication): a schedule's minute, next run and snapshot names hold
+- feat(replication): schedule a replication from the Replicate dialog
+- fix(diagnostics): keep any slot number of a guid lock; say what the OSV check fails on
+- fix(diagnostics): name receive-slot locks by the area's guid, not a hash of its name
+- fix: measure icon offsets wholly inside their try, so a failure keeps the render record
+- fix: keep icon offsets while the Main tab section is hidden; fold only its box
+- fix: keep row badges level next to another plugin's fa-append rule
+- fix: label hints show on touch focus again, and in browsers without :focus-visible
+- fix: label hints no longer stay up after a click opens Unraid's help
+- fix: the help says Unraid's disk list can name mounted datasets, which is true on every release
+- fix: keep times, dates, error names and Unraid's theme in diagnostics; end a folder's path at its quote or the log's words
+- fix: a carriage return inside a mountpoint or a property's value no longer splits its line
+
 ## 2026.11.15.1 (beta)
 
 - Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
