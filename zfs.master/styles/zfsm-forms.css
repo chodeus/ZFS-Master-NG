@@ -11,6 +11,9 @@
 .zfsm-section>:not(summary){padding:0 16px}
 /* Room under the last control: Unraid 7's phone layout otherwise sets it on the section's bottom border. */
 .zfsm-section[open]{padding-bottom:10px}
+/* On a phone a table scrolls sideways on its own, rather than widening the whole popup. */
+.zfsm-table-scroll{overflow-x:auto}
+.zfsm-section>.zfsm-table-scroll{padding:0}
 
 /* A label with a hint shows the help cursor; hover or keyboard focus shows the hint, styled like Unraid's tooltips.
    :focus only where nothing hovers, as on a touch screen: a click focuses the label (on Settings, to open Unraid's help) and kept the hint up: tests/tip_focus_render_test.cjs. */

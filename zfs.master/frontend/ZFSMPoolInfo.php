@@ -57,9 +57,9 @@ $on_upgrade = array('at once' => 'In use as soon as Upgrade Pool runs', 'next im
 <style type="text/css">
   .zfsm-info{max-width:1120px;margin:18px auto;padding:0 18px}
   .zfsm-count{margin-left:auto;font-weight:normal;opacity:.7}
-  /* On a phone a table scrolls sideways on its own, rather than widening the whole popup. */
-  .zfsm-table-scroll{overflow-x:auto}
-  .zfsm-section>.zfsm-table-scroll,.zfsm-section>.zfsm-all{padding:0}
+  .zfsm-section>.zfsm-all{padding:0}
+  /* As .zfsm-dialog p in zfsm-dialogs.css: Unraid 7 justifies every <p>, in a sheet loaded after this block. */
+  .zfsm-info p{text-align:left}
   .zfsm-subhead{margin:14px 0 4px;font-weight:600}
   .zfsm-all{border-top:1px solid rgba(128,128,128,.3)}
   .zfsm-all>summary{padding:10px 16px;cursor:pointer;font-weight:600}

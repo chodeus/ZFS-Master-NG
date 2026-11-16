@@ -150,6 +150,9 @@ jobs:
       - name: Settings sections keep a gap under their last control in a real browser
         run: node tests/settings_render_test.cjs .webgui
 
+      - name: Dialogs and popups read and fit at phone width in a real browser
+        run: node tests/phone_render_test.cjs .webgui
+
       - name: Label hints show on hover and Tab, and a click does not keep them up, in a real browser
         run: node tests/tip_focus_render_test.cjs .webgui
 

@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {execFileSync} = require('node:child_process');
+const sheets = require('./render_sheets.cjs');
 const assets = path.resolve(__dirname, '../zfs.master/assets');
 const plugin = path.resolve(__dirname, '../zfs.master');
 const tree = path.resolve(process.argv[2]);
@@ -15,19 +16,11 @@ const chrome = process.env.CHROME || ['google-chrome', 'chromium', 'chromium-bro
 });
 assert.ok(chrome, 'Chrome not found');
 
-// The Main page's sheets, or a Shadowbox dialog's: mirrors zfsmPopupStylesheets() in ZFSMHelpers.php.
-function sheets(theme, context) {
-  const popup = fs.existsSync(path.join(styles, 'default-popup.css')) ? ['default-popup.css'] : ['default-color-palette.css', 'default-base.css', `themes/${theme}.css`];
-  const names = context === 'popup' ? ['default-fonts.css', 'font-awesome.css', ...popup] : ['default-fonts.css', 'default-cases.css', 'default-color-palette.css', 'default-base.css', 'default-dynamix.css',
-    `default-${theme}.css`, `dynamix-${theme}.css`, `themes/${theme}.css`];
-  return names.map(name => path.join(styles, name)).filter(fs.existsSync);
-}
-
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-render-'));
 let checked = 0;
 try {
   for (const [context, theme] of ['black', 'white', 'azure', 'gray'].map(theme => ['main', theme]).concat([['popup', 'black']])) {
-    const found = sheets(theme, context);
+    const found = sheets(styles, theme, context);
     assert.ok(context === 'popup' || found.some(file => file.includes(theme)), `no ${theme} theme in this webGUI`);
     const page = path.join(work, `${context}-${theme}.html`);
     fs.writeFileSync(page, `<!doctype html><html><head><meta charset="utf-8">
