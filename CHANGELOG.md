@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- fix: dialog text, time box and Snapshots Admin at phone width
+
 ## 2026.11.16.3 (beta)
 
 - Repeat in the Replicate dialog now runs every hour, or at a start time you set on the days you tick (all seven: every day)
