@@ -12,7 +12,9 @@ define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
 define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|(?:succeeded|received)$');
 define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
-define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
+// Keep's (ZFSMKeep.php): <name>: past the newest, <copy>: Keep could not, <snapshot>: cannot (zfs's), <snapshot> stays too.
+define('ZFSM_DIAG_KEEP', '(?<=: )(?:past the newest |Keep could not |cannot )|stays too');
+define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|'.ZFSM_DIAG_KEEP.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
 // And after a folder's path: an action's result (zfsmActionLogLines), Convert's fallback to rsync and a nested mount's refusal (backend/ZFSMOperations.php).
 define('ZFSM_DIAG_FOLDER_AFTER', ' succeeded$| failed(?:: |, so rsync copies it: )|; unmount or move it first$');
 

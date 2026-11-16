@@ -116,6 +116,7 @@ $log_lines = array(
 	'ZFS Master NG backend exception: '.$private_key,
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld: past the newest 3 its schedule keeps',
+	'Removed tank/CanaryGone cannot CanaryLose/CanaryChild@CanaryKeepGone: past the newest 3 its schedule keeps',
 	'Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not read the snapshots of tank/CanaryCopy',
 	"Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy finished (changes since CanaryBase). A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: tank/CanaryDs One@CanaryKeepHeld: cannot release hold from snapshot 'tank/CanaryDs One@CanaryKeepHeld': permission denied",
 	"Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not remove tank/CanaryCopy@CanaryKeepCopy (cannot destroy 'tank/CanaryCopy@CanaryKeepCopy': Input/output error), so tank/CanaryDs One@CanaryKeepCopy stays too; the next run tries again",
@@ -258,6 +259,16 @@ has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: rmdir: failed to remove
 has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: Another filesystem is mounted inside this directory at /mnt/tank/$ds/$folder/".$token('Canary Inner')."; unmount or move it first\n", $log,
 	'a mount inside it ends before the refusal\'s last words');
 has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Mix | Live (in full)')." failed, so rsync copies it: cp failed\n", $log, 'a folder\'s name keeps the words that would end a dataset\'s');
+// Keep's words after a name stay: what it removed and why, what stayed and why.
+$copy = 'tank/'.zfsmDiagToken('CanaryCopy');
+has("Removed tank/$ds@".zfsmDiagToken('CanaryKeepOld').": past the newest 3 its schedule keeps\n", $log, 'a removal keeps its why');
+has("Removed tank/".zfsmDiagToken('CanaryGone cannot CanaryLose').'/'.zfsmDiagToken('CanaryChild').'@'.zfsmDiagToken('CanaryKeepGone').": past the newest 3 its schedule keeps\n", $log,
+	'a name that holds one of those words, not after a colon, stays one name');
+has("Replication of tank/$ds to $copy: Keep could not read the snapshots of $copy\n", $log, 'a read that failed keeps what failed');
+has("Replication of tank/$ds to $copy: Keep could not remove $copy@".zfsmDiagToken('CanaryKeepCopy')." (cannot destroy ?$copy@".zfsmDiagToken('CanaryKeepCopy')."?: Input/output error), so tank/$ds@".zfsmDiagToken('CanaryKeepCopy')." stays too; the next run tries again\n", $log,
+	'a removal that failed keeps what stayed and why');
+has("takes it off: tank/$ds@".zfsmDiagToken('CanaryKeepHeld').": cannot release hold from snapshot ?tank/$ds@".zfsmDiagToken('CanaryKeepHeld')."?: permission denied\n", $log, 'a hold left on keeps zfs\'s why');
+has("can take it first: tank/$ds@".zfsmDiagToken('CanarySnapA').": cannot hold snapshot ?tank/$ds@".zfsmDiagToken('CanarySnapA')."?: permission denied.\n", $log, 'and one not put on');
 same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} refused: /', $log), preg_match('~Replication from ip-[0-9a-f]{8} into tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/'.$token('CanaryIn').' received\n~', $log)), 'an address is a token: '.$log);
 // No rule marks these names: they are tokens because they are no words of the plugin's.
 has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');
