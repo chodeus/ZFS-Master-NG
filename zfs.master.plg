@@ -11,7 +11,7 @@
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
 
 ###2026.11.16.4
