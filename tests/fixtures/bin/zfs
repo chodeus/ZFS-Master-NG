@@ -33,14 +33,35 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 	held() { awk -F'\t' -v n="$1" -v t="$2" '$1 == n && (t == "" || $2 == t) { f = 1 } END { exit !f }' "$R/holds"; }
 	case "$1" in
 	list)
-		# Retention's read (include/ZFSMKeep.php); ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails.
+		# What a snapshot schedule covers (include/ZFSMScheduleSnapshot.php): readonly and mountpoint from props, else off and
+		# /mnt/<name> (a volume's -). ZFSM_TEST_COVER_FAIL: 1 fails the read, hang answers only after 30 s, and a dataset's name fails that
+		# one as zfs does: the rest listed, then exit 1.
+		if contains_arg 'name,readonly,mountpoint' "$@"; then
+			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
+			[ "${ZFSM_TEST_COVER_FAIL:-0}" = hang ] && { sleep 30; exit 1; }
+			code=0
+			while IFS="$(printf '\t')" read -r n ty; do
+				[ "$n" = "${ZFSM_TEST_COVER_FAIL:-}" ] && { printf "cannot open '%s': Input/output error\n" "$n" >&2; code=1; continue; }
+				if [ "$ty" = volume ]; then mp=-; else mp=/mnt/$n; fi
+				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" readonly off)" "$(prop "$n" mountpoint "$mp")"
+			done < "$R/datasets"
+			exit $code
+		fi
+		# Retention's read (include/ZFSMKeep.php) of each dataset after the options, as zfs does: one that can't be read fails the
+		# command, the others still listed. ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails.
 		if contains_arg 'name,guid,createtxg,userrefs,clones,zfs.master:schedule' "$@"; then
-			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
-			[ "${ZFSM_TEST_KEEP_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
-			awk -F'\t' -v d="$last_arg@" 'index($1, d) == 1' "$R/marks" | while IFS="$(printf '\t')" read -r n g t; do
-				printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
+			code=0; prev=''
+			for d in "$@"; do
+				case "$prev" in -o|-t|-s|-d) prev=$d; continue ;; esac
+				prev=$d
+				case "$d" in list|-*) continue ;; esac
+				exists "$d" || { printf "cannot open '%s': dataset does not exist\n" "$d" >&2; code=1; continue; }
+				[ "${ZFSM_TEST_KEEP_LIST_FAIL:-}" = "$d" ] && { printf "cannot open '%s': Input/output error\n" "$d" >&2; code=1; continue; }
+				awk -F'\t' -v d="$d@" 'index($1, d) == 1' "$R/marks" | while IFS="$(printf '\t')" read -r n g t; do
+					printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
+				done
 			done
-			exit 0
+			exit $code
 		fi
 		if contains_arg 'name,guid,createtxg' "$@"; then
 			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
@@ -135,9 +156,23 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
 		exit 0 ;;
 	snapshot)
-		[ -n "$(mark "$last_arg" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
-		t=$(next_txg); printf '%s\t%s\t%s\n' "$last_arg" "$((t * 7919))" "$t" >> "$R/marks"
-		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
+		# Every name in one txg, or none: one already there, or of ZFSM_TEST_SNAP_FAIL's dataset, fails them all.
+		prev=''
+		for a in "$@"; do
+			if [ "$prev" != -o ] && [ "${a#*@}" != "$a" ]; then
+				[ -n "$(mark "$a" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$a" >&2; exit 1; }
+				[ "${ZFSM_TEST_SNAP_FAIL:-}" = "${a%@*}" ] && { printf "cannot create snapshot '%s': out of space\n" "$a" >&2; exit 1; }
+			fi
+			prev=$a
+		done
+		t=$(next_txg); i=0; prev=''
+		for a in "$@"; do
+			if [ "$prev" != -o ] && [ "${a#*@}" != "$a" ]; then
+				printf '%s\t%s\t%s\n' "$a" "$((t * 7919 + i))" "$t" >> "$R/marks"
+				i=$((i + 1)); p=''; for o in "$@"; do [ "$p" = -o ] && set_prop "$a" "${o%%=*}" "${o#*=}"; p=$o; done
+			fi
+			prev=$a
+		done
 		exit 0 ;;
 	hold)
 		[ -n "$(mark "$3" 2)" ] || { printf "cannot hold snapshot '%s': dataset does not exist\n" "$3" >&2; exit 1; }

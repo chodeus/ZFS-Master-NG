@@ -1,4 +1,4 @@
-// The Settings page's replication script (Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
+// The Settings page's replication script (Snapshot Every Dataset, Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
 // and what Keep Replicas' field lets Apply send.
 // Usage: settings_send_test.cjs <webgui-tree>
 const assert = require('node:assert/strict');
@@ -19,6 +19,11 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
   + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span>'
+  + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option></select></dd>'
+  + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
+  + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd>'
+  + '<dt>Snapshots To Keep:</dt><dd><input id="zfsm-snapsched-keep" value="3"></dd>'
+  + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-snapsched-save"> <span id="zfsm-snapsched-status"></span></dd></dl>'
   + '<span id="zfsm-schedules"><span>tank/data to backup/data</span></span><span id="zfsm-schedules-status"></span></body>',
   {url: 'http://localhost/', runScripts: 'outside-only'});
 window.eval(fs.readFileSync(jquery, 'utf8'));
@@ -152,5 +157,37 @@ assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', '
 window.zfsmScheduleRemove('0a1b2c3d');
 posts.pop().done({error: 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', schedules_html: 'tank/a to backup/a'});
 assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', 'tank/a to backup/a'], 'one saved whose crontab was not rebuilt says so, and shows the list it saved');
+
+// Snapshot Every Dataset: Off shows only its own row, Every hour adds Keep, On days adds Days and Starts At too; each row with its name.
+const shown = () => ['zfsm-snapsched-days', 'zfsm-snapsched-time', 'zfsm-snapsched-keep'].map(id => {
+  const dd = window.document.getElementById(id).closest('dd');
+  return [dd.style.display, dd.previousElementSibling.style.display].join('/');
+});
+assert.deepEqual(shown(), ['none/none', 'none/none', 'none/none'], 'Off on load shows none of its other rows');
+$('#zfsm-snapsched-every').val('days').trigger('change');
+assert.deepEqual(shown(), ['/', '/', '/'], 'On days shows them all');
+$('#zfsm-snapsched-every').val('hourly').trigger('change');
+assert.deepEqual(shown(), ['none/none', 'none/none', '/'], 'Every hour shows Keep only');
+const color = () => window.document.getElementById('zfsm-snapsched-status').style.color;
+// Save sends what the rows say, the ticked days in their order; it is off while it saves, and the answer's list replaces Settings'.
+$('#zfsm-snapsched-every').val('days').trigger('change');
+window.zfsmSnapshotsSave();
+const snapshots = posts.pop();
+assert.deepEqual({...snapshots.data}, {cmd: 'schedulesnapshots', every: 'days', time: '04:00', days: '1,0', keep: '3'});
+assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status')], [true, 'Saving…'], 'Save is off while it saves');
+snapshots.done({said: 'Saved: a snapshot of each of 5 dataset(s)', schedules_html: '<span>Snapshot Every Dataset</span>'});
+assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), color(), text('zfsm-schedules')],
+  [false, 'Saved: a snapshot of each of 5 dataset(s)', '', 'Snapshot Every Dataset'], 'saved: says what, and the list shows it');
+window.zfsmSnapshotsSave();
+posts.pop().done({error: 'Nothing was saved: tick at least one day'});
+assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), color(), text('zfsm-schedules')],
+  [false, 'Nothing was saved: tick at least one day', 'rgb(226, 40, 40)', 'Snapshot Every Dataset'], 'a refusal says why in red and keeps the list');
+window.zfsmSnapshotsSave();
+posts.pop().done({said: 'Saved: x', error: 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (y)', schedules_html: 'z'});
+assert.deepEqual([text('zfsm-snapsched-status'), color(), text('zfsm-schedules')],
+  ['Saved: x. The schedules were saved, but Unraid\'s crontab could not be rebuilt (y)', 'rgb(226, 40, 40)', 'z'], 'saved with a crontab that was not rebuilt: both, in red');
+window.zfsmSnapshotsSave();
+posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
+assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), text('zfsm-schedules')], [false, 'Unknown or missing command', 'z'], 'as does a backend failure');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

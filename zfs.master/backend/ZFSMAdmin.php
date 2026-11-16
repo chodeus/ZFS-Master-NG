@@ -25,6 +25,11 @@ function zfsmPostDigits($key, $digits, $default) {
 	return zfsmDigits(zfsmPostString($key), $digits, $default);
 }
 
+// Snapshots to keep: empty keeps all (0); -1, which no check accepts, unless it is a number.
+function zfsmPostKeep() {
+	return zfsmPostString('keep') === '' ? 0 : zfsmPostDigits('keep', strlen((string)ZFSM_KEEP_MAX), -1);
+}
+
 function zfsmResolveAnswerCodes($answer) {
 	if (!is_array($answer)) return zfsmFailure('request', 'The operation returned no usable result');
 	$answer['succeeded'] = is_array($answer['succeeded'] ?? null) ? $answer['succeeded'] : array();
@@ -206,13 +211,19 @@ try {
 			break;
 
 		case 'replicatedataset':
-			// Repeat (every) is empty for Once; Keep empty keeps all.
+			// Repeat (every) is empty for Once.
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
-			$keep = zfsmPostString('keep') === '' ? 0 : zfsmPostDigits('keep', strlen((string)ZFSM_KEEP_MAX), -1);
+			$keep = zfsmPostKeep();
 			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
 				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg);
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			break;
+
+		case 'schedulesnapshots':
+			// Saved with only its cron step failed, the list changed all the same: the answer has both.
+			$saved = zfsmScheduleSnapshotSave(zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
+			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 
 		case 'scheduleremove':

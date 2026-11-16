@@ -230,7 +230,7 @@ function zfsmDiagCronLine($lines, $command) {
 	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/'.$command.'(\s|$)~', $lines);
 }
 
-// Scheduled replication: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
+// Schedules of copies and of snapshots: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
 function zfsmDiagReplicaSchedules($ctx) {
 	$file = zfsmScheduleFile();
 	$cron = zfsmScheduleCronFile();
@@ -241,23 +241,26 @@ function zfsmDiagReplicaSchedules($ctx) {
 	list($live, $live_unread) = zfsmDiagMatchingLines(array(zfsmStatePath('/etc/cron.d/root')), 'scripts/schedule.php run ', 200);
 	list($kept, $kept_unread) = zfsmDiagMatchingLines(array($cron), 'scripts/schedule.php run ', 200);
 	$rows = '';
+	$covers = '';
 	foreach ($read['valid'] ?? array() as $id => $job) {
 		zfsmDiagKnowWord($job['server']);
 		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
+		$what = zfsmScheduleSnapshotsOnly($job) ? array('(every dataset)', '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest);
 		$failures = zfsmScheduleFailures($id);
-		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $job['keep'], $failures))."\n";
+		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), $job['keep'], $failures)))."\n";
 		$wrong = array(
-			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
-			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
-			'replication schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
+			'schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
+			'schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
+			'schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
 		);
 		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
+		if ($covers === '' && zfsmScheduleSnapshotsOnly($job)) $covers = 'datasets Snapshot Every Dataset takes now: '.zfsmDiagScheduleCovers()."\n";
 	}
 	$unused = count($read['other'] ?? array());
 	if ($read === null && !$unread) zfsmDiagFinding('schedules.json is not a list of schedules, so none run: '.$file);
 	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
 	$listed = $read === null ? ($unread ? zfsmDiagUnread('(schedules.json could not be read)') : '(schedules.json is not a list of schedules)') : ($rows !== '' ? $rows : '(none)');
-	return 'records in schedules.json the plugin does not use: '.$unused."\n\n"
+	return 'records in schedules.json the plugin does not use: '.$unused."\n".$covers."\n"
 		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)', $listed)
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))
 		.zfsmDiagSection('their lines in the live crontab', $live_unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
@@ -401,6 +404,13 @@ function zfsmDiagPublicHalf($dir, $private, $public) {
 	if (!file_exists($dir.'/id_ed25519.pub')) return 'not there';
 	if (!$private) return 'there, without its private half';
 	return zfsmDiagWhole('file_get_contents', $dir.'/id_ed25519.pub') === false ? zfsmDiagUnread('unreadable') : 'there, but not a usable key';
+}
+
+// How many datasets Snapshot Every Dataset takes now, read under a limit of its own so a hung pool costs only this line.
+function zfsmDiagScheduleCovers() {
+	list($pools, $unread) = zfsmScheduleCovered(zfsmDiagRead('zfs', ZFSM_SCHEDULE_COVERED, 5));
+	if ($unread !== '' && !$pools) return '(could not be read: '.$unread.')';
+	return array_sum(array_map('count', $pools)).($unread !== '' ? ' (not every dataset could be read: '.$unread.')' : '');
 }
 
 // What the Main tab's first read returns, logging a failure as that read does. It asks about every pool, so it is skipped once
