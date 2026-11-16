@@ -916,7 +916,7 @@ function holdDatasetSnapshot($snapshot) {
 	return commandAnswer($snapshot, runProcess('zfs', array('hold', ZFSM_HOLD, $snapshot)));
 }
 
-// The plugin's own holds come off: Hold's and a stopped replication's (zfsmKeepHold). Another tool's stay.
+// The plugin's own holds come off: Hold's and a replication's for its copy (zfsmKeepHold), even one still sending. Another tool's stay.
 function releaseDatasetSnapshot($snapshot) {
 	if (!zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Snapshot does not exist');
 	$holds = zfsmKeepHolds(array($snapshot));
