@@ -1,0 +1,32 @@
+#!/bin/sh
+# ssh for the tests that send to another server: it logs and checks what it was given, then runs the checker as sshd's forced
+# command would (fake_ssh_serve.php). A file at ControlPath stands for the connection: a login makes it, -O exit ends it.
+printf '%s\n' "ssh $*" >> "$ZFSM_TEST_SSH_LOG"
+key=''; known=''; control=''; stop=''; prev=''
+for a in "$@"; do
+	[ "$prev" = -i ] && key=$a
+	[ "$prev" = -O ] && stop=$a
+	case "$prev:$a" in -o:UserKnownHostsFile=*) known=${a#UserKnownHostsFile=} ;; -o:ControlPath=*) control=${a#ControlPath=} ;; esac
+	prev=$a
+done
+if [ -n "$stop" ]; then
+	[ -e "$control" ] && rm -f "$control" && echo 'connection ends' >> "$ZFSM_TEST_SSH_LOG"
+	exit 0
+fi
+for last in "$@"; do :; done
+if [ -n "$control" ] && [ -e "$control" ]; then
+	echo 'on the connection' >> "$ZFSM_TEST_SSH_LOG"
+else
+	printf "key-mode %s\n" "$(stat -c %a "$key")" >> "$ZFSM_TEST_SSH_LOG"
+	cmp -s "$key" "$ZFSM_TEST_FLASH_KEY" && echo key-same >> "$ZFSM_TEST_SSH_LOG"
+	printf "known %s\n" "$(cat "$known")" >> "$ZFSM_TEST_SSH_LOG"
+	# OpenSSH's own messages end each line in \r\n.
+	[ -n "${ZFSM_TEST_SSH_FAIL:-}" ] && { printf '%s\n' "$ZFSM_TEST_SSH_FAIL" | awk '{ printf "%s\r\n", $0 }' >&2; exit 255; }
+	if [ -n "$control" ]; then : > "$control"; echo login >> "$ZFSM_TEST_SSH_LOG"; fi
+fi
+# A receive whose connection drops part-way: ssh riding the connection exits 255 and says nothing, as OpenSSH 10's does.
+case "${ZFSM_TEST_SSH_DROP:-}:$last" in ?*:'zfsm-replica 1 receive '*) head -c "$ZFSM_TEST_SSH_DROP" > /dev/null; exit 255 ;; esac
+# A request (ZFSM_TEST_SSH_LOST: its verb) that ends there, its exit status lost as the connection drops just after.
+case "${ZFSM_TEST_SSH_LOST:-}:$last" in ?*:"zfsm-replica 1 ${ZFSM_TEST_SSH_LOST:-}"*) SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"; exit 255 ;; esac
+[ -n "${ZFSM_TEST_SSH_FLOOD:-}" ] && { head -c "$ZFSM_TEST_SSH_FLOOD" /dev/zero | tr "\000" x; exit 0; }
+SSH_ORIGINAL_COMMAND=$last SSH_CLIENT="10.0.20.5 50000 22" exec "$ZFSM_TEST_PHP" -n "$ZFSM_TEST_SERVE"

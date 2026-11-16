@@ -1,0 +1,18 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name "zfs.master">
+<!ENTITY version "2026.09.25.112">
+<!ENTITY pluginURL "https://raw.githubusercontent.com/dlang123/ZFS-Master-Unraid/main/&name;.plg">
+]>
+<PLUGIN name="&name;" author="dlang123" version="&version;" pluginURL="&pluginURL;" min="7.3.2">
+<CHANGES>
+###2026.09.25
+- Stands in for a previously installed version
+</CHANGES>
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+rm -rf /boot/config/plugins/&name;
+rm -rf /usr/local/emhttp/plugins/&name;
+</INLINE>
+</FILE>
+</PLUGIN>

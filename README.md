@@ -4,18 +4,34 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 [![CI](https://img.shields.io/github/actions/workflow/status/chodeus/ZFS-Master-NG/ci.yml?branch=beta&label=CI)](https://github.com/chodeus/ZFS-Master-NG/actions/workflows/ci.yml)
 [![Unraid 6.9.2+](https://img.shields.io/badge/Unraid-6.9.2%2B-orange)](#requirements)
-[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](zfs.master/LICENSE)
+[![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](LICENSE)
 
 ## Features
 
-- **Pools at a glance** — health, size, used and free space, and snapshot counts
-- **Datasets** — create, rename, promote and destroy, and edit properties such as compression, quota, record size and access time
-- **Snapshots** — take them singly or recursively, then roll back, rename, clone, hold, release or delete them, with an icon that warns when the newest one is getting old
-- **Encryption** — create encrypted datasets, and lock or unlock them
-- **Directories** — list the folders inside a dataset, move or delete them, or convert one to its own dataset
-- **ZnapZend** — optionally show the backup plans set on each dataset
-- **Light on your server** — no background daemon: it only reads ZFS while the Main tab is open, pauses when the tab is hidden, and can load snapshots after datasets or refresh only when you ask
-- **Your view, your way** — collapse datasets and hide the ones you don't need, such as Docker's layers, with an exclusion pattern
+- **Pools** — health, size, used and free space, snapshot counts
+- **Datasets** — create, rename, promote, destroy, and edit properties
+- **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when the newest gets old
+- **Snapshots Admin** — filter, sort, browse a snapshot's files, or see what changed since it
+- **Reviews** — destroy, rollback and bulk delete show what they'll remove first
+- **Encryption** — create encrypted datasets, lock and unlock them
+- **Directories** — list, move or delete folders, or convert one to a dataset (cloned instead of copied where it can)
+- **Rewrite Files** — apply new compression or checksum settings to existing data (Unraid 7.3+)
+- **Alerts** — optional notifications for pool problems and datasets whose newest snapshot is too old
+- **ZnapZend** — optionally show each dataset's backup plans
+- **Light** — no background daemon; reads ZFS only while the Main tab is open, or for alerts you turn on
+- **Your view** — collapse datasets, or hide some with an exclusion pattern
+
+## Coming next
+
+- **Pool Info** — which Unraid can import a pool, and what would change that
+- **Replication** — send datasets to another pool or server, incrementally
+- **Pool history and scrubs** — recent pool commands; scrub only known errors or a date range
+- **Disk latency** — slow disks in each pool, with an optional alert
+- **Later** — Sanoid snapshot schedules, and changing encryption keys
+
+## Requirements
+
+Unraid 6.9.2 or later. ZFS is built in from 6.12; older versions need a ZFS plugin.
 
 ## Install
 
@@ -25,30 +41,20 @@ The current release is a beta. Go to **Plugins → Install Plugin** and paste:
 https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg
 ```
 
-Then open **Main** and look for **ZFS Master NG**. Settings are under **Settings → ZFS Master NG**.
-
-### Coming from ZFS Master
-
-It installs straight over ZFS Master, either the original or the 7.3 fork, and keeps your settings. There's nothing to uninstall first. From then on, updates come from this repository.
-
-## Requirements
-
-- Unraid 6.9.2 or newer with a ZFS pool
-- Before Unraid 6.12, ZFS itself comes from the ZFS plugin
-
-## Staying safe
-
-Removing datasets and directories stays off until you enable **Destructive Mode** in the plugin settings. Snapshot rollback and delete don't need it, so check their warnings before confirming.
-
-A snapshot is a restore point on the same pool, not a backup.
-
-## Support
-
-Found a bug or have an idea? [Open an issue](https://github.com/chodeus/ZFS-Master-NG/issues).
+Renaming, editing, destroying, converting and deleting folders need **Destructive Mode** in the plugin settings, as do rollbacks and deletes that take other snapshots with them.
 
 ## Credits
 
-Created by [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid), with Unraid 7.3 and backend work by [dlang123](https://github.com/dlang123/ZFS-Master-Unraid). Released under the GPL, version 2 or later; see [LICENSE](zfs.master/LICENSE).
+- [IkerSaint](https://github.com/IkerSaint/ZFS-Master-Unraid) — original creator of ZFS Master
+- [dlang123](https://github.com/dlang123/ZFS-Master-Unraid) — Unraid 7.3 port and backend rewrite
+
+## License
+
+GPL, version 2 or later, the same as the original ZFS Master. See [LICENSE](LICENSE).
+
+## Diagnostics
+
+Settings, ZFS Master NG, Diagnostics, **Generate** makes one zip for a bug report: the plugin's settings, install and log, the pools and datasets as it reads them, and what it finds wrong. Dataset, snapshot and folder names, addresses and keys are replaced by tokens; pool names stay. Unraid's own diagnostics zip goes in as Unraid made it unless you untick the box. The zip is kept in `/boot/logs`. If the page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal.
 
 ## Development
 

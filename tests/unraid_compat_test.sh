@@ -1,0 +1,169 @@
+#!/bin/bash
+# Runs this plugin through a real Unraid webGUI tree: its plugin installer, CSRF prepend, helpers and pages.
+# Disposable container only, as root. Usage: unraid_compat_test.sh <webgui-tree> <unraid-version>
+set -u
+# This script replaces plugin files and system binaries, so it must never touch a real server.
+if [ -e /etc/unraid-version ] || [ -d /boot/config ]; then echo 'Refusing to run on an Unraid system' >&2; exit 2; fi
+web=$(cd "$1" && pwd); version=$2; repo=$(pwd)
+fail() { echo "FAILED [$version]: $*"; exit 1; }
+command -v xz >/dev/null && command -v zip >/dev/null && command -v unzip >/dev/null || sh "$repo/tests/ci_apt.sh" xz-utils zip unzip || fail 'xz, zip or unzip unavailable'
+
+docroot=/usr/local/emhttp
+flash=/boot/config/plugins/zfs.master
+live=$docroot/plugins/zfs.master
+mkdir -p "$docroot/plugins" /boot/config/plugins /boot/config/plugins-error /var/log/plugins /var/log/packages /var/run /usr/bin
+# Tags before 6.12 keep plugins/ at the top of the tree.
+plugins="$web/emhttp/plugins"; [ -d "$plugins" ] || plugins="$web/plugins"
+cp -R "$plugins/dynamix" "$plugins/dynamix.plugin.manager" "$docroot/plugins/"
+mkdir -p /var/local/emhttp; printf 'csrf_token="compat-test-token"\n' > /var/local/emhttp/var.ini
+ln -sfn "$docroot/plugins/dynamix" "$docroot/webGui"
+rm -rf "$docroot/plugins/dynamix.plugin.manager/post-hooks" "$docroot/plugins/dynamix.plugin.manager/pre-hooks"
+ln -sf "$(command -v php)" /usr/bin/php
+plugin="php $docroot/plugins/dynamix.plugin.manager/scripts/plugin"
+
+# Slackware's package tools; everything else is real.
+cat > /sbin/upgradepkg <<'STUB'
+#!/bin/bash
+for pkg; do :; done
+tar -xJf "$pkg" -C / || exit 1
+touch "/var/log/packages/$(basename "$pkg" .txz)"
+STUB
+cat > /sbin/removepkg <<'STUB'
+#!/bin/bash
+rm -rf /usr/local/emhttp/plugins/zfs.master
+rm -f "/var/log/packages/$1"
+STUB
+chmod +x /sbin/upgradepkg /sbin/removepkg
+# Unraid's crontab refresh: its own update_cron where the tree has it (6.12 on), else a stand-in that does as that one does.
+# crontab is faked: it keeps the crontab it is given in /tmp/zfsm-crontab. Unraid's /bin/sh is bash, which exec() runs it with.
+mkdir -p /usr/local/sbin
+if [ -f "$web/sbin/update_cron" ]; then cp "$web/sbin/update_cron" /usr/local/sbin/update_cron
+else printf '#/bin/bash\nfor p in /var/log/plugins/*.plg; do p=${p##*/}; cat "/boot/config/plugins/${p%%.*}/"*.cron 2>/dev/null; done | crontab -c /etc/cron.d -\n' > /usr/local/sbin/update_cron; fi
+printf '#!/bin/sh\ncase "$3" in -) cat > /tmp/zfsm-crontab ;; -d) : > /tmp/zfsm-crontab ;; esac\n' > /usr/bin/crontab
+chmod +x /usr/local/sbin/update_cron /usr/bin/crontab
+ln -sf bash /bin/sh
+
+work=$(mktemp -d)
+cp -R zfs.master zfs.master.plg pkg_build.sh "$work/"
+(cd "$work" && bash pkg_build.sh --version 0000.00.00 --branch beta --out "$work/dist" >/dev/null) || fail 'package build'
+package=zfs.master-0000.00.00-x86_64-1.txz
+set_version() { printf 'version="%s"\n' "$1" > /etc/unraid-version; }
+reset() { rm -rf "$flash" "$live" /var/log/plugins/zfs.master.plg /boot/config/plugins/zfs.master.plg /var/log/packages/zfs.master-* /tmp/zfsm_reload; mkdir -p "$flash"; }
+legacy() {
+	mkdir -p "$live/nchan" "$live/scripts"
+	touch "$live/nchan/zfs_master" "$live/scripts/zfs_pool_get_datasets.lua" "$flash/zfs.master-2024.12.09.104.tgz" /tmp/zfsm_reload
+	printf 'exclusion = "/docker%%-old/.*"\n' > "$flash/zfs.master.cfg"
+	printf 'webGui/nchan/notify_poller\nplugins/zfs.master/nchan/zfs_master\nplugins/zfs.master/nchan/zfs_master:stop\nplugins/other/nchan/zfs_master:1\n' > /var/run/nchan.pid
+}
+set_version "$version"
+
+# Upgrade over an old tar install, using the installer's own md5 check on the flash copy.
+reset; legacy; cp "$work/dist/$package" "$flash/"
+$plugin install "$work/zfs.master.plg" > "$work/install.log" 2>&1 || { cat "$work/install.log"; fail 'install refused'; }
+[ -f "$live/backend/ZFSMAdmin.php" ] || fail 'package files not installed'
+[ -L /var/log/plugins/zfs.master.plg ] || fail 'plugin not registered'
+[ ! -e "$live/nchan" ] && [ ! -e "$live/scripts/zfs_pool_get_datasets.lua" ] || fail 'old daemon or Lua files left behind'
+[ ! -e "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'old archive left on the flash'
+[ -f "$flash/$package" ] || fail 'current archive removed from the flash'
+grep -q 'docker%-old' "$flash/zfs.master.cfg" || fail 'settings lost on upgrade'
+grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid && fail 'old daemon still in nchan.pid'
+grep -q 'plugins/other/nchan/zfs_master:1' /var/run/nchan.pid || fail 'another plugin removed from nchan.pid'
+
+# Real plugin removal; the plugin's log and a diagnostics run's work folder are in RAM, outside the package.
+diag=/tmp/zfs.master-diag.$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')
+mkdir -m 700 "$diag" "$diag/plugin" || fail 'no diagnostics work folder to remove'
+touch /var/log/zfs.master.log /var/log/zfs.master.log.1 "$diag/plugin/log.txt"
+$plugin remove zfs.master.plg > "$work/remove.log" 2>&1 || { cat "$work/remove.log"; fail 'remove failed'; }
+[ ! -e "$live" ] && [ ! -e "$flash" ] && [ ! -e /var/log/plugins/zfs.master.plg ] || fail 'remove left files behind'
+[ ! -e /var/log/zfs.master.log ] && [ ! -e /var/log/zfs.master.log.1 ] && [ ! -e "$diag" ] || fail 'remove left the plugin log or a diagnostics work folder behind'
+ls /var/log/packages/zfs.master-* >/dev/null 2>&1 && fail 'remove left a package record'
+
+# A download that fails must leave the old install and the archive its next boot needs.
+reset; legacy; cp "$live/nchan/zfs_master" "$work/old-file"
+$plugin install "$work/zfs.master.plg" > "$work/failed.log" 2>&1 && fail 'install succeeded without its package'
+[ -f "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'failed download deleted the archive the next boot needs'
+[ -f "$live/nchan/zfs_master" ] || fail 'failed download changed the running install'
+grep -q 'plugins/zfs.master/nchan/zfs_master' /var/run/nchan.pid || fail 'failed download changed nchan.pid'
+
+# A failed upgradepkg must also leave the old install, its archive and its registration.
+build_version() {
+	local dir="$work/v$1"; mkdir -p "$dir"; cp -R "$repo/zfs.master" "$repo/zfs.master.plg" "$repo/pkg_build.sh" "$dir/"
+	(cd "$dir" && bash pkg_build.sh --version "$1" --branch beta --out "$dir/dist" >/dev/null) || fail "build $1"
+}
+register_old() {
+	cp "$repo/tests/fixtures/installed_old.plg" /boot/config/plugins/zfs.master.plg
+	ln -sfn /boot/config/plugins/zfs.master.plg /var/log/plugins/zfs.master.plg
+}
+build_version 2026.11.01; build_version 2026.11.02
+first=zfs.master-2026.11.01-x86_64-1; second=zfs.master-2026.11.02-x86_64-1
+reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+cp /sbin/upgradepkg "$work/upgradepkg"; printf '#!/bin/bash\nexit 1\n' > /sbin/upgradepkg
+$plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/broken.log" 2>&1 && fail 'install reported success though upgradepkg failed'
+cp "$work/upgradepkg" /sbin/upgradepkg
+[ -f "$flash/zfs.master-2024.12.09.104.tgz" ] || fail 'failed upgradepkg deleted the old archive'
+[ -e "$live/nchan/zfs_master" ] || fail 'failed upgradepkg removed the old files'
+grep -q '2026.09.25.112' /boot/config/plugins/zfs.master.plg || fail 'failed upgradepkg replaced the installed manifest'
+
+# Over a registered old version, then package to package, then what a reboot does.
+reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+$plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/over-old.log" 2>&1 || { cat "$work/over-old.log"; fail 'upgrade over a registered old version refused'; }
+grep -q '"2026.11.01"' /boot/config/plugins/zfs.master.plg || fail 'manifest not updated on upgrade'
+cp "$work/v2026.11.02/dist/$second.txz" "$flash/"
+$plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { cat "$work/next.log"; fail 'package upgrade refused'; }
+[ ! -e "$flash/$first.txz" ] && [ ! -e "/var/log/packages/$first" ] || fail 'package upgrade left the previous version behind'
+[ -f "$flash/$second.txz" ] && [ -e "/var/log/packages/$second" ] || fail 'package upgrade lost the current version'
+rm -f /var/log/plugins/zfs.master.plg
+$plugin install /boot/config/plugins/zfs.master.plg > "$work/boot.log" 2>&1 || { cat "$work/boot.log"; fail 'reinstall at boot failed'; }
+[ -f "$flash/$second.txz" ] || fail 'reinstall at boot deleted its own archive'
+
+# The manifest's floor is enforced by the real installer.
+reset; set_version 6.8.3; cp "$work/dist/$package" "$flash/"
+$plugin install "$work/zfs.master.plg" > "$work/old-os.log" 2>&1 && fail 'installed below min'
+grep -qi 'version' "$work/old-os.log" || { cat "$work/old-os.log"; fail 'no reason given below min'; }
+set_version "$version"
+
+# Real CSRF prepend, helpers, backend and pages, with fake zfs and zpool binaries.
+reset; cp "$work/dist/$package" "$flash/"
+$plugin install "$work/zfs.master.plg" > "$work/install2.log" 2>&1 || fail 'second install'
+printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\n' > "$flash/zfs.master.cfg"
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
+cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
+cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
+rm -f /usr/sbin/zpool
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" menu_order "$version" || fail 'menu without ZFS'
+mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
+for check in menu_order body_token no_token wrong_token main_page invalid_utf8_setting main_page_stuck_zfs settings_page create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool unraid_sizes time_format settings_roundtrip; do
+	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
+done
+# Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.
+printf '[general]\nalert_interval="60"\n' > "$flash/zfs.master.cfg"
+rm -f /tmp/zfsm-crontab
+"$live/scripts/alerts.php" schedule || fail 'alert script did not run from the package'
+grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null' /tmp/zfsm-crontab || fail 'alert schedule written but not in the crontab'
+grep -qxF '7 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check &> /dev/null' "$flash/alerts.cron" || fail 'alert schedule not written'
+printf '[general]\nalert_interval="0"\n' > "$flash/zfs.master.cfg"
+"$live/scripts/alerts.php" schedule && [ ! -e "$flash/alerts.cron" ] || fail 'alert schedule left behind when turned off'
+cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
+# A schedule's cron file reaches Unraid's crontab through update_cron (zfsmScheduleCron).
+rm -f /tmp/zfsm-crontab
+php -n -d display_errors=stderr -r 'require "/usr/local/emhttp/webGui/include/Helpers.php"; require "/usr/local/emhttp/plugins/zfs.master/backend/ZFSMOperations.php";
+	$why = zfsmScheduleCron(array(array("id" => "0a1b2c3d", "every" => "hourly", "minute" => 7, "hour" => 0, "days" => range(0, 6)))); echo $why; exit($why === "" ? 0 : 1);' || fail 'schedule written but the crontab not rebuilt'
+grep -q '^7 \* \* \* \* /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run 0a1b2c3d ' /tmp/zfsm-crontab || fail 'schedule line not in the crontab'
+rm -f "$flash/schedules.cron"
+# Diagnostics from the package. This version's own diagnostics script can't run to its end here (it reads Unraid's state and
+# runs its tools), so a stand-in holds the script's own line that names its zip: the plugin must find that zip and pack it as it is.
+unraid_script=$docroot/webGui/scripts/diagnostics
+[ -x "$unraid_script" ] || fail "this version's diagnostics script is not where the plugin runs it"
+grep -q '$zip = "/boot/logs/$diag.zip";' "$unraid_script" || fail "this version's diagnostics script does not write its zip to /boot/logs"
+names_zip=$(grep "ZIP file '\$zip' created" "$unraid_script") || fail "this version's diagnostics script names its zip in another way"
+cp -p "$unraid_script" "$work/unraid-diagnostics"
+printf '#!/usr/bin/php -q\n<?php\n$zip = "/boot/logs/tower-diagnostics-20260102-1000.zip";\nfile_put_contents($zip, "Unraid made this");\n%s\n' "$names_zip" > "$unraid_script"
+rm -rf /boot/logs; mkdir -p /boot/logs
+"$live/scripts/diagnostics.php" > "$work/diagnostics.log" 2>&1 || { cat "$work/diagnostics.log"; fail 'the diagnostics script failed'; }
+cp -p "$work/unraid-diagnostics" "$unraid_script"
+made=$(sed -n 's/^Diagnostics zip: //p' "$work/diagnostics.log")
+[ -f "$made" ] || { cat "$work/diagnostics.log"; fail 'the diagnostics script named no zip'; }
+unzip -q "$made" -d "$work/diagnostics" || fail 'the diagnostics zip does not unpack'
+[ "$(cat "$work/diagnostics/unraid/tower-diagnostics-20260102-1000.zip" 2>/dev/null)" = 'Unraid made this' ] || { cat "$work/diagnostics/unraid/diagnostics.txt"; fail "Unraid's zip is not in the plugin's zip as Unraid made it"; }
+[ "$(ls /boot/logs)" = "$(basename "$made")" ] || fail "something beside the plugin's zip is left in /boot/logs: $(ls /boot/logs)"
+echo "Unraid $version: installer, CSRF, backend, pages and diagnostics passed"

@@ -1,15 +1,41 @@
 #!/bin/sh
 
 if [ "$1" = "list" ]; then
+	[ "${ZFSM_TEST_POOL_HANG:-0}" = 1 ] && sleep 30
 	if [ "${ZFSM_TEST_POOL_FAIL:-0}" = 1 ]; then
 		printf 'simulated pool query failure\n' >&2
 		exit 1
 	fi
-	printf 'tank\t1.00T\t100G\t900G\tONLINE\n'
+	printf 'tank\t1.00T\t100G\t900G\t%s\n' "${ZFSM_TEST_POOL_HEALTH:-ONLINE}"
+	exit 0
+fi
+
+# zpool get all: some 2.1 features, ZFSM_TEST_BCLONE/_ENDIAN (tank), ZFSM_TEST_PHYSICAL (any), unset left out; fail = I/O error.
+# ZFSM_TEST_FEATURES adds name=state, unsupported@guid=state (a feature OpenZFS lacks) and compatibility=<sets> pairs.
+if [ "$1" = "get" ] && [ "$5" = "all" ]; then
+	[ "${ZFSM_TEST_FEATURES:-}" = hang ] && sleep 30
+	case " ${ZFSM_TEST_BCLONE:-} ${ZFSM_TEST_BCLONE_ENDIAN:-} ${ZFSM_TEST_PHYSICAL:-} " in *" fail "*) printf 'cannot get property: I/O error\n' >&2; exit 1;; esac
+	# With a source column asked for, each row has one, as zpool's has; with -o property, only its name.
+	{
+	printf 'size\t1.00T\ncapacity\t10%%\nhealth\tONLINE\n'
+	printf 'feature@async_destroy\tenabled\nfeature@empty_bpobj\tactive\nfeature@lz4_compress\tactive\nfeature@draid\tdisabled\n'
+	if [ "$6" = tank ]; then
+		[ -n "${ZFSM_TEST_BCLONE:-}" ] && printf 'feature@block_cloning\t%s\n' "$ZFSM_TEST_BCLONE"
+		[ -n "${ZFSM_TEST_BCLONE_ENDIAN:-}" ] && printf 'feature@block_cloning_endian\t%s\n' "$ZFSM_TEST_BCLONE_ENDIAN"
+	fi
+	[ -n "${ZFSM_TEST_PHYSICAL:-}" ] && printf 'feature@physical_rewrite\t%s\n' "$ZFSM_TEST_PHYSICAL"
+	for pair in ${ZFSM_TEST_FEATURES:-}; do
+		case $pair in unsupported@*|compatibility=*) printf '%s\t%s\n' "${pair%%=*}" "${pair#*=}";; *) printf 'feature@%s\t%s\n' "${pair%%=*}" "${pair#*=}";; esac
+	done
+	} | if [ "${4##*,}" = source ]; then sed 's/$/\t-/'; elif [ "$4" = property ]; then cut -f1; else cat; fi
 	exit 0
 fi
 
 if [ "$1" = "status" ]; then
+	[ "${ZFSM_TEST_ZPOOL_STATUS_FAIL:-0}" = 1 ] && { printf 'simulated zpool status failure\n' >&2; exit 1; }
+	# ZFSM_TEST_ZPOOL_STATUS_STARTED: a file made as the slow status starts, so a test knows the run is collecting.
+	[ "${ZFSM_TEST_ZPOOL_STATUS_SLOW:-0}" = 1 ] && { [ -n "${ZFSM_TEST_ZPOOL_STATUS_STARTED:-}" ] && : > "$ZFSM_TEST_ZPOOL_STATUS_STARTED"; sleep 5; exit 0; }
+	[ -n "${ZFSM_TEST_ZPOOL_STATUS:-}" ] && { cat "$ZFSM_TEST_ZPOOL_STATUS"; exit 0; }
 	cat <<'EOF'
   pool: tank
  state: ONLINE
