@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- fix: dialog text, time box and Snapshots Admin at phone width
+- Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
+- Replicate's Starts at box now matches the theme, clock included
+- Snapshots Admin fits a phone: its table scrolls sideways and Delete stays readable
 
 ## 2026.11.16.3 (beta)
 
