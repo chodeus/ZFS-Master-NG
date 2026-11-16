@@ -1,7 +1,7 @@
 <?php
 // Keep: after a schedule's run lands, its snapshots past the newest N go; a run holds what it sends until a run to the copy lands
 // or none is left to carry on.
-// zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases.
+// zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases; zfsmServeReplica prunes what it received.
 
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');
 define('ZFSM_KEEP_MAX', 9999);
@@ -42,13 +42,13 @@ function zfsmKeepSnapshots($zdataset) {
 	return $snapshots;
 }
 
-// The snapshots $tag marks past the newest $keep of them (0: none), oldest first and ZFSM_KEEP_PER_RUN at most, never one held or
-// cloned; null when they can't be read.
+// The snapshots $tag marks ($tag null: every one) past the newest $keep of them (0: none), oldest first and ZFSM_KEEP_PER_RUN at
+// most, never one held or cloned; null when they can't be read.
 function zfsmKeepSurplus($zdataset, $keep, $tag) {
 	if ($keep <= 0) return array();
 	$snapshots = zfsmKeepSnapshots($zdataset);
 	if ($snapshots === null) return null;
-	$counted = array_values(array_filter($snapshots, function($snapshot) use ($tag) { return $snapshot['tag'] === $tag; }));
+	$counted = array_values(array_filter($snapshots, function($snapshot) use ($tag) { return $tag === null || $snapshot['tag'] === $tag; }));
 	$past = array_slice($counted, 0, max(0, count($counted) - $keep));
 	return array_slice(array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; })), 0, ZFSM_KEEP_PER_RUN);
 }
@@ -95,9 +95,29 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 		$failed = zfsmKeepDestroy($snapshot['name'], $snapshot['guid'], $why);
 		if ($failed !== '') $stayed[] = $snapshot['name'].' ('.$failed.')';
 	}
+	return zfsmKeepStayed('Keep', $stayed, 'run');
+}
+
+// What $stayed (each a snapshot and why) says in a log line or notification, '' when none; the next $then tries again.
+function zfsmKeepStayed($who, $stayed, $then) {
 	// The log and notifications keep 500 characters of a line: the first few, and how many more.
 	$more = count($stayed) > 3 ? '; and '.(count($stayed) - 3).' more' : '';
-	return $stayed ? 'Keep could not remove '.implode('; ', array_slice($stayed, 0, 3)).$more.'; the next run tries again' : '';
+	return $stayed ? $who.' could not remove '.implode('; ', array_slice($stayed, 0, 3)).$more.'; the next '.$then.' tries again' : '';
+}
+
+// After a receive into $zdataset here landed: its snapshots past the newest $keep (Settings, Keep Replicas; 0 keeps all) go, every
+// one counting. A failure is logged and notified on this server; the receive's answer stays as it was.
+function zfsmKeepReplica($from, $zdataset, $keep) {
+	$surplus = zfsmKeepSurplus($zdataset, $keep, null);
+	$stayed = array();
+	foreach ($surplus ?? array() as $snapshot) {
+		$failed = zfsmKeepDestroy($snapshot['name'], $snapshot['guid'], 'past the newest '.$keep.' Keep Replicas keeps');
+		if ($failed !== '') $stayed[] = $snapshot['name'].' ('.$failed.')';
+	}
+	$kept = $surplus === null ? 'Keep Replicas could not read the snapshots of '.$zdataset : zfsmKeepStayed('Keep Replicas', $stayed, 'receive');
+	if ($kept === '') return;
+	zfsmLog('Replication from '.$from.' into '.$zdataset.' received: '.$kept, LOG_WARNING);
+	zfsnotify('ZFS Replication', 'Replication from '.$from.' into '.$zdataset.' received. '.zfsmSafeText($kept).'.', '', 'warning');
 }
 
 // Before a send: its snapshot and the snapshot it sends the changes since are held for the copy, so nothing removes them before a

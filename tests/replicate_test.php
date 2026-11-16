@@ -328,18 +328,23 @@ same(array(1, 4, 1), $logins($ssh()), 'still one login: exists, token, snapshots
 same(array('backup/replicas/tower/data on server nas already holds tank/data@c'), array(zfsmReplicatePreview('tank/data', 'c', 'data', $cfg, 'nas')['error']), 'the copy there is read back through the checker');
 $ssh();
 
-// A cut-off stream leaves a token there; the next run carries on from it.
+// A cut-off stream leaves a token there; the next run carries on from it. Keep Replicas 1 there, from its settings, removes nothing
+// until a receive lands.
 $reset();
 runProcess('zfs', array('snapshot', 'tank/data@d'));
 putenv('ZFSM_TEST_SEND_CUT=1');
+putenv('ZFSM_TEST_REPLICA_KEEP=1');
 same(1, zfsmRunReplicate('tank/data', 'd', 'data', null, false, 'nas'), 'a run cut off part-way fails');
 putenv('ZFSM_TEST_SEND_CUT');
+same(array('backup/replicas/tower/data@b', 'backup/replicas/tower/data@c'), $names('backup/replicas/tower/data', 'snapshot'), 'and the copy there loses nothing');
 same(array('warning: Replication of tank/data@d to backup/replicas/tower/data on server nas failed: cannot receive incremental stream: checksum mismatch or incomplete stream. Replicate it again to carry on from where it stopped.'),
 	$read('notify-detail.log'), 'with receive\'s first line only, and the token read there');
 $reset();
 same(0, zfsmRunReplicate('tank/data', 'b', 'data', null, false, 'nas'), 'the next run');
 same(array('send -P -v -t tok:tank/data@d'), $calls('send'), 'carries on from the token there');
 same(array($remote_mark('d')), $names('tank/data', 'bookmark'), 'and ends at d');
+same(array('backup/replicas/tower/data@d'), $names('backup/replicas/tower/data', 'snapshot'), 'which alone stays there');
+putenv('ZFSM_TEST_REPLICA_KEEP');
 $ssh();
 
 // Why a run fails: the checker's refusal, even after send's own error; send's error when the checker only saw no stream.

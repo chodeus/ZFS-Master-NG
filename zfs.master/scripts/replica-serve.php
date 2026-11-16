@@ -10,4 +10,4 @@ require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 
 $sender = $argc === 2 ? $argv[1] : null;
-exit(zfsmServeReplica((string)getenv('SSH_ORIGINAL_COMMAND'), zfsmReplicaArea(loadConfig(parse_plugin_cfg('zfs.master', true))['replica_accept'], $sender)));
+exit(zfsmServeReplicaSettings((string)getenv('SSH_ORIGINAL_COMMAND'), loadConfig(parse_plugin_cfg('zfs.master', true)), $sender));
