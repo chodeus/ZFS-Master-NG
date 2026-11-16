@@ -6,13 +6,21 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.16.2">
-<!ENTITY md5 "f6aed2f4b07489d53b5529c30840d494">
+<!ENTITY version "2026.11.16.3">
+<!ENTITY md5 "13f6891de9d8d4a1cdd3c402714509d7">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16.3
+- Repeat in the Replicate dialog now runs every hour, or at a start time you set on the days you tick (all seven: every day)
+- Keep is now labelled Snapshots to keep, and the dialog's help shows only for a repeat, in short lines
+- A new schedule is refused when another of the same dataset starts in the same minute; a refusal names each choice to fix
+- Schedules saved before keep their times, and are saved in the new shape on the next change
+- Keep leaves a source snapshot while its copy's twin is held or cloned, and removes both once it is free
+- Schedules saved by this version don't run on an older one: after going back, add them again
 
 ###2026.11.16.2
 - A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
