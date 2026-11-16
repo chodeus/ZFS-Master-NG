@@ -112,11 +112,12 @@ same(array(array('destroy backup/data@'.$n(2), 'destroy tank/data@'.$n(2)), arra
 $pool('props', array("tank/data@c\tzfs.master:schedule\t".zfsmKeepTag('nas', 'data')));
 foreach (array(1, 3, 4) as $k) $append('props', "tank/data@".$n($k)."\tzfs.master:schedule\t".$tag);
 
-// One held on the copy stays there, and the one here goes.
+// One held on the copy stays there, and so does its twin here, with no warning: Keep finds the copy's only through it.
 $append('holds', "backup/data@".$n(1)."\tmine");
 $reset();
 $run(5);
-same(array(array('destroy tank/data@'.$n(1), 'destroy backup/data@'.$n(3), 'destroy tank/data@'.$n(3)), array('a', 'b', 'c', $n(4), $n(5)), array($n(1), $n(4), $n(5))), array($destroys(), $short('tank/data'), $short('backup/data')), 'the copy\'s held one stays, its twin here goes');
+same(array(array('destroy backup/data@'.$n(3), 'destroy tank/data@'.$n(3)), array('a', 'b', 'c', $n(1), $n(4), $n(5)), array($n(1), $n(4), $n(5)), array()),
+	array($destroys(), $short('tank/data'), $short('backup/data'), $notified()), 'the copy\'s held one and its twin here stay, unwarned; the next goes');
 $pool('holds', array());
 
 // A copy's snapshot that can't go keeps its twin here for the next run; the run is a problem, notified once and counted.
@@ -128,6 +129,7 @@ $kept = 'Keep could not remove backup/data@'.$n(4).' (cannot destroy \'backup/da
 same(array(array('warning: Replication of tank/data@'.$n(6).' to backup/data finished (changes since '.$n(5).'). '.zfsmSafeText($kept).'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'),
 	array($n(4), $n(5), $n(6)), 1), array($notified(), array_slice($short('tank/data'), -3), zfsmScheduleFailures($id)), 'says which stays and why; both stay; counted');
 same(1, substr_count($log(), zfsmSafeText('Replication of tank/data to backup/data: '.$kept)), 'and logs it');
+same(array(array('a', 'b', 'c', $n(4), $n(5), $n(6)), array($n(4), $n(5), $n(6))), array($short('tank/data'), $short('backup/data')), 'with its hold off, the copy\'s one went with its twin here');
 $reset();
 $run(7);
 same(array(array('destroy backup/data@'.$n(4), 'destroy tank/data@'.$n(4), 'destroy backup/data@'.$n(5), 'destroy tank/data@'.$n(5)), 0, 1),
@@ -155,7 +157,7 @@ same(array(array(), 1), array($destroys(), preg_match('/finished \(changes since
 @unlink(zfsmScheduleStateFile($id));
 $reset();
 $run(11);
-same(array(array($n(10), $n(11)), array($n(1), $n(10), $n(11))), array(array_slice($short('tank/data'), 3), $short('backup/data')), 'the next run catches up');
+same(array(array($n(10), $n(11)), array($n(10), $n(11))), array(array_slice($short('tank/data'), 3), $short('backup/data')), 'the next run catches up');
 
 // A run that stops part-way holds its snapshot and the one it sent the changes since; nothing removes them, and the run that
 // carries it on takes the hold off.
@@ -171,7 +173,7 @@ same(array('hold '.$hold.' tank/data@'.$n(12), 'hold '.$hold.' tank/data@'.$n(11
 $append('holds', "tank/data@".$n(11)."\tmine");
 $reset();
 same(0, $run(13), 'the next run');
-same(array(array('tank/data@'.$n(11)."\tmine"), array($n(11), $n(12), $n(13)), array($n(1), $n(11), $n(12), $n(13)), 1), array($read('pool/holds'), array_slice($short('tank/data'), 3), $short('backup/data'), preg_match('/^normal: .+ It works again after 1 run\(s\) with a problem\.$/D', $notified()[0] ?? '')),
+same(array(array('tank/data@'.$n(11)."\tmine"), array($n(11), $n(12), $n(13)), array($n(11), $n(12), $n(13)), 1), array($read('pool/holds'), array_slice($short('tank/data'), 3), $short('backup/data'), preg_match('/^normal: .+ It works again after 1 run\(s\) with a problem\.$/D', $notified()[0] ?? '')),
 	'carries it on and takes its own holds off; the one held by another stays; it works again');
 $pool('holds', array());
 // A run whose copy has nothing to carry on (zfs receive -A cleared its token) that fails takes the copy's holds off, so the snapshot
@@ -228,14 +230,31 @@ $far = zfsmKeepTag('nas', 'copy');
 foreach (array('r1', 'r2') as $name) createDatasetSnapshot('tank/data', $name, 0, array(ZFSM_KEEP_TAG => $far));
 $reset();
 same(array('', array('destroy tank/data@r1'), array()), array(zfsmKeepPrune('tank/data', array('server' => 'nas', 'dest' => 'copy', 'snapshot' => 'tank/data@r2'), 1, $far), $destroys(), preg_grep('/ copy$/', $read('calls.log'))), 'to a server, only here, and the copy is not asked');
-// A run removes at most 50, oldest first; the next removes more.
+// A run removes at most 50, oldest first, of those it can: the copy's held or cloned ones and their twins take no place.
+$many = zfsmKeepTag('', 'backup/many');
 $append('datasets', "tank/many\tfilesystem");
+$append('datasets', "backup/many\tfilesystem");
 for ($k = 1; $k <= 60; $k++) {
 	$append('marks', "tank/many@m$k\t".(9000 + $k)."\t".(9000 + $k));
-	$append('props', "tank/many@m$k\tzfs.master:schedule\t".$tag);
+	$append('props', "tank/many@m$k\tzfs.master:schedule\t".$many);
+	$append('marks', "backup/many@m$k\t".(9000 + $k)."\t".(9100 + $k));
 }
-$surplus = array_column(zfsmKeepSurplus('tank/many', 1, $tag), 'name');
-same(array(50, 'tank/many@m1', 'tank/many@m50'), array(count($surplus), $surplus[0], $surplus[49]), 'at most 50 a run, oldest first');
+foreach (array(1, 2) as $k) $append('holds', "backup/many@m$k\tmine");
+$append('props', "backup/many@m3\tclones\tbackup/clone");
+$reset();
+$pruned = zfsmKeepPrune('tank/many', array('server' => '', 'dest' => 'backup/many', 'snapshot' => 'tank/many@m60'), 1, $many);
+$left = array('m1', 'm2', 'm3', 'm54', 'm55', 'm56', 'm57', 'm58', 'm59', 'm60');
+same(array('', 100, $left, $left), array($pruned, count($destroys()), $short('tank/many'), $short('backup/many')), 'at most 50 a run, oldest first, past the copy\'s held and cloned ones');
+$pool('holds', array());
+// Keep Replicas too, and its held ones take no place either.
+$append('datasets', "tank/recv\tfilesystem");
+for ($k = 1; $k <= 60; $k++) $append('marks', "tank/recv@m$k\t".(9200 + $k)."\t".(9200 + $k));
+foreach (array(1, 2) as $k) $append('holds', "tank/recv@m$k\tmine");
+$reset();
+zfsmKeepReplica('10.0.0.9', 'tank/recv', 1);
+same(array(50, array('m1', 'm2', 'm53', 'm54', 'm55', 'm56', 'm57', 'm58', 'm59', 'm60'), array()), array(count($destroys()), $short('tank/recv'), $notified()),
+	'a receive removes at most 50 too, past the held ones, with no warning');
+$pool('holds', array());
 
 // Release in Snapshots takes the plugin's holds off, Hold's and a stopped run's; another tool's stay, and alone are refused.
 $pool('holds', array("tank/data@a\tzfsmaster", "tank/data@a\t".$hold, "tank/data@a\tmine", "tank/data@b\tmine"));
