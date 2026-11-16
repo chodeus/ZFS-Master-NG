@@ -2,13 +2,13 @@
 
 ## Unreleased
 
-- refactor: move the Main tab's diagnostics record helpers into ZFSMDiagRecord.js
-- fix: schedules reach Unraid's crontab on PHP 8.3 and later
-- fix: Keep writes each snapshot's reason in parentheses, so a snapshot named with Keep's words stays one token in diagnostics
-- fix: diagnostics keep Keep's words after a dataset's name, so a removal says why and what stayed
-- fix: Keep holds what each run sends, Release takes the plugin's holds off, and a run removes 50 at most
-- feat: a schedule's Keep removes its snapshots past the newest N, here and in a copy on this server
-- feat: Keep Replicas, so a server that receives copies keeps only each copy's newest snapshots
+- A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
+- Keep removes up to 50 snapshots a run, after a run that lands; held or cloned snapshots stay
+- New Keep Replicas setting: a server that accepts copies keeps only each copy's newest snapshots after a receive
+- A run that stops part-way holds what it carries on from, so neither Keep nor a removal by hand takes it first; Release takes the plugin's holds off
+- A removal that fails is logged and notified, and the next run or receive tries again
+- Schedules reach Unraid's crontab on PHP 8.3 and later
+- Diagnostics keep why Keep removed a snapshot, and what stayed
 
 ## 2026.11.16.1 (beta)
 
