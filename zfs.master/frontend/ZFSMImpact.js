@@ -84,24 +84,32 @@ function zfsmReplicateHtml(options, zdataset) {
 	}
 	if (options.servers_error) html += '<p style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
-	const options_of = (names, label) => names.map((name, value) => '<option value="'+value+'">'+label(name, value)+'</option>').join('');
-	const hours = options_of(Array.from({length: 24}), (name, hour) => String(hour).padStart(2, '0')+':00 to '+String(hour).padStart(2, '0')+':59');
-	const days = options_of(['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], name => name);
-	html += row('Repeat:', '<select id="zfsm-replicate-every" style="width:100%"><option value="">Once</option><option value="hourly">Every hour</option><option value="daily">Every day</option><option value="weekly">Every week</option></select>');
-	html += '<p id="zfsm-replicate-day-row" style="margin:.5em 0;display:none"><label style="display:block">On:<select id="zfsm-replicate-day" style="width:100%">'+days+'</select></label></p>';
-	html += '<p id="zfsm-replicate-hour-row" style="margin:.5em 0;display:none"><label style="display:block">Starts between:<select id="zfsm-replicate-hour" style="width:100%">'+hours+'</select></label></p>';
-	html += '<p id="zfsm-replicate-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Keep:<input id="zfsm-replicate-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all"></label></p>';
+	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	// Monday first; all seven ticked runs every day.
+	const days = [1, 2, 3, 4, 5, 6, 0].map(day => '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="zfsm-replicate-day" value="'+day+'" checked> '
+		+['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]+'</label>').join('');
+	html += row('Repeat:', '<select id="zfsm-replicate-every" style="width:100%"><option value="">Once</option><option value="hourly">Every hour</option><option value="days">On days of the week</option></select>');
+	html += '<div id="zfsm-replicate-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>';
+	html += '<p id="zfsm-replicate-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at:<input id="zfsm-replicate-time" type="time" value="00:00" style="width:100%"></label></p>';
+	html += '<p id="zfsm-replicate-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="zfsm-replicate-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all"></label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
-	return '<div style="text-align:left">'+html+'<p style="margin:.5em 0">It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.</p>'
-		+'<p style="margin:.5em 0">A repeat runs now, then each hour, day or week at a minute of its own, in this server\'s time zone (the answer and Settings show when), taking a new snapshot each run. Settings lists the schedules. Keep: from the next run on, once a run lands, only the newest this many of the snapshots this copy\'s schedules take stay, besides held or cloned ones, here and in a copy on this server (one on another server keeps all, unless its Keep Replicas keeps fewer); a run removes up to 50, the next ones the rest; empty keeps all. After this run, a notification comes only for the first problem in a row, and for the run that works again after it.</p></div>';
+	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
+		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
+		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules.')
+		+say('Snapshots to keep: from the next run on, once a run lands, only the newest this many of the snapshots this copy\'s schedules took stay, here and in a copy on this server. Empty keeps all. With Mon, Wed and Fri ticked, 6 keeps two weeks.')
+		+say('Held or cloned snapshots always stay. A copy on another server keeps all, unless its Keep Replicas keeps fewer. A run removes up to 50; the next runs remove the rest.')
+		+say('After this run, a notification comes only for the first problem in a row, and for the run that works again after it.')+'</div></div>';
 }
 
-// Repeat's rows: the day for a weekly run, the hour for a daily or weekly one, Keep for any. A repeat takes its own snapshot, so Snapshot shows Take one now.
+// Repeat's rows: days and a start time for a run on days of the week, Keep and its help for any repeat. A repeat takes its own
+// snapshot, so Snapshot shows Take one now.
 function zfsmReplicateRepeatSync(root) {
 	const every = root.querySelector('#zfsm-replicate-every').value;
-	root.querySelector('#zfsm-replicate-keep-row').style.display = every !== '' ? '' : 'none';
-	root.querySelector('#zfsm-replicate-day-row').style.display = every === 'weekly' ? '' : 'none';
-	root.querySelector('#zfsm-replicate-hour-row').style.display = every === 'daily' || every === 'weekly' ? '' : 'none';
+	const show = (id, shown) => { root.querySelector(id).style.display = shown ? '' : 'none'; };
+	show('#zfsm-replicate-keep-row', every !== '');
+	show('#zfsm-replicate-repeat-help', every !== '');
+	show('#zfsm-replicate-days-row', every === 'days');
+	show('#zfsm-replicate-time-row', every === 'days');
 	const snapshot = root.querySelector('#zfsm-replicate-snapshot');
 	if (every !== '') snapshot.value = '';
 	snapshot.disabled = every !== '';
