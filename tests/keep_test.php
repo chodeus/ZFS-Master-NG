@@ -75,16 +75,16 @@ same(true, preg_match('/^[0-9a-f]{16}$/D', $tag) === 1 && $tag !== zfsmKeepTag('
 $job = array('id' => '0a1b2c3d', 'dataset' => 'tank/data', 'dest' => 'backup/data', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0);
 $listed = zfsmScheduleRead(json_encode(array($job, array('id' => '0a1b2c3e', 'keep' => '3') + $job, array('id' => '0a1b2c3f', 'keep' => 10000) + $job, array('id' => '0a1b2c40', 'keep' => 9999) + $job)));
 same(array(array(0, 9999), 'keeps all its snapshots', 2), array(array_column($listed['valid'], 'keep'), zfsmScheduleKeepText($listed['valid']['0a1b2c3d']), count($listed['other'])), 'an old record keeps all; "3" and 10000 are not schedules');
-$refused = 'Nothing was scheduled: Keep takes a number of snapshots up to 9999, or nothing to keep all';
-same(array(array('tank/data' => $refused), array('tank/data' => $refused), null, array()), array(zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'hourly', 0, 0, -1, $cfg)['failed'],
-	zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'hourly', 0, 0, 10000, $cfg)['failed'], $stored(), $read('calls.log')), 'Repeat refuses one, saving and running nothing');
+$refused = 'Nothing was scheduled: under Snapshots to keep, give a number up to 9999, or nothing to keep all';
+same(array(array('tank/data' => $refused), array('tank/data' => $refused), null, array()), array(zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'hourly', '', '', -1, $cfg)['failed'],
+	zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'hourly', '', '', 10000, $cfg)['failed'], $stored(), $read('calls.log')), 'Repeat refuses one, saving and running nothing');
 
 // Repeat with Keep 2: the first run, in the background, takes its snapshot with the copy's tag, as each scheduled run does.
 $reset();
-$add('tank/data', '', 'backup/data', '', 'hourly', -1, -1, 2, $cfg);
+$add('tank/data', '', 'backup/data', '', 'hourly', '', '', 2, $cfg);
 $jobs = $stored();
 $id = $jobs[0]['id'];
-same(array(2, true), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($cfg), 'every hour at :'.sprintf('%02d', zfsmScheduleMinute($id)).', keeps the newest 2 of its snapshots') !== false), 'Keep is saved, and Settings says it');
+same(array(2, true), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($cfg), 'every hour at :'.sprintf('%02d', $jobs[0]['minute']).', keeps the newest 2 of its snapshots') !== false), 'Keep is saved, and Settings says it');
 $first = array_slice($short('tank/data'), -1)[0];
 same(array(array('snapshot -o zfs.master:schedule='.$tag.' tank/data@'.$first), array($first)), array(array_values(preg_grep('/^snapshot /', $read('calls.log'))), $short('backup/data')), 'the first run tags its snapshot and makes the copy');
 $t0 = time();
@@ -268,7 +268,7 @@ $run(19);
 $run(20);
 same(array(2, true), array($tagged(), zfsmScheduleRemove($id)['saved']), 'two of the schedule\'s snapshots, and it is removed');
 $reset();
-$add('tank/data', '', 'backup/data', '', 'hourly', -1, -1, 1, $cfg);
+$add('tank/data', '', 'backup/data', '', 'hourly', '', '', 1, $cfg);
 $again = $stored()[0]['id'];
 same(array(array(), 3), array($destroys(), $tagged()), 'the first run of one added again removes nothing');
 $reset();

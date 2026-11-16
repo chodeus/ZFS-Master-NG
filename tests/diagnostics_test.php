@@ -385,7 +385,7 @@ has("key copies in RAM: 1\n", $found('zfsmDiagReplicaSend', function() use ($wor
 $job = array('id' => '0a1b2c3d', 'dataset' => 'tank/data', 'dest' => 'private copy', 'server' => 'nas3', 'every' => 'daily', 'hour' => 3, 'day' => 0);
 $scheduled = function($cron = true, $live = true, $list = null) use ($job) {
 	return function($root) use ($job, $cron, $live, $list) {
-		$line = zfsmScheduleCronText(array($job));
+		$line = zfsmScheduleCronText(array(zfsmScheduleUpgrade($job)));
 		file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', $list ?? json_encode(array($job)));
 		if ($cron) file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', $line);
 		if ($live) file_put_contents($root.'/etc/cron.d/root', $line, FILE_APPEND);
@@ -400,6 +400,8 @@ zfsmDiagRun($work.'/out-schedules', $context());
 $text = (string)@file_get_contents($work.'/out-schedules/plugin/replication-schedules.txt');
 same(1, preg_match('~^0a1b2c3d\ttank/name-[0-9a-f]{8}\tname-[0-9a-f]{8} on server nas3\tevery day at 03:07\t0\t0$~m', $text), 'each schedule by its id, with its dataset and copy as tokens and its server as a word the bundle replaces; one saved before Keep keeps all: '.$text);
 same(1, preg_match('~\tevery day at 03:07\t7\t0$~m', $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array(array('keep' => 7) + $job))))[1]), 'and one that keeps 7 says so');
+same(1, preg_match('~\tevery Monday and Friday at 03:07\t0\t0$~m', $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array(array('days' => array(1, 5), 'keep' => 0) + zfsmScheduleUpgrade($job)))))[1]),
+	'and one saved with its days says them');
 same(false, strpos($text, 'private'), 'no name of the copy');
 same(array('replication schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'replication schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
 	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');

@@ -115,6 +115,7 @@ $log_lines = array(
 	$action('ZFS Replication', 'tank/CanaryDs One', 'The copy needs a dataset name inside a pool, such as backup/CanaryLeaf'),
 	$action('ZFS Dataset Destroy', 'tank/CanaryDs One', "cannot destroy 'tank/CanaryDs One': dataset is busy. Using it now: container chrome has it mounted"),
 	$action('ZFS Replication', 'tank/CanaryDs One', "The copy goes inside bakup/CanaryTyped, which doesn't exist"),
+	$action('ZFS Replication', 'tank/CanaryDs One', 'Nothing was scheduled: the copy to tank/Canary Sched Two (every day at 03:07) starts then too; pick another time'),
 	'Replication of tank/CanarySrc to canarytyped/CanaryDest not started: The copy goes inside canarytyped/CanaryDest, which doesn\'t exist',
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
@@ -284,6 +285,7 @@ same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} ref
 // No rule marks these names: they are tokens because they are no words of the plugin's.
 has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');
 has('such as backup/'.$token('CanaryLeaf')."\n", $log, 'the name in a refusal\'s example is a token');
+has('Nothing was scheduled: the copy to tank/'.$token('Canary Sched Two').' (every day at 03:07) starts then too; pick another time'."\n", $log, 'a copy that starts in the same minute is one token, and the words after it stay');
 has('Using it now: container '.$token('chrome')." has it mounted\n", $log, 'a word of a browser\'s report is a name in the log: only that report takes those words');
 has('The copy goes inside '.$token('bakup').'/'.$token('CanaryTyped').', which doesn?t exist'."\n", $log, 'a dataset the user typed, of a pool there is not, is tokens');
 has('Replication of tank/'.$token('CanarySrc').' to '.$token('canarytyped').'/'.$token('CanaryDest').' not started: The copy goes inside '.$token('canarytyped').'/'.$token('CanaryDest').', which doesn?t exist'."\n", $log,

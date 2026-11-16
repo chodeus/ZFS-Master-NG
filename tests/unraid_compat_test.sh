@@ -147,8 +147,8 @@ cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 # A schedule's cron file reaches Unraid's crontab through update_cron (zfsmScheduleCron).
 rm -f /tmp/zfsm-crontab
 php -n -d display_errors=stderr -r 'require "/usr/local/emhttp/webGui/include/Helpers.php"; require "/usr/local/emhttp/plugins/zfs.master/backend/ZFSMOperations.php";
-	$why = zfsmScheduleCron(array(array("id" => "0a1b2c3d", "every" => "hourly", "hour" => 0, "day" => 0))); echo $why; exit($why === "" ? 0 : 1);' || fail 'schedule written but the crontab not rebuilt'
-grep -q ' /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run 0a1b2c3d ' /tmp/zfsm-crontab || fail 'schedule line not in the crontab'
+	$why = zfsmScheduleCron(array(array("id" => "0a1b2c3d", "every" => "hourly", "minute" => 7, "hour" => 0, "days" => range(0, 6)))); echo $why; exit($why === "" ? 0 : 1);' || fail 'schedule written but the crontab not rebuilt'
+grep -q '^7 \* \* \* \* /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run 0a1b2c3d ' /tmp/zfsm-crontab || fail 'schedule line not in the crontab'
 rm -f "$flash/schedules.cron"
 # Diagnostics from the package. This version's own diagnostics script can't run to its end here (it reads Unraid's state and
 # runs its tools), so a stand-in holds the script's own line that names its zip: the plugin must find that zip and pack it as it is.
