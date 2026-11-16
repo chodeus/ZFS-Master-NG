@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.16.5 (beta)
 
 - The Support link on the Plugins page now opens the Unraid forum thread
 

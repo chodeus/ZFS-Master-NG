@@ -6,13 +6,16 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.16.4">
-<!ENTITY md5 "1176529647ac8f31c181e4fdb66c097a">
+<!ENTITY version "2026.11.16.5">
+<!ENTITY md5 "dc109a9d1de8441fd34726318543d66a">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16.5
+- The Support link on the Plugins page now opens the Unraid forum thread
 
 ###2026.11.16.4
 - Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
