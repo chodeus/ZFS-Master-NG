@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
+- Keep removes up to 50 snapshots a run, after a run that lands; held or cloned snapshots stay
+- New Keep Replicas setting: a server that accepts copies keeps only each copy's newest snapshots after a receive
+- A run that stops part-way holds what it carries on from, so neither Keep nor a removal by hand takes it first; Release takes the plugin's holds off
+- A removal that fails is logged and notified, and the next run or receive tries again
+- Schedules reach Unraid's crontab on PHP 8.3 and later
+- Diagnostics keep why Keep removed a snapshot, and what stayed
+
 ## 2026.11.16.1 (beta)
 
 - Replicate can now run on a schedule: set one up in the Replicate dialog
