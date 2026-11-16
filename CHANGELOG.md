@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- fix: the Support link opens the Unraid forum thread
+
 ## 2026.11.16.4 (beta)
 
 - Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
