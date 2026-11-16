@@ -15,7 +15,6 @@
 - A stuck ZFS no longer hangs the Main page or Snapshots Admin
 - Dialogs and Snapshots Admin follow the Unraid theme
 - A failed upgrade leaves the installed version untouched
-- The Support link on the Plugins page now opens the Unraid forum thread
 
 ## 2026.11.16.5 (beta)
 
