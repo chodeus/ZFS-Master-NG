@@ -391,14 +391,15 @@ $scheduled = function($cron = true, $live = true, $list = null) use ($job) {
 		if ($live) file_put_contents($root.'/etc/cron.d/root', $line, FILE_APPEND);
 	};
 };
-has("== schedules (id, dataset, copy, when, runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
+has("== schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
 same(array(), $found('zfsmDiagReplicaSchedules', $scheduled())[0], 'a schedule with its lines in both has no findings');
 // Through a whole run: its pools are read first, so a dataset there is named by its pool.
 $build();
 $scheduled()($root);
 zfsmDiagRun($work.'/out-schedules', $context());
 $text = (string)@file_get_contents($work.'/out-schedules/plugin/replication-schedules.txt');
-same(1, preg_match('~^0a1b2c3d\ttank/name-[0-9a-f]{8}\tname-[0-9a-f]{8} on server nas3\tevery day at 03:07\t0$~m', $text), 'each schedule by its id, with its dataset and copy as tokens and its server as a word the bundle replaces: '.$text);
+same(1, preg_match('~^0a1b2c3d\ttank/name-[0-9a-f]{8}\tname-[0-9a-f]{8} on server nas3\tevery day at 03:07\t0\t0$~m', $text), 'each schedule by its id, with its dataset and copy as tokens and its server as a word the bundle replaces; one saved before Keep keeps all: '.$text);
+same(1, preg_match('~\tevery day at 03:07\t7\t0$~m', $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array(array('keep' => 7) + $job))))[1]), 'and one that keeps 7 says so');
 same(false, strpos($text, 'private'), 'no name of the copy');
 same(array('replication schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'replication schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
 	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');

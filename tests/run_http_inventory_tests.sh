@@ -48,6 +48,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/keep_test.php"
 # replica-serve.php fixes PATH, so the zfs it runs is the first on that PATH: this fake, only while its test runs.
 mount -t tmpfs tmpfs /usr/local/sbin
 cp "$zfsm_repo/tests/fixtures/fixed_path/zfs" /usr/local/sbin/zfs
@@ -57,6 +58,6 @@ umount /usr/local/sbin
 "$zfsm_php" -n "$zfsm_repo/tests/replica_remote_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/pool_features_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
-for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset schedulepicked schedulenowhere scheduleremove scheduleremovesaved; do
+for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset schedulepicked schedulenowhere schedulekeep scheduleremove scheduleremovesaved; do
     "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"
 done

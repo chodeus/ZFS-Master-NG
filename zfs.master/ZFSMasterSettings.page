@@ -295,7 +295,9 @@ _(Schedules)_:
 :zc_settings_schedules_plug:
 > The replications that run on their own. To add one, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again each hour, day or week at a minute of its own, in this server's time zone. This list shows when.
 >
-> - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. If the run before it stopped part-way, it carries that on first. Its snapshots are kept on both sides; remove old ones by hand.
+> - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. If the run before it stopped part-way, it carries that on first.
+> - **Keep** (set in Replicate; Remove the schedule and add it again to change it): from its second run on, once a run lands, only the newest that many of the snapshots this copy's schedules took stay, up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned stays, there or here. Snapshots made by hand or by a schedule of another copy are never counted or removed. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them. Empty keeps all.
+> - Each run holds its snapshot and the one it sends the changes since (`zfsm-resume-…`). One that stops part-way leaves them held, so nothing removes them before a run carries it on; a run to the copy that lands takes the hold off, and so does **Release** in Snapshots. When removing a snapshot fails, the run says which stays and why, and the next run tries again.
 > - A run that finds its copy gone doesn't send it in full again: replicate it once by hand to make a new copy.
 > - The first run with a problem sends a notification. Later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so.
 > - A run that falls due while another replication of its dataset is still sending waits for it, up to 55 minutes. One that can't start in that time is skipped, and counts as a problem.

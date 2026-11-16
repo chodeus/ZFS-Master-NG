@@ -23,10 +23,11 @@ $routes = array(
 	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data'),
 	'schedulepicked' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'every' => 'daily', 'hour' => '3', 'day' => '0'),
 	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'weekly', 'hour' => '13', 'day' => '2'),
+	'schedulekeep' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'daily', 'hour' => '3', 'day' => '0', 'keep' => 'x5'),
 	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x'),
 	'scheduleremovesaved' => array('cmd' => 'scheduleremove', 'id' => '0a1b2c3d')
 );
-$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere');
+$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -91,6 +92,7 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'replicatedataset' => $failed === 'The copy goes inside nowhere, which doesn\'t exist',
 		'schedulepicked' => $failed === 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now',
 		'schedulenowhere' => $failed === 'Nothing was scheduled: The copy goes inside nowhere, which doesn\'t exist' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'schedulekeep' => $failed === 'Nothing was scheduled: Keep takes a number of snapshots up to 9999, or nothing to keep all' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremove' => $answer === array('error' => 'No such schedule'),
 		'scheduleremovesaved' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && ($answer['schedules_html'] ?? null) === 'None yet'
 			&& file_get_contents('/boot/config/plugins/zfs.master/schedules.json') === "[]\n",

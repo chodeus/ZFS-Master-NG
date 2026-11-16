@@ -207,11 +207,12 @@ try {
 			break;
 
 		case 'replicatedataset':
-			// Repeat (every) is empty for Once.
+			// Repeat (every) is empty for Once; Keep empty keeps all.
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
+			$keep = zfsmPostString('keep') === '' ? 0 : zfsmPostDigits('keep', strlen((string)ZFSM_KEEP_MAX), -1);
 			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
-				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostDigits('hour', 2, -1), zfsmPostDigits('day', 2, -1), $zfsm_cfg);
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostDigits('hour', 2, -1), zfsmPostDigits('day', 2, -1), $keep, $zfsm_cfg);
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 

@@ -46,6 +46,7 @@ $fresh = function() use ($pool, $reset) {
 	$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "tank/vol\tvolume", "tank/enc\tfilesystem", "backup\tfilesystem", "backup/empty\tfilesystem"));
 	$pool('marks', array("tank/data@a\t11\t10", "tank/data@b\t12\t20", "tank/vol@v\t31\t30", "tank/enc@e\t41\t40"));
 	$pool('props', array("tank/enc\tencryption\taes-256-gcm"));
+	$pool('holds', array());
 	@unlink(getenv('ZFSM_TEST_REPL_DIR').'/txg');
 };
 $bookmark = function($dest, $snapshot) { return 'tank/data#'.zfsmReplicaBookmarkPrefix($dest).$snapshot; };
