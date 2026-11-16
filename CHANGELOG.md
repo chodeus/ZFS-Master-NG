@@ -4,7 +4,7 @@
 
 - Repeat in the Replicate dialog now runs every hour, or at a start time you set on the days you tick (all seven: every day)
 - Keep is now labelled Snapshots to keep, and the dialog's help shows only for a repeat, in short lines
-- A new schedule is refused when another of the same dataset starts in the same minute; a refusal names each choice to fix
+- A new schedule is refused when another of the same dataset starts in the same minute; a refusal now says what to fix
 - Schedules saved before keep their times, and are saved in the new shape on the next change
 - Keep leaves a source snapshot while its copy's twin is held or cloned, and removes both once it is free
 - Schedules saved by this version don't run on an older one: after going back, add them again
