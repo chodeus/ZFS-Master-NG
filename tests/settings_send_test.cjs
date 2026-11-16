@@ -142,7 +142,7 @@ const keep = form.querySelector('input');
 assert.deepEqual(['', '0', '12', '9999', '1O', '-5', '2.5', ' 3'].map(value => { keep.value = value; return form.checkValidity(); }),
   [true, true, true, true, false, false, false, false], 'Keep Replicas takes digits only');
 
-// Scheduled Replication: Remove asks for the schedule by its id; a refusal says why and keeps the list, and the list it answers replaces it.
+// Schedules: Remove asks for the schedule by its id; a refusal says why and keeps the list, and the list it answers replaces it.
 window.zfsmScheduleRemove('0a1b2c3d');
 const remove = posts.pop();
 assert.deepEqual([remove.data.cmd, remove.data.id, Object.keys(remove.data).length], ['scheduleremove', '0a1b2c3d', 2]);

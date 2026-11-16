@@ -246,12 +246,15 @@ switch ($check) {
 			foreach ($rows as $row) if (preg_match('#<dt>[^\n]*'.preg_quote($label, '#').'#', $row) === 1 && strpos($row, $control) !== false) return true;
 			return false;
 		};
-		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Scheduled Replication' => 'Schedules', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Schedules' => 'Snapshot Every Dataset', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
 			$from = preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>#', $rendered, $found, PREG_OFFSET_CAPTURE) === 1 ? $found[0][1] : false;
 			$to = $from === false ? false : strpos($rendered, '</details>', $from);
 			if ($to === false || preg_match('#<dt>[^\n]*'.$field.'#', substr($rendered, $from, $to - $from)) !== 1) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
 		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"') as $label => $control) {
+			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+		}
 		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
 			if (!$row_has($label, '<select name="'.$name.'">')) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}

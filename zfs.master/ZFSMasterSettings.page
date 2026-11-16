@@ -477,7 +477,8 @@ function zfsmScheduleRemove(id) {
 // Snapshot Every Dataset: Days and Starts At for days of the week, Snapshots To Keep for any repeat.
 function zfsmSnapshotsSync() {
 	var every = $('#zfsm-snapsched-every').val();
-	var show = function(id, shown) { $(id).closest('dd').toggle(shown).prev('dt').toggle(shown); };
+	// Not .toggle(): jQuery 2 (Unraid 6.9) writes display:block over the theme's own display.
+	var show = function(id, shown) { var dd = $(id).closest('dd'); dd.add(dd.prev('dt')).css('display', shown ? '' : 'none'); };
 	show('#zfsm-snapsched-days', every === 'days');
 	show('#zfsm-snapsched-time', every === 'days');
 	show('#zfsm-snapsched-keep', every !== 'off');
