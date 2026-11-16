@@ -53,7 +53,6 @@ $snapshot_access = $snapshot_access ?? array();
 <style type="text/css">
   .zfsm-snaps{max-width:1120px;margin:18px auto;padding:0 18px}
   .zfsm-count{margin-left:auto;font-weight:normal;opacity:.7}
-  .zfsm-section>.zfsm-snap-table{padding:0}
   .zfsm-snap-table{width:100%;border-collapse:collapse;margin:0}
   .zfsm-snap-table th{text-align:left;font-weight:600;font-size:.85em;text-transform:uppercase;letter-spacing:.06em;opacity:.75;padding:9px 12px;border-bottom:1px solid rgba(128,128,128,.3);white-space:nowrap}
   .zfsm-snap-table td{padding:9px 12px;border-bottom:1px solid rgba(128,128,128,.15);white-space:nowrap}
@@ -71,7 +70,9 @@ $snapshot_access = $snapshot_access ?? array();
   .zfsm-message td{text-align:center;padding:18px 12px;opacity:.75}
   .zfsm-message.zfsm-error td{color:#e22828;opacity:1}
   .zfsm-snap-tools .zfsm-error{color:#e22828;opacity:1}
-  .zfsm-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 2px}
+  .zfsm-footer{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:4px 2px}
+  /* A long status puts Delete on the next line, still at the right, rather than squeezing its text. */
+  #delete-snaps{margin-left:auto}
   .zfsm-status{opacity:.75}
   .zfsm-snap-tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px 18px;padding:10px 12px}
   .zfsm-snap-tools input[type=text]{width:16em;margin:0}
@@ -118,6 +119,7 @@ $snapshot_access = $snapshot_access ?? array();
 		<?php if ($access_unread): ?><span id="zfsm-access-unread" class="zfsm-status zfsm-error">Browse and changes are off: the mount details could not be read.</span><?php endif; ?>
 	</div>
 	<?php endif; ?>
+	<div class="zfsm-table-scroll">
 	<table class="zfsm-snap-table">
 	<thead>
 		<tr>
@@ -177,6 +179,7 @@ $snapshot_access = $snapshot_access ?? array();
 		endforeach;?>
 	</tbody>
 	</table>
+	</div>
 	</details>
 	<div class="zfsm-footer">
 		<span id="zfs_status" class="zfsm-status"></span>
