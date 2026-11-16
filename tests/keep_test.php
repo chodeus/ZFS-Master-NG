@@ -98,7 +98,7 @@ same(array(0, array()), array($run(1), $destroys()), 'with 2 tagged, nothing goe
 $reset();
 same(0, $run(2), 'the third run');
 same(array(array('destroy backup/data@'.$first, 'destroy tank/data@'.$first), array('a', 'b', 'c', $n(1), $n(2)), array($n(1), $n(2)), array()), array($destroys(), $short('tank/data'), $short('backup/data'), $notified()), 'the oldest it tagged goes, the copy\'s first; a, b and c stay; nothing notified');
-same(array(1, 1), array(substr_count($log(), 'Removed tank/data@'.$first.': past the newest 2 its schedule keeps'), substr_count($log(), 'Removed backup/data@'.$first.': past the newest 2 its schedule keeps')), 'each removal is logged');
+same(array(1, 1), array(substr_count($log(), 'Removed tank/data@'.$first.' (past the newest 2 its schedule keeps)'), substr_count($log(), 'Removed backup/data@'.$first.' (past the newest 2 its schedule keeps)')), 'each removal is logged');
 
 // One held or cloned here stays, and so does its copy's; it still counts, so Keep keeps more, never fewer.
 $append('holds', "tank/data@".$n(1)."\tmine");
@@ -124,7 +124,7 @@ putenv('ZFSM_TEST_DESTROY_FAIL=backup/data@'.$n(4));
 $reset();
 same(0, $run(6), 'a run whose Keep fails still landed');
 putenv('ZFSM_TEST_DESTROY_FAIL');
-$kept = 'Keep could not remove backup/data@'.$n(4).' (cannot destroy \'backup/data@'.$n(4).'\': Input/output error), so tank/data@'.$n(4).' stays too; the next run tries again';
+$kept = 'Keep could not remove backup/data@'.$n(4).' (cannot destroy \'backup/data@'.$n(4).'\': Input/output error), so its source stays too: tank/data@'.$n(4).'; the next run tries again';
 same(array(array('warning: Replication of tank/data@'.$n(6).' to backup/data finished (changes since '.$n(5).'). '.zfsmSafeText($kept).'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'),
 	array($n(4), $n(5), $n(6)), 1), array($notified(), array_slice($short('tank/data'), -3), zfsmScheduleFailures($id)), 'says which stays and why; both stay; counted');
 same(1, substr_count($log(), zfsmSafeText('Replication of tank/data to backup/data: '.$kept)), 'and logs it');
@@ -138,7 +138,7 @@ putenv('ZFSM_TEST_GUID_SWAP=backup/data@'.$n(6));
 $reset();
 $run(8);
 putenv('ZFSM_TEST_GUID_SWAP');
-same(array(array(), 1), array($destroys(), preg_match('/Keep could not remove backup\/data@'.$n(6).' \(another snapshot has its name now\), so tank\/data@'.$n(6).' stays too; the next run tries again\./', $notified()[0] ?? '')), 'nothing is destroyed, and it says why');
+same(array(array(), 1), array($destroys(), preg_match('/Keep could not remove backup\/data@'.$n(6).' \(another snapshot has its name now\), so its source stays too: tank\/data@'.$n(6).'; the next run tries again\./', $notified()[0] ?? '')), 'nothing is destroyed, and it says why');
 // A list that can't be read removes nothing.
 putenv('ZFSM_TEST_KEEP_LIST_FAIL=backup/data');
 $reset();
@@ -194,7 +194,7 @@ $reset();
 $run(14);
 putenv('ZFSM_TEST_HOLD_FAIL');
 putenv('ZFSM_TEST_SEND_CUT');
-$unheld = ' What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/data@'.$n(14).': cannot hold snapshot \'tank/data@'.$n(14).'\': permission denied; tank/data@'.$n(13.9).': cannot hold snapshot \'tank/data@'.$n(13.9).'\': permission denied.';
+$unheld = ' What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/data@'.$n(14).' (cannot hold snapshot \'tank/data@'.$n(14).'\': permission denied); tank/data@'.$n(13.9).' (cannot hold snapshot \'tank/data@'.$n(13.9).'\': permission denied).';
 same(array(array(), 1, 1, array()), array($read('pool/holds'), substr_count($notified()[0] ?? '', zfsmSafeText($unheld)), substr_count($log(), zfsmSafeText($unheld)), $destroys()),
 	'the notification and the log say which, and Keep removes nothing after a run that did not land, held or not');
 $reset();
@@ -208,7 +208,7 @@ putenv('ZFSM_TEST_RELEASE_FAIL=1');
 $reset();
 $run(17);
 putenv('ZFSM_TEST_RELEASE_FAIL');
-same(array(3, 1), array(count($read('pool/holds')), preg_match('/A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: tank\/data@'.$n(15).': cannot release hold from snapshot \?tank\/data@'.$n(15).'\?: permission denied; tank\/data@'.$n(16).': /', $notified()[0] ?? '')), 'says so');
+same(array(3, 1), array(count($read('pool/holds')), preg_match('/A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: tank\/data@'.$n(15).' \(cannot release hold from snapshot \?tank\/data@'.$n(15).'\?: permission denied\); tank\/data@'.$n(16).' \(/', $notified()[0] ?? '')), 'says so');
 $reset();
 $run(18);
 same(array(array(), array($n(17), $n(18))), array($read('pool/holds'), array_slice($short('tank/data'), 3)), 'the next run takes them off, and Keep catches up');

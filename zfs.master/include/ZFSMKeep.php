@@ -61,7 +61,7 @@ function zfsmKeepDestroy($snapshot, $guid, $why) {
 	if (trim((string)$now['output']) !== $guid) return 'another snapshot has its name now';
 	$destroyed = runProcess('zfs', array('destroy', $snapshot));
 	if (($destroyed['code'] ?? 1) !== 0) return zfsmCommandError($destroyed, 'zfs destroy failed');
-	zfsmLog('Removed '.$snapshot.': '.$why, LOG_NOTICE);
+	zfsmLog('Removed '.$snapshot.' ('.$why.')', LOG_NOTICE);
 	return '';
 }
 
@@ -89,7 +89,7 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 		// One held or cloned on the copy is its owner's to keep.
 		$failed = $copy === null || $copy['held'] || $copy['cloned'] ? '' : zfsmKeepDestroy($copy['name'], $copy['guid'], $why);
 		if ($failed !== '') {
-			$stayed[] = $copy['name'].' ('.$failed.'), so '.$snapshot['name'].' stays too';
+			$stayed[] = $copy['name'].' ('.$failed.'), so its source stays too: '.$snapshot['name'];
 			continue;
 		}
 		$failed = zfsmKeepDestroy($snapshot['name'], $snapshot['guid'], $why);
@@ -108,7 +108,7 @@ function zfsmKeepHold($plan, $tag) {
 	foreach (array($plan['snapshot'], $plan['base']) as $snapshot) {
 		if ($snapshot === null || strpos($snapshot, '@') === false) continue;
 		$held = runProcess('zfs', array('hold', $hold, $snapshot));
-		if (($held['code'] ?? 1) !== 0 && strpos((string)($held['output'] ?? ''), 'tag already exists') === false) $failed[] = $snapshot.': '.zfsmCommandError($held, 'zfs hold failed');
+		if (($held['code'] ?? 1) !== 0 && strpos((string)($held['output'] ?? ''), 'tag already exists') === false) $failed[] = $snapshot.' ('.zfsmCommandError($held, 'zfs hold failed').')';
 	}
 	return implode('; ', $failed);
 }
@@ -138,7 +138,7 @@ function zfsmKeepRelease($zdataset, $tag) {
 	foreach ($holds as list($snapshot, $on)) {
 		if ($on !== $hold) continue;
 		$released = runProcess('zfs', array('release', $hold, $snapshot));
-		if (($released['code'] ?? 1) !== 0) $failed[] = $snapshot.': '.zfsmCommandError($released, 'zfs release failed');
+		if (($released['code'] ?? 1) !== 0) $failed[] = $snapshot.' ('.zfsmCommandError($released, 'zfs release failed').')';
 	}
 	return implode('; ', $failed);
 }
