@@ -6,6 +6,8 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 [![Unraid 6.9.2+](https://img.shields.io/badge/Unraid-6.9.2%2B-orange)](#requirements)
 [![License: GPL-2.0-or-later](https://img.shields.io/badge/License-GPL--2.0--or--later-blue)](LICENSE)
 
+![ZFS Master NG on Unraid's Main tab: pools and their datasets with mount points, snapshot counts, and size, used and free bars](.github/images/main-tab.png)
+
 ## Features
 
 - **Pools** — health, size, used and free space, snapshot counts
