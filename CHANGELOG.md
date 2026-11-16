@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- fix: the Support link opens the Unraid forum thread
+- The Support link on the Plugins page now opens the Unraid forum thread
 
 ## 2026.11.16.4 (beta)
 
