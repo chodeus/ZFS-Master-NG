@@ -1,4 +1,5 @@
-// The Settings page's replication script (Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give.
+// The Settings page's replication script (Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
+// and what Keep Replicas' field lets Apply send.
 // Usage: settings_send_test.cjs <webgui-tree>
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -128,6 +129,13 @@ const older = accept('backup/old');
 accept('backup/replicas').done({valid: true, missing: false});
 older.done({valid: true, missing: true});
 assert.equal(text('zfsm-replica-accept-warning'), '', 'the older answer does not replace the newer one');
+
+// Keep Replicas, its tag as the page writes it: the browser refuses Apply on anything but digits, which loadConfig would read as keep all.
+const form = window.document.createElement('form');
+form.innerHTML = page.replace(/<\?=.*?\?>/g, '').match(/<input [^>]*name="replica_keep"[^>]*>/)[0];
+const keep = form.querySelector('input');
+assert.deepEqual(['', '0', '12', '9999', '1O', '-5', '2.5', ' 3'].map(value => { keep.value = value; return form.checkValidity(); }),
+  [true, true, true, true, false, false, false, false], 'Keep Replicas takes digits only');
 
 // Scheduled Replication: Remove asks for the schedule by its id; a refusal says why and keeps the list, and the list it answers replaces it.
 window.zfsmScheduleRemove('0a1b2c3d');

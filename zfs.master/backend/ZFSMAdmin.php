@@ -22,8 +22,7 @@ function zfsmPostString($key, $default = '') {
 
 // $default, which no check accepts, unless the field holds a number of up to $digits digits.
 function zfsmPostDigits($key, $digits, $default) {
-	$value = zfsmPostString($key);
-	return preg_match('/^[0-9]{1,'.$digits.'}$/D', $value) === 1 ? (int)$value : $default;
+	return zfsmDigits(zfsmPostString($key), $digits, $default);
 }
 
 function zfsmResolveAnswerCodes($answer) {

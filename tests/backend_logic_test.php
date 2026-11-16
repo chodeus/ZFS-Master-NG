@@ -74,6 +74,9 @@ assertSameValue('auto-2026-11-03-100000', zfsmNewSnapshotName($naming, 179370000
 date_default_timezone_set($zone);
 assertSameValue('', loadConfig(array('general' => array('exclusion' => ' ')))['dataset_exclusion'], 'A blank exclusion was kept');
 assertSameValue('^new$', loadConfig(array('general' => array('exclussion' => '^old$', 'exclusion' => '^new$')))['dataset_exclusion'], 'The misspelt name overrode the current one');
+$replica_keep = function($saved) { return loadConfig(array('general' => array('replica_keep' => $saved)))['replica_keep']; };
+assertSameValue(array(0, 3, 3, ZFSM_KEEP_MAX, 0, 0, 0, 0, 0), array_map($replica_keep, array('', '3', ' 3 ', (string)ZFSM_KEEP_MAX, (string)(ZFSM_KEEP_MAX + 1), '-1', '2.5', '3x', '0')), 'Keep Replicas is a count up to Keep\'s most; anything else keeps all');
+assertSameValue(0, loadConfig(array())['replica_keep'], 'Keep Replicas unsaved keeps all');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker-old/.*'), 'Unescaped hyphen must stay literal');
 assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer%d$'), 'Lua digit class failed');
 assertSameValue(true, zfsmMatchesExclusion('tank/a_b', 'tank/[%w_]+$'), 'Lua class inside a set failed');

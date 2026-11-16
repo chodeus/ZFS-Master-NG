@@ -92,6 +92,10 @@ $log_lines = array(
 	// A folder's name holding what ends a dataset's in a log line.
 	'Convert: cloning /mnt/tank/CanaryDs One/Canary Mix | Live (in full) failed, so rsync copies it: cp failed',
 	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received',
+	// Keep Replicas on what was received: what it removed, what stayed and why, and a read that failed.
+	'Removed tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvOld (past the newest 2 Keep Replicas keeps)',
+	"Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received: Keep Replicas could not remove tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed (cannot destroy 'tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed': Input/output error); the next receive tries again",
+	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryRecvUnread received: Keep Replicas could not read the snapshots of tank/CanaryDs One/canarysender/CanaryRecvUnread',
 	$action('ZFS Replication', 'tank/CanaryDs One', 'ssh: connect to host canarynas port 22: Connection refused, as root@canaryhost:backup/CanaryRemote'),
 	$action('ZFS Dataset Destroy', 'tank/Canary failed Vol'),
 	'ZFS Master NG dataset inventory failed for otherpool: zfs timed out',
@@ -271,6 +275,11 @@ $pfx = "tank/$ds@".zfsmDiagToken('CanaryPfx: cannot destroy private 2');
 has("takes it off: tank/$ds@".zfsmDiagToken('CanaryKeepHeld')." (cannot release hold from snapshot ?tank/$ds@".zfsmDiagToken('CanaryKeepHeld')."?: permission denied); $pfx (cannot release hold from snapshot ?$pfx?: permission denied)\n", $log,
 	'a hold left on keeps zfs\'s why, a name with Keep\'s words too');
 has("can take it first: tank/$ds@".zfsmDiagToken('CanarySnapA')." (cannot hold snapshot ?tank/$ds@".zfsmDiagToken('CanarySnapA')."?: permission denied).\n", $log, 'and one not put on');
+// Keep Replicas on a copy received here, which the next receive tries again.
+$in = 'tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/';
+has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (past the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');
+same(array(1, 1), array(preg_match('~ into '.$in.$token('CanaryIn').' received: Keep Replicas could not remove '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvStayed').' \(cannot destroy ~', $log),
+	preg_match('~ into '.$in.$token('CanaryRecvUnread').' received: Keep Replicas could not read the snapshots of '.$in.$token('CanaryRecvUnread').'\n~', $log)), 'and what stayed or could not be read');
 same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} refused: /', $log), preg_match('~Replication from ip-[0-9a-f]{8} into tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/'.$token('CanaryIn').' received\n~', $log)), 'an address is a token: '.$log);
 // No rule marks these names: they are tokens because they are no words of the plugin's.
 has('Using it now: container '.$token('canarycontainer').' has it mounted; process '.$token('canary_backup').'.sh (pid 9) may be using it through /mnt/user'."\n", $log, 'a container and a process in the busy text are tokens');

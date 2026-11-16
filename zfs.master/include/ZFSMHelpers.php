@@ -6,6 +6,11 @@ function zfsmSettingInt($general, $key, $default) {
 	return isset($general[$key]) ? intval($general[$key]) : $default;
 }
 
+// $value as a number of up to $digits digits, else $default: zfsmPostDigits (ZFSMAdmin.php) and Keep Replicas read counts so.
+function zfsmDigits($value, $digits, $default) {
+	return is_string($value) && preg_match('/^[0-9]{1,'.$digits.'}$/D', $value) === 1 ? (int)$value : $default;
+}
+
 // A general setting as saved, or $default when it isn't there or equals (==) one of the $blank values.
 function zfsmSettingText($general, $key, $default, $blank = array('')) {
 	if (!isset($general[$key])) return $default;
@@ -32,6 +37,8 @@ function loadConfig($config) {
 		'size_units' => ($general['size_units'] ?? '') === 'decimal' ? 'decimal' : 'binary',
 		'debug_log' => zfsmSettingInt($general, 'debug_log', 0),
 		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
+		// 4: the digits of ZFSM_KEEP_MAX (ZFSMKeep.php); empty or anything else keeps all.
+		'replica_keep' => zfsmDigits(trim((string)($general['replica_keep'] ?? '')), 4, 0),
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }

@@ -80,9 +80,9 @@ putenv('ZFSM_TEST_JOB_DIR='.$work.'/state');
 file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\nbackup\tfilesystem\nbackup/replicas\tfilesystem\n");
 file_put_contents($work.'/pool/marks', "tank/data@a\t11\t10\n");
 exec(escapeshellarg(zfsmCommandPath('zfs')).' send tank/data@a > '.escapeshellarg($work.'/stream').' 2>/dev/null');
-$serve = function($request, $input = '/dev/null', $in = 'backup/replicas/tower') use ($work) {
+$serve = function($request, $input = '/dev/null', $in = 'backup/replicas/tower', $keep = 0) use ($work) {
 	$io = array(fopen($input, 'r'), fopen($work.'/out', 'w'), fopen($work.'/err', 'w'));
-	$code = zfsmServeReplica($request, $in, $io);
+	$code = zfsmServeReplica($request, $in, $io, $keep);
 	foreach ($io as $handle) fclose($handle);
 	return array($code, file_get_contents($work.'/out'), file_get_contents($work.'/err'));
 };
@@ -151,6 +151,67 @@ foreach (array('mountpoint' => '/mnt/backup/replicas/tower', 'exec' => 'on') as 
 	same(1, $serve('zfsm-replica 1 hello')[0], 'and so is hello');
 	file_put_contents($work.'/pool/props', "backup/replicas/tower\t$property\t".zfsmReplicaAreaProps()[$property]."\n", FILE_APPEND);
 }
+
+// Keep Replicas: once a receive lands, only the copy's newest $keep snapshots stay, whichever run sent each; held or cloned ones stay.
+mkdir($work.'/docroot/plugins/dynamix/scripts', 0755, true);
+copy(__DIR__.'/fixtures/unraid/notify', $work.'/docroot/plugins/dynamix/scripts/notify');
+chmod($work.'/docroot/plugins/dynamix/scripts/notify', 0755);
+$GLOBALS['docroot'] = $work.'/docroot';
+putenv('ZFSM_TEST_NOTIFY_LOG='.$work.'/notify.log');
+putenv('ZFSM_TEST_NOTIFY_DETAIL_LOG='.$work.'/notify-detail.log');
+putenv('SSH_CLIENT=192.0.2.7 50000 22');
+touch($work.'/pool/holds');
+file_put_contents($work.'/pool/datasets', "tank/kept\tfilesystem\n", FILE_APPEND);
+$copy = 'backup/replicas/tower/kept';
+$prev = null;
+$land = function($snapshot, $keep) use ($serve, $req, $work, $copy, &$prev) {
+	foreach (array('notify-detail.log', 'notify.log') as $name) @unlink($work.'/'.$name);
+	@unlink(zfsmLogFile());
+	runProcess('zfs', array('snapshot', 'tank/kept@'.$snapshot));
+	exec(escapeshellarg(zfsmCommandPath('zfs')).' send '.($prev === null ? '' : '-i tank/kept@'.$prev.' ').'tank/kept@'.$snapshot.' > '.escapeshellarg($work.'/kept').' 2>/dev/null');
+	$answer = $serve($req('receive', $copy), $work.'/kept', 'backup/replicas/tower', $keep);
+	if ($answer[0] === 0) $prev = $snapshot;
+	return $answer;
+};
+$on = function() use ($copy) { return array_map(function($snapshot) { return explode('@', $snapshot['name'])[1]; }, zfsmKeepSnapshots($copy)); };
+$said = function() use ($work) {
+	$removed = preg_grep('/Removed |Keep Replicas/', file(zfsmLogFile(), FILE_IGNORE_NEW_LINES) ?: array());
+	return array(array_values(array_map(function($line) { return preg_replace('/^\S+ \S+ (\S+) \[[0-9]+\] /', '$1: ', $line); }, $removed)), is_file($work.'/notify-detail.log') ? file($work.'/notify-detail.log', FILE_IGNORE_NEW_LINES) : array());
+};
+foreach (array('a', 'b', 'c') as $snapshot) same(array(0, '', ''), $land($snapshot, 0), 'a receive with Keep Replicas empty lands');
+same(array(array('a', 'b', 'c'), array(array(), array())), array($on(), $said()), 'and keeps all');
+same(array(0, '', ''), $land('d', 2), 'one with Keep Replicas 2 answers as before');
+same(array('c', 'd'), $on(), 'and the copy keeps its newest 2');
+same(array(array('notice: Removed backup/replicas/tower/kept@a (past the newest 2 Keep Replicas keeps)', 'notice: Removed backup/replicas/tower/kept@b (past the newest 2 Keep Replicas keeps)'), array()), $said(), 'each removal logged, with no notification');
+file_put_contents($work.'/pool/holds', "$copy@c\tmine\n");
+same(array(0, '', ''), $land('e', 1), 'with Keep Replicas 1');
+same(array(array('c', 'e'), array(array('notice: Removed '.$copy.'@d (past the newest 1 Keep Replicas keeps)'), array())), array($on(), $said()), 'one held here stays, with no warning');
+file_put_contents($work.'/pool/props', "$copy@e\tclones\tbackup/clone\n", FILE_APPEND);
+$land('f', 1);
+same(array(array('c', 'e', 'f'), array(array(), array())), array($on(), $said()), 'and one cloned here');
+file_put_contents($work.'/pool/holds', '');
+putenv('ZFSM_TEST_DESTROY_FAIL='.$copy.'@c');
+same(array(0, '', ''), $land('g', 2), 'a removal that fails leaves the receive\'s answer as it was');
+putenv('ZFSM_TEST_DESTROY_FAIL');
+$stayed = zfsmSafeText("Keep Replicas could not remove $copy@c (cannot destroy '$copy@c': Input/output error); the next receive tries again");
+same(array(array('c', 'e', 'f', 'g'), array(array('warning: Replication from 192.0.2.7 into '.$copy.' received: '.$stayed), array('warning: Replication from 192.0.2.7 into '.$copy.' received. '.$stayed.'.'))),
+	array($on(), $said()), 'the log and a notification here say which stayed and why');
+same(array(0, '', ''), $land('h', 2), 'the next receive');
+same(array('e', 'g', 'h'), $on(), 'removes it');
+putenv('ZFSM_TEST_KEEP_LIST_FAIL='.$copy);
+same(array(0, '', ''), $land('i', 1), 'a read of the copy\'s snapshots that fails');
+putenv('ZFSM_TEST_KEEP_LIST_FAIL');
+$unread = 'Keep Replicas could not read the snapshots of '.$copy;
+same(array(array('e', 'g', 'h', 'i'), array(array('warning: Replication from 192.0.2.7 into '.$copy.' received: '.$unread), array('warning: Replication from 192.0.2.7 into '.$copy.' received. '.$unread.'.'))),
+	array($on(), $said()), 'removes nothing and says so');
+putenv('ZFSM_TEST_RECV_FAIL=changes');
+same(1, $land('j', 1)[0], 'a receive that fails');
+putenv('ZFSM_TEST_RECV_FAIL');
+same(array(array('e', 'g', 'h', 'i'), array(array(), array())), array($on(), $said()), 'removes nothing');
+same(array(0, '', ''), $land('k', 1), 'the next one carries on from the newest');
+same(array('e', 'k'), $on(), 'and keeps only it, past the one cloned');
+putenv('SSH_CLIENT');
+unset($GLOBALS['docroot']);
 
 // The settings list each key that runs the checker, and whether restrict and from= hold it.
 $checker = '/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php';

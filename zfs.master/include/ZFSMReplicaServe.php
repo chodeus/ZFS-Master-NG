@@ -147,8 +147,14 @@ function zfsmReplicaRun($args, $io, $first = null) {
 	return proc_close($process);
 }
 
-// Runs one request on this process's input and output; a stream's first record is checked before zfs receive sees any of it.
-function zfsmServeReplica($request, $area, $io = null) {
+// sshd's forced command (scripts/replica-serve.php): $sender's area and Keep Replicas, from $cfg (loadConfig's).
+function zfsmServeReplicaSettings($request, $cfg, $sender) {
+	return zfsmServeReplica($request, zfsmReplicaArea($cfg['replica_accept'], $sender), null, $cfg['replica_keep']);
+}
+
+// Runs one request on this process's input and output; a stream's first record is checked before zfs receive sees any of it, and
+// $keep (Keep Replicas) applies once it lands.
+function zfsmServeReplica($request, $area, $io = null, $keep = 0) {
 	$io = $io ?? array(STDIN, STDOUT, STDERR);
 	$from = explode(' ', (string)getenv('SSH_CLIENT'))[0] ?: 'an unknown address';
 	$checked = zfsmReplicaServeCheck($request, $area);
@@ -175,6 +181,7 @@ function zfsmServeReplica($request, $area, $io = null) {
 		zfsmJobUnlock($slot);
 	}
 	zfsmLog('Replication from '.$from.' into '.$checked['name'].($code === 0 ? ' received' : ' failed with exit code '.$code), $code === 0 ? LOG_NOTICE : LOG_ERR);
+	if ($code === 0) zfsmKeepReplica($from, $checked['name'], $keep);
 	return $code;
 }
 
