@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.16.2 (beta)
 
 - A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
 - Keep removes up to 50 snapshots a run, after a run that lands; held or cloned snapshots stay

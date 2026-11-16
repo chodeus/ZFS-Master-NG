@@ -6,13 +6,22 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.16.1">
-<!ENTITY md5 "47423da148041f17d398b49770337873">
+<!ENTITY version "2026.11.16.2">
+<!ENTITY md5 "f6aed2f4b07489d53b5529c30840d494">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16.2
+- A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
+- Keep removes up to 50 snapshots a run, after a run that lands; held or cloned snapshots stay
+- New Keep Replicas setting: a server that accepts copies keeps only each copy's newest snapshots after a receive
+- A run that stops part-way holds what it carries on from, so neither Keep nor a removal by hand takes it first; Release takes the plugin's holds off
+- A removal that fails is logged and notified, and the next run or receive tries again
+- Schedules reach Unraid's crontab on PHP 8.3 and later
+- Diagnostics keep why Keep removed a snapshot, and what stayed
 
 ###2026.11.16.1
 - Replicate can now run on a schedule: set one up in the Replicate dialog
