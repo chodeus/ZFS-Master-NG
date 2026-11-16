@@ -6,13 +6,18 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.16.3">
-<!ENTITY md5 "13f6891de9d8d4a1cdd3c402714509d7">
+<!ENTITY version "2026.11.16.4">
+<!ENTITY md5 "1176529647ac8f31c181e4fdb66c097a">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16.4
+- Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
+- Replicate's Starts at box now matches the theme, clock included
+- Snapshots Admin fits a phone: its table scrolls sideways and Delete stays readable
 
 ###2026.11.16.3
 - Repeat in the Replicate dialog now runs every hour, or at a start time you set on the days you tick (all seven: every day)

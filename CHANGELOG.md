@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.16.4 (beta)
 
 - Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
 - Replicate's Starts at box now matches the theme, clock included
