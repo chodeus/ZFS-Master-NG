@@ -6,7 +6,8 @@
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');
 define('ZFSM_KEEP_MAX', 9999);
 define('ZFSM_KEEP_HOLD', 'zfsm-resume-');
-// A run removes at most this many, oldest first: the next one removes more.
+// A run or receive removes at most this many of a dataset's snapshots, oldest first, and their twins in a copy here; the next
+// one removes more.
 define('ZFSM_KEEP_PER_RUN', 50);
 
 function zfsmKeepValid($keep) {
@@ -42,15 +43,15 @@ function zfsmKeepSnapshots($zdataset) {
 	return $snapshots;
 }
 
-// The snapshots $tag marks ($tag null: every one) past the newest $keep of them (0: none), oldest first and ZFSM_KEEP_PER_RUN at
-// most, never one held or cloned; null when they can't be read.
+// The snapshots $tag marks ($tag null: every one) past the newest $keep of them (0: none), oldest first, never one held or
+// cloned; null when they can't be read. The caller takes ZFSM_KEEP_PER_RUN of those it can remove.
 function zfsmKeepSurplus($zdataset, $keep, $tag) {
 	if ($keep <= 0) return array();
 	$snapshots = zfsmKeepSnapshots($zdataset);
 	if ($snapshots === null) return null;
 	$counted = array_values(array_filter($snapshots, function($snapshot) use ($tag) { return $tag === null || $snapshot['tag'] === $tag; }));
 	$past = array_slice($counted, 0, max(0, count($counted) - $keep));
-	return array_slice(array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; })), 0, ZFSM_KEEP_PER_RUN);
+	return array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; }));
 }
 
 // Destroys $snapshot only while it is still the one read ($guid), and logs it with $why: '' when it is gone, else why it stays.
@@ -73,21 +74,23 @@ function zfsmKeepCopies($plan) {
 	return $listed === null ? null : array_column($listed, null, 'guid');
 }
 
-// After a run to $plan's copy landed: $zdataset's snapshots $tag marks, past the newest $keep, go; from a copy on this server the
-// same snapshots (by guid) go first, and a source snapshot stays when removing its copy's fails. '' or what stayed and why.
+// After a run to $plan's copy landed: $zdataset's snapshots $tag marks past the newest $keep go, a copy's here first (by guid). A
+// source stays while its copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
 function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, $tag);
 	if ($surplus === null) return 'Keep could not read the snapshots of '.$zdataset;
 	$copies = $surplus ? zfsmKeepCopies($plan) : array();
 	if ($copies === null) return 'Keep could not read the snapshots of '.$plan['dest'];
+	// Not the one this run sent (the next one sends the changes since), nor one whose twin on the copy is held or cloned.
+	$removable = array_filter($surplus, function($snapshot) use ($plan, $copies) {
+		$copy = $copies[$snapshot['guid']] ?? null;
+		return $snapshot['name'] !== $plan['snapshot'] && ($copy === null || (!$copy['held'] && !$copy['cloned']));
+	});
 	$why = 'past the newest '.$keep.' its schedule keeps';
 	$stayed = array();
-	foreach ($surplus as $snapshot) {
-		// The one this run sent, which the next one sends the changes since.
-		if ($snapshot['name'] === $plan['snapshot']) continue;
+	foreach (array_slice($removable, 0, ZFSM_KEEP_PER_RUN) as $snapshot) {
 		$copy = $copies[$snapshot['guid']] ?? null;
-		// One held or cloned on the copy is its owner's to keep.
-		$failed = $copy === null || $copy['held'] || $copy['cloned'] ? '' : zfsmKeepDestroy($copy['name'], $copy['guid'], $why);
+		$failed = $copy === null ? '' : zfsmKeepDestroy($copy['name'], $copy['guid'], $why);
 		if ($failed !== '') {
 			$stayed[] = $copy['name'].' ('.$failed.'), so its source stays too: '.$snapshot['name'];
 			continue;
@@ -110,7 +113,7 @@ function zfsmKeepStayed($who, $stayed, $then) {
 function zfsmKeepReplica($from, $zdataset, $keep) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, null);
 	$stayed = array();
-	foreach ($surplus ?? array() as $snapshot) {
+	foreach (array_slice($surplus ?? array(), 0, ZFSM_KEEP_PER_RUN) as $snapshot) {
 		$failed = zfsmKeepDestroy($snapshot['name'], $snapshot['guid'], 'past the newest '.$keep.' Keep Replicas keeps');
 		if ($failed !== '') $stayed[] = $snapshot['name'].' ('.$failed.')';
 	}
