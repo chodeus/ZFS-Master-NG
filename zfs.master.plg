@@ -6,13 +6,28 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2026.09.25">
-<!ENTITY md5 "00000000000000000000000000000000">
+<!ENTITY version "2026.11.16">
+<!ENTITY md5 "218b9602eba36e6f829f4fa40a77e634">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.16
+- Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- Replicate datasets to another pool or ZFS Master NG server, now or on a schedule
+- A schedule can keep only its newest snapshots, and so can a receiving server
+- Snapshots Admin filters and sorts, and shows a snapshot's files or changes
+- Destroy, rollback and snapshot delete show what they will remove first
+- Convert clones files where the pool can, and checks the copy before deleting
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- Optional alerts for pool health problems and stale snapshots
+- Diagnostics in Settings makes a zip for bug reports, with dataset names as tokens
+- A stuck ZFS no longer hangs the Main page or Snapshots Admin
+- Dialogs and Snapshots Admin follow the Unraid theme
+- A failed upgrade leaves the installed version untouched
 
 ###2026.09.25
 - Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon
