@@ -1,0 +1,101 @@
+# CodeRabbit config: ZFS Master NG (Unraid plugin; a root PHP backend runs zfs/zpool, rsync and rm on user storage)
+language: "en-US"
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  related_issues: false
+  related_prs: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "^beta$"
+  path_filters:
+    - "!zfs.master/assets/**"
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!**/*.txz"
+    - "!**/*.png"
+    - "!dist/**"
+  path_instructions:
+    - path: "zfs.master/**/*.{php,page}"
+      instructions: |
+        Shipped PHP runs as root inside Unraid's webGUI. Floor is Unraid 6.9.2 (PHP 7.4; ZFS from a third-party plugin before 6.12) and it must also work on current 7.x (PHP 8.4, OpenZFS 2.4).
+        - PHP 7.4 syntax and functions only: flag str_contains, str_starts_with, str_ends_with, match, nullsafe `?->`, named arguments and union types. Flag ZFS flags newer than 2.0 (`zfs list -j`, `zpool status -j`) unless guarded, and webGUI files or globals missing on 6.9.2 or removed on 7.x (default-popup.css is gone from 7.x).
+        - CSRF: do not re-validate. local_prepend.php checks the token and unsets it. The `X-CSRF-Token` header and `$csrf_token` global exist only on 7.3 and later, so never depend on them; send `csrf_token` in the POST body.
+        - Commands go through runProcess() with an argument array and no shell. Flag string commands, exec, shell_exec, backticks. Passphrases go over stdin, never argv.
+        - Validate every request value before use. Dataset and snapshot names follow OpenZFS: letters, digits, `-_.: ` and spaces are valid, so do not reject them.
+        - Destructive actions (`zfs destroy`, rollback, `rm`, rename over): re-confine the realpath immediately before acting, stop at mount boundaries, enforce Destructive Mode on the server, and diff the guards across sibling branches.
+        - A failed read is not an empty result. Empty pool, mount or in-use lists must block destructive work rather than allow it. Report failures to the UI; never report success on a non-zero exit.
+        - getDatasetProperty() returns null for a failed read, and also for `-` on most properties (`mountpoint` and `keystatus` give 'none'). Where a failed read and `-` must lead to different actions (a resume token, a destroy), the caller must get distinct results: flag getDatasetProperty() there, and use a read that returns one value for a failed read and another for none, as zfsmReplicaToken() does ('' for no token, null when the read failed).
+        - "Inside a dataset" means equal to it, or starting with it plus `/` (`@` or `#` for its snapshots and bookmarks). Flag a bare string-prefix test: `tank/data2` is not inside `tank/data`.
+        - Escape anything echoed into HTML or inline script. Config is saved to `/boot`, so saved values from older versions must keep working.
+        - File names, ZFS user properties and anything from another server may not be valid UTF-8. htmlspecialchars() needs ENT_SUBSTITUTE, or it returns '' and the text disappears. json_encode() needs JSON_INVALID_UTF8_SUBSTITUTE, or its false result must be handled; never echo, publish or hash a json_encode() that can fail.
+        - Every `zfs receive` takes `-s -u -o readonly=on` and never `-F`. A copy of a volume must not appear as a block device (volmode=none).
+    - path: "zfs.master/{include/ZFSMDiag*.php,scripts/diagnostics.php}"
+      instructions: |
+        Diagnostics: a zip the owner may post in a public issue. Its privacy scope is fixed; report gaps inside it and nothing past it.
+        - Report only what can happen on a real install of a supported Unraid: 6.9.2 to current 7.x, or Unraid 8, which moves to a Fedora base (Universal Blue's uCore) with a new plugin SDK. What that Fedora system does by itself (journald, SELinux, systemd) counts as real. Each finding must say how it comes about: what the owner does in Unraid's pages, in the plugin's pages, or with a tool owners commonly run (User Scripts, znapzend, sanoid or syncoid), and what then lands in the zip.
+        - Not real here, do not report: a file added to or edited in the plugin's folder by hand (on 6.9.2 to 7.x Unraid rebuilds it from the package at every boot); a system or Unraid file edited by hand; a setting set to a value no Unraid or plugin page offers; a command typed in an unusual form at the moment diagnostics run; a test run outside tests/run_http_inventory_tests.sh.
+        - In scope: every name of the owner's that ZFS, the kernel or Unraid writes (a dataset, snapshot, bookmark, folder, host, user, address, key comment, or a value the owner wrote), in any file the plugin writes, is a token; a pool's name stays. A file of the run that could not be written, or read back and searched for names, stops the zip. A source the run could not read is reported in the zip as "read failed" (collectors.txt and the summary) and does not stop it: diagnostics are most needed when something can't be read.
+        - Out of scope, do not report: a name holding a control character (tab, line feed, carriage return or another); a name spelled like a word the plugin itself uses, or a number, where it is neither a known name nor in a path; a pool that is neither imported nor listed by Unraid; the installed plugins' names and versions, which their authors publish and the zip lists by design; Unraid's own diagnostics zip, packed as Unraid made it by design.
+        - All else in these files (failure paths, races, the zip's retention and removals, comments against code) is reviewed as usual.
+    - path: "zfs.master/{scripts/replica-serve.php,include/ZFSMReplicaServe.php}"
+      instructions: |
+        Reached by another server's SSH key (authorized_keys `command=`) and run as root. Treat everything from that server as hostile: SSH_ORIGINAL_COMMAND, the script's arguments, and the stream on stdin.
+        - Trust nothing from the environment: PATH and the ZFSM_TEST_* hooks are reset before anything runs, and the docroot comes from the script's own path.
+        - Each request runs one fixed zfs command, with no shell and no option taken from the request. Every name must be inside the sender's own area, `<accepting dataset>/<sender>/`; only `exists` may name the area itself.
+        - zfs receive must not see a stream until its first record is checked: one dataset's stream only. Refuse a clone stream (DRR_FLAG_CLONE) and a -R or -p package. ZFS finds a clone's origin by guid anywhere in the pool, so a name check alone can't confine it.
+        - Copies inherit the area's mountpoint=none, volmode=none and setuid, devices and exec off. The receive excludes those and the share properties with `-x`, and every request is refused once the area's properties change.
+        - authorized_keys options apply left to right: a later `pty`, `user-rc` or `*-forwarding` undoes that part of `restrict` (`user-rc` lets `~/.ssh/rc` run before the forced command). This plugin's policy is that a replication key's `from=` lists exact IP addresses only, so a line whose `from=` holds a range, a wildcard, `!` or a host name is reported as not limited. Option names match whatever their case, and `command=` must be exactly the installed checker and a sender name.
+    - path: "zfs.master/frontend/**/*.js"
+      instructions: |
+        Runs on Unraid's shared Main tab next to other plugins.
+        - Dataset, snapshot and directory names are user-controlled, and directories can contain any character. They must go through escapeHtml, or the encoded handler helper for inline onclick. Never use them raw as a CSS class or id: a pool named `red` collides with Unraid's theme classes.
+        - No global $.ajaxSetup or other page-wide changes. A bare same-origin $.post is fine because the webGUI prefilter adds the token. Popups (openBox iframes) must send csrf_token in the POST body.
+        - Treat 0 as a valid value (refresh interval, counts). Timers and in-flight requests must stop on pagehide and must not overlap.
+    - path: "zfs.master.plg"
+      instructions: |
+        Install manifest, run as root. No removepkg outside Method="remove". A failed download must leave the running install intact. The script must be safe on upgrade from older versions that unpacked a tar with no package record. CI already validates XML and the changelog render, so do not flag version, md5 or CHANGES values, which the release flow owns.
+    - path: "tests/**"
+      instructions: |
+        Tests use fake zfs and zpool binaries and must never run real ZFS commands. Flag a test that stubs the code it claims to check. Tests also run on PHP 7.4.
+        Tests run only through tests/run_http_inventory_tests.sh (CI runs it via tests/ci_php.sh), which mounts the host folders they write over; do not report what a test would do when run outside it.
+    - path: ".github/workflows/**"
+      instructions: |
+        Pin third-party actions by commit SHA. Least-privilege permissions. Untrusted PR data must not reach `run:` via `${{ }}` interpolation.
+    - path: "pkg_build.sh"
+      instructions: |
+        Packaging script. The release workflow owns version numbering and passes --version. Its guards must stay: at least 10 files copied, a package of at least 1000 bytes, a branch name checked before it goes into pluginURL, and the re-read that fails when version, md5 or pluginURL was not written to the manifest. Files ship 0644 and scripts/ 0755, owned by root. It writes only to its temp directory, the output directory and zfs.master.plg.
+    - path: ".github/scripts/**"
+      instructions: |
+        CI helpers. check-plugin-functions.php fails the build when a plugin function is called but never defined: flag a change that lets an unreadable file pass as clean. vendor.py compares the bundled libraries with the sources vendor.json names, or copies them in: a failed or partial download must never replace a bundled file or read as "up to date". osv_check.py asks OSV about the bundled library and every locked test package: OSV unreachable, an answer to fewer packages than asked, or an unreadable accept list fails it, never passes it; an advisory passes only when .github/osv-accepted.json names it with why.
+    - path: "zfs.master/styles/*.css"
+      instructions: |
+        Loaded on Unraid's shared Main tab and in dialogs. Every selector starts from a `zfsm-` class, so nothing leaks into Unraid's own pages or other plugins. Colours stay neutral (rgba greys, inherited text colour) so every Unraid theme works: flag a hard-coded light or dark colour, and a rule that sets colours or fonts on Unraid's own buttons or inputs. A label's hint (`.zfsm-tip::after`) is the exception: it copies Unraid's own tooltips (`default-dynamix.css`: a dark box, light text, an orange border), which look the same in every theme. The time box (`.zfsm-dialog input[type=time]`) is the other: Unraid's sheets style text boxes but not time boxes, so it mirrors Unraid 7's text box rule and its theme variables.
+    - path: "{ZFS.Master.xml,ca_profile.xml}"
+      instructions: |
+        Community Applications template and maintainer profile. PluginURL names the stable branch (main), never beta. MinVer matches the oldest Unraid the code supports (6.9.2). Support and Icon URLs point at this repo.
+    - path: "**"
+      instructions: |
+        Applies to every file:
+        - A finding in shipped code (zfs.master/) must be able to happen on a supported Unraid: 6.9.2 to current 7.x, or Unraid 8 on its Fedora base. Say how it comes about: what the owner does in Unraid's pages, in the plugin's pages, or with a tool owners commonly run. A setup no owner makes (a file edited by hand, a value no page offers, two runs timed to the same second) is not reported.
+        - Comments are navigational or gotcha only, 1-2 lines. Flag narrative or history comments the change adds, and never ask for a docstring.
+        - A comment, help text, log message or UI label that disagrees with what the code does is a correctness finding: report it and say which side is wrong.
+        - Do not flag stylistic preferences that are consistent across the file, or code the change did not touch unless the change makes it wrong.
+  tools:
+    phpmd:
+      enabled: false
+    phpcs:
+      enabled: false
+    markdownlint:
+      enabled: false
+chat:
+  auto_reply: true

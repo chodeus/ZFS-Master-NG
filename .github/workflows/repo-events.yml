@@ -1,0 +1,20 @@
+# Discord notifications for issue, PR, release and discussion events, via the chodeus-ops reusable.
+
+name: Repo events
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  pull_request:
+    types: [opened, closed, reopened, ready_for_review]
+  release:
+    types: [published]
+  discussion:
+    types: [created]
+
+jobs:
+  notify:
+    permissions: {}
+    uses: chodeus/chodeus-ops/.github/workflows/repo-events.yml@65484add1113c1bbc00827af7237ebe7a1837bbb # main
+    secrets:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}

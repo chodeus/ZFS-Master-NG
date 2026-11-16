@@ -3,7 +3,7 @@
 <!ENTITY name "zfs.master">
 <!ENTITY author "chodeus">
 <!ENTITY github "&author;/ZFS-Master-NG">
-<!ENTITY launch "Main">
+<!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
 <!ENTITY version "2026.09.25">
@@ -11,7 +11,7 @@
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/&github;/issues" icon="database" min="6.9.2">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
 
 ###2026.09.25
@@ -229,7 +229,7 @@ done
 rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -vF '&pkgname;')
 # Older versions unpacked a tar with no package record, so upgradepkg leaves these behind
 rm -f &plugdir;/nchan/zfs_master &plugdir;/scripts/zfs_*.lua
-rmdir &plugdir;/nchan &plugdir;/scripts 2>/dev/null || true
+rmdir &plugdir;/nchan 2>/dev/null || true
 rm -f /tmp/zfsm_reload
 echo ""
 echo "-----------------------------------------------------------"
@@ -262,7 +262,16 @@ for p in /var/log/packages/&name;-*; do
 done
 rm -rf /boot/config/plugins/&name;
 rm -rf &plugdir;
-rm -f /tmp/zfsm_reload
+rm -f /tmp/zfsm_reload /var/log/&name;.log /var/log/&name;.log.1
+# A diagnostics work folder goes only when it is root's own, has a name a run makes (16 hex digits), holds no mount and no run
+# holds its lock. An unread or empty mount table removes nothing: what is mounted in a folder is not the plugin's.
+for d in /tmp/&name;-diag.[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]; do
+  [ -d "$d" ] || continue
+  [ ! -L "$d" ] || continue
+  [ -O "$d" ] || continue
+  awk -v d="$d" '$5 == d || index($5, d "/") == 1 { n = 1 } END { exit (n || NR == 0) }' /proc/self/mountinfo || continue
+  flock -n "$d" rm -rf --one-file-system -- "$d" || continue
+done
 echo ""
 echo "-----------------------------------------------------------"
 echo " ZFS Master NG has been removed."

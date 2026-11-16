@@ -1,0 +1,6 @@
+#!/bin/sh
+# First on scripts/replica-serve.php's fixed PATH while replica_serve_test.php runs (run_http_inventory_tests.sh); the env is scrubbed, so it logs to a fixed file.
+printf '%s\n' "$*" >> /tmp/zfsm-fixed-path-zfs.log
+for last in "$@"; do :; done
+echo "cannot open '$last': dataset does not exist" >&2
+exit 1

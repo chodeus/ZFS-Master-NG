@@ -1,5 +1,175 @@
 # Changelog
 
+## Unreleased
+
+- Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- Replicate datasets to another pool or ZFS Master NG server, now or on a schedule
+- A schedule can keep only its newest snapshots, and so can a receiving server
+- Snapshots Admin filters and sorts, and shows a snapshot's files or changes
+- Destroy, rollback and snapshot delete show what they will remove first
+- Convert clones files where the pool can, and checks the copy before deleting
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- Optional alerts for pool health problems and stale snapshots
+- Diagnostics in Settings makes a zip for bug reports, with dataset names as tokens
+- A stuck ZFS no longer hangs the Main page or Snapshots Admin
+- Dialogs and Snapshots Admin follow the Unraid theme
+- A failed upgrade leaves the installed version untouched
+
+## 2026.11.16.5 (beta)
+
+- The Support link on the Plugins page now opens the Unraid forum thread
+
+## 2026.11.16.4 (beta)
+
+- Dialog and Pool Info text now reads left-aligned, without wide gaps on a phone
+- Replicate's Starts at box now matches the theme, clock included
+- Snapshots Admin fits a phone: its table scrolls sideways and Delete stays readable
+
+## 2026.11.16.3 (beta)
+
+- Repeat in the Replicate dialog now runs every hour, or at a start time you set on the days you tick (all seven: every day)
+- Keep is now labelled Snapshots to keep, and the dialog's help shows only for a repeat, in short lines
+- A new schedule is refused when another of the same dataset starts in the same minute; a refusal now says what to fix
+- Schedules saved before keep their times, and are saved in the new shape on the next change
+- Keep leaves a source snapshot while its copy's twin is held or cloned, and removes both once it is free
+- Schedules saved by this version don't run on an older one: after going back, add them again
+
+## 2026.11.16.2 (beta)
+
+- A schedule can now keep only its newest snapshots: set Keep in the Replicate dialog, here and in a copy on this server
+- Keep removes up to 50 snapshots a run, after a run that lands; held or cloned snapshots stay
+- New Keep Replicas setting: a server that accepts copies keeps only each copy's newest snapshots after a receive
+- A run that stops part-way holds what it carries on from, so neither Keep nor a removal by hand takes it first; Release takes the plugin's holds off
+- A removal that fails is logged and notified, and the next run or receive tries again
+- Schedules reach Unraid's crontab on PHP 8.3 and later
+- Diagnostics keep why Keep removed a snapshot, and what stayed
+
+## 2026.11.16.1 (beta)
+
+- Replicate can now run on a schedule: set one up in the Replicate dialog
+- A new schedule gets a minute of its own, and Settings marks a schedule whose snapshot names repeat after Snapshots Pattern changes
+- A scheduled run waits out a busy dataset, and clash checks cover that dataset's other schedules
+- A scheduled run that carries on a stopped one still sends its own snapshot, reports errors and notifies once, at its end
+- Diagnostics name receive-slot locks by the area's guid, so they no longer give the receiving dataset's name away
+- Diagnostics keep times, dates, error names and the page's theme readable, and a folder's failed line keeps its reason
+- The Unraid Diagnostics help now says Unraid's disk list can show mounted datasets by name
+- Row badges stay level next to another plugin's icons on the Main tab
+- A dataset whose mount point holds a carriage return now shows on the Main tab
+- Label hints no longer stay up after a click opens Unraid's help
+
+## 2026.11.15.1 (beta)
+
+- Replicate can now send a copy to another Unraid server running ZFS Master NG: choose it under Server
+- Settings makes this server's SSH key and keeps a list of servers it sends to, with each one's host key pinned
+- Each server in that list shows the one line to add on the other server, and Test makes the dataset the copies go into there
+- Accept Replicas Into's setup is now numbered steps, and Sender Keys shows in red any line not limited to replication
+- Diagnostics now cover the sending side: this server's key fingerprint, and the servers it sends to as tokens
+- A diagnostics zip no longer reports its own run as a stuck job, and the time zone shows as an offset
+- Stale Snapshot Alerts leave out the children of a dataset the exclusion pattern hides, as the Main tab does
+- Settings help reads as short lists, and Pool Health Alerts' Off now says that no checks run
+
+## 2026.11.14.1 (beta)
+
+- New Diagnostics section in Settings: Generate makes a zip for bug reports
+- Dataset, snapshot and folder names in the zip become tokens; pool names stay
+- Unraid's own diagnostics can go in the zip too, as Unraid made them
+- The newest three zips are kept in /boot/logs
+- If the page won't load, run the diagnostics script in a terminal
+- New Debug Log setting logs every command the plugin runs and how it ended
+- Settings shows the installed plugin version at the top
+- On phones, a section's last setting no longer sits on its border
+
+## 2026.11.11.3 (beta)
+
+- Table text wraps instead of being cut off (Health, long pool names, errors)
+- On Unraid 7.4, rows open the file manager from a folder, like Unraid's own pool rows
+
+## 2026.11.11.2 (beta)
+
+- The snapshot count shows on phones and small windows
+
+## 2026.11.11.1 (beta)
+
+- Replicate a dataset to another pool, in the background
+- The row shows how far it got; a notification says when it finishes
+- Each run sends only the changes since the last one
+- Copies stay read-only and unmounted; a volume's copy is no block device
+- Accept copies from other servers; sending to them comes in a later beta
+- Pool Info shows which Unraid versions can import the pool
+- Upgrade Pool turns on only what the pool's compatibility setting allows
+- The Main table lines up with Unraid's pool tables; new Size Units setting
+- Long names wrap instead of pushing the columns; row icons sit level
+- A setting holding a stray non-UTF-8 byte no longer empties the page
+
+## 2026.11.08.1 (beta)
+
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- It runs in the background; a notification says when it finishes
+- Keeping birth times is optional, and warns before it changes the pool
+- A stuck ZFS can no longer hang the Main page or Snapshots Admin
+- Convert reviews first and says why files would be copied, not cloned
+- Convert warns when a first clone limits older Unraid to read-only
+- Row icons, the fold box and Refresh work from the keyboard
+- Keyboard focus stays on the same control when the page refreshes
+
+## 2026.11.07.1 (beta)
+
+- Snapshots Admin can filter and sort, and include child datasets' snapshots
+- Browse a snapshot's files, or see what changed since it
+- Destroy, delete and rollback reviews flag Sanoid/Syncoid snapshots and the boot pool
+- A destroy or rollback review stops if the mount list can't be read
+- New snapshot names can use UTC time
+- Optional alerts for pool health problems and stale snapshots
+- Convert clones files instead of copying where the pool supports block cloning
+- Convert progress stays on its row, and huge folders no longer exhaust memory
+- Row details show in full on phones and open from the keyboard
+- Very long row details fit the window, in columns or slightly smaller
+- The expand box is a pixel larger, with a gap before the name
+- Snapshot browse and changes say why when ZFS can't answer
+
+## 2026.11.06.1 (beta)
+
+- Dialogs follow the Unraid theme: every pop-up takes the page's colours and Unraid's own buttons, on 6.9.2 to 7.x and all four themes
+- Snapshots Admin is laid out like the settings pages, with held and deferred badges, the snapshot count and space used, and a message when a dataset has none
+- Delete selected shows how many snapshots are ticked and stays off when none are; every snapshot action reports its result, even when the request fails
+- The minus and plus icons fold a dataset; the drive icon shows its details
+- Compress Ratio showed 0.01 for every dataset; it now reads as ZFS prints it, such as 1.16x
+- A failed Create Dataset shows its error inside the dialog, and a dataset created with a problem still appears on the Main tab
+- Pool size, used and free read like dataset sizes (1.1 TiB), and a faulted pool shows a dash instead of 0 B
+- Notifications are plain text, so Discord and email no longer show HTML tags
+- Errors read as one line in dialogs, notifications and the system log, and keep accented characters whole
+- A zfs command that fails without output, such as one stopped by the time limit, shows a warning instead of an empty pool
+- The convert prompt explains what happens to the folder
+
+## 2026.11.05.1 (beta)
+
+- Renamed to ZFS Master NG. It installs over ZFS Master, either the original or the 7.3 fork, and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- A failed download or upgrade now leaves the installed version and its files on the flash drive untouched
+- The old background daemon is stopped only after an upgrade succeeds, and it no longer comes back on page load
+- Destroy, rollback and bulk snapshot delete show everything they will remove before they run, and stop if anything changed since you looked
+- Clones, holds and pool roots are refused with the reason, instead of failing partway
+- A "dataset is busy" error names the container or process using the dataset
+- Admin actions and their errors go to the Unraid system log
+- Settings are grouped into collapsible sections, every setting and create option has a one-line tooltip, and the help text is rewritten
+- Dates use the Unraid display format
+- The Create Dataset dialog is laid out like the settings page and follows the Unraid theme
+- Create Dataset: read only, sync and case sensitivity inherit from the parent unless you set them, new parents get the share owner, an existing name is refused, and encryption needs a passphrase
+- Dialogs follow the Unraid theme on 7.1 and later, and SweetAlert2 is updated to 11.26.25
+- Works alongside other plugins on the Main tab: it no longer changes their requests, sits below the boot device, and keeps its refresh time and buttons on its title line
+- A pool whose snapshots can't be read no longer blanks the others, and its rows say so. A pool that doesn't answer is retried less often, up to every 15 minutes
+- Lazy loading is on unless you turned it off
+- Collapsing a dataset also collapses its directories, the pool's root row stays visible, and the snapshot icons line up down the column
+- On phones, the table scrolls in its own box and the plugin name stays on one line
+- Shares and datasets with spaces in their names can be managed and converted
+- Converting a directory keeps hardlinks and ACLs, checks the copy before it removes the original, and says where the data is if it can't finish
+- Forced delete and convert refuse a directory with a mount inside it
+- Saved Lua exclusion patterns keep working, and an invalid pattern is reported
+- Destructive Mode is enforced on the server for rollbacks past newer snapshots and for recursive snapshot destroy
+- Saving settings on a full flash drive no longer loses them, and adding or removing a directory listing entry keeps the others
+- A setting Unraid would read back differently is refused with the reason, instead of being saved changed
+
 ## 2026.09.25
 
 - Fix - Load inventory directly over HTTP without depending on Nchan, Unraid API, or the background daemon

@@ -1,0 +1,14 @@
+{
+  "$comment": "Bundled browser libraries and where each file came from. .github/scripts/vendor.py checks the copies against this in CI; Renovate bumps the version and vendor-sync.yml copies the files in.",
+  "root": "zfs.master/assets",
+  "libraries": [
+    {
+      "npm": "sweetalert2",
+      "version": "11.26.25",
+      "files": {
+        "dist/sweetalert2.all.min.js": "sweetalert2.all.min.js",
+        "dist/sweetalert2.min.css": "sweetalert2.min.css"
+      }
+    }
+  ]
+}

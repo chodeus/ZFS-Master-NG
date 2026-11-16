@@ -1,0 +1,601 @@
+// The page's own dialog handlers on this Unraid version's jQuery and the bundled library: each reads back the controls it drew.
+// Usage: page_dialog_test.cjs <webgui-tree>
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const {JSDOM} = require('jsdom');
+const tree = path.resolve(process.argv[2]);
+const jquery = [path.join(tree, 'emhttp/plugins/dynamix/javascript/dynamix.js'), path.join(tree, 'plugins/dynamix/javascript/dynamix.js')].find(fs.existsSync);
+assert.ok(jquery, 'no dynamix.js (Unraid jQuery) under ' + tree);
+const root = path.resolve(process.argv[3] || path.join(__dirname, '../zfs.master'));
+const page = fs.readFileSync(path.join(root, 'ZFSMaster.page'), 'utf8');
+
+function handlers(from, to) {
+  const start = page.indexOf(from);
+  const end = page.indexOf(to, start);
+  assert.ok(start > 0 && end > start, from + ' found in ZFSMaster.page');
+  const code = page.slice(start, end).replaceAll('<?=$urlzmadmin?>', '/zfsm-admin').replaceAll('<?=$urladmindatasetsnaps?>', '/zfsm-snaps').replaceAll('<?=$urlpoolinfo?>', '/zfsm-pool');
+  assert.equal(code.includes('<?'), false, 'unhandled PHP in ' + from);
+  return code;
+}
+
+const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true});
+window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
+window.eval(fs.readFileSync(jquery, 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMSize.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMDiagRecord.js'), 'utf8'));
+window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
+window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
+window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
+window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
+
+const posts = [], replies = [];
+let properties = {};
+let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
+let rewritePreview = {};
+let replicateAnswer = () => ({});
+// Answers held back to arrive late, as a slow plan would.
+const lateAnswers = [];
+let holdReplicate = false;
+window.$.post = (url, data, done) => {
+  posts.push({...data});
+  if (data.cmd === 'getdatasetproperties') done(JSON.stringify(properties));
+  if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
+  if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
+  if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
+  const reply = window.$.Deferred();
+  replies.push(reply);
+  return reply.promise();
+};
+const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => window.setTimeout(resolve, 0)); };
+const shown = () => window.document.querySelector('.swal2-html-container');
+async function open(handler, ...args) {
+  window[handler](...args);
+  await settle();
+  assert.equal(shown().style.display, 'grid', handler + ' lost the page grid layout of its dialog');
+  return shown();
+}
+async function confirm() {
+  window.Swal2.clickConfirm();
+  await settle();
+  return posts.at(-1);
+}
+
+(async () => {
+  const rename = await open('renameDataset', 'tank/data');
+  const name = rename.querySelector('input[type="mytext"]');
+  name.value = '';
+  posts.length = 0;
+  await confirm();
+  assert.equal(posts.length, 0, 'an empty name must not be sent');
+  assert.match(window.document.querySelector('.swal2-validation-message').textContent, /Enter a value for the dataset name/);
+  name.value = 'tank/renamed';
+  rename.querySelector('input[type="checkbox"]').checked = true;
+  assert.deepEqual(await confirm(), {cmd: 'renamedataset', zdataset: 'tank/data', newname: 'tank/renamed', force: 1});
+
+  properties = {compression: 'lz4', mountpoint: '/mnt/tank/data', quota: 2473901162496};
+  let select = (await open('editDatasetProperty', 'tank/data', 'compression')).querySelector('select');
+  assert.equal(select.value, 'lz4', 'the current value is preselected');
+  select.value = 'zstd';
+  assert.deepEqual(await confirm(), {cmd: 'editdatasetproperty', zdataset: 'tank/data', property: 'compression', value: 'zstd'});
+
+  // Confirming the value the dialog opened with must change nothing: not a rounded quota, not an inherited value.
+  for (const [property, shownValue] of [['compression', 'lz4'], ['quota', '2.3TiB']]) {
+    const control = (await open('editDatasetProperty', 'tank/data', property)).querySelector('#zfsm-swal-input');
+    assert.equal(control.value, shownValue);
+    posts.length = 0;
+    await confirm();
+    assert.deepEqual(posts, [], 'an unchanged ' + property + ' was sent');
+  }
+
+  properties = {compression: 'zstd-3'};
+  select = (await open('editDatasetProperty', 'tank/data', 'compression')).querySelector('select');
+  assert.equal(select.value, 'zstd-3', 'a value missing from the list opened on another value');
+  posts.length = 0;
+  await confirm();
+  assert.deepEqual(posts, [], 'an unchanged zstd-3 was sent');
+
+  (await open('editDatasetProperty', 'tank/data', 'mountpoint')).querySelector('input').value = '/mnt/tank/moved';
+  assert.deepEqual(await confirm(), {cmd: 'editdatasetproperty', zdataset: 'tank/data', property: 'mountpoint', value: '/mnt/tank/moved'});
+
+  (await open('moveDirectory', '/mnt/tank/data/dir')).querySelector('input').value = '/mnt/tank/data/moved';
+  assert.deepEqual(await confirm(), {cmd: 'movedirectory', directory: '/mnt/tank/data/dir', newname: '/mnt/tank/data/moved'});
+
+  // Copy progress through the page's own script: its feed handler, inventory controller and rows.
+  const main = [...page.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map(match => match[1]).find(script => script.includes('var zfsm_csrf_token'));
+  const requests = [];
+  const feed = {};
+  window.$.ajax = options => {
+    const request = {options, done(callback) { this.resolve = callback; return this; }, fail() { return this; }};
+    requests.push(request);
+    return request;
+  };
+  window.NchanSubscriber = function() { this.on = (event, callback) => { feed[event] = callback; }; this.start = () => {}; };
+  window.document.body.insertAdjacentHTML('beforeend', '<table id="zfs_master"><tbody id="zfs_master_body"></tbody></table>');
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMInventory.js'), 'utf8'));
+  window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMKeys.js'), 'utf8'));
+  window.eval(main.replace(/<\?(?:php|=)[\s\S]*?\?>/g, php =>
+    php.includes('$zfsm_cfg') ? JSON.stringify({version: '7.3.2', refresh_interval: 0, destructive_mode: 0, snap_max_days_alert: 30, directory_listing: []})
+      : php.includes('$display') ? JSON.stringify({text: 0, warning: 80, critical: 90})
+      : php.includes('$urlzmadmin') ? '/zfsm-admin'
+      : php.includes('$csrf_token') ? '"page-token"' : ''));
+  await settle();
+  assert.equal(typeof feed.message, 'function', 'the page must subscribe to the copy feed');
+  const send = op => feed.message(JSON.stringify({op, data: {dataset: 'tank/new'}}));
+  const dataset = name => ({name, type: 'filesystem', used: 1, available: 1, mountpoint: '/mnt/' + name, snapshots: [], directories: [], child: {}});
+  let znapzend = false, pools = [];
+  const inventory = () => {
+    const tank = dataset('tank');
+    if (znapzend) tank['org.znapzend:enabled'] = 'on';
+    tank.child['tank/new'] = dataset('tank/new');
+    const data = {pools: {tank: {Pool: 'tank', Health: 'ONLINE', Snapshots: 0}}, devices: {tank: ''}, datasets: {tank}, errors: {}};
+    for (const name of pools) Object.assign(data.pools, {[name]: {Pool: name, Health: 'ONLINE', Snapshots: 0}}), data.devices[name] = '', data.datasets[name] = dataset(name);
+    return {op: 'getAll', data};
+  };
+  const answer = () => { assert.ok(requests.at(-1).resolve, 'no inventory request to answer'); requests.at(-1).resolve(inventory()); };
+  const redraw = () => { window.requestRefresh(); answer(); };
+  // Progress goes in its own slot, after the browse link that leads the row.
+  const progress = () => {
+    const lead = window.document.getElementById(window.datasetRowId('tank/new')).children[0];
+    assert.ok(lead.querySelector('a.zfsm-browse'), 'progress must not replace the row\'s browse link');
+    return lead.querySelector('.zfsm-row-progress').textContent;
+  };
+  send('start_directory_copy');
+  assert.equal(requests.length, 1, 'a copy must refresh the page so the new dataset gets its row');
+  send('clone_directory');
+  answer();
+  assert.equal(progress(), 'Cloning files…', 'a row drawn after the message must say the files are being cloned');
+  redraw();
+  assert.equal(progress(), 'Cloning files…', 'a redraw must keep the progress');
+  send('stop_directory_copy');
+  assert.equal(progress(), '', 'the row must clear when the copy stops');
+  redraw();
+  assert.equal(progress(), '', 'a redraw after the copy must not bring the progress back');
+  assert.equal(requests.length, 3, 'each redraw is one inventory read');
+
+  // A lost stop message must not leave progress behind: a dropped feed and the finished Convert request each clear it.
+  send('clone_directory');
+  assert.equal(progress(), 'Cloning files…');
+  assert.ok(feed.disconnect, 'the page must listen for a dropped feed');
+  feed.disconnect();
+  assert.equal(progress(), '', 'a dropped feed must clear the progress');
+  redraw();
+  assert.equal(progress(), '', 'a redraw after a dropped feed must not bring the progress back');
+  send('clone_directory');
+  window.convertDirectory('/mnt/tank/new', 'tank');
+  await settle();
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.equal(posts.at(-1).cmd, 'convertdirectory');
+  assert.equal(progress(), 'Cloning files…', 'progress must stay while the Convert request runs');
+  replies.at(-1).reject();
+  assert.equal(progress(), '', 'a Convert request that ended, even in failure, must clear the progress');
+
+  // Convert reviews first: a pool's first clone names the first Unraid that still writes to it; a refused review starts nothing.
+  const convertShown = async preview => {
+    convertPreview = preview;
+    window.convertDirectory('/mnt/tank/new', 'tank');
+    await settle();
+    return window.document.querySelector('.swal2-html-container');
+  };
+  let convertDialog = await convertShown({can_proceed: true, clones: true, blocker: '', turns_on: '7.3'});
+  assert.deepEqual(posts.at(-1), {cmd: 'previewconvert', directory: '/mnt/tank/new', pool: 'tank'}, 'Convert asks for its review first');
+  assert.match(convertDialog.querySelector('#zfsm-convert-turns-on')?.textContent ?? '', /hasn't cloned files before, so this can turn on[\s\S]*Unraid before 7\.3 can import this pool read-only only/, 'a first clone says what it can turn on');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'convertdirectory', directory: '/mnt/tank/new', pool: 'tank', clone: 1}, 'the convert carries the review\'s answer');
+  replies.at(-1).reject();
+  convertDialog = await convertShown({can_proceed: true, clones: true, blocker: '', turns_on: ''});
+  assert.deepEqual([convertDialog.querySelector('#zfsm-convert-turns-on'), /The files are cloned/.test(convertDialog.textContent)], [null, true], 'a pool that has cloned before gets no note');
+  window.Swal2.close();
+  for (const [blocker, reason] of [['encrypted', /because the dataset will be encrypted/], ['switched off', /because block cloning is switched off on this server/], ['no feature', /because this pool has no block cloning/]]) {
+    convertDialog = await convertShown({can_proceed: true, clones: false, blocker, turns_on: ''});
+    assert.match(convertDialog.textContent, reason, 'a copy says why: ' + blocker);
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.equal(posts.at(-1).clone, 0, 'a convert reviewed as a copy says so: ' + blocker);
+    replies.at(-1).reject();
+  }
+  convertDialog = await convertShown({can_proceed: false, error: 'Whether the files can be cloned could not be read'});
+  assert.match(convertDialog.textContent, /could not be read/, 'a refused review says why');
+  posts.length = 0;
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts, [], 'and starts nothing');
+  convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
+
+  // A row's details show from the end of the page, out of the table that cuts them off on phones, and go when the pointer leaves.
+  assert.match(page, /#zfs_master a\.info:hover>span\{display:none\}/, 'the row\'s own details must stay hidden while the copy shows');
+  const details = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('a.info');
+  const tip = () => window.document.getElementById('zfsm-tip');
+  window.$(details()).trigger('mouseenter');
+  assert.ok(tip(), 'hovering a row must show its details');
+  assert.equal(tip().parentNode, window.document.body, 'the details must show from the end of the page, outside the table');
+  assert.equal(tip().textContent, details().querySelector('span').textContent, 'the copy shows the row\'s own details');
+  const shownTip = tip().firstElementChild;
+  assert.deepEqual([shownTip.style.position, shownTip.style.display, shownTip.style.visibility, shownTip.style.pointerEvents], ['fixed', 'block', 'visible', 'none']);
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'the details go when the pointer leaves');
+  // From the keyboard too: the icon takes focus, its details show on focus and go on blur, and the icon names them.
+  assert.equal(details().getAttribute('tabindex'), '0', 'the details icon must take keyboard focus');
+  window.$(details()).trigger('focusin');
+  assert.ok(tip(), 'focusing a row\'s icon must show its details');
+  assert.equal(tip().firstElementChild.getAttribute('role'), 'tooltip');
+  assert.equal(details().getAttribute('aria-describedby'), tip().firstElementChild.id, 'the icon must point a screen reader at its details');
+  assert.deepEqual([tip().firstElementChild.style.whiteSpace, tip().firstElementChild.style.maxWidth], ['normal', (window.innerWidth - 8)+'px'], 'long lines wrap inside the window');
+  window.$(details()).trigger('focusout');
+  assert.equal(tip(), null, 'moving focus away hides the details');
+  assert.equal(details().getAttribute('aria-describedby'), null, 'and the icon no longer points at them');
+  // Hover and focus each keep the details up; they go once neither is left, and Escape dismisses them where they are.
+  details().focus();
+  assert.ok(tip(), 'a focused icon shows its details');
+  window.$(details()).trigger('mouseenter');
+  window.$(details()).trigger('mouseleave');
+  assert.ok(tip(), 'the pointer leaving a focused icon keeps its details');
+  window.$(details()).trigger('mouseenter');
+  details().blur();
+  assert.ok(tip(), 'focus leaving a hovered icon keeps its details');
+  window.$(details()).trigger('mouseleave');
+  assert.equal(tip(), null, 'once neither hover nor focus is left, they go');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  assert.deepEqual([tip(), window.document.activeElement === details()], [null, true], 'Escape dismisses them without moving focus');
+  details().blur();
+  // Two icons: leaving one only touches its own details, which pass to the icon still hovered or focused.
+  const other = () => window.document.getElementById(window.datasetRowId('tank')).querySelector('a.info');
+  const owner = () => [details(), other()].find(icon => icon.getAttribute('aria-describedby') === 'zfsm-tip-text') ?? null;
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  details().blur();
+  assert.deepEqual([Boolean(tip()), owner() === other()], [true, true], 'focus leaving one icon keeps the details of the icon hovered');
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'and they go when that pointer leaves too');
+  details().focus();
+  window.$(other()).trigger('mouseenter');
+  window.$(other()).trigger('mouseleave');
+  assert.deepEqual([Boolean(tip()), owner() === details()], [true, true], 'the pointer leaving one icon brings back the focused icon\'s details');
+  window.$(other()).trigger('mouseenter');
+  details().focus();
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  window.$(other()).trigger('mouseleave');
+  assert.equal(tip(), null, 'details dismissed with Escape stay dismissed when the pointer leaves another icon');
+  details().blur();
+  assert.equal(tip(), null);
+  // Details taller than the window go into columns, each count measured; the heights below are Chrome's for 40 pool devices (tests/tip_render_test.cjs checks the real layout).
+  const fit = (heights, room) => { const applied = []; const result = {...window.zfsmTipFit(columns => { applied.push(columns); return heights[columns - 1]; }, room)}; return [result, applied.at(-1)]; };
+  assert.deepEqual(fit([616], 649), [{columns: 1, scale: 1}, 1], 'it fits: one column');
+  assert.deepEqual(fit([900, 500, 300, 200], 400), [{columns: 3, scale: 1}, 3], 'the fewest columns that fit');
+  assert.deepEqual(fit([616, 316, 421, 316, 376, 421, 451, 466], 239), [{columns: 2, scale: 239 / 316}, 2], 'none fits: the shortest, left applied and scaled to fit');
+  assert.deepEqual(fit([616, 616, 616, 766, 736, 616, 706, 766], 549), [{columns: 1, scale: 549 / 616}, 1], 'columns that do not make it shorter are not used');
+  window.$(details()).trigger('mouseenter');
+  redraw();
+  assert.equal(tip(), null, 'a redraw replaces the row, so its details go too');
+  window.$(details()).trigger('mouseenter');
+  window.document.dispatchEvent(new window.Event('scroll'));
+  assert.equal(tip(), null, 'scrolling moves the row away, so its details go');
+  window.$(details()).trigger('mouseenter');
+  window.dispatchEvent(new window.Event('resize'));
+  assert.equal(tip(), null, 'a resized or turned window would leave them the old size and place, so they go');
+  // Below and right of the row, but inside the window: above the row when there is no room below.
+  const view = {width: 400, height: 800};
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 100}, {width: 200, height: 300}, view)}, {left: 116, top: 116}, 'room below: under the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 100, top: 600}, {width: 200, height: 300}, view)}, {left: 116, top: 296}, 'no room below: above the row');
+  assert.deepEqual({...window.zfsmTipPlace({left: 300, top: 100}, {width: 200, height: 300}, view)}, {left: 196, top: 116}, 'no room on the right: moved left');
+  assert.deepEqual({...window.zfsmTipPlace({left: 10, top: 300}, {width: 200, height: 790}, view)}, {left: 26, top: 4}, 'taller than the window: from its top');
+  // The expand and collapse box is a pixel larger, with a gap before the name.
+  assert.match(page, /#zfs_master\.zfs_table \.fa-plus-square,#zfs_master\.zfs_table \.fa-minus-square\{font-size:calc\(1em \+ 1px\)\}/);
+  assert.match(page, /#zfs_master\.zfs_table \.zfsm-row-badge\{vertical-align:middle;margin-right:4px\}/, 'the box and every badge keep a gap before what follows');
+  // Snapshots Admin is offered when the dataset or a child has snapshots; with only the child's, it opens listing them.
+  window.eval(handlers('function addDatasetContext(', 'function removeContext('));
+  window.eval(handlers('function adminDatasetSnaps(', 'function unlockDataset('));
+  window.zfsm_config = {directory_listing: []};
+  window._ = text => text;
+  let menu = [];
+  window.context = {attach: (id, options) => { menu = options; }};
+  const opened = [];
+  window.openBox = url => opened.push(url);
+  const snapshotsAdmin = (own, children) => {
+    window.addDatasetContext('tank', 'tank', own, 'menu', 0, 'none', '', 'filesystem', children);
+    return menu.find(option => option.text === 'Snapshots Admin');
+  };
+  assert.equal(snapshotsAdmin(0, 0), undefined, 'no snapshots anywhere: no Snapshots Admin');
+  assert.ok(snapshotsAdmin(0, 3), 'snapshots only under it: Snapshots Admin must be offered');
+  snapshotsAdmin(0, 3).action({preventDefault() {}});
+  snapshotsAdmin(2, 3).action({preventDefault() {}});
+  assert.deepEqual(opened, ['/zfsm-snaps?zpool=tank&zdataset=tank&children=1', '/zfsm-snaps?zpool=tank&zdataset=tank'], 'only snapshots under it: the list opens with the child datasets');
+  // Pool Info opens the pool it was asked for, its name encoded in the address.
+  window.eval(handlers('function poolInfo(', 'function addDirectoryContext('));
+  const boxes = [];
+  window.openBox = (url, title) => boxes.push([url, title]);
+  window.poolInfo('tank:2');
+  assert.deepEqual(boxes, [['/zfsm-pool?zpool=tank%3A2', 'tank:2 - Pool Info']], 'Pool Info opens with the pool in its address and title');
+
+  // A rewrite reports on the same row: started, how many files are done, stopped.
+  send('rewrite_start');
+  assert.equal(progress(), 'Rewriting files…', 'the row says the files are being rewritten');
+  feed.message(JSON.stringify({op: 'rewrite_progress', data: {dataset: 'tank/new', files: 42}}));
+  assert.equal(progress(), 'Rewriting files… 42 done', 'the row counts the files done');
+  redraw();
+  assert.equal(progress(), 'Rewriting files… 42 done', 'a redraw keeps the count');
+  send('rewrite_stop');
+  assert.equal(progress(), '', 'the row clears when the rewrite stops');
+  // A rewrite whose stop message was lost goes quiet: 12 seconds without word clear its row.
+  const timers = [];
+  const realTimeout = window.setTimeout;
+  window.setTimeout = (callback, ms) => { timers.push({callback, ms}); return timers.length; };
+  send('rewrite_start');
+  window.setTimeout = realTimeout;
+  assert.deepEqual(timers.map(timer => timer.ms), [12000], 'each rewrite message gives the row 12 seconds');
+  timers[0].callback();
+  assert.equal(progress(), '', 'a rewrite silent for 12 seconds no longer shows as running');
+
+  // A replication reports on the same row, in bytes.
+  send('replicate_start');
+  assert.equal(progress(), 'Replicating…', 'the row says it is replicating');
+  feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
+  assert.equal(progress(), 'Replicating… 1.5 KiB of 4 KiB', 'the row shows how much of it is sent');
+  window.zfsm_config.size_units = 'decimal';
+  feed.message(JSON.stringify({op: 'replicate_progress', data: {dataset: 'tank/new', bytes: 1536, total: 4096}}));
+  assert.equal(progress(), 'Replicating… 1.54 KB of 4.10 KB', 'in Unraid\'s units when Settings picks them');
+  delete window.zfsm_config.size_units;
+  send('replicate_stop');
+  assert.equal(progress(), '', 'the row clears when it stops');
+  // A rewrite and a replication of one dataset share its row; one stopping leaves the other's progress.
+  send('rewrite_start');
+  send('replicate_start');
+  assert.equal(progress(), 'Rewriting files… · Replicating…', 'both show while both run');
+  send('rewrite_stop');
+  assert.equal(progress(), 'Replicating…', 'the rewrite stopping leaves the replication on the row');
+  send('replicate_stop');
+
+  // Replicate: the plan follows the choices, and Replicate waits for the plan of what is on screen.
+  const options = {snapshots: ['b', 'a'], last_destination: {server: '', dest: 'backup/data'}, servers: []};
+  replicateAnswer = data => data.destination === '' ? {...options, can_proceed: false, error: ''}
+    : data.destination === 'backup/data' ? {...options, can_proceed: true, mode: 'incremental', since: data.snapshot || 'b', size: 2048, raw: false}
+    : {...options, can_proceed: false, error: "The copy goes inside nowhere, which doesn't exist"};
+  window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  const dest = () => window.document.getElementById('zfsm-replicate-dest');
+  const snap = () => window.document.getElementById('zfsm-replicate-snapshot');
+  const planText = () => window.document.getElementById('zfsm-replicate-plan').textContent;
+  const held = () => window.Swal2.getConfirmButton().disabled;
+  assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
+  assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
+  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: ''}], 'it asks for the choices, then the plan for them');
+  assert.match(planText(), /changes since b, about 2 KiB/, 'the plan says what it sends');
+  assert.equal(held(), false, 'a plan that can go enables Replicate');
+  dest().value = 'nowhere/copy';
+  dest().dispatchEvent(new window.Event('input'));
+  assert.equal(held(), true, 'typing holds Replicate until the new plan comes');
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([/which doesn't exist/.test(planText()), held()], [true, true], 'a refused plan says why and keeps Replicate off');
+  // An older plan that answers after a newer one is dropped.
+  holdReplicate = true;
+  snap().value = 'a';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, false], 'a late answer for an older choice does not replace the plan on screen');
+  // A plan asked for before the destination changed answers while the new one is still being typed.
+  holdReplicate = true;
+  snap().value = 'b';
+  snap().dispatchEvent(new window.Event('change'));
+  holdReplicate = false;
+  dest().value = 'nowhere/copy';
+  dest().dispatchEvent(new window.Event('input'));
+  lateAnswers.splice(0).forEach(answer => answer());
+  await settle();
+  assert.deepEqual([/changes since a/.test(planText()), held()], [true, true], 'it does not enable Replicate for a destination it was not planned for');
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([/changes since b/.test(planText()), held()], [true, false], 'the plan for the destination on screen enables it');
+  snap().value = '';
+  snap().dispatchEvent(new window.Event('change'));
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, 'Take one now is planned too');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: ''}, 'Replicate starts with what is on screen');
+  window.Swal2.close();
+  // Repeat: on days of the week shows the days and a start time, takes its own snapshot each run, and starts with its schedule.
+  {
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+    menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+    await settle();
+    const every = () => window.document.getElementById('zfsm-replicate-every');
+    const repeat = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
+    const shown = id => window.document.getElementById(id).style.display !== 'none';
+    const rows = () => [shown('zfsm-replicate-days-row'), shown('zfsm-replicate-time-row'), shown('zfsm-replicate-keep-row'), shown('zfsm-replicate-repeat-help'), snap().value, snap().disabled];
+    const keep = () => window.document.getElementById('zfsm-replicate-keep');
+    const time = () => window.document.getElementById('zfsm-replicate-time');
+    const days = () => Array.from(window.document.querySelectorAll('.zfsm-replicate-day'));
+    assert.deepEqual([every().value, rows(), every().labels[0].textContent.startsWith('Repeat:')], ['', [false, false, false, false, 'b', false], true], 'Once, with no days, time, Keep or its help, and the newest snapshot picked');
+    await repeat('days');
+    assert.deepEqual([rows(), posts.at(-1), held()], [[true, true, true, true, '', true], {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, false], 'On days of the week: its days, time, Keep and help show, and Snapshot is Take one now, planned');
+    assert.deepEqual([days().map(box => box.labels[0].textContent.trim()), days().every(box => box.checked), time().labels[0].textContent.startsWith('Starts at:'), time().value],
+      [['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], true, true, '00:00'], 'its days Monday first, all ticked, and a start time');
+    const planned = posts.length;
+    await repeat('hourly');
+    assert.deepEqual([rows(), posts.length, keep().labels[0].textContent.startsWith('Snapshots to keep:'), keep().placeholder], [[false, false, true, true, '', true], planned, true, 'all'], 'Every hour: Keep, empty for all, with no days or time, and no new plan, as Snapshot did not change');
+    await repeat('days');
+    days().forEach(box => { box.checked = ['1', '3', '5'].includes(box.value); });
+    time().value = '13:30';
+    keep().value = ' 30 ';
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30'}, 'Replicate starts it with its days, time and Keep');
+    window.Swal2.close();
+  }
+  // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there; a name typed in stays.
+  const remoteOptions = {snapshots: ['b'], last_destination: {server: '', dest: 'backup/data'}, servers: ['nas']};
+  replicateAnswer = data => data.server !== 'nas' ? {...remoteOptions, can_proceed: true, mode: 'incremental', since: 'b', size: 1, raw: false}
+    : {...remoteOptions, server: 'nas', area: 'backup/replicas/tower', ...(data.destination === 'new' ? {can_proceed: true, mode: 'full', size: 1, raw: false} : {can_proceed: false, error: ''})};
+  window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  const server = () => window.document.getElementById('zfsm-replicate-server');
+  const pick = async name => { server().value = name; server().dispatchEvent(new window.Event('change')); await settle(); };
+  const type = text => { dest().value = text; dest().dispatchEvent(new window.Event('input')); };
+  assert.deepEqual([server().value, server().labels[0].textContent.startsWith('Server:'), dest().value, dest().placeholder], ['', true, 'backup/data', 'pool/dataset'], 'This server is picked, with its last copy');
+  await pick('nas');
+  assert.deepEqual([dest().value, dest().placeholder, posts.at(-1)], ['new', 'name', {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas'}], 'nas: the dataset\'s name, planned there');
+  assert.deepEqual([/On nas, copies go inside backup\/replicas\/tower\./.test(planText()), held()], [true, false], 'its area shows, and the plan enables Replicate');
+  type('mine');
+  await pick('');
+  assert.deepEqual([dest().value, dest().placeholder, posts.at(-1)], ['mine', 'pool/dataset', {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'mine', server: ''}], 'a name typed in stays when the server changes');
+  const asked = posts.length;
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.equal(posts.length, asked, 'and is planned once, not again when the typing pause ends');
+  type('new');
+  await pick('nas');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: ''}, 'Replicate starts it there');
+  window.Swal2.close();
+
+  // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
+  const rewriteItem = (type, available) => {
+    window.zfsm_config.rewrite = available;
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', type);
+    return menu.find(option => option.text === 'Rewrite Files');
+  };
+  assert.equal(rewriteItem('volume', true), undefined, 'a volume has no files to rewrite');
+  assert.equal(rewriteItem('filesystem', false), undefined, 'no zfs rewrite before OpenZFS 2.4');
+  const shown = id => { const node = window.document.getElementById(id); return node ? node.style.display !== 'none' : null; };
+  const box = () => window.document.getElementById('zfsm-rewrite-physical');
+  // The pool's feature is enabled: the box starts off, with the full-send warning; ticking it warns that it is for good.
+  rewritePreview = {can_proceed: true, physical_feature: 'enabled', snapshot_space: 1073741824};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'previewrewrite', zdataset: 'tank/new'}, 'the dialog asks for its review first');
+  const review = window.document.querySelector('.swal2-html-container').textContent;
+  assert.match(review, /record size is not applied/, 'the review says a record size change is not applied');
+  assert.match(review, /snapshots hold 1 GiB now/, 'the review shows the snapshot space');
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true, false], 'with the feature only enabled, -P starts off and the full-send warning shows');
+  box().checked = true;
+  box().dispatchEvent(new window.Event('change'));
+  assert.deepEqual([shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [false, true], 'ticked, it warns that the feature turns on for good');
+  assert.match(window.document.getElementById('zfsm-rewrite-activate').textContent, /Unraid before 7\.3 \(OpenZFS before 2\.4\) could then import this pool read-only only/);
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 1}, 'confirming starts the rewrite with -P as ticked');
+  // Already active: nothing more to lose, so the box starts on.
+  rewritePreview = {can_proceed: true, physical_feature: 'active', snapshot_space: 0};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual([box().checked, shown('zfsm-rewrite-resend'), shown('zfsm-rewrite-activate')], [true, false, null], 'with the feature already active, -P starts on');
+  box().checked = false;
+  box().dispatchEvent(new window.Event('change'));
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'rewritedataset', zdataset: 'tank/new', physical: 0}, 'unticked, no -P');
+  // No feature: no box, and the full-send warning; a snapshot space that could not be read says so.
+  rewritePreview = {can_proceed: true, physical_feature: '', snapshot_space: null};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.deepEqual([box(), shown('zfsm-rewrite-resend')], [null, true], 'without the feature there is no -P to choose');
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /hold an amount that could not be read now/, 'an unread snapshot space is not shown as 0 B');
+  window.Swal2.close();
+  rewritePreview = {can_proceed: false, error: 'A rewrite of this dataset is already running'};
+  rewriteItem('filesystem', true).action({preventDefault() {}});
+  await settle();
+  assert.match(window.document.querySelector('.swal2-html-container').textContent, /already running/, 'a refused review says why');
+  posts.length = 0;
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts, [], 'a refused review starts nothing');
+  window.Swal2.close();
+
+  // Icons that act as buttons take Enter and Space; the fold icon says whether its dataset is folded.
+  window.document.body.insertAdjacentHTML('afterbegin', page.match(/<div id="zfs-master-title"[\s\S]*?\n<\/div>/)[0]);
+  // jsdom here runs no onclick attributes (runScripts outside-only); a browser runs the clicked one.
+  window.document.addEventListener('click', event => { const run = event.target.getAttribute('onclick'); if (run) window.eval(run); });
+  const keyEvent = (element, type, name) => element.dispatchEvent(new window.KeyboardEvent(type, {key: name, bubbles: true, cancelable: true}));
+  // A key press is a keydown then a keyup; says whether the keydown went through.
+  const key = (element, name) => { const passed = keyEvent(element, 'keydown', name); keyEvent(element, 'keyup', name); return passed; };
+  const fold = () => window.document.querySelector('i[name="tank"]');
+  assert.equal(key(fold(), 'a'), true, 'other keys pass through');
+  assert.equal(fold().getAttribute('aria-expanded'), 'true', 'and fold nothing');
+  assert.equal(key(fold(), 'Enter'), false, 'Enter is taken by the icon');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-plus-square'), fold().classList.contains('fa-minus-square'), fold().classList.contains('zfsm-row-badge')], ['false', true, false, true], 'Enter folds the dataset, and the box keeps its badge class');
+  redraw();
+  assert.equal(fold().getAttribute('aria-expanded'), 'false', 'a redraw keeps it folded, and says so');
+  assert.deepEqual([keyEvent(fold(), 'keydown', ' '), fold().getAttribute('aria-expanded')], [false, 'false'], 'Space down is taken, so the page does not scroll, and presses nothing yet');
+  keyEvent(fold(), 'keyup', ' ');
+  assert.deepEqual([fold().getAttribute('aria-expanded'), fold().classList.contains('fa-minus-square')], ['true', true], 'Space unfolds it as the key comes up');
+  // A redraw replaces the rows, so keyboard focus goes back to the same control; focus elsewhere stays put.
+  fold().focus();
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'focus on a fold icon survives a redraw');
+  const actions = () => window.document.getElementById(window.datasetRowId('tank/new')).querySelector('button');
+  actions().focus();
+  redraw();
+  assert.equal(window.document.activeElement, actions(), 'and on an Actions button');
+  const createButton = () => window.document.querySelector('#zfs_master button[onclick^="createDataset"]');
+  createButton().focus();
+  redraw();
+  assert.equal(window.document.activeElement, createButton(), 'and on a pool row\'s button');
+  // A pool row's id is never another pool's cell id, whatever the names: here a cell comes first that would end like the row.
+  pools = ['pool-row-tank', 'tank-attribute-pool'];
+  redraw();
+  const lastCreate = () => window.document.querySelector('#zfs_master button[onclick="createDataset(decodeURIComponent(\'tank-attribute-pool\'));"]');
+  lastCreate().focus();
+  redraw();
+  assert.equal(window.document.activeElement, lastCreate(), 'a pool row keeps focus when its name would end another pool\'s cell id');
+  pools = [];
+  redraw();
+  // The same control, not the same place: an icon new before it doesn't take the focus, and a control that's gone takes it nowhere.
+  fold().focus();
+  znapzend = true;
+  redraw();
+  assert.equal(window.document.activeElement, fold(), 'a znapzend icon added before the fold icon leaves focus on the fold icon');
+  window.document.getElementById(window.datasetRowId('tank')).querySelector('a[aria-label="znapzend plan of tank"]').focus();
+  znapzend = false;
+  redraw();
+  assert.equal(window.document.activeElement.closest('#zfs_master'), null, 'focus on an icon that is gone after a redraw goes nowhere in the table');
+  details().focus();
+  redraw();
+  assert.deepEqual([window.document.activeElement === details(), Boolean(tip())], [true, true], 'and on a details icon, whose details come back with it');
+  window.document.dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  redraw();
+  assert.deepEqual([window.document.activeElement === details(), tip()], [true, null], 'details dismissed with Escape stay dismissed across a redraw');
+  details().blur();
+  const refresh = () => window.document.getElementById('zfsm-refresh').parentNode;
+  assert.deepEqual([refresh().getAttribute('role'), refresh().tabIndex], ['button', 0], 'Refresh takes keyboard focus as a button');
+  refresh().focus();
+  redraw();
+  assert.equal(window.document.activeElement, refresh(), 'focus outside the table stays where it is');
+  let reads = requests.length;
+  key(refresh(), 'Enter');
+  assert.equal(requests.length, reads + 1, 'Enter on Refresh reads the inventory again');
+  answer();
+  // Unraid's non-tabbed view moves the bar into its title line, and the buttons must still take the keys there.
+  const bar = window.document.getElementById('zfs-master-title');
+  bar.insertAdjacentHTML('beforebegin', '<div class="title"><span class="left">Main</span></div>');
+  assert.equal(window.zfsmMoveStatusIntoTitle(bar), true, 'the bar moved into the title line');
+  reads = requests.length;
+  key(refresh(), ' ');
+  assert.equal(requests.length, reads + 1, 'Space on Refresh reads the inventory again from the title line');
+  answer();
+  const outside = window.document.createElement('span');
+  outside.setAttribute('role', 'button');
+  let outsidePressed = 0;
+  outside.onclick = () => { outsidePressed++; };
+  window.document.body.append(outside);
+  assert.deepEqual([key(outside, 'Enter'), outsidePressed], [true, 0], 'a button outside the plugin is not ours to press');
+
+  console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
+  window.close();
+})().catch(error => { console.error(error); process.exit(1); });

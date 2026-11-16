@@ -4,6 +4,7 @@ set_error_handler(function($severity, $message, $file, $line) {
     if (!(error_reporting() & $severity)) return false;
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
+require __DIR__.'/fixtures/fake_bin_guard.php';
 $docroot = getenv('ZFSM_TEST_DOCROOT');
 if (!$docroot) throw new RuntimeException('Set ZFSM_TEST_DOCROOT to the isolated fixture document root');
 $mode = $argv[1] ?? 'full';
