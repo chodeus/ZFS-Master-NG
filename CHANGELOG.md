@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings
+- Supports Unraid 6.9.2 and newer
+- Replicate datasets to another pool or ZFS Master NG server, now or on a schedule
+- A schedule can keep only its newest snapshots, and so can a receiving server
+- Snapshots Admin filters and sorts, and shows a snapshot's files or changes
+- Destroy, rollback and snapshot delete show what they will remove first
+- Convert clones files where the pool can, and checks the copy before deleting
+- Rewrite Files (Unraid 7.3+) rewrites a dataset's files so new settings apply
+- Optional alerts for pool health problems and stale snapshots
+- Diagnostics in Settings makes a zip for bug reports, with dataset names as tokens
+- A stuck ZFS no longer hangs the Main page or Snapshots Admin
+- Dialogs and Snapshots Admin follow the Unraid theme
+- A failed upgrade leaves the installed version untouched
+- The Support link on the Plugins page now opens the Unraid forum thread
+
 ## 2026.11.16.5 (beta)
 
 - The Support link on the Plugins page now opens the Unraid forum thread
