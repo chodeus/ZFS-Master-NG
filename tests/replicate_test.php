@@ -57,7 +57,8 @@ $fresh();
 $plan = zfsmReplicatePlan('tank/data', 'b', 'backup/data');
 same(array(true, 'full', null, false, 1000), array($plan['can_proceed'], $plan['mode'], $plan['base'], $plan['raw'], $plan['size']), 'a first run is a full send of its size');
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'it runs');
-same(array('send -P -v tank/data@b'), $calls('send'), 'send streams the snapshot itself, with progress');
+same(array('send -P -v -L tank/data@b'), $calls('send'), 'send streams the snapshot itself, with progress and -L');
+same(array('send -P -v -n -L tank/data@b'), array_values(array_unique(preg_grep('/^send -P -v -n /', $read('calls.log')))), 'each estimate counts the same stream');
 same(array('receive -s -u -o readonly=on -o canmount=noauto backup/data'), $calls('receive'), 'receive keeps it resumable, unmounted and read-only, never -F');
 same(array('backup/data@b'), $names('backup/data', 'snapshot'), 'the copy holds b');
 same(array($bookmark('backup/data', 'b')), $names('tank/data', 'bookmark'), 'and the dataset a bookmark for this destination at b');
@@ -70,7 +71,7 @@ runProcess('zfs', array('snapshot', 'tank/data@c'));
 $plan = zfsmReplicatePlan('tank/data', 'c', 'backup/data');
 same(array('incremental', 'tank/data@b'), array($plan['mode'], $plan['base']), 'a snapshot is the base while it exists');
 same(0, zfsmRunReplicate('tank/data', 'c', 'backup/data'), 'it runs');
-same(array('send -P -v -i tank/data@b tank/data@c'), $calls('send'), 'send streams the changes since b');
+same(array('send -P -v -L -i tank/data@b tank/data@c'), $calls('send'), 'send streams the changes since b');
 same(array($bookmark('backup/data', 'c')), $names('tank/data', 'bookmark'), 'the bookmark moves to c and the old one is removed');
 same(array('normal: Replication of tank/data@c to backup/data finished (changes since b).'), $read('notify-detail.log'), 'the notification names the base by its snapshot');
 
@@ -174,7 +175,7 @@ putenv('ZFSM_TEST_TOKEN_FAIL');
 // An encrypted dataset goes raw, so the copy stays locked with its key; a volume's copy takes volmode=none, not canmount, on every run.
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'e', 'backup/enc'), 'an encrypted dataset runs');
-same(array('send -P -v -w tank/enc@e'), $calls('send'), 'sent raw');
+same(array('send -P -v -w tank/enc@e'), $calls('send'), 'sent raw (-w), without -L');
 $reset();
 same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol'), 'a volume runs');
 same(array('receive -s -u -o readonly=on -o volmode=none backup/vol'), $calls('receive'), 'received read-only, without canmount, and not as a block device');
@@ -322,7 +323,7 @@ same(array('server' => 'nas', 'dest' => 'backup/replicas/tower/data'), zfsmRepli
 $reset();
 runProcess('zfs', array('snapshot', 'tank/data@c'));
 same(0, zfsmRunReplicate('tank/data', 'c', 'data', null, false, 'nas'), 'the next run');
-same(array('send -P -v -i tank/data@b tank/data@c'), $calls('send'), 'sends the changes since b');
+same(array('send -P -v -L -i tank/data@b tank/data@c'), $calls('send'), 'sends the changes since b');
 same(array($remote_mark('c')), $names('tank/data', 'bookmark'), 'and the bookmark moves to c');
 same(array(1, 4, 1), $logins($ssh()), 'still one login: exists, token, snapshots and the stream ride it');
 same(array('backup/replicas/tower/data on server nas already holds tank/data@c'), array(zfsmReplicatePreview('tank/data', 'c', 'data', $cfg, 'nas')['error']), 'the copy there is read back through the checker');

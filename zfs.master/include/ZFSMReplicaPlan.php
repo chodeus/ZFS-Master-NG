@@ -49,10 +49,12 @@ function zfsmReplicaShortName($zdataset, $mark) {
 }
 
 // The send for a plan: progress on stderr (-v -P), raw for an encrypted dataset, incremental from the plan's base, or resumed from its token.
+// Records over 128K go whole (-L; raw keeps them too). Keep it on: a copy holding one refuses a later stream without -L.
 function zfsmReplicateSendArgs($plan, $dry_run = false) {
 	$args = array_merge(array('send', '-P', '-v'), $dry_run ? array('-n') : array());
 	if ($plan['mode'] === 'resume') return array_merge($args, array('-t', $plan['token']));
 	if ($plan['raw']) $args[] = '-w';
+	else $args[] = '-L';
 	if ($plan['base'] !== null) array_push($args, '-i', $plan['base']);
 	$args[] = $plan['snapshot'];
 	return $args;

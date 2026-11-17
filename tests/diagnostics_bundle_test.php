@@ -101,10 +101,10 @@ $log_lines = array(
 	'ZFS Master NG dataset inventory failed for otherpool: zfs timed out',
 	$action('ZFS Snapshot Destroy', 'tank/CanaryDs One@CanaryA,CanaryB,CanaryC'),
 	$action('ZFS Dataset Destroy', 'tank/Canary Gone finished movies'),
-	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
+	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v -L exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
 	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (carried on from where it stopped) started: zfs send -P -v -t '.$resume.' | zfs receive -s tank/CanaryCopy',
 	// To a server since removed from remotes.json: only "on server" names it, and the word net alone would keep its "backup".
-	'Replication of tank/CanaryDs One@CanarySnapA to remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy on server canary.backup (in full) started: zfs send -P -v tank/CanaryDs One@CanarySnapA | ssh 10.0.20.99 zfsm-replica 1 receive '.bin2hex('remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy'),
+	'Replication of tank/CanaryDs One@CanarySnapA to remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy on server canary.backup (in full) started: zfs send -P -v -L tank/CanaryDs One@CanarySnapA | ssh 10.0.20.99 zfsm-replica 1 receive '.bin2hex('remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy'),
 	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryTyped/Name on server canary.backup not started: On canary.backup the copy goes inside remotepool/CanaryArea/CanaryTower, so give it one name with no slash, such as Canary Name'),
 	// Names the word net alone keeps, as each is one of its words: a server removed since, and this server's name before a rename.
 	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryGone on server media not started: media does not accept this server\'s key: copy the line shown under media here into its root user\'s SSH authorized keys, and Apply there'),
@@ -256,10 +256,10 @@ has("ZFS Master NG dataset inventory failed for otherpool: zfs timed out\n", $lo
 has('ssh: connect to host '.$token('canarynas').' port 22: Connection refused, as '.$token('root@canaryhost:backup/CanaryRemote')."\n", $log, 'this server\'s name as Unraid has it is a token; another server, its user and its dataset are one token, the one they have as a property\'s value');
 has("ZFS Snapshot Destroy: tank/$ds@".$token('CanaryA').','.$token('CanaryB').','.$token('CanaryC')." succeeded\n", $log, 'each snapshot of a list is a token');
 $exported = 'exportedpool/'.$token('CanaryVol').'@'.zfsmDiagToken('CanaryA');
-has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
+has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v -L $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
 has(' started: zfs send -P -v -t (a resume token, left out) | zfs receive -s tank/'.zfsmDiagToken('CanaryCopy')."\n", $log, 'a resume token is left out');
 $remote = 'remotepool/'.$token('CanaryArea').'/'.$token('CanaryTower').'/'.$token('CanaryRemoteCopy');
-same(1, preg_match('~ to '.preg_quote($remote.' on server '.$token('canary.backup').' (in full) started: zfs send -P -v tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' | ssh ', '~').'ip-[0-9a-f]{8} '
+same(1, preg_match('~ to '.preg_quote($remote.' on server '.$token('canary.backup').' (in full) started: zfs send -P -v -L tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' | ssh ', '~').'ip-[0-9a-f]{8} '
 	.preg_quote('zfsm-replica 1 receive (as hex) '.$remote, '~').'\n~', $log), 'a copy on another server: its pool stays as a pool here does, its server is a token though no longer in remotes.json, and its request is read from hex: '.$log);
 has('ZFS Replication: tank/'.$ds.' failed: Replication to '.$token('CanaryTyped').'/'.$token('Name').' on server '.zfsmDiagToken('canary.backup').' not started: On '.zfsmDiagToken('canary.backup').' the copy goes inside remotepool/'.$token('CanaryArea').'/'.zfsmDiagToken('CanaryTower').', so give it one name with no slash, such as '.$token('Canary Name')."\n", $log,
 	'a refusal to send there: its area is its pool and tokens, and the name it gives as its example is one token');
