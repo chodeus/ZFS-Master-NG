@@ -15,7 +15,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Datasets** — create, rename, promote, destroy, and edit properties
 - **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when the newest gets old
 - **Snapshots Admin** — filter, sort, browse a snapshot's files, or see what changed since it
-- **Snapshot schedules** — snapshot every dataset hourly or on chosen days and keep only the newest; a dataset can have its own (not a read-only, legacy-mounted or Sanoid/Syncoid one), or none
+- **Snapshot schedules** — snapshot every dataset hourly or on chosen days and keep the newest, plus the newest of each of the last days, weeks, months or years you choose; a dataset can have its own (not a read-only, legacy-mounted or Sanoid/Syncoid one), or none
 - **Replication** — copy datasets to another pool or ZFS Master NG server, once or on a schedule
 - **Reviews** — destroy, rollback and bulk delete show what they'll remove first
 - **Encryption** — create encrypted datasets, lock and unlock them
@@ -30,7 +30,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 Each dataset row has an **Actions** menu. These items do more than their name says:
 
-- **Replicate** — copies the dataset to another pool, or to another ZFS Master NG server added in Settings. Run it once, or repeat it hourly or on chosen days and keep only the newest snapshots. New sends keep records larger than 128K whole; what a copy already holds stays as it is.
+- **Replicate** — copies the dataset to another pool, or to another ZFS Master NG server added in Settings. Run it once, or repeat it hourly or on chosen days and keep the newest snapshots, plus the newest of each of the last days, weeks, months or years you choose. New sends keep records larger than 128K whole; what a copy already holds stays as it is.
 - **Schedules** — gives the dataset its own snapshot schedule, or None, in place of Snapshot Every Dataset (Settings). Datasets below it follow it unless they have their own.
 - **Rewrite Files** (Unraid 7.3+) — writes the dataset's files again, so a changed compression, checksum, dedup or copies setting applies to data already there. Snapshots keep the old blocks, so the pool can use more space until they are deleted.
 - **Snapshots Admin** — lists the dataset's snapshots, and its children's if you like, to filter and sort. From there you can browse a snapshot's files, see what changed since it, roll back, clone, hold, rename, or delete several at once.

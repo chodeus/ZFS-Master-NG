@@ -172,7 +172,7 @@ foreach (array(array('', '1', $no_time), array('24:00', '1', $no_time), array('4
 same(array(array('tank/data' => 'Nothing was scheduled: '.$no_repeat), array('tank/data' => 'Nothing was scheduled: '.$no_repeat)),
 	array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'minutely', '', '', 0, $cfg)['failed'], zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'daily', '', '', 0, $cfg)['failed']), 'one more often than hourly, and one from a page opened before the update');
 same(array('tank/data' => 'Nothing was scheduled: give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', '', 'backup', '', 'days', '04:00', '1', 0, $cfg)['failed'], 'one here whose copy is no dataset in a pool');
-same(array('tank/data' => 'Nothing was scheduled: '.$no_day.'; under Snapshots to keep, give a number up to 9999, or nothing to keep all'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '04:00', '', -1, $cfg)['failed'],
+same(array('tank/data' => 'Nothing was scheduled: '.$no_day.'; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '04:00', '', -1, $cfg)['failed'],
 	'one with no day ticked and no number to keep says both');
 $listed = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), json_encode(array(array('minute' => 0) + $jobs[0])));

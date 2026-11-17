@@ -228,8 +228,9 @@ function zfsmScheduleWhen($job) {
 }
 
 function zfsmScheduleKeepText($job) {
-	if (zfsmScheduleSnapshotsOnly($job)) return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' scheduled snapshots of each dataset' : 'keeps all it takes';
-	return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' of its snapshots' : 'keeps all its snapshots';
+	$kept = zfsmKeepWords($job['keep']);
+	if (zfsmScheduleSnapshotsOnly($job)) return $kept !== '' ? 'keeps '.$kept.' scheduled snapshots of each dataset' : 'keeps all it takes';
+	return $kept !== '' ? 'keeps '.$kept.' of its snapshots' : 'keeps all its snapshots';
 }
 
 // The page's $time ('13:30') and $days ('1,3,5'; 0 is Sunday) as a schedule's minute, hour and days: -1 and none when unread.
@@ -247,13 +248,13 @@ function zfsmScheduleWrong($job) {
 	$fix = array();
 	if ($job['minute'] < 0) $fix[] = 'set the time it starts at';
 	if ($job['days'] === array()) $fix[] = 'tick at least one day';
-	if (!zfsmKeepValid($job['keep'])) $fix[] = 'under Snapshots to keep, give a number up to '.ZFSM_KEEP_MAX.', or nothing to keep all';
+	if (!zfsmKeepValid($job['keep'])) $fix[] = 'under Snapshots to keep, give a number up to '.ZFSM_KEEP_MAX.', periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all';
 	if ($fix === array() && !zfsmScheduleValid($job)) $fix[] = 'give the copy a name as Replicate does';
 	return implode('; ', $fix);
 }
 
 // Saves a schedule for a copy and starts its first run now with Keep 0, as it may never be saved: one whose first run can't
-// start isn't. $keep is -1 when what the page sent is no number; an empty one is 0, which keeps all.
+// start isn't. $keep: zfsmKeepParse's, -1 when what the page sent is no Keep; an empty one is 0, which keeps all.
 function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $days, $keep, $cfg) {
 	$job = array('id' => '00000000', 'dataset' => $zdataset, 'dest' => $zdest, 'server' => $server, 'every' => $every) + zfsmScheduleAt($every, $time, $days) + array('keep' => $keep);
 	$wrong = zfsmScheduleWrong($job);

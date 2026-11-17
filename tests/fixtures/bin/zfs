@@ -60,8 +60,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			exit 0
 		fi
 		# Retention's read (include/ZFSMKeep.php) of each dataset after the options, as zfs does: one that can't be read fails the
-		# command, the others still listed. ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails.
-		if contains_arg 'name,guid,createtxg,userrefs,clones,zfs.master:schedule' "$@"; then
+		# command, the others still listed. ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails. creation: its prop, else its txg.
+		if contains_arg 'name,guid,createtxg,creation,userrefs,clones,zfs.master:schedule' "$@"; then
 			code=0; prev=''
 			for d in "$@"; do
 				case "$prev" in -o|-t|-s|-d) prev=$d; continue ;; esac
@@ -70,7 +70,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 				exists "$d" || { printf "cannot open '%s': dataset does not exist\n" "$d" >&2; code=1; continue; }
 				[ "${ZFSM_TEST_KEEP_LIST_FAIL:-}" = "$d" ] && { printf "cannot open '%s': Input/output error\n" "$d" >&2; code=1; continue; }
 				awk -F'\t' -v d="$d@" 'index($1, d) == 1' "$R/marks" | while IFS="$(printf '\t')" read -r n g t; do
-					printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
+					printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(prop "$n" creation "$t")" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
 				done
 			done
 			exit $code
@@ -181,6 +181,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		for a in "$@"; do
 			if [ "$prev" != -o ] && [ "${a#*@}" != "$a" ]; then
 				printf '%s\t%s\t%s\n' "$a" "$((t * 7919 + i))" "$t" >> "$R/marks"
+				set_prop "$a" creation "$(date +%s)"
 				i=$((i + 1)); p=''; for o in "$@"; do [ "$p" = -o ] && set_prop "$a" "${o%%=*}" "${o#*=}"; p=$o; done
 			fi
 			prev=$a

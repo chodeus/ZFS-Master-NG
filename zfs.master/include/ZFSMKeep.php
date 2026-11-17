@@ -1,6 +1,6 @@
 <?php
-// Keep: after a schedule's run lands, its snapshots past the newest N go; a run holds what it sends until a run to the copy lands
-// or none is left to carry on.
+// Keep: after a schedule's run lands, its snapshots that its Keep (zfsmKeepRules) doesn't keep go; a run holds what it sends until a
+// run to the copy lands or none is left to carry on.
 // zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases; zfsmServeReplica and zfsmScheduleSnapshotRun prune.
 
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');
@@ -11,9 +11,58 @@ define('ZFSM_KEEP_HOLD', 'zfsm-resume-');
 // A run or receive removes at most this many of a dataset's snapshots, oldest first, and their twins in a copy here; the next
 // one removes more.
 define('ZFSM_KEEP_PER_RUN', 50);
+// Keep's periods by letter: how date() names one in this server's time zone (ISO weeks, Monday first), and its word.
+define('ZFSM_KEEP_PERIODS', array('h' => array('Y-m-d H', 'hourly'), 'd' => array('Y-m-d', 'daily'), 'w' => array('o-W', 'weekly'),
+	'm' => array('Y-m', 'monthly'), 'y' => array('Y', 'yearly')));
 
 function zfsmKeepValid($keep) {
-	return is_int($keep) && $keep >= 0 && $keep <= ZFSM_KEEP_MAX;
+	return zfsmKeepRules($keep) !== null;
+}
+
+// A Keep's rules, a count by letter: '' the newest that many, a ZFSM_KEEP_PERIODS letter the newest of each of that many last periods
+// with one. From an int ('' alone; 0: none) or words such as "10 7d 4w 12m", each letter once; null from anything else.
+function zfsmKeepRules($keep) {
+	if (is_int($keep)) return $keep < 0 || $keep > ZFSM_KEEP_MAX ? null : array_filter(array('' => $keep));
+	if (!is_string($keep) || strlen($keep) > 64) return null;
+	$rules = array();
+	foreach (preg_split('/[\s,]+/', strtolower($keep), -1, PREG_SPLIT_NO_EMPTY) as $word) {
+		if (preg_match('/^([0-9]+)([a-z]?)$/D', $word, $parts) !== 1) return null;
+		list(, $count, $unit) = $parts;
+		if (isset($rules[$unit]) || ($unit !== '' && !array_key_exists($unit, ZFSM_KEEP_PERIODS)) || (int)$count < 1 || (int)$count > ZFSM_KEEP_MAX) return null;
+		$rules[$unit] = (int)$count;
+	}
+	return $rules ? array_replace(array_intersect_key(array('' => 0) + ZFSM_KEEP_PERIODS, $rules), $rules) : null;
+}
+
+// What Snapshots to keep holds, as Keep is saved: empty keeps all (0), and a number alone stays an int, which versions before rules
+// read; else its rules in one order. Null when it is none of those.
+function zfsmKeepParse($text) {
+	$text = trim($text);
+	$number = $text === '' ? 0 : zfsmDigits($text, strlen((string)ZFSM_KEEP_MAX), null);
+	if ($number !== null) return $number;
+	$rules = zfsmKeepRules($text);
+	if ($rules === null) return null;
+	return array_keys($rules) === array('') ? $rules[''] : zfsmKeepField($text);
+}
+
+// $keep as Snapshots to keep shows it: '' when all stay, else its rules in one order ("10 7d 4w 12m").
+function zfsmKeepField($keep) {
+	$words = array();
+	foreach (zfsmKeepRules($keep) ?? array() as $unit => $count) $words[] = $count.$unit;
+	return implode(' ', $words);
+}
+
+// $keep in words ("the newest 10, 7 daily and 4 weekly"); '' when all stay.
+function zfsmKeepWords($keep) {
+	$words = array();
+	foreach (zfsmKeepRules($keep) ?? array() as $unit => $count) $words[] = $unit === '' ? 'the newest '.$count : $count.' '.ZFSM_KEEP_PERIODS[$unit][1];
+	$last = array_pop($words);
+	return $words ? implode(', ', $words).' and '.$last : (string)$last;
+}
+
+// Why Keep removed a snapshot, as its log line says: $who keeps the others ("its schedule").
+function zfsmKeepWhy($keep, $who) {
+	return 'not among '.zfsmKeepWords($keep).' '.$who.' keeps';
 }
 
 // A copy's tag on its schedule's snapshots and in its holds: 16 hex of the copy's mark as the schedule names it, known before a
@@ -31,7 +80,7 @@ function zfsmKeepHoldTag($tag) {
 	return ZFSM_KEEP_HOLD.$tag;
 }
 
-// $zdataset's snapshots, oldest first, with held, cloned and Keep's tag; null when they can't be read. A row
+// $zdataset's snapshots, oldest first, with when each was taken, held, cloned and Keep's tag; null when they can't be read. A row
 // that doesn't parse is left out, so Keep neither removes nor counts it and keeps more, never fewer.
 function zfsmKeepSnapshots($zdataset) {
 	$by = zfsmKeepSnapshotsOf(array($zdataset));
@@ -40,7 +89,7 @@ function zfsmKeepSnapshots($zdataset) {
 
 // zfsmKeepSnapshots of each of $datasets, in one zfs list; why not when they can't be read.
 function zfsmKeepSnapshotsOf($datasets) {
-	$extra = array('userrefs', 'clones', ZFSM_KEEP_TAG);
+	$extra = array('creation', 'userrefs', 'clones', ZFSM_KEEP_TAG);
 	$columns = implode(',', array_merge(array('name', 'guid', 'createtxg'), $extra));
 	$listed = runProcess('zfs', array_merge(array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', $columns, '-s', 'createtxg'), $datasets));
 	if (($listed['code'] ?? 1) !== 0) return zfsmCommandError($listed, 'zfs list failed');
@@ -52,25 +101,42 @@ function zfsmKeepSnapshotsOf($datasets) {
 }
 
 function zfsmKeepRow($mark) {
-	if (!preg_match('/^[0-9]+$/D', $mark['userrefs'])) return null;
-	return array('name' => $mark['name'], 'guid' => $mark['guid'], 'txg' => $mark['txg'], 'held' => $mark['userrefs'] !== '0',
+	if (!preg_match('/^[0-9]+$/D', $mark['userrefs']) || !preg_match('/^[0-9]+$/D', $mark['creation'])) return null;
+	return array('name' => $mark['name'], 'guid' => $mark['guid'], 'txg' => $mark['txg'], 'creation' => (int)$mark['creation'], 'held' => $mark['userrefs'] !== '0',
 		'cloned' => $mark['clones'] !== '' && $mark['clones'] !== '-', 'tag' => $mark[ZFSM_KEEP_TAG]);
 }
 
-// The snapshots $tag marks ($tag null: every one) past the newest $keep of them (0: none), oldest first, never one held or
-// cloned; null when they can't be read. The caller takes ZFSM_KEEP_PER_RUN of those it can remove.
+// The snapshots $tag marks ($tag null: every one) that $keep's rules don't keep (none without rules), oldest first, never one
+// held or cloned; null when they can't be read. The caller takes ZFSM_KEEP_PER_RUN of those it can remove.
 function zfsmKeepSurplus($zdataset, $keep, $tag) {
-	if ($keep <= 0) return array();
+	if (!zfsmKeepRules($keep)) return array();
 	$snapshots = zfsmKeepSnapshots($zdataset);
 	return $snapshots === null ? null : zfsmKeepPast($snapshots, $keep, $tag);
 }
 
 // zfsmKeepSurplus of snapshots already read.
 function zfsmKeepPast($snapshots, $keep, $tag) {
-	if ($keep <= 0) return array();
+	$rules = zfsmKeepRules($keep);
+	if (!$rules) return array();
 	$counted = array_values(array_filter($snapshots, function($snapshot) use ($tag) { return $tag === null || $snapshot['tag'] === $tag; }));
-	$past = array_slice($counted, 0, max(0, count($counted) - $keep));
-	return array_values(array_filter($past, function($snapshot) { return !$snapshot['held'] && !$snapshot['cloned']; }));
+	$kept = zfsmKeepKept(array_reverse($counted), $rules);
+	return array_values(array_filter($counted, function($snapshot) use ($kept) { return !isset($kept[$snapshot['name']]) && !$snapshot['held'] && !$snapshot['cloned']; }));
+}
+
+// The names (keys) of $newest, snapshots newest first (by txg), that $rules keep: any one rule keeps it. Each period, named by when
+// a snapshot was taken, keeps the first of it met.
+function zfsmKeepKept($newest, $rules) {
+	$kept = array_fill_keys(array_column(array_slice($newest, 0, $rules[''] ?? 0), 'name'), true);
+	foreach (array_diff_key($rules, array('' => 0)) as $unit => $count) {
+		$periods = array();
+		foreach ($newest as $snapshot) {
+			$period = date(ZFSM_KEEP_PERIODS[$unit][0], $snapshot['creation']);
+			if (isset($periods[$period])) continue;
+			if (count($periods) === $count) break;
+			$periods[$period] = $kept[$snapshot['name']] = true;
+		}
+	}
+	return $kept;
 }
 
 // Destroys $snapshot only while it is still the one read ($guid), and logs it with $why: '' when it is gone, else why it stays.
@@ -93,7 +159,7 @@ function zfsmKeepCopies($plan) {
 	return $listed === null ? null : array_column($listed, null, 'guid');
 }
 
-// After a run to $plan's copy landed: $zdataset's snapshots $tag marks past the newest $keep go, a copy's here first (by guid). A
+// After a run to $plan's copy landed: $zdataset's snapshots $tag marks that $keep doesn't keep go, a copy's here first (by guid). A
 // source stays while its copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
 function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, $tag);
@@ -105,7 +171,7 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 		$copy = $copies[$snapshot['guid']] ?? null;
 		return $snapshot['name'] !== $plan['snapshot'] && ($copy === null || (!$copy['held'] && !$copy['cloned']));
 	});
-	return zfsmKeepStayed('Keep', zfsmKeepRemove($removable, $copies, 'past the newest '.$keep.' its schedule keeps'), 'run');
+	return zfsmKeepStayed('Keep', zfsmKeepRemove($removable, $copies, zfsmKeepWhy($keep, 'its schedule')), 'run');
 }
 
 // Destroys the first ZFSM_KEEP_PER_RUN of $removable, each one's twin in $copies (by guid) first: a source stays while its twin
@@ -140,7 +206,7 @@ function zfsmKeepStayed($who, $stayed, $then) {
 function zfsmKeepReplica($from, $zdataset, $keep) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, null);
 	$kept = $surplus === null ? 'Keep Replicas could not read the snapshots of '.$zdataset
-		: zfsmKeepStayed('Keep Replicas', zfsmKeepRemove($surplus, array(), 'past the newest '.$keep.' Keep Replicas keeps'), 'receive');
+		: zfsmKeepStayed('Keep Replicas', zfsmKeepRemove($surplus, array(), zfsmKeepWhy($keep, 'Keep Replicas')), 'receive');
 	if ($kept === '') return;
 	zfsmLog('Replication from '.$from.' into '.$zdataset.' received: '.$kept, LOG_WARNING);
 	zfsnotify('ZFS Replication', 'Replication from '.$from.' into '.$zdataset.' received. '.zfsmSafeText($kept).'.', '', 'warning');

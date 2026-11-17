@@ -27,12 +27,13 @@ $routes = array(
 	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x'),
 	'scheduleremovesaved' => array('cmd' => 'scheduleremove', 'id' => '0a1b2c3d'),
 	'schedulesnapshots' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '3'),
+	'schedulesnapshotstiers' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => ' 24 7D, 4w '),
 	'schedulesnapshotswrong' => array('cmd' => 'schedulesnapshots', 'every' => 'days', 'time' => '', 'days' => '9', 'keep' => 'x5'),
 	'schedulesnapshotsown' => array('cmd' => 'schedulesnapshots', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => ''),
 	'previewschedules' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/data'),
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 );
-$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulesnapshots', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'previewschedules', 'previewschedulesbad');
+$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'previewschedules', 'previewschedulesbad');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -58,7 +59,7 @@ if (in_array($route, $replication, true)) {
 
 // A schedule to remove, or a snapshot schedule saved (the default or a dataset's own), on the tmpfs the runner mounts on /boot/config. No update_cron here, so
 // Unraid's crontab is not rebuilt.
-if ($route === 'scheduleremovesaved' || $route === 'schedulesnapshots' || $route === 'schedulesnapshotsown') {
+if ($route === 'scheduleremovesaved' || $route === 'schedulesnapshots' || $route === 'schedulesnapshotstiers' || $route === 'schedulesnapshotsown') {
 	zfsmTestScratch('/boot/config');
 	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
 	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
@@ -99,14 +100,16 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'replicatedataset' => $failed === 'The copy goes inside nowhere, which doesn\'t exist',
 		'schedulepicked' => $failed === 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now',
 		'schedulenowhere' => $failed === 'Nothing was scheduled: The copy goes inside nowhere, which doesn\'t exist' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
-		'schedulekeep' => $failed === 'Nothing was scheduled: under Snapshots to keep, give a number up to 9999, or nothing to keep all' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'schedulekeep' => $failed === 'Nothing was scheduled: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremove' => $answer === array('error' => 'No such schedule'),
 		'scheduleremovesaved' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && ($answer['schedules_html'] ?? null) === 'None yet'
 			&& file_get_contents('/boot/config/plugins/zfs.master/schedules.json') === "[]\n",
 		'schedulesnapshots' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps the newest 3 scheduled snapshots of each dataset$/D', $answer['said'] ?? '') === 1
 			&& strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && strpos($answer['schedules_html'] ?? '', '>Snapshot Every Dataset, every hour at :') !== false
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array(''),
-		'schedulesnapshotswrong' => $answer === array('error' => 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, or nothing to keep all')
+		'schedulesnapshotstiers' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps the newest 24, 7 daily and 4 weekly scheduled snapshots of each dataset$/D', $answer['said'] ?? '') === 1
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'keep') === array('24 7d 4w'),
+		'schedulesnapshotswrong' => $answer === array('error' => 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
 			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulesnapshotsown' => ($answer['said'] ?? '') === 'Saved: a snapshot of each of 1 dataset(s) (tank/data and below) every Monday at 04:00; it keeps all it takes'
 			&& strpos($answer['schedules_html'] ?? '', '>Snapshots of tank/data and below, every Monday at 04:00, keeps all it takes <input type="button" value="Remove"') !== false

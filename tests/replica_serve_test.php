@@ -182,10 +182,10 @@ foreach (array('a', 'b', 'c') as $snapshot) same(array(0, '', ''), $land($snapsh
 same(array(array('a', 'b', 'c'), array(array(), array())), array($on(), $said()), 'and keeps all');
 same(array(0, '', ''), $land('d', 2), 'one with Keep Replicas 2 answers as before');
 same(array('c', 'd'), $on(), 'and the copy keeps its newest 2');
-same(array(array('notice: Removed backup/replicas/tower/kept@a (past the newest 2 Keep Replicas keeps)', 'notice: Removed backup/replicas/tower/kept@b (past the newest 2 Keep Replicas keeps)'), array()), $said(), 'each removal logged, with no notification');
+same(array(array('notice: Removed backup/replicas/tower/kept@a (not among the newest 2 Keep Replicas keeps)', 'notice: Removed backup/replicas/tower/kept@b (not among the newest 2 Keep Replicas keeps)'), array()), $said(), 'each removal logged, with no notification');
 file_put_contents($work.'/pool/holds', "$copy@c\tmine\n");
 same(array(0, '', ''), $land('e', 1), 'with Keep Replicas 1');
-same(array(array('c', 'e'), array(array('notice: Removed '.$copy.'@d (past the newest 1 Keep Replicas keeps)'), array())), array($on(), $said()), 'one held here stays, with no warning');
+same(array(array('c', 'e'), array(array('notice: Removed '.$copy.'@d (not among the newest 1 Keep Replicas keeps)'), array())), array($on(), $said()), 'one held here stays, with no warning');
 file_put_contents($work.'/pool/props', "$copy@e\tclones\tbackup/clone\n", FILE_APPEND);
 $land('f', 1);
 same(array(array('c', 'e', 'f'), array(array(), array())), array($on(), $said()), 'and one cloned here');

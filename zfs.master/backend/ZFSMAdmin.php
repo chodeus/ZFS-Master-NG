@@ -25,9 +25,9 @@ function zfsmPostDigits($key, $digits, $default) {
 	return zfsmDigits(zfsmPostString($key), $digits, $default);
 }
 
-// Snapshots to keep: empty keeps all (0); -1, which no check accepts, unless it is a number.
+// Snapshots to keep as zfsmKeepParse saves it; -1, which no check accepts, when it is no Keep.
 function zfsmPostKeep() {
-	return zfsmPostString('keep') === '' ? 0 : zfsmPostDigits('keep', strlen((string)ZFSM_KEEP_MAX), -1);
+	return zfsmKeepParse(zfsmPostString('keep')) ?? -1;
 }
 
 function zfsmResolveAnswerCodes($answer) {
