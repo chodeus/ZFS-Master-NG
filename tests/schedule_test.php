@@ -194,7 +194,7 @@ same(array($jobs, array(), array(), $taken), array($stored(), $read('cron.log'),
 // Cron's runs take a snapshot and send the changes; one that works sends no notification.
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, time() + 3600), 'a scheduled run');
-same(1, preg_match('/^send -P -v -i tank\/data@repl-[0-9]{14} tank\/data@repl-[0-9]{14}$/D', implode("\n", $sends())), 'sends only the changes: '.implode(' | ', $sends()));
+same(1, preg_match('/^send -P -v -L -i tank\/data@repl-[0-9]{14} tank\/data@repl-[0-9]{14}$/D', implode("\n", $sends())), 'sends only the changes: '.implode(' | ', $sends()));
 same(array($taken + 1, 2, array()), array(count($names('tank/data', 'snapshot')), count($names('backup/data', 'snapshot')), $read('notify-detail.log')), 'each side keeps the new snapshot, and nothing is notified');
 
 // With the copy gone, a run doesn't send it in full again: it notifies once, then logs, and Settings counts the runs.
@@ -260,7 +260,7 @@ putenv('ZFSM_TEST_SEND_CUT');
 list($stopped, $own) = array('tank/data@'.zfsmNewSnapshotName($cfg, $at), 'tank/data@'.zfsmNewSnapshotName($cfg, $at + 3600));
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $at + 3600), 'the next run');
-same(array('send -P -v -t tok:'.$stopped, 'send -P -v -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
+same(array('send -P -v -t tok:'.$stopped, 'send -P -v -L -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
 same(array('backup/data@'.zfsmNewSnapshotName($cfg, $at + 3600)), array_slice($names('backup/data', 'snapshot'), -1), 'so the copy holds this run\'s snapshot');
 same(array('normal: Replication of '.$own.' to backup/data finished (changes since '.substr($stopped, strlen('tank/data@')).'). It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says once, for its own snapshot, that it works again');
 // Until its own snapshot lands too, the run is a problem, and nothing says it works again.
