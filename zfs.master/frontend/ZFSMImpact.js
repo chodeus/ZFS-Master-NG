@@ -90,9 +90,14 @@ function zfsmReplicateHtml(options, zdataset) {
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
 		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
 		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules.')
-		+say('Snapshots to keep: from the next run on, once a run lands, only the newest this many of the snapshots this copy\'s schedules took stay, here and in a copy on this server. Empty keeps all. With Mon, Wed and Fri ticked, 6 keeps two weeks.')
+		+say('Snapshots to keep: from the next run on, once a run lands, only those it keeps of the snapshots this copy\'s schedules took stay, here and in a copy on this server. '+zfsmKeepHelp()+' With Mon, Wed and Fri ticked, 6 keeps two weeks.')
 		+say('Held or cloned snapshots always stay. A copy on another server keeps all, unless its Keep Replicas keeps fewer. A run removes up to 50; the next runs remove the rest.')
 		+say('After this run, a notification comes only for the first problem in a row, and for the run that works again after it.')+'</div></div>';
+}
+
+// Snapshots to keep's rules, as both repeats' help says them.
+function zfsmKeepHelp() {
+	return 'A number keeps the newest that many; 7d, 4w and 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one, in this server\'s time zone (h and y: hours and years). Give any together, such as 24 7d 4w 12m. Empty keeps all.';
 }
 
 // Repeat's select of choices ([value, text]) and the rows it shows (zfsmRepeatSync), each id starting with prefix; start: what they
@@ -107,7 +112,7 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}) {
 	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'
 		+'<div id="'+prefix+'-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>'
 		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at:<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
-		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all" value="'+esc(start.keep)+'"></label></p>';
+		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'"></label></p>';
 }
 
 // Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Snapshots to keep for either repeat. Its value.
@@ -147,7 +152,7 @@ function zfsmScheduleDialogHtml(preview) {
 		+say('None: no scheduled snapshots. Every hour or On days of the week: its own schedule.')
 		+say('Datasets below this one follow its choice, unless they have their own.')
 		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken.')
-		+say('Snapshots to keep: after each run, only the newest this many scheduled snapshots of each dataset stay. Empty keeps all. Snapshots made by hand or by a copy\'s schedule are never removed.')
+		+say('Snapshots to keep: after each run, only those it keeps of each dataset\'s scheduled snapshots stay. '+zfsmKeepHelp()+' Snapshots made by hand or by a copy\'s schedule are never removed.')
 		+say('Settings lists every schedule.')+'</div>';
 }
 

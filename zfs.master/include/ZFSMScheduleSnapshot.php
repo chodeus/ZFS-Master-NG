@@ -60,7 +60,7 @@ function zfsmScheduleSnapshotPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUN
 	$own = zfsmScheduleOwn($read['valid'], $zdataset);
 	$job = reset($own) ?: array('every' => 'default', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
 	return array('every' => $job['every'], 'time' => $job['every'] === 'days' ? sprintf('%02d:%02d', $job['hour'], $job['minute']) : '00:00',
-		'days' => $job['days'], 'keep' => $job['keep'] > 0 ? (string)$job['keep'] : '',
+		'days' => $job['days'], 'keep' => zfsmKeepField($job['keep']),
 		'inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))),
 		'skipped' => zfsmScheduleSnapshotNot($zdataset, zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset))));
 }
@@ -251,14 +251,14 @@ function zfsmScheduleSnapshotTake($datasets, $name) {
 	return array($taken, $failed);
 }
 
-// After a run took a snapshot of $taken (datasets of $pool): of each one's snapshots with the snapshots tag past the newest $keep,
-// up to ZFSM_KEEP_PER_RUN go (zfsmKeepPast, zfsmKeepRemove). Each that stayed, and why.
+// After a run took a snapshot of $taken (datasets of $pool): of each one's snapshots with the snapshots tag, up to ZFSM_KEEP_PER_RUN
+// that $keep doesn't keep go (zfsmKeepPast, zfsmKeepRemove). Each that stayed, and why.
 function zfsmScheduleSnapshotKeep($pool, $taken, $keep) {
-	if ($keep <= 0 || !$taken) return array();
+	if (!zfsmKeepRules($keep) || !$taken) return array();
 	$by = zfsmKeepSnapshotsOf($taken);
 	if (is_string($by)) return array('the snapshots of '.$pool.' (they could not be read: '.$by.')');
 	$stayed = array();
-	foreach ($taken as $zdataset) $stayed = array_merge($stayed, zfsmKeepRemove(zfsmKeepPast($by[$zdataset] ?? array(), $keep, ZFSM_KEEP_SNAPSHOTS), array(), 'past the newest '.$keep.' its schedule keeps'));
+	foreach ($taken as $zdataset) $stayed = array_merge($stayed, zfsmKeepRemove(zfsmKeepPast($by[$zdataset] ?? array(), $keep, ZFSM_KEEP_SNAPSHOTS), array(), zfsmKeepWhy($keep, 'its schedule')));
 	return $stayed;
 }
 

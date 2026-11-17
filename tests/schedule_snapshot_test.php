@@ -97,7 +97,7 @@ file_put_contents(zfsmScheduleFile(), json_encode(array(array_replace($copy, arr
 $wrong = array(
 	array('days', '03:07', '1', 2, 'Nothing was saved: the copy to backup/data (every day at 03:07) starts then too; pick another time'),
 	array('weekly', '03:00', '1', 2, 'Nothing was saved: Repeat has no such choice now; reload the page and pick again'),
-	array('days', '', '', -1, 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, or nothing to keep all'),
+	array('days', '', '', -1, 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all'),
 );
 same(array_column($wrong, 4), array_map(function($try) use ($cfg) { return zfsmScheduleSnapshotSave('', $try[0], $try[1], $try[2], $try[3], $cfg)['why']; }, $wrong), 'what is wrong is said');
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'and it stays as it was');
@@ -157,7 +157,7 @@ file_put_contents($work.'/pool/holds', "tank@".$name($t + 3600)."\tkeep-me\n");
 file_put_contents($work.'/pool/props', "tank/docker@".$name($t + 3600)."\tclones\ttank/clone\n", FILE_APPEND);
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 10800), 'a run with Keep');
-$keep_read = 'list -H -p -d 1 -t snapshot -o name,guid,createtxg,userrefs,clones,zfs.master:schedule -s createtxg ';
+$keep_read = 'list -H -p -d 1 -t snapshot -o name,guid,createtxg,creation,userrefs,clones,zfs.master:schedule -s createtxg ';
 same(array($keep_read.'tank tank/data tank/docker tank/vm', $keep_read.'backup'), array_values(preg_grep('/^list .*-t snapshot /', $read('calls.log'))), 'Keep reads only the datasets it took, one command per pool');
 $tagged = function($dataset) use ($snaps) { return array_keys(array_filter($snaps($dataset), function($tag) { return $tag === 'snapshots'; })); };
 same(array('tank/data@a', 'tank/data@b', 'tank/data@'.$name($t + 7200), 'tank/data@c', 'tank/data@'.$name($t + 10800)), array_keys($snaps('tank/data')), 'past the newest 2 go; by hand and the copy\'s stay');
