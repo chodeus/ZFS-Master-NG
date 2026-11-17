@@ -30,7 +30,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 
 Each dataset row has an **Actions** menu. These items do more than their name says:
 
-- **Replicate** — copies the dataset to another pool, or to another ZFS Master NG server added in Settings. Run it once, or repeat it hourly or on chosen days and keep only the newest snapshots. Records larger than 128K stay whole in the copy.
+- **Replicate** — copies the dataset to another pool, or to another ZFS Master NG server added in Settings. Run it once, or repeat it hourly or on chosen days and keep only the newest snapshots. New sends keep records larger than 128K whole; what a copy already holds stays as it is.
 - **Schedules** — gives the dataset its own snapshot schedule, or None, in place of Snapshot Every Dataset (Settings). Datasets below it follow it unless they have their own.
 - **Rewrite Files** (Unraid 7.3+) — writes the dataset's files again, so a changed compression, checksum, dedup or copies setting applies to data already there. Snapshots keep the old blocks, so the pool can use more space until they are deleted.
 - **Snapshots Admin** — lists the dataset's snapshots, and its children's if you like, to filter and sort. From there you can browse a snapshot's files, see what changed since it, roll back, clone, hold, rename, or delete several at once.
