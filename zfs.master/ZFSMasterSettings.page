@@ -324,7 +324,7 @@ _(Snapshot Every Dataset)_:
 :end
 
 _(Days)_:
-: <span id="zfsm-snapsched-days" role="group" aria-label="Days"><?php foreach (array(1, 2, 3, 4, 5, 6, 0) as $day): ?><label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="zfsm-snapsched-day" value="<?=$day?>"<?=in_array($day, $zfsm_snapsched['days'], true) ? ' checked' : ''?>> <?=substr(ZFSM_SCHEDULE_DAYS[$day], 0, 3)?></label><?php endforeach; ?></span>
+: <?=zfsmScheduleDaysHtml('zfsm-snapsched', $zfsm_snapsched['days'])?>
 
 _(Starts At)_:
 : <input type="time" id="zfsm-snapsched-time" value="<?=sprintf('%02d:%02d', $zfsm_snapsched['hour'], $zfsm_snapsched['minute'])?>">
@@ -346,11 +346,11 @@ _(Replicate Every Dataset)_:
 > Copies every dataset in every pool into the dataset you name under **Copy Under**, on this server, each copy named for its dataset: with `backup`, `cache/appdata` is copied to `backup/cache/appdata`. It runs every hour at a minute of its own, or at the time you set on the days you tick (all seven: every day), in this server's time zone. Save changes it, and the answer says how many datasets it copies. Off stops it; the copies and the snapshots it made stay.
 >
 > - Each run takes a new snapshot of each dataset, named by **Snapshots Pattern**, and sends the changes since the last one, as a copy's schedule does (see **Schedules** below): the first run sends each dataset in full. The copies are read-only and not mounted.
-> - It leaves out the datasets in the pool it copies into, and the ones Snapshot Every Dataset leaves out: read-only datasets, such as copies received here, those mounted `legacy`, and those with Sanoid or Syncoid snapshots. It also leaves out a dataset whose own copy schedule (**Actions**, **Replicate** in the Main tab) makes that same copy.
-> - A dataset's copy goes after the copy of the dataset above it. Where the dataset above one is not copied, an empty dataset, read-only and not mounted, is made in its place to hold the copies below it. When the copy of the dataset above one is missing because it failed, that one waits for the next run.
-> - **Snapshots To Keep**: for each dataset, as for a copy's schedule: only the snapshots this schedule took that it keeps stay, on the dataset and in its copy. Empty keeps all.
+> - It leaves out the datasets in the pool it copies into, and the ones Snapshot Every Dataset leaves out: read-only datasets, such as copies received here, those mounted `legacy`, and those with Sanoid or Syncoid snapshots. It also leaves out a dataset whose own copy schedule (**Actions**, **Replicate** in the Main tab) makes that same copy, one whose name is too long for the bookmark its copy keeps (over about 70 characters), and, when a run can't read the snapshot names, those it couldn't read: they may be left to Sanoid or Syncoid.
+> - A dataset's copy goes after the copy of the dataset above it. Where the dataset above one is not copied, an empty dataset, read-only and not mounted, is made in its place to hold the copies below it. When the copy of the dataset above one is missing because it failed, or its own copy schedule has not made it yet, that one waits for the next run.
+> - **Snapshots To Keep**: for each dataset, as for a copy's schedule: only the snapshots this schedule took that it keeps stay, on the dataset and in its copy. Empty keeps all. A new **Copy Under** starts new copies there: the copies under the old one, and the snapshots taken for them, stay, as with Off.
 > - It and a snapshot schedule or copy's schedule of the same dataset can't start in the same minute: saving either one says so.
-> - A run waits for another replication of a dataset that is still sending; its waits add up to 55 minutes at most. A dataset that can't start in that time is skipped, and counts as a problem.
+> - A run waits for another replication of a dataset that is still sending; its waits add up to 55 minutes at most. A dataset that can't start in that time is skipped, and counts as a problem. So does a run that falls due while the one before still goes, as a first run can.
 > - Each run sends one notification at most: what it copied and its first problems. The first run with a problem sends it; later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so. The log has each dataset's replication.
 :end
 
@@ -358,7 +358,7 @@ _(Copy Under)_:
 : <input type="text" id="zfsm-copysched-under" maxlength="255" placeholder="backup" value="<?=zfsmHtml(rtrim($zfsm_copysched['dest'], '/'))?>">
 
 _(Days)_:
-: <span id="zfsm-copysched-days" role="group" aria-label="Days"><?php foreach (array(1, 2, 3, 4, 5, 6, 0) as $day): ?><label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="zfsm-copysched-day" value="<?=$day?>"<?=in_array($day, $zfsm_copysched['days'], true) ? ' checked' : ''?>> <?=substr(ZFSM_SCHEDULE_DAYS[$day], 0, 3)?></label><?php endforeach; ?></span>
+: <?=zfsmScheduleDaysHtml('zfsm-copysched', $zfsm_copysched['days'])?>
 
 _(Starts At)_:
 : <input type="time" id="zfsm-copysched-time" value="<?=sprintf('%02d:%02d', $zfsm_copysched['hour'], $zfsm_copysched['minute'])?>">

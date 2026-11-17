@@ -269,8 +269,14 @@ switch ($check) {
 		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
 		// Markdown leaves Keep Replicas' pattern whole.
 		if (!$row_has('Keep Replicas', 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="" placeholder="all">')) { fwrite(STDERR, "settings page lost the Keep Replicas row or its pattern\n"); exit(1); }
-		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"') as $label => $control) {
+		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"', 'Replicate Every Dataset' => '<select id="zfsm-copysched-every">', 'Copy Under' => 'id="zfsm-copysched-under"') as $label => $control) {
 			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+		}
+		// Each Every Dataset row's Days, all seven ticked while it is Off (zfsmScheduleShown).
+		foreach (array('zfsm-snapsched', 'zfsm-copysched') as $prefix) {
+			if (!$row_has('Days', '<span id="'.$prefix.'-days" role="group" aria-label="Days">') || preg_match_all('#<input type="checkbox" class="'.$prefix.'-day" value="[0-6]" checked> (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)</label>#', $rendered) !== 7) {
+				fwrite(STDERR, "settings page lost the Days of $prefix, or a day is not ticked\n"); exit(1);
+			}
 		}
 		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
 			if (!$row_has($label, '<select name="'.$name.'">')) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }

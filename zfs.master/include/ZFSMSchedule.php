@@ -135,14 +135,12 @@ function zfsmScheduleFreeMinute($jobs, $job, $prefer = null) {
 	return $free ? $free[array_rand($free)] : random_int(0, 59);
 }
 
-// Whether $a and $b can snapshot one dataset (so not in one minute or name): both of it, or one that covers datasets below its own
-// (snapshots, copies under a dataset) of one above it or the default. Each dataset follows one of each kind (zfsmScheduleFollowed);
-// None takes none.
+// Whether $a and $b can snapshot one dataset (so not in one minute or name): both of it, or one that covers (zfsmScheduleCovers) of
+// one above it or the default. A dataset follows one of each kind (zfsmScheduleFollowed); None takes none.
 function zfsmScheduleShare($a, $b) {
 	if (!zfsmScheduleRepeats($a['every']) || !zfsmScheduleRepeats($b['every'])) return false;
-	$covers = function($job) { return zfsmScheduleSnapshotsOnly($job) || zfsmScheduleCopiesUnder($job); };
-	if ($covers($a) && $covers($b) && zfsmScheduleKindOf($a) === zfsmScheduleKindOf($b)) return false;
-	$in = function($job, $other) use ($covers) { return $covers($job) && ($job['dataset'] === '' || zfsmUnderAny($other['dataset'], array($job['dataset']))); };
+	if (zfsmScheduleCovers($a) && zfsmScheduleCovers($b) && zfsmScheduleKindOf($a) === zfsmScheduleKindOf($b)) return false;
+	$in = function($job, $other) { return zfsmScheduleCovers($job) && ($job['dataset'] === '' || zfsmUnderAny($other['dataset'], array($job['dataset']))); };
 	return $a['dataset'] === $b['dataset'] || $in($a, $b) || $in($b, $a);
 }
 
@@ -368,7 +366,7 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 	try {
 		if (zfsmScheduleCopiesUnder($job)) return zfsmScheduleCopiesRun($job, $read['valid'], $cfg, $now, $notify, $wait);
 		if (!$copy) return zfsmScheduleSnapshotRun($job, $read['valid'], $cfg, $now, $notify);
-		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait), $job['keep']);
+		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings'), $job['keep']);
 	} catch (Throwable $error) {
 		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
 		$what = $copy ? 'Replication of '.$job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']) : (zfsmScheduleSnapshotsOnly($job) ? 'Scheduled snapshots' : 'Scheduled copies');
@@ -379,6 +377,15 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 }
 
 // Settings' list; $cfg for Snapshots Pattern, which can change after a schedule was saved.
+// Settings' Days boxes of the row whose ids start $prefix, $days ticked.
+function zfsmScheduleDaysHtml($prefix, $days) {
+	$html = '';
+	foreach (array(1, 2, 3, 4, 5, 6, 0) as $day) {
+		$html .= '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="'.$prefix.'-day" value="'.$day.'"'.(in_array($day, $days, true) ? ' checked' : '').'> '.substr(ZFSM_SCHEDULE_DAYS[$day], 0, 3).'</label>';
+	}
+	return '<span id="'.$prefix.'-days" role="group" aria-label="Days">'.$html.'</span>';
+}
+
 function zfsmSchedulesHtml($cfg) {
 	$read = zfsmScheduleRead();
 	if ($read === null) return '<span style="color:#e22828">'.zfsmHtml(zfsmScheduleUnreadable()).'</span>';

@@ -411,7 +411,7 @@ function zfsmDiagPublicHalf($dir, $private, $public) {
 // How many datasets each snapshot schedule and copies under a dataset that runs covers now, by id, from reads under a limit of their
 // own so a hung pool costs only this line; '' with none.
 function zfsmDiagScheduleCovers($jobs, $cfg) {
-	$runs = array_filter($jobs, function($job) { return (zfsmScheduleSnapshotsOnly($job) || zfsmScheduleCopiesUnder($job)) && zfsmScheduleRepeats($job['every']); });
+	$runs = array_filter($jobs, function($job) { return zfsmScheduleCovers($job) && zfsmScheduleRepeats($job['every']); });
 	if (!$runs) return '';
 	$listed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return zfsmDiagRead($command, $args, $wait); });
 	$counts = array();
