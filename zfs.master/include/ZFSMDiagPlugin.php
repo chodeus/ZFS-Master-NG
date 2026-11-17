@@ -415,8 +415,10 @@ function zfsmDiagScheduleCovers($jobs) {
 	$counts = array();
 	$unread = '';
 	foreach ($runs as $id => $job) {
-		list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
+		list($pools, $one) = zfsmScheduleCovered($listed, $job, $jobs);
 		$counts[] = $id.' '.array_sum(array_map('count', $pools));
+		// Each minds only its own errors (zfsmScheduleCovered): a later one's '' must not hide an earlier one's.
+		if ($unread === '') $unread = $one;
 	}
 	if ($unread !== '' && !zfsmScheduleListed($listed)[0]) return 'datasets each snapshot schedule takes now: (could not be read: '.$unread.')'."\n";
 	return 'datasets each snapshot schedule takes now: '.implode(', ', $counts).($unread !== '' ? ' (not every dataset could be read: '.$unread.')' : '')."\n";

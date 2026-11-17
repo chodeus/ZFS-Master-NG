@@ -449,6 +449,15 @@ list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use 
 same(array(), $findings, 'own schedules and a None with their lines have no findings');
 has("datasets each snapshot schedule takes now: 0b0b0b0b 0, 0c0c0c0c 1\n", $text, 'each counts only the datasets that follow it');
 same(1, preg_match('~^0c0c0c0c\t(name-[0-9a-f]{8})/name-[0-9a-f]{8}\t\(snapshots only\)\tevery hour at :45\t2\t0\n0d0d0d0d\t\1\t\(snapshots only\)\tnever\t0\t0$~m', $text), 'their rows, the datasets as tokens');
+// A dataset only the default takes can't be read: a dataset's own after it, which never takes it, doesn't hide that.
+putenv('ZFSM_TEST_COVER_FAIL=backup/copy');
+$text = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own)), FILE_APPEND);
+})[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+has("datasets each snapshot schedule takes now: 0b0b0b0b 1, 0c0c0c0c 1 (not every dataset could be read: cannot open 'backup/copy': Input/output error)\n", $text, 'the default\'s unread dataset, with an own one after it');
 // None never runs to clear a count a run left as it was saved: not found, its row 0; the own one's count still shows.
 list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own, $none, $work) {
 	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own, $none)));
