@@ -248,7 +248,7 @@ function zfsmScheduleWrong($job) {
 	$fix = array();
 	if ($job['minute'] < 0) $fix[] = 'set the time it starts at';
 	if ($job['days'] === array()) $fix[] = 'tick at least one day';
-	if (!zfsmKeepValid($job['keep'])) $fix[] = 'under Snapshots to keep, give a number up to '.ZFSM_KEEP_MAX.', periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all';
+	if (!zfsmKeepValid($job['keep'])) $fix[] = 'under Snapshots to keep, '.zfsmKeepFix();
 	if ($fix === array() && !zfsmScheduleValid($job)) $fix[] = 'give the copy a name as Replicate does';
 	return implode('; ', $fix);
 }

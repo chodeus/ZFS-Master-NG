@@ -164,10 +164,11 @@ touch($work.'/pool/holds');
 file_put_contents($work.'/pool/datasets', "tank/kept\tfilesystem\n", FILE_APPEND);
 $copy = 'backup/replicas/tower/kept';
 $prev = null;
-$land = function($snapshot, $keep) use ($serve, $req, $work, $copy, &$prev) {
+$land = function($snapshot, $keep, $taken = null) use ($serve, $req, $work, $copy, &$prev) {
 	foreach (array('notify-detail.log', 'notify.log') as $name) @unlink($work.'/'.$name);
 	@unlink(zfsmLogFile());
 	runProcess('zfs', array('snapshot', 'tank/kept@'.$snapshot));
+	if ($taken !== null) file_put_contents($work.'/pool/props', "tank/kept@$snapshot\tcreation\t$taken\n", FILE_APPEND);
 	exec(escapeshellarg(zfsmCommandPath('zfs')).' send '.($prev === null ? '' : '-i tank/kept@'.$prev.' ').'tank/kept@'.$snapshot.' > '.escapeshellarg($work.'/kept').' 2>/dev/null');
 	$answer = $serve($req('receive', $copy), $work.'/kept', 'backup/replicas/tower', $keep);
 	if ($answer[0] === 0) $prev = $snapshot;
@@ -210,6 +211,14 @@ putenv('ZFSM_TEST_RECV_FAIL');
 same(array(array('e', 'g', 'h', 'i'), array(array(), array())), array($on(), $said()), 'removes nothing');
 same(array(0, '', ''), $land('k', 1), 'the next one carries on from the newest');
 same(array('e', 'k'), $on(), 'and keeps only it, past the one cloned');
+// Periods count by when the sender took each snapshot, which the copy keeps: 1 2d, as Settings saves it, keeps the newest and the
+// day before's newest. k was taken 22 December, l and m on 1 January, n on the 2nd (UTC).
+file_put_contents($work.'/pool/props', "$copy@k\tcreation\t1766404800\n", FILE_APPEND);
+$land('l', 0, 1767268800);
+$land('m', 0, 1767272400);
+same(array(0, '', ''), $land('n', loadConfig(array('general' => array('replica_keep' => '1 2D')))['replica_keep'], 1767355200), 'a receive with Keep Replicas 1 2d');
+same(array(array('e', 'm', 'n'), array(array('notice: Removed '.$copy.'@k (not among the newest 1 and 2 daily Keep Replicas keeps)', 'notice: Removed '.$copy.'@l (not among the newest 1 and 2 daily Keep Replicas keeps)'), array())),
+	array($on(), $said()), 'keeps the 2nd\'s and the 1st\'s newest, past the one cloned');
 putenv('SSH_CLIENT');
 unset($GLOBALS['docroot']);
 

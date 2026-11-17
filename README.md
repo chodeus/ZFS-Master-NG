@@ -57,7 +57,7 @@ https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/main/zfs.master.plg
 
 For the beta, which gets fixes and features first, paste `https://raw.githubusercontent.com/chodeus/ZFS-Master-NG/beta/zfs.master.plg` instead.
 
-Renaming, editing, destroying, converting and deleting folders need **Destructive Mode** in the plugin settings, as do rollbacks and deletes that take other snapshots with them.
+Renaming, editing, destroying, converting and deleting folders need **Destructive Mode** in the plugin settings, as do rollbacks and deletes that take other snapshots with them. Snapshots to keep and Keep Replicas remove old snapshots by their own rules without it.
 
 ## Diagnostics
 

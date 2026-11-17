@@ -131,7 +131,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "${ZFSM_TEST_SEND_FAIL_PART:-0}" = 1 ] && { begin; printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"; printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
 		printf '00:00:01\t500\t%s\n' "$snap" >&2
 		begin
-		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"
+		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw" "$(prop "$snap" creation "$(mark "$snap" 3)")"
 		[ "${ZFSM_TEST_SEND_CUT:-0}" = 1 ] || printf 'ZFSMEND\n'
 		exit 0 ;;
 	receive)
@@ -153,6 +153,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
 		fi
 		printf '%s@%s\t%s\t%s\n' "$dest" "${snap#*@}" "$guid" "$(next_txg)" >> "$R/marks"
+		# A received snapshot keeps when the sender took it, as the stream says.
+		creation=$(printf '%s' "$header" | cut -f6); [ -z "$creation" ] || set_prop "$dest@${snap#*@}" creation "$creation"
 		set_prop "$dest" receive_resume_token -
 		exit 0 ;;
 	bookmark)

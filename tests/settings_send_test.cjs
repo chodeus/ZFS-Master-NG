@@ -1,10 +1,11 @@
-// The Settings page's replication script (Snapshot Every Dataset, Replicate To, and the Accept Replicas Into check) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
+// The Settings page's replication script (Snapshot Every Dataset, Replicate To, and the Accept Replicas Into and Keep Replicas checks) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
 // and what Keep Replicas' field lets Apply send.
 // Usage: settings_send_test.cjs <webgui-tree>
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {JSDOM} = require('jsdom');
+const {execFileSync} = require('node:child_process');
 const tree = path.resolve(process.argv[2]);
 const jquery = [path.join(tree, 'emhttp/plugins/dynamix/javascript/dynamix.js'), path.join(tree, 'plugins/dynamix/javascript/dynamix.js')].find(fs.existsSync);
 assert.ok(jquery, 'no dynamix.js (Unraid jQuery) under ' + tree);
@@ -18,7 +19,7 @@ assert.equal(code.includes('<?'), false, 'no PHP in the Replicate To script');
 const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span><span id="zfsm-send-key-status"></span>'
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
-  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span>'
+  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><input name="replica_keep"><span id="zfsm-replica-keep-warning"></span>'
   + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option></select></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
   + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd>'
@@ -135,12 +136,41 @@ accept('backup/replicas').done({valid: true, missing: false});
 older.done({valid: true, missing: true});
 assert.equal(text('zfsm-replica-accept-warning'), '', 'the older answer does not replace the newer one');
 
-// Keep Replicas, its tag as the page writes it: the browser refuses Apply on anything but digits, which loadConfig would read as keep all.
+// Keep Replicas, asked as it is typed (input, not change, which waits for the field to lose the focus, often to Apply itself): what the server can't read is said,
+// and Apply refused on it once it answers, until the field changes; empty asks nothing.
+const keepIn = $('input[name="replica_keep"]')[0];
+const keepAsk = value => {
+  $(keepIn).val(value).trigger('input');
+  return posts.pop();
+};
+const unread = '"7d 7d" is not read, so all stay: give a number up to 9999';
+const keepCheck = keepAsk('7d 7d');
+assert.deepEqual([keepCheck.data.cmd, keepCheck.data.keep], ['validatekeep', '7d 7d']);
+keepCheck.done({warning: unread});
+assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validationMessage], [unread, unread], 'what the server can\'t read is said, and refuses Apply');
+keepAsk('7d').done({warning: ''});
+assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], ['', true], 'what it reads clears both');
+keepAsk('7d 7d').done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
+assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], ['This could not be checked: Unknown or missing command', true], 'a failed check says so, and Apply still goes');
+const keepOlder = keepAsk('7d 7d');
+keepAsk('7d').done({warning: ''});
+keepOlder.done({warning: unread});
+assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], ['', true], 'the older answer does not replace the newer one');
+keepAsk('3x').done({warning: unread});
+$(keepIn).val(' ').trigger('input');
+assert.deepEqual([posts.length, text('zfsm-replica-keep-warning'), keepIn.validity.valid], [0, '', true], 'emptied, it asks nothing and refuses nothing');
+
+// Keep Replicas, its tag as the page writes it: the browser refuses Apply on what is no number or periods, at once; the server check above
+// catches the rest. Every value the server reads gets through (php on PATH runs zfsmKeepParse).
 const form = window.document.createElement('form');
 form.innerHTML = page.replace(/<\?=.*?\?>/g, '').match(/<input [^>]*name="replica_keep"[^>]*>/)[0];
 const keep = form.querySelector('input');
-assert.deepEqual(['', '0', '12', '9999', '1O', '-5', '2.5', ' 3'].map(value => { keep.value = value; return form.checkValidity(); }),
-  [true, true, true, true, false, false, false, false], 'Keep Replicas takes digits only');
+const keeps = ['', '0', '12', '9999', '24 7d 4w 12m', '1H,2y', ' 3 ', ',7d', '7d,,4w', '1O', '-5', '2.5', '3 days', '7x', 'd', '7d\u00a04w', '\u00a0'];
+const browser = keeps.map(value => { keep.value = value; return form.checkValidity(); });
+assert.deepEqual(browser, [true, true, true, true, true, true, true, true, true, false, false, false, false, false, false, false, false], 'Keep Replicas takes numbers and periods');
+const server = JSON.parse(execFileSync('php', ['-n', '-r', 'require $argv[1]; echo json_encode(array_map(function($v) { return zfsmKeepParse($v) !== null; }, json_decode($argv[2])));',
+  path.join(__dirname, '../zfs.master/include/ZFSMKeepRules.php'), JSON.stringify(keeps)], {encoding: 'utf8'}));
+assert.deepEqual(keeps.filter((value, i) => server[i] && !browser[i]), [], 'the browser lets through every value the server reads');
 
 // Schedules: Remove asks for the schedule by its id; a refusal says why and keeps the list, and the list it answers replaces it.
 window.zfsmScheduleRemove('0a1b2c3d');
