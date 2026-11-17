@@ -26,7 +26,7 @@ function zfsmImpactHtml(preview, heading) {
 // Every way a review can fail ends in show({error}), so a dialog always says why it can't go ahead.
 // A read-only caller passes '' for after: "Nothing was changed" would read as its answer.
 function zfsmFetchReview(url, data, show, after = ' Nothing was changed.') {
-	const failed = reason => show({error: reason+after});
+	const failed = reason => show({error: after === '' || /[.!?]$/.test(reason) ? reason+after : reason+'.'+after});
 	$.post(url, data, function(answer) {
 		let preview;
 		try {
@@ -85,13 +85,7 @@ function zfsmReplicateHtml(options, zdataset) {
 	if (options.servers_error) html += '<p style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
-	// Monday first; all seven ticked runs every day.
-	const days = [1, 2, 3, 4, 5, 6, 0].map(day => '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="zfsm-replicate-day" value="'+day+'" checked> '
-		+['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]+'</label>').join('');
-	html += row('Repeat:', '<select id="zfsm-replicate-every" style="width:100%"><option value="">Once</option><option value="hourly">Every hour</option><option value="days">On days of the week</option></select>');
-	html += '<div id="zfsm-replicate-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>';
-	html += '<p id="zfsm-replicate-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at:<input id="zfsm-replicate-time" type="time" value="00:00" style="width:100%"></label></p>';
-	html += '<p id="zfsm-replicate-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="zfsm-replicate-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all"></label></p>';
+	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']]);
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
 		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
@@ -101,18 +95,64 @@ function zfsmReplicateHtml(options, zdataset) {
 		+say('After this run, a notification comes only for the first problem in a row, and for the run that works again after it.')+'</div></div>';
 }
 
-// Repeat's rows: days and a start time for a run on days of the week, Keep and its help for any repeat. A repeat takes its own
-// snapshot, so Snapshot shows Take one now.
+// Repeat's select of choices ([value, text]) and the rows it shows (zfsmRepeatSync), each id starting with prefix; start: what they
+// show first, as zfsmScheduleSnapshotPreview gives it (every, time 'HH:MM', days 0-6, keep), else the first choice at 00:00 every day.
+function zfsmRepeatHtml(prefix, label, choices, start = {}) {
+	const esc = zfsmEscape;
+	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];
+	// Monday first; all seven ticked runs every day.
+	const days = [1, 2, 3, 4, 5, 6, 0].map(day => '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="'+prefix+'-day" value="'+day+'"'+(ticked.includes(day) ? ' checked' : '')+'> '
+		+['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]+'</label>').join('');
+	const options = choices.map(([value, text]) => '<option value="'+value+'"'+(value === start.every ? ' selected' : '')+'>'+text+'</option>').join('');
+	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'
+		+'<div id="'+prefix+'-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>'
+		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at:<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
+		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" inputmode="numeric" maxlength="4" style="width:100%" placeholder="all" value="'+esc(start.keep)+'"></label></p>';
+}
+
+// Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Snapshots to keep for either repeat. Its value.
+function zfsmRepeatSync(root, prefix) {
+	const every = root.querySelector('#'+prefix+'-every').value;
+	const show = (id, shown) => { root.querySelector('#'+prefix+id).style.display = shown ? '' : 'none'; };
+	show('-keep-row', every === 'hourly' || every === 'days');
+	show('-days-row', every === 'days');
+	show('-time-row', every === 'days');
+	return every;
+}
+
+// What Repeat's rows hold, as the server reads them.
+function zfsmRepeatChoices(root, prefix) {
+	return {every: root.querySelector('#'+prefix+'-every').value, time: root.querySelector('#'+prefix+'-time').value,
+		days: Array.from(root.querySelectorAll('.'+prefix+'-day:checked'), box => box.value).join(','), keep: root.querySelector('#'+prefix+'-keep').value.trim()};
+}
+
+// Repeat's rows, and its help for any repeat. A repeat takes its own snapshot, so Snapshot shows Take one now.
 function zfsmReplicateRepeatSync(root) {
-	const every = root.querySelector('#zfsm-replicate-every').value;
-	const show = (id, shown) => { root.querySelector(id).style.display = shown ? '' : 'none'; };
-	show('#zfsm-replicate-keep-row', every !== '');
-	show('#zfsm-replicate-repeat-help', every !== '');
-	show('#zfsm-replicate-days-row', every === 'days');
-	show('#zfsm-replicate-time-row', every === 'days');
+	const every = zfsmRepeatSync(root, 'zfsm-replicate');
+	root.querySelector('#zfsm-replicate-repeat-help').style.display = every !== '' ? '' : 'none';
 	const snapshot = root.querySelector('#zfsm-replicate-snapshot');
 	if (every !== '') snapshot.value = '';
 	snapshot.disabled = every !== '';
+	return every;
+}
+
+// The Schedules dialog, from zfsmScheduleSnapshotPreview in include/ZFSMScheduleSnapshot.php: Default (what it follows now), None, or
+// the dataset's own schedule; zfsmScheduleDialogSync shows the rows that fit.
+function zfsmScheduleDialogHtml(preview) {
+	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	return '<div style="text-align:left">'+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']], preview)
+		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+zfsmEscape(preview.inherited)+'.</p>'
+		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset in Settings.')
+		+say('None: no scheduled snapshots. Every hour or On days of the week: its own schedule.')
+		+say('Datasets below this one follow its choice, unless they have their own.')
+		+say('Read-only datasets, such as copies received here, and those mounted legacy, such as Docker\'s image layers, are never taken.')
+		+say('Snapshots to keep: after each run, only the newest this many scheduled snapshots of each dataset stay. Empty keeps all. Snapshots made by hand or by a copy\'s schedule are never removed.')
+		+say('Settings lists every schedule.')+'</div>';
+}
+
+function zfsmScheduleDialogSync(root) {
+	const every = zfsmRepeatSync(root, 'zfsm-schedules');
+	root.querySelector('#zfsm-schedules-default').style.display = every === 'default' ? '' : 'none';
 	return every;
 }
 

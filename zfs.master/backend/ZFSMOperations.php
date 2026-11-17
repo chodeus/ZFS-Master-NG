@@ -23,17 +23,6 @@ $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
 if (is_file($unraid_publish)) require_once $unraid_publish;
 
-// Unraid before 6.12 runs PHP 7.4, which has no str_starts_with.
-function zfsmStartsWith($text, $prefix) {
-	return strncmp($text, $prefix, strlen($prefix)) === 0;
-}
-
-// Whether $name is one of $roots or under one, with / between levels.
-function zfsmUnderAny($name, $roots) {
-	foreach ($roots as $root) if ($name === $root || zfsmStartsWith($name, $root.'/')) return true;
-	return false;
-}
-
 function buildArrayRet() {
 	return array('succeeded' => array(), 'failed' => array());
 }
@@ -641,7 +630,7 @@ function renameDataset($zdataset, $new_name, $force) {
 	if ((string)$force === '1') $args[] = '-f';
 	$args[] = $zdataset;
 	$args[] = $new_name;
-	return commandAnswer($new_name, runProcess('zfs', $args));
+	return zfsmScheduleSnapshotFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name);
 }
 
 function setDatasetProperty($zdataset, $property, $value) {
@@ -674,7 +663,7 @@ function destroyDataset($zdataset, $force) {
 	$args = array('destroy');
 	if ((string)$force === '1') array_push($args, '-r', '-f');
 	$args[] = $zdataset;
-	return commandAnswer($zdataset, runProcess('zfs', $args));
+	return zfsmScheduleSnapshotFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
 }
 
 function zfsmFilesystemMounts() {

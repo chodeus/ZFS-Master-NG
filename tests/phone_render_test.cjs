@@ -1,4 +1,4 @@
-// Real browser at phone width and real Unraid themes: dialog text, the Starts at box, Snapshots Admin and Pool Info read and fit.
+// Real browser at phone width and real Unraid themes: dialog text, the Starts at boxes, Snapshots Admin and Pool Info read and fit.
 // Usage: phone_render_test.cjs <webgui-tree>. Set CHROME to override the browser path. Each page runs in a frame as wide as on a 390 px phone.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -52,20 +52,22 @@ window.addEventListener('load', () => setTimeout(() => {
 
 let checked = 0;
 try {
-  // The Replicate dialog with a repeat on days, as on the Main tab of a 390 px phone.
-  for (const theme of ['black', 'white', 'azure', 'gray']) {
-    const where = `Replicate dialog, ${theme} theme`;
+  // The Replicate and Schedules dialogs with a repeat on days, as on the Main tab of a 390 px phone.
+  const repeats = [['Replicate', "zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data')", 'zfsm-replicate', 'zfsmReplicateRepeatSync'],
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes'})", 'zfsm-schedules', 'zfsmScheduleDialogSync']];
+  for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
+    const where = `${dialog} dialog, ${theme} theme`;
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
 window.addEventListener('load', () => {
-  Swal2.fire({title: 'Replicate', html: zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data'), showCancelButton: true, confirmButtonText: 'Replicate'});
-  const popup = Swal2.getPopup(); popup.querySelector('#zfsm-replicate-every').value = 'days'; zfsmReplicateRepeatSync(popup);
+  Swal2.fire({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
+  const popup = Swal2.getPopup(); popup.querySelector('#${prefix}-every').value = 'days'; ${sync}(popup);
 });
 </script>`, `() => {
   const popup = Swal2.getPopup();
   const look = box => { const s = getComputedStyle(box); return {background: s.backgroundColor, color: s.color, font: s.fontFamily, size: s.fontSize,
     border: [s.borderTopWidth, s.borderRightWidth, s.borderLeftWidth, s.borderBottomWidth + ' ' + s.borderBottomStyle + ' ' + s.borderBottomColor, s.borderRadius], height: Math.round(box.getBoundingClientRect().height),
     focused: (box.focus(), getComputedStyle(box).backgroundColor)}; };
-  return {align: Array.from(popup.querySelectorAll('p'), p => getComputedStyle(p).textAlign), time: look(popup.querySelector('#zfsm-replicate-time')), text: look(popup.querySelector('#zfsm-replicate-keep')),
+  return {align: Array.from(popup.querySelectorAll('p, [role=group]'), p => getComputedStyle(p).textAlign), time: look(popup.querySelector('#${prefix}-time')), text: look(popup.querySelector('#${prefix}-keep')),
     themed: getComputedStyle(popup).getPropertyValue('--focus-input-bg-color').trim() !== ''};
 }`);
     assert.ok(shown.align.length >= 5, `${where}: its rows and help found`);

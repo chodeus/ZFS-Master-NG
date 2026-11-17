@@ -220,9 +220,13 @@ try {
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
+		case 'previewschedules':
+			echo zfsmJson(zfsmScheduleSnapshotPreview(zfsmPostString('zdataset')), JSON_UNESCAPED_SLASHES);
+			break;
+
 		case 'schedulesnapshots':
-			// Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$saved = zfsmScheduleSnapshotSave(zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
+			// zdataset: '' (Settings) for the default. Saved with only its cron step failed, the list changed all the same: the answer has both.
+			$saved = zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
 			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 

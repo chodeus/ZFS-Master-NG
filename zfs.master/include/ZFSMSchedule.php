@@ -10,6 +10,12 @@ define('ZFSM_SCHEDULE_SCRIPT', '/usr/local/emhttp/plugins/zfs.master/scripts/sch
 define('ZFSM_SCHEDULE_DAYS', array('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'));
 // Each kind's shortest time between two runs, less by up to an hour across a summer-time change: every hour, or days of the week.
 define('ZFSM_SCHEDULE_PERIODS', array('hourly' => 3600, 'days' => 86400));
+
+// Whether $every is a Repeat that runs; a dataset's None (ZFSMScheduleSnapshot.php) never does.
+function zfsmScheduleRepeats($every) {
+	return is_string($every) && isset(ZFSM_SCHEDULE_PERIODS[$every]);
+}
+
 // How long a run waits out another replication of its dataset: less than any schedule's period, so never its own next run.
 define('ZFSM_SCHEDULE_WAIT', 3300);
 
@@ -31,14 +37,13 @@ function zfsmScheduleId($id) {
 	return is_string($id) && preg_match('/^[0-9a-f]{8}$/D', $id) === 1;
 }
 
-// A copy's schedule, or the snapshot schedule of every dataset (dataset, dest and server ''). One saved before Keep has no keep:
-// it keeps all.
+// A copy's schedule, or a snapshot schedule (dest and server ''; zfsmScheduleSnapshotValid). One saved before Keep has no keep: it
+// keeps all.
 function zfsmScheduleValid($job) {
 	if (!is_array($job) || !zfsmScheduleId($job['id'] ?? null)) return false;
-	$what = ($job['dest'] ?? null) === '' ? ($job['dataset'] ?? null) === '' && ($job['server'] ?? null) === '' : zfsmScheduleCopyValid($job);
+	$what = ($job['dest'] ?? null) === '' ? zfsmScheduleSnapshotValid($job) : zfsmScheduleCopyValid($job) && zfsmScheduleRepeats($job['every'] ?? null);
 	$number = function($value, $top) { return is_int($value) && $value >= 0 && $value <= $top; };
-	return $what && isset(ZFSM_SCHEDULE_PERIODS[$job['every'] ?? '']) && $number($job['minute'] ?? null, 59) && $number($job['hour'] ?? null, 23)
-		&& zfsmScheduleDaysValid($job['days'] ?? null) && zfsmKeepValid($job['keep'] ?? 0);
+	return $what && $number($job['minute'] ?? null, 59) && $number($job['hour'] ?? null, 23) && zfsmScheduleDaysValid($job['days'] ?? null) && zfsmKeepValid($job['keep'] ?? 0);
 }
 
 // The copy is a dataset in a pool here, or one name inside the area on a trusted server (zfsmReplicaTargetDest).
@@ -129,15 +134,19 @@ function zfsmScheduleFreeMinute($jobs, $job, $prefer = null) {
 	return $free ? $free[array_rand($free)] : random_int(0, 59);
 }
 
-// Whether $a and $b take snapshots of one dataset, so can't start in the same minute or take one name: two of one dataset's
-// copies, or any with the snapshot schedule, which takes every dataset's.
+// Whether $a and $b can snapshot one dataset (so not in one minute or name): two copies of it, or a copy and the snapshot schedule
+// of it, of one above it, or the default. Each dataset follows one snapshot schedule (zfsmScheduleFollowed); None takes none.
 function zfsmScheduleShare($a, $b) {
-	return zfsmScheduleSnapshotsOnly($a) || zfsmScheduleSnapshotsOnly($b) || $a['dataset'] === $b['dataset'];
+	if (!zfsmScheduleRepeats($a['every']) || !zfsmScheduleRepeats($b['every'])) return false;
+	if (zfsmScheduleSnapshotsOnly($a) === zfsmScheduleSnapshotsOnly($b)) return !zfsmScheduleSnapshotsOnly($a) && $a['dataset'] === $b['dataset'];
+	list($snapshots, $copy) = zfsmScheduleSnapshotsOnly($a) ? array($a, $b) : array($b, $a);
+	return $snapshots['dataset'] === '' || zfsmUnderAny($copy['dataset'], array($snapshots['dataset']));
 }
 
 // What a schedule does, inside a sentence.
 function zfsmScheduleWhat($job) {
-	return zfsmScheduleSnapshotsOnly($job) ? 'Snapshot Every Dataset' : 'the copy to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']);
+	if (!zfsmScheduleSnapshotsOnly($job)) return 'the copy to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']);
+	return $job['dataset'] === '' ? 'Snapshot Every Dataset' : 'the snapshot schedule of '.$job['dataset'];
 }
 
 // Whether $a and $b ever start in the same minute.
@@ -158,6 +167,7 @@ function zfsmScheduleNext($job, $now) {
 // on), so a change of summer time skips none.
 function zfsmScheduleRuns($job, $from, $until) {
 	$runs = array();
+	if (!zfsmScheduleRepeats($job['every'])) return $runs;
 	for ($at = zfsmScheduleNext($job, $from); $at < $until; $at = zfsmScheduleNext($job, $at + max(60, ZFSM_SCHEDULE_PERIODS[$job['every']] - 7200))) $runs[] = $at;
 	return $runs;
 }
@@ -179,10 +189,11 @@ function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	return '';
 }
 
-// Each line names only its schedule's id. '' with no schedules.
+// Each line names only its schedule's id; None has none. '' with no schedules.
 function zfsmScheduleCronText($jobs) {
 	$lines = array();
 	foreach ($jobs as $job) {
+		if (!zfsmScheduleRepeats($job['every'])) continue;
 		$hour = $job['every'] === 'hourly' ? '*' : $job['hour'];
 		$days = $job['every'] === 'hourly' || count($job['days']) === 7 ? '*' : implode(',', $job['days']);
 		$lines[] = $job['minute'].' '.$hour.' * * '.$days.' '.ZFSM_SCHEDULE_SCRIPT.' run '.$job['id'];
@@ -204,6 +215,7 @@ function zfsmScheduleCron($jobs) {
 
 // Its days Monday first, as the dialog shows them.
 function zfsmScheduleWhen($job) {
+	if (!zfsmScheduleRepeats($job['every'])) return 'never';
 	$minute = sprintf('%02d', $job['minute']);
 	if ($job['every'] === 'hourly') return 'every hour at :'.$minute;
 	$at = sprintf('%02d', $job['hour']).':'.$minute;
@@ -216,7 +228,7 @@ function zfsmScheduleWhen($job) {
 }
 
 function zfsmScheduleKeepText($job) {
-	if (zfsmScheduleSnapshotsOnly($job)) return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' it took of each dataset' : 'keeps all it takes';
+	if (zfsmScheduleSnapshotsOnly($job)) return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' scheduled snapshots of each dataset' : 'keeps all it takes';
 	return $job['keep'] > 0 ? 'keeps the newest '.$job['keep'].' of its snapshots' : 'keeps all its snapshots';
 }
 
@@ -231,7 +243,7 @@ function zfsmScheduleAt($every, $time, $days) {
 
 // What the user fixes for $job to make a schedule: a Repeat the page no longer offers, else each wrong time, days or Keep, else the copy's name; '' when it makes one.
 function zfsmScheduleWrong($job) {
-	if (!isset(ZFSM_SCHEDULE_PERIODS[$job['every']])) return 'Repeat has no such choice now; reload the page and pick again';
+	if (!zfsmScheduleRepeats($job['every'])) return 'Repeat has no such choice now; reload the page and pick again';
 	$fix = array();
 	if ($job['minute'] < 0) $fix[] = 'set the time it starts at';
 	if ($job['days'] === array()) $fix[] = 'tick at least one day';
@@ -299,6 +311,11 @@ function zfsmScheduleState($id) {
 	return array('failures' => $failures, 'told' => ($state['told'] ?? true) !== false);
 }
 
+// As Settings and diagnostics show it: None never runs to clear a count that a run going as it was saved left.
+function zfsmScheduleProblems($job) {
+	return zfsmScheduleRepeats($job['every']) ? zfsmScheduleFailures($job['id']) : 0;
+}
+
 function zfsmScheduleFailures($id) {
 	return zfsmScheduleState($id)['failures'];
 }
@@ -336,14 +353,14 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		return 1;
 	}
 	$job = $read['valid'][$id] ?? null;
-	// Its line outlived the schedule: say, Remove saved the list, and Unraid's crontab was not rebuilt.
-	if ($job === null) {
-		zfsmLog('Schedule '.$id.' not started: Settings has no such schedule');
+	// Its line outlived the schedule, or its Repeat is None now: say, the list was saved and Unraid's crontab was not rebuilt.
+	if ($job === null || !zfsmScheduleRepeats($job['every'])) {
+		zfsmLog('Schedule '.$id.' not started: '.($job === null ? 'Settings has no such schedule' : 'it is None now'));
 		return 0;
 	}
 	$copy = !zfsmScheduleSnapshotsOnly($job);
 	try {
-		if (!$copy) return zfsmScheduleSnapshotRun($job, $cfg, $now, $notify);
+		if (!$copy) return zfsmScheduleSnapshotRun($job, $read['valid'], $cfg, $now, $notify);
 		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait), $job['keep']);
 	} catch (Throwable $error) {
 		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
@@ -360,13 +377,13 @@ function zfsmSchedulesHtml($cfg) {
 	if ($read === null) return '<span style="color:#e22828">'.zfsmHtml(zfsmScheduleUnreadable()).'</span>';
 	$html = $read['valid'] ? '' : 'None yet';
 	foreach ($read['valid'] as $job) {
-		$failures = zfsmScheduleFailures($job['id']);
+		$failures = zfsmScheduleProblems($job);
 		$clash = zfsmScheduleClash($job, $read['valid'], $cfg, time(), false);
-		// The snapshot schedule changes and turns off in its own row above.
-		$copy = !zfsmScheduleSnapshotsOnly($job);
-		$what = $copy ? $job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']) : 'Snapshot Every Dataset';
-		$html .= '<span style="display:block">'.zfsmHtml($what.', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job))
-			.($copy ? ' <input type="button" value="Remove" onclick="zfsmScheduleRemove(\''.$job['id'].'\')">' : '')
+		$text = zfsmScheduleSnapshotsOnly($job) ? zfsmScheduleSnapshotText($job)
+			: $job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']).', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job);
+		// The default changes and turns off in its own row above; a dataset's goes here too, as one whose dataset is gone can't be opened.
+		$html .= '<span style="display:block">'.zfsmHtml($text)
+			.($job['dataset'] !== '' ? ' <input type="button" value="Remove" onclick="zfsmScheduleRemove(\''.$job['id'].'\')">' : '')
 			.($clash !== '' ? ' <span style="color:#e22828">'.zfsmHtml($clash).', so that run fails: add the time to Snapshots Pattern</span>' : '')
 			.($failures > 0 ? ' <span style="color:#e22828">'.$failures.' run(s) in a row with a problem: the first one\'s notification and /var/log/zfs.master.log say why</span>' : '').'</span>';
 	}

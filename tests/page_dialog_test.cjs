@@ -36,6 +36,8 @@ let properties = {};
 let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
 let rewritePreview = {};
 let replicateAnswer = () => ({});
+let schedulePreview = {};
+let scheduleAnswer = null;
 // Answers held back to arrive late, as a slow plan would.
 const lateAnswers = [];
 let holdReplicate = false;
@@ -45,6 +47,8 @@ window.$.post = (url, data, done) => {
   if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
   if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
+  if (data.cmd === 'previewschedules') done(JSON.stringify(schedulePreview));
+  if (data.cmd === 'schedulesnapshots' && scheduleAnswer !== null) done(scheduleAnswer);
   const reply = window.$.Deferred();
   replies.push(reply);
   return reply.promise();
@@ -428,6 +432,8 @@ async function confirm() {
     const planned = posts.length;
     await repeat('hourly');
     assert.deepEqual([rows(), posts.length, keep().labels[0].textContent.startsWith('Snapshots to keep:'), keep().placeholder], [[false, false, true, true, '', true], planned, true, 'all'], 'Every hour: Keep, empty for all, with no days or time, and no new plan, as Snapshot did not change');
+    await repeat('');
+    assert.deepEqual(rows(), [false, false, false, false, '', false], 'back to Once: the rows and help go, and Snapshot can be picked again');
     await repeat('days');
     days().forEach(box => { box.checked = ['1', '3', '5'].includes(box.value); });
     time().value = '13:30';
@@ -435,6 +441,62 @@ async function confirm() {
     window.Swal2.clickConfirm();
     await settle();
     assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30'}, 'Replicate starts it with its days, time and Keep');
+    window.Swal2.close();
+  }
+  // Schedules: starts at the dataset's own, shows the rows that fit its choice, and Save sends what is on screen and says the answer.
+  {
+    schedulePreview = {every: 'days', time: '05:00', days: [1], keep: '1', inherited: 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes'};
+    const schedules = async () => {
+      window.addDatasetContext('tank', 'tank/data', 0, 'menu', 0, 'none', '', 'filesystem');
+      menu.find(option => option.text === 'Schedules').action({preventDefault() {}});
+      await settle();
+    };
+    await schedules();
+    const every = () => window.document.getElementById('zfsm-schedules-every');
+    const pick = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
+    const visible = id => window.document.getElementById(id).style.display !== 'none';
+    const rows = () => ['days', 'time', 'keep'].map(row => visible('zfsm-schedules-'+row+'-row')).concat(visible('zfsm-schedules-default'));
+    const days = () => Array.from(window.document.querySelectorAll('.zfsm-schedules-day'));
+    const field = id => window.document.getElementById('zfsm-schedules-'+id);
+    assert.deepEqual(posts.at(-1), {cmd: 'previewschedules', zdataset: 'tank/data'}, 'it asks what the dataset has');
+    assert.deepEqual([Array.from(every().options, option => option.textContent), every().value, every().labels[0].textContent.startsWith('Snapshots:'), rows()],
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'days', true, [true, true, true, false]], 'its own schedule is picked, with its rows');
+    assert.deepEqual([days().filter(box => box.checked).map(box => box.value), field('time').value, field('keep').value], [['1'], '05:00', '1'], 'and its days, time and Keep');
+    await pick('default');
+    assert.deepEqual([rows(), field('default').textContent], [[false, false, false, true], 'Default follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes.'], 'Default says what it follows');
+    await pick('none');
+    assert.deepEqual(rows(), [false, false, false, false], 'None has no rows');
+    await pick('hourly');
+    assert.deepEqual(rows(), [false, false, true, false], 'Every hour has Keep');
+    await pick('days');
+    days().forEach(box => { box.checked = ['1', '3'].includes(box.value); });
+    field('time').value = '13:30';
+    field('keep').value = ' 2 ';
+    scheduleAnswer = JSON.stringify({said: 'Saved: <b>tank/data</b>', schedules_html: '<span>x</span>'});
+    await confirm();
+    assert.deepEqual(posts.at(-1), {cmd: 'schedulesnapshots', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2'}, 'Save sends what is on screen');
+    const text = () => window.Swal2.getHtmlContainer().textContent;
+    const result = () => [window.Swal2.getTitle().textContent, window.Swal2.getIcon().classList.contains('swal2-error'), text()];
+    assert.deepEqual(result(), ['Schedules Result', false, 'Saved: <b>tank/data</b>'], 'and shows what was saved, as text');
+    const saved = async answer => {
+      scheduleAnswer = answer;
+      await schedules();
+      await confirm();
+      return result();
+    };
+    assert.deepEqual(await saved(JSON.stringify({said: '', error: 'Nothing was saved: tank/data is gone'})), ['Schedules Result', true, 'Nothing was saved: tank/data is gone'], 'a refusal says why');
+    assert.deepEqual(await saved('<br>'), ['Schedules Result', true, 'The answer could not be read. Reload the page and open Schedules to see what was saved.'], 'an answer that is no JSON says so');
+    assert.deepEqual(await saved(JSON.stringify({succeeded: [], failed: {request: 'Could not save: no entropy'}})), ['Schedules Result', true, 'Could not save: no entropy. Reload the page and open Schedules to see what was saved.'],
+      'a failure the backend names says it');
+    scheduleAnswer = null;
+    await schedules();
+    await confirm();
+    replies.at(-1).reject();
+    await settle();
+    assert.deepEqual(result(), ['Schedules Result', true, 'The request failed. Reload the page and open Schedules to see what was saved.'], 'a request that fails says so');
+    schedulePreview = {failed: {request: 'Invalid dataset name'}};
+    await schedules();
+    assert.deepEqual([window.Swal2.getIcon().classList.contains('swal2-error'), text(), posts.at(-1).cmd], [true, 'Invalid dataset name', 'previewschedules'], 'a dataset it can\'t read says why, with nothing to save');
     window.Swal2.close();
   }
   // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there; a name typed in stays.
