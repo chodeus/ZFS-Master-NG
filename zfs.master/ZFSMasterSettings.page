@@ -309,6 +309,7 @@ _(Snapshot Every Dataset)_:
 >
 > - A dataset can have a schedule of its own, or None, under **Actions**, **Schedules** in the Main tab: it and the datasets below it follow that one instead, unless they have their own.
 > - It leaves out read-only datasets, such as copies received here (a snapshot in one stops the next replication into it), and those mounted `legacy`, such as Docker's image layers. Make a dataset another tool receives copies into read-only too (`zfs set readonly=on`), or turn this off.
+> - It also leaves out datasets with Sanoid or Syncoid snapshots (named `autosnap_` or `syncoid_`): that tool takes their snapshots, and Syncoid would carry scheduled ones into its copies, where Sanoid never removes them. Once those snapshots are deleted, the dataset is taken again. With a **Snapshots Prefix** that itself starts `autosnap_` or `syncoid_`, snapshots named with it count as this plugin's own, and so do that tool's when they start the same.
 > - A run takes all of a pool's snapshots at one moment (one at a time if that fails), named by **Snapshots Pattern**. Nothing is taken when you save: the first run is at its time.
 > - **Snapshots To Keep**: after each run, only the newest that many scheduled snapshots stay on each dataset, whichever snapshot schedule took them (a run removes up to 50 from each). Snapshots made by hand or by a copy's schedule are never counted or removed, and one held or cloned stays. Empty keeps all.
 > - It and a copy's schedule can't start in the same minute: saving either one says so.

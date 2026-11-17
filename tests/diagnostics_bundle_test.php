@@ -127,6 +127,8 @@ $log_lines = array(
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: tank/CanaryOwnRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnGone not taken: tank/CanaryOwnGone is gone; remove its schedule in Settings',
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnLeg not taken: tank/CanaryOwnLeg is mounted legacy, as Docker image layers are; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnSan not taken: tank/CanaryOwnSan has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of 1 of 1 dataset(s) (tank/CanaryOwnSelf and below) taken. Not taken: tank/CanaryOwnSelf has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnOff not taken: its pool is not imported',
 	'ZFS Dataset Rename: Snapshot schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules',
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
@@ -300,6 +302,9 @@ has($own.'of tank/'.$token('CanaryOwnRo').' not taken: tank/'.$token('CanaryOwnR
 	$log, 'and why it took none');
 has($own.'of tank/'.$token('CanaryOwnGone').' not taken: tank/'.$token('CanaryOwnGone')." is gone; remove its schedule in Settings\n", $log, 'of one gone');
 has($own.'of tank/'.$token('CanaryOwnLeg').' not taken: tank/'.$token('CanaryOwnLeg')." is mounted legacy, as Docker image layers are; remove its schedule in Settings\n", $log, 'of one mounted legacy');
+has($own.'of tank/'.$token('CanaryOwnSan').' not taken: tank/'.$token('CanaryOwnSan')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings\n", $log, 'of one with Sanoid\'s snapshots');
+has($own.'of 1 of 1 dataset(s) (tank/'.$token('CanaryOwnSelf').' and below) taken. Not taken: tank/'.$token('CanaryOwnSelf')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool\n",
+	$log, 'and one that took those below but not its own');
 has($own.'of tank/'.$token('CanaryOwnOff')." not taken: its pool is not imported\n", $log, 'of one whose pool is not imported');
 has('ZFS Dataset Rename: Snapshot schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
 	$log, 'a rename whose schedules were not moved');

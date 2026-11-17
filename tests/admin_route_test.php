@@ -111,7 +111,7 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'schedulesnapshotsown' => ($answer['said'] ?? '') === 'Saved: a snapshot of each of 1 dataset(s) (tank/data and below) every Monday at 04:00; it keeps all it takes'
 			&& strpos($answer['schedules_html'] ?? '', '>Snapshots of tank/data and below, every Monday at 04:00, keeps all it takes <input type="button" value="Remove"') !== false
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dataset') === array('tank/data'),
-		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots'),
+		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots', 'skipped' => ''),
 		'previewschedulesbad' => ($answer['failed'] ?? null) === array('request' => 'Invalid dataset name'),
 	)[$route];
 	if (!$ok) {

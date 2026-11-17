@@ -54,7 +54,7 @@ let checked = 0;
 try {
   // The Replicate and Schedules dialogs with a repeat on days, as on the Main tab of a 390 px phone.
   const repeats = [['Replicate', "zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data')", 'zfsm-replicate', 'zfsmReplicateRepeatSync'],
-    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes'})", 'zfsm-schedules', 'zfsmScheduleDialogSync']];
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'})", 'zfsm-schedules', 'zfsmScheduleDialogSync']];
   for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
     const where = `${dialog} dialog, ${theme} theme`;
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>

@@ -255,7 +255,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 		);
 		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
 	}
-	$covers = zfsmDiagScheduleCovers($read['valid'] ?? array());
+	$covers = zfsmDiagScheduleCovers($read['valid'] ?? array(), $ctx['cfg']);
 	$unused = count($read['other'] ?? array());
 	if ($read === null && !$unread) zfsmDiagFinding('schedules.json is not a list of schedules, so none run: '.$file);
 	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
@@ -406,12 +406,12 @@ function zfsmDiagPublicHalf($dir, $private, $public) {
 	return zfsmDiagWhole('file_get_contents', $dir.'/id_ed25519.pub') === false ? zfsmDiagUnread('unreadable') : 'there, but not a usable key';
 }
 
-// How many datasets each snapshot schedule that runs takes now, by id, from one read under a limit of its own so a hung pool costs
+// How many datasets each snapshot schedule that runs takes now, by id, from reads under a limit of their own so a hung pool costs
 // only this line; '' with none.
-function zfsmDiagScheduleCovers($jobs) {
+function zfsmDiagScheduleCovers($jobs, $cfg) {
 	$runs = array_filter($jobs, function($job) { return zfsmScheduleSnapshotsOnly($job) && zfsmScheduleRepeats($job['every']); });
 	if (!$runs) return '';
-	$listed = zfsmDiagRead('zfs', ZFSM_SCHEDULE_COVERED, 5);
+	$listed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return zfsmDiagRead($command, $args, $wait); });
 	$counts = array();
 	$unread = '';
 	foreach ($runs as $id => $job) {

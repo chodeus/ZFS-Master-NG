@@ -221,7 +221,7 @@ try {
 			break;
 
 		case 'previewschedules':
-			echo zfsmJson(zfsmScheduleSnapshotPreview(zfsmPostString('zdataset')), JSON_UNESCAPED_SLASHES);
+			echo zfsmJson(zfsmScheduleSnapshotPreview(zfsmPostString('zdataset'), $zfsm_cfg), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'schedulesnapshots':
