@@ -365,6 +365,17 @@ function zfsmValidDatasetName($name) {
 	return zfsmValidPoolName($parts[0]);
 }
 
+// Unraid before 6.12 runs PHP 7.4, which has no str_starts_with.
+function zfsmStartsWith($text, $prefix) {
+	return strncmp($text, $prefix, strlen($prefix)) === 0;
+}
+
+// Whether $name is one of $roots or under one, with / between levels.
+function zfsmUnderAny($name, $roots) {
+	foreach ($roots as $root) if ($name === $root || zfsmStartsWith($name, $root.'/')) return true;
+	return false;
+}
+
 // Unraid's cron file format (dynamix monitor.cron), each line's output dropped; '' with no lines.
 function zfsmCronText($what, $lines) {
 	return $lines ? '# Generated ZFS Master NG '.$what.":\n".implode('', array_map(function($line) { return $line." &> /dev/null\n"; }, $lines))."\n" : '';

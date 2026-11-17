@@ -14,7 +14,9 @@ define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|received(?:: |$)|suc
 define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
 // Keep's words after a copy's name (ZFSMKeep.php); in Keep's lines a snapshot's name ends at ( or ;, which no name holds.
 define('ZFSM_DIAG_KEEP', '(?<=: )Keep could not ');
-define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|'.ZFSM_DIAG_KEEP.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
+// A dataset's own snapshot schedule: why a run takes none of it (zfsmScheduleSnapshotNone), and whose datasets it took.
+define('ZFSM_DIAG_SCHEDULE', 'not taken: |is (?:gone|read-only|mounted legacy)$|and below$');
+define('ZFSM_DIAG_AFTER', ZFSM_DIAG_DONE.'|'.ZFSM_DIAG_FAILED.'|'.ZFSM_DIAG_KEEP.'|'.ZFSM_DIAG_SCHEDULE.'|is not inside |(?:to [^/\s]+(?: [^/\s]+)*? )?on server |\((?:in full|changes since|carried on)|\| ');
 // And after a folder's path: an action's result (zfsmActionLogLines), Convert's fallback to rsync and a nested mount's refusal (backend/ZFSMOperations.php).
 define('ZFSM_DIAG_FOLDER_AFTER', ' succeeded$| failed(?:: |, so rsync copies it: )|; unmount or move it first$');
 

@@ -427,17 +427,39 @@ file_put_contents($work.'/pool/props', "backup/copy\treadonly\ton\n");
 putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
 list($findings, $text) = $found('zfsmDiagReplicaSchedules', $snapped);
 same(array(array(), false), array($findings, $GLOBALS['zfsm_diag']['unread']), 'Snapshot Every Dataset with its lines in both has no findings');
-has("records in schedules.json the plugin does not use: 0\ndatasets Snapshot Every Dataset takes now: 2\n\n", $text, 'how many datasets it takes, read-only ones left out');
+has("records in schedules.json the plugin does not use: 0\ndatasets each snapshot schedule takes now: 0b0b0b0b 2\n\n", $text, 'how many datasets it takes, read-only ones left out');
 has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'its row');
 putenv('ZFSM_TEST_COVER_FAIL=1');
 $text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
 putenv('ZFSM_TEST_COVER_FAIL');
 same(true, $GLOBALS['zfsm_diag']['unread'], 'a count that can\'t be read marks the file (zfsmDiagRead)');
-has("datasets Snapshot Every Dataset takes now: (could not be read: cannot iterate filesystems: Input/output error)\n", $text, 'and says why');
+has("datasets each snapshot schedule takes now: (could not be read: cannot iterate filesystems: Input/output error)\n", $text, 'and says why');
 putenv('ZFSM_TEST_COVER_FAIL=tank/data');
 $text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
 putenv('ZFSM_TEST_COVER_FAIL');
-has("datasets Snapshot Every Dataset takes now: 1 (not every dataset could be read: cannot open 'tank/data': Input/output error)\n", $text, 'one it can\'t read: the rest counted, and it named');
+has("datasets each snapshot schedule takes now: 0b0b0b0b 1 (not every dataset could be read: cannot open 'tank/data': Input/output error)\n", $text, 'one it can\'t read: the rest counted, and it named');
+// A dataset's own (Main, Schedules) and a None: each row named, each count apart; None has no cron line to miss, and is not counted.
+$own = array('id' => '0c0c0c0c', 'dataset' => 'tank/data', 'minute' => 45) + $every;
+$none = array('id' => '0d0d0d0d', 'dataset' => 'tank', 'every' => 'none', 'minute' => 0, 'keep' => 0) + $every;
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own, $none) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own, $none)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own, $none)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own, $none)), FILE_APPEND);
+});
+same(array(), $findings, 'own schedules and a None with their lines have no findings');
+has("datasets each snapshot schedule takes now: 0b0b0b0b 0, 0c0c0c0c 1\n", $text, 'each counts only the datasets that follow it');
+same(1, preg_match('~^0c0c0c0c\t(name-[0-9a-f]{8})/name-[0-9a-f]{8}\t\(snapshots only\)\tevery hour at :45\t2\t0\n0d0d0d0d\t\1\t\(snapshots only\)\tnever\t0\t0$~m', $text), 'their rows, the datasets as tokens');
+// None never runs to clear a count a run left as it was saved: not found, its row 0; the own one's count still shows.
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own, $none, $work) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own, $none)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own, $none)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own, $none)), FILE_APPEND);
+	mkdir($work.'/jobs/schedule', 0700, true);
+	file_put_contents($work.'/jobs/schedule/0c0c0c0c.json', '{"failures":2}');
+	file_put_contents($work.'/jobs/schedule/0d0d0d0d.json', '{"failures":3}');
+});
+same(array(array('schedule 0c0c0c0c has had 2 run(s) in a row with a problem'), 1, 1), array($findings, preg_match('~^0c0c0c0c\t.*\t2\t2$~m', $text), preg_match('~^0d0d0d0d\t.*\tnever\t0\t0$~m', $text)),
+	'a None with a count left: no finding, its row 0');
 putenv('ZFSM_TEST_REPL_DIR');
 // A flash drive's read that fails once: plain files through this wrapper, whose one open of $fail fails.
 class ZfsmFlakyFile {
@@ -544,7 +566,7 @@ zfsmDiagRun($work.'/hung-schedules', $context(), array(array('plugin/replication
 putenv('ZFSM_TEST_LIST_HANG');
 same(array('plugin/replication-schedules.txt', 'timed out'), array_slice(explode("\t", file($work.'/hung-schedules/collectors.txt', FILE_IGNORE_NEW_LINES)[1]), 0, 2), 'the count\'s read times out');
 $text = file_get_contents($work.'/hung-schedules/plugin/replication-schedules.txt');
-has("datasets Snapshot Every Dataset takes now: (could not be read: zfs timed out)\n", $text, 'and says so');
+has("datasets each snapshot schedule takes now: (could not be read: zfs timed out)\n", $text, 'and says so');
 has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'with the rest of the file');
 
 // A read its collector's limit cut short says nothing about the pool; one that ran its whole limit does.

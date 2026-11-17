@@ -1,6 +1,6 @@
 <?php
-// Snapshot Every Dataset (include/ZFSMScheduleSnapshot.php) through the real store, cron file, runs and Keep, with the fake zfs's
-// small pool (ZFSM_TEST_REPL_DIR) and Unraid's crontab rebuild faked under $GLOBALS['zfsm_root'].
+// Snapshot schedules (include/ZFSMScheduleSnapshot.php), Snapshot Every Dataset and a dataset's own, through the real store, cron
+// file, runs and Keep, with the fake zfs's small pool (ZFSM_TEST_REPL_DIR) and Unraid's crontab rebuild faked under $GLOBALS['zfsm_root'].
 
 error_reporting(E_ALL);
 set_error_handler(function($severity, $message, $file, $line) {
@@ -52,31 +52,35 @@ $pool('props', array("tank/docker/0a1b\tmountpoint\tlegacy", "backup/copy\treado
 $pool('holds', array());
 $copy = array('id' => 'ffff0000', 'dataset' => 'tank/data', 'dest' => 'backup/data', 'server' => '', 'every' => 'hourly', 'minute' => 15, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
 
-// The record: no dataset, copy or server; one with a dataset or a server is no schedule this version runs.
+// The record: no copy or server; dataset '' is the default, else a dataset's own, which alone can be None. A Repeat that is no text
+// is no record, and None no copy's.
 $every = array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 2);
-same(array(true, false, false, true), array_map('zfsmScheduleValid', array($every, array('dataset' => 'tank/data') + $every, array('server' => 'nas') + $every, $copy)), 'the snapshot schedule of every dataset is one');
-same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(runProcess('zfs', ZFSM_SCHEDULE_COVERED)), 'it covers every dataset but read-only and legacy ones, by pool');
+$records = array($every, array('dataset' => 'tank/data') + $every, array('dataset' => 'tank/data', 'every' => 'none') + $every, array('server' => 'nas') + $every,
+	array('every' => 'none') + $every, array('dataset' => 'tank/bad name!') + $every, array('every' => array('hourly')) + $every, $copy, array('every' => 'none') + $copy);
+same(array(true, true, true, false, false, false, false, true, false), array_map('zfsmScheduleValid', $records), 'which records are snapshot schedules');
+same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(runProcess('zfs', ZFSM_SCHEDULE_COVERED), $every, array($every)), 'it covers every dataset but read-only and legacy ones, by pool');
 
 // Off with none saves none; Settings shows Off.
-same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('off', '', '', 0, $cfg), 'off with none');
+same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg), 'off with none');
 same(array(array(), 'off'), array($stored(), zfsmScheduleSnapshotShown()['every']), 'saves no record');
 // Saved again every hour: its id and minute stay, though another minute is free.
-zfsmScheduleSnapshotSave('hourly', '', '', 0, $cfg);
+zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg);
 $first = array_values($stored())[0];
-$again = array_map(function() use ($cfg, $stored) { zfsmScheduleSnapshotSave('hourly', '', '', 0, $cfg); return array_values($stored()); }, range(1, 3));
+$again = array_map(function() use ($cfg, $stored) { zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg); return array_values($stored()); }, range(1, 3));
 same(array_fill(0, 3, array($first)), $again, 'its id and minute stay');
 
 // Every hour: at the one minute no copy schedule takes, as the copy's would clash; nothing is taken on saving.
 $copies = array_map(function($minute) use ($copy) { return array('id' => sprintf('%08x', $minute + 1), 'minute' => $minute, 'dest' => 'backup/c'.$minute) + $copy; }, array_diff(range(0, 59), array(30)));
 file_put_contents(zfsmScheduleFile(), json_encode(array_merge($copies, array(array('id' => 'zz')))));
 $reset();
-$saved = zfsmScheduleSnapshotSave('hourly', '', '', 2, $cfg);
-$id = array_values(array_filter(array_keys(zfsmScheduleRead()['valid']), function($id) use ($copies) { return !in_array($id, array_column($copies, 'id'), true); }))[0];
-same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps the newest 2 it took of each dataset'), $saved, 'saved at the minute left free');
+$saved = zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $cfg);
+// From the records, not the keys: PHP makes an all-digit id such as 12345678 an int key.
+$id = array_values(array_filter(array_column(zfsmScheduleRead()['valid'], 'id'), function($id) use ($copies) { return !in_array($id, array_column($copies, 'id'), true); }))[0];
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps the newest 2 scheduled snapshots of each dataset'), $saved, 'saved at the minute left free');
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'as the record');
 same(array(array('id' => 'zz'), array('ran'), array()), array(array_slice($stored(), -1)[0], $read('cron.log'), $takes()), 'a record it can\'t use stays; the crontab is rebuilt; nothing is taken');
 same(1, substr_count((string)file_get_contents(zfsmScheduleCronFile()), "30 * * * * $script run $id &> /dev/null\n"), 'its cron line');
-same(true, strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, every hour at :30, keeps the newest 2 it took of each dataset</span>') !== false, 'Settings lists it');
+same(true, strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, every hour at :30, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false, 'Settings lists it');
 same(false, strpos(zfsmSchedulesHtml($cfg), "zfsmScheduleRemove('$id')"), 'with no Remove: its own row turns it off');
 // A copy schedule can't take its minute now, nor start then.
 $but31 = array_filter(zfsmScheduleRead()['valid'], function($job) { return $job['minute'] !== 31; });
@@ -84,7 +88,7 @@ same(array(31), array_values(array_unique(array_map(function() use ($but31, $cop
 same('Snapshot Every Dataset (every hour at :30) starts then too; pick another time', zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'days', 'minute' => 30, 'hour' => 4, 'dest' => 'backup/new') + $copy), 'nor a copy at that minute');
 
 // Saved again, in place: its id and minute stay, and Keep changes.
-same('Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps all it takes', zfsmScheduleSnapshotSave('hourly', '', '', 0, $cfg)['said'], 'Keep changes in place');
+same('Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps all it takes', zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg)['said'], 'Keep changes in place');
 same(array_replace($every, array('id' => $id, 'keep' => 0)), zfsmScheduleRead()['valid'][$id], 'the same record');
 same(array(60, 'hourly'), array(count(zfsmScheduleRead()['valid']), zfsmScheduleSnapshotShown()['every']), 'no second one, and Settings shows it');
 same(array(3, 0), array(zfsmScheduleSnapshotShown()['hour'], zfsmScheduleSnapshotShown()['minute']), 'with Starts At at Off\'s 03:00, not the :30 it runs at');
@@ -95,11 +99,11 @@ $wrong = array(
 	array('weekly', '03:00', '1', 2, 'Nothing was saved: Repeat has no such choice now; reload the page and pick again'),
 	array('days', '', '', -1, 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, or nothing to keep all'),
 );
-same(array_column($wrong, 4), array_map(function($try) use ($cfg) { return zfsmScheduleSnapshotSave($try[0], $try[1], $try[2], $try[3], $cfg)['why']; }, $wrong), 'what is wrong is said');
+same(array_column($wrong, 4), array_map(function($try) use ($cfg) { return zfsmScheduleSnapshotSave('', $try[0], $try[1], $try[2], $try[3], $cfg)['why']; }, $wrong), 'what is wrong is said');
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'and it stays as it was');
-same(1, preg_match('/^Nothing was saved: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+; add the time to Snapshots Pattern$/D', zfsmScheduleSnapshotSave('hourly', '', '', 2, array('snap_pattern' => 'Ymd') + $cfg)['why']), 'a pattern that names two runs alike');
+same(1, preg_match('/^Nothing was saved: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+; add the time to Snapshots Pattern$/D', zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, array('snap_pattern' => 'Ymd') + $cfg)['why']), 'a pattern that names two runs alike');
 // On days of the week: the days in order, its own time.
-same('Saved: a snapshot of each of 5 dataset(s) every Monday and Saturday at 04:00; it keeps the newest 3 it took of each dataset', zfsmScheduleSnapshotSave('days', '04:00', '6,1', 3, $cfg)['said'], 'on days');
+same('Saved: a snapshot of each of 5 dataset(s) every Monday and Saturday at 04:00; it keeps the newest 3 scheduled snapshots of each dataset', zfsmScheduleSnapshotSave('', 'days', '04:00', '6,1', 3, $cfg)['said'], 'on days');
 same(array_replace($every, array('id' => $id, 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 6), 'keep' => 3)), zfsmScheduleRead()['valid'][$id], 'saved so');
 same(1, substr_count((string)file_get_contents(zfsmScheduleCronFile()), "0 4 * * 1,6 $script run $id &> /dev/null\n"), 'its cron line');
 $shown = zfsmScheduleSnapshotShown();
@@ -177,21 +181,21 @@ same(1, zfsmScheduleRun($id, $cfg, $t + 18000), 'a run that can\'t read the data
 putenv('ZFSM_TEST_COVER_FAIL');
 same(array(array(), array('warning: Scheduled snapshots not taken: the datasets could not be read: cannot iterate filesystems: Input/output error. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
 	array($takes(), $read('notify-detail.log')), 'takes none, and says why');
-same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each dataset every hour at :30; it keeps the newest 2 it took of each dataset; not every dataset could be read: cannot iterate filesystems: Input/output error'),
-	(function() use ($cfg) { putenv('ZFSM_TEST_COVER_FAIL=1'); $saved = zfsmScheduleSnapshotSave('hourly', '', '', 2, $cfg); putenv('ZFSM_TEST_COVER_FAIL'); return $saved; })(), 'a save says it could not count them');
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each dataset every hour at :30; it keeps the newest 2 scheduled snapshots of each dataset; not every dataset could be read: cannot iterate filesystems: Input/output error'),
+	(function() use ($cfg) { putenv('ZFSM_TEST_COVER_FAIL=1'); $saved = zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $cfg); putenv('ZFSM_TEST_COVER_FAIL'); return $saved; })(), 'a save says it could not count them');
 putenv('ZFSM_TEST_COVER_FAIL=hang');
 $began = microtime(true);
-$saved = zfsmScheduleSnapshotSave('hourly', '', '', 2, $cfg, 1);
+$saved = zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $cfg, 1);
 putenv('ZFSM_TEST_COVER_FAIL');
-same(array(true, 'Saved: a snapshot of each dataset every hour at :30; it keeps the newest 2 it took of each dataset; not every dataset could be read: zfs timed out', true),
+same(array(true, 'Saved: a snapshot of each dataset every hour at :30; it keeps the newest 2 scheduled snapshots of each dataset; not every dataset could be read: zfs timed out', true),
 	array($saved['saved'], $saved['said'], microtime(true) - $began < 10), 'a count that hangs stops at its limit');
 // One dataset zfs can't read: the rest are taken and counted, and it is named.
 $reset();
 @unlink(zfsmScheduleStateFile($id));
 putenv('ZFSM_TEST_COVER_FAIL=tank/vm');
 same(1, zfsmScheduleRun($id, $cfg, $t + 21600), 'a run that can\'t read one dataset');
-same('Saved: a snapshot of each of 4 dataset(s) every hour at :30; it keeps the newest 2 it took of each dataset; not every dataset could be read: cannot open \'tank/vm\': Input/output error',
-	zfsmScheduleSnapshotSave('hourly', '', '', 2, $cfg)['said'], 'and a save counts the rest and names it');
+same('Saved: a snapshot of each of 4 dataset(s) every hour at :30; it keeps the newest 2 scheduled snapshots of each dataset; not every dataset could be read: cannot open \'tank/vm\': Input/output error',
+	zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $cfg)['said'], 'and a save counts the rest and names it');
 putenv('ZFSM_TEST_COVER_FAIL');
 $n = $name($t + 21600);
 same(array("snapshot -o zfs.master:schedule=snapshots tank@$n tank/data@$n tank/docker@$n", "snapshot -o zfs.master:schedule=snapshots backup@$n"), $takes(), 'takes the rest, every pool');
@@ -201,7 +205,7 @@ same(array("warning: Scheduled snapshots of 4 of 4 dataset(s) taken. Not every d
 $job = zfsmScheduleRead()['valid'][$id];
 putenv('ZFSM_TEST_COVER_FAIL=hang');
 $began = microtime(true);
-$ran = zfsmScheduleSnapshotRun($job, $cfg, $t + 25200, zfsmScheduleNotifier($id), 1);
+$ran = zfsmScheduleSnapshotRun($job, array($id => $job), $cfg, $t + 25200, zfsmScheduleNotifier($id), 1);
 putenv('ZFSM_TEST_COVER_FAIL');
 $logged = function($text) use ($id) { return preg_match('/ Schedule '.$id.': '.preg_quote($text, '/').'$/m', (string)file_get_contents(zfsmLogFile())); };
 same(array(1, true, 1, 2), array($ran, microtime(true) - $began < 10, $logged('Scheduled snapshots not taken: the datasets could not be read: zfs timed out'), zfsmScheduleFailures($id)), 'a run whose read hangs');
@@ -214,7 +218,153 @@ file_put_contents($work.'/pool/datasets', $listed);
 // Off: the record and its count go, the cron line too; the snapshots stay.
 $reset();
 $kept = $tagged('backup');
-same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('off', '', '', 0, $cfg), 'off');
+same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg), 'off');
 same(array(array(), null, false, $kept, 2), array($stored(), is_file(zfsmScheduleCronFile()) ? file_get_contents(zfsmScheduleCronFile()) : null, is_file(zfsmScheduleStateFile($id)), $tagged('backup'), count($kept)), 'nothing left to run, the snapshots stay');
+
+// A dataset's own (Main, Actions, Schedules): it and the datasets below it with none of their own follow it instead of the default.
+$ran_as = function($id, $text) { return preg_match('/ Schedule '.$id.': '.preg_quote($text, '/').'$/m', (string)file_get_contents(zfsmLogFile())); };
+$cron = function() { return (string)@file_get_contents(zfsmScheduleCronFile()); };
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of 1 dataset(s) (tank/data and below) every Monday at 05:00; it keeps the newest 1 scheduled snapshots of each dataset'),
+	zfsmScheduleSnapshotSave('tank/data', 'days', '05:00', '1', 1, $cfg), 'a dataset\'s own, counted');
+$ids = array_column($stored(), 'id', 'dataset');
+same(array_replace($every, array('id' => $ids['tank/data'], 'dataset' => 'tank/data', 'every' => 'days', 'minute' => 0, 'hour' => 5, 'days' => array(1), 'keep' => 1)), zfsmScheduleRead()['valid'][$ids['tank/data']], 'as its record');
+same(array(1, 'off'), array(substr_count($cron(), "0 5 * * 1 $script run {$ids['tank/data']} &> /dev/null\n"), zfsmScheduleSnapshotShown()['every']), 'its cron line; Snapshot Every Dataset stays Off');
+// The default at the same time: two snapshot schedules never take one dataset's, so may share a minute.
+same('Saved: a snapshot of each of 4 dataset(s) every Monday at 05:00; it keeps all it takes', zfsmScheduleSnapshotSave('', 'days', '05:00', '1', 0, $cfg)['said'], 'the default counts all but tank/data');
+$ids = array_column($stored(), 'id', 'dataset');
+$reset();
+same(0, zfsmScheduleRun($ids[''], $cfg, $t + 32400), 'the default runs');
+$n = $name($t + 32400);
+same(array("snapshot -o zfs.master:schedule=snapshots tank@$n tank/docker@$n tank/vm@$n", "snapshot -o zfs.master:schedule=snapshots backup@$n"), $takes(), 'and leaves out tank/data');
+$reset();
+$by_default = count($tagged('tank/data'));
+same(0, zfsmScheduleRun($ids['tank/data'], $cfg, $t + 36000), 'the dataset\'s own runs');
+$n = $name($t + 36000);
+same(array(array("snapshot -o zfs.master:schedule=snapshots tank/data@$n"), true, array("tank/data@$n"), 1, array()),
+	array($takes(), $by_default > 0, $tagged('tank/data'), $ran_as($ids['tank/data'], 'Scheduled snapshots of 1 of 1 dataset(s) (tank/data and below) taken'), $read('notify-detail.log')),
+	'takes only it, keeps the newest 1 scheduled snapshot of it (those the default took too), logs it');
+
+// None: tank/docker and below take none, and it has no cron line. One above with its own takes the rest under it.
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: no scheduled snapshots of tank/docker and below, but for datasets with their own; the snapshots taken stay'),
+	zfsmScheduleSnapshotSave('tank/docker', 'none', '', '', 0, $cfg), 'None');
+same('Saved: a snapshot of each of 2 dataset(s) (tank and below) every Tuesday at 06:00; it keeps all it takes', zfsmScheduleSnapshotSave('tank', 'days', '06:00', '2', 0, $cfg)['said'], 'one above, counting what follows it');
+$ids = array_column($stored(), 'id', 'dataset');
+same(array_replace($every, array('id' => $ids['tank/docker'], 'dataset' => 'tank/docker', 'every' => 'none', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0)), zfsmScheduleRead()['valid'][$ids['tank/docker']], 'None\'s record');
+same(array(3, 0), array(substr_count($cron(), "$script run "), substr_count($cron(), $ids['tank/docker'])), 'no cron line for None');
+$reset();
+same(array(0, array()), array(zfsmScheduleRun($ids['tank/docker'], $cfg, $t + 39600), $takes()), 'a None run left in the crontab takes none');
+same(1, preg_match('/ Schedule '.$ids['tank/docker'].' not started: it is None now$/m', (string)file_get_contents(zfsmLogFile())), 'and logs why');
+$reset();
+zfsmScheduleRun($ids['tank'], $cfg, $t + 43200);
+zfsmScheduleRun($ids[''], $cfg, $t + 46800);
+same(array('snapshot -o zfs.master:schedule=snapshots tank@'.$name($t + 43200).' tank/vm@'.$name($t + 43200), 'snapshot -o zfs.master:schedule=snapshots backup@'.$name($t + 46800)), $takes(), 'each dataset by the schedule it follows');
+
+// Settings lists each with Remove, but the default; the dialog starts at the dataset's own and says what Default follows.
+$html = zfsmSchedulesHtml($cfg);
+$row = function($id, $text) use ($html) { return strpos($html, '<span style="display:block">'.$text.' <input type="button" value="Remove" onclick="zfsmScheduleRemove(\''.$id.'\')"></span>') !== false; };
+same(array(true, true, true, true, false), array($row($ids['tank/data'], 'Snapshots of tank/data and below, every Monday at 05:00, keeps the newest 1 scheduled snapshots of each dataset'),
+	$row($ids['tank/docker'], 'No scheduled snapshots of tank/docker and below'), $row($ids['tank'], 'Snapshots of tank and below, every Tuesday at 06:00, keeps all it takes'),
+	strpos($html, '<span style="display:block">Snapshot Every Dataset, every Monday at 05:00, keeps all it takes</span>') !== false, strpos($html, "zfsmScheduleRemove('{$ids['']}')")), 'Settings\' rows');
+$previews = array_map('zfsmScheduleSnapshotPreview', array('tank/data', 'tank/docker', 'tank/docker/0a1b', 'tank', 'backup'));
+same(array(
+	array('every' => 'days', 'time' => '05:00', 'days' => array(1), 'keep' => '1', 'inherited' => 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes'),
+	array('every' => 'none', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes'),
+	array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'the snapshot schedule of tank/docker, None: no scheduled snapshots'),
+	array('every' => 'days', 'time' => '06:00', 'days' => array(2), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, every Monday at 05:00; it keeps all it takes'),
+	array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, every Monday at 05:00; it keeps all it takes'),
+), $previews, 'the dialog\'s start');
+same(array('Invalid dataset name'), array_values(zfsmScheduleSnapshotPreview('tank/bad name!')['failed']), 'a name that is none');
+
+// A copy of a dataset can't start with a snapshot schedule of it or of one above it; None and other datasets' don't count.
+$at = function($dataset, $hour, $days) use ($copy) { return array('id' => 'eeee0000', 'dataset' => $dataset, 'dest' => 'backup/c', 'every' => 'days', 'minute' => 0, 'hour' => $hour, 'days' => $days) + $copy; };
+same(array('the snapshot schedule of tank (every Tuesday at 06:00) starts then too; pick another time', 'the snapshot schedule of tank/data (every Monday at 05:00) starts then too; pick another time', 'Snapshot Every Dataset (every Monday at 05:00) starts then too; pick another time', ''),
+	array_map(function($try) { return zfsmScheduleSame(zfsmScheduleRead()['valid'], $try); }, array($at('tank/vm', 6, array(2)), $at('tank/data', 5, array(1)), $at('backup', 5, array(1)), $at('tank/docker', 0, range(0, 6)))), 'which a copy shares with');
+
+// Refused, the store unchanged: a dataset no run can take, a name that is none, and a choice the other kind has.
+$before = $stored();
+$refused = array(
+	array('backup/copy', 'days', 'Nothing was saved: backup/copy is read-only, as a copy received here is: a snapshot in it stops the next replication into it'),
+	array('tank/docker/0a1b', 'days', 'Nothing was saved: tank/docker/0a1b is mounted legacy, as Docker image layers are'),
+	array('tank/gone', 'hourly', 'Nothing was saved: tank/gone is gone'),
+	array('tank/bad name!', 'days', 'Nothing was saved: that is no dataset name'),
+	array('tank/bad name!', 'default', 'Nothing was saved: that is no dataset name'),
+	array('', 'none', 'Nothing was saved: Repeat has no such choice now; reload the page and pick again'),
+	array('tank/vm', 'off', 'Nothing was saved: Repeat has no such choice now; reload the page and pick again'),
+);
+same(array_column($refused, 2), array_map(function($try) use ($cfg) { return zfsmScheduleSnapshotSave($try[0], $try[1], '07:00', '3', 0, $cfg)['why']; }, $refused), 'what is wrong is said');
+putenv('ZFSM_TEST_COVER_FAIL=1');
+same('Nothing was saved: tank/vm could not be read: cannot iterate filesystems: Input/output error', zfsmScheduleSnapshotSave('tank/vm', 'days', '07:00', '3', 0, $cfg)['why'], 'and one that could not be read');
+putenv('ZFSM_TEST_COVER_FAIL');
+same($before, $stored(), 'none saved');
+
+// Its dataset gone: the run says to remove it. Default removes it, its count too; Off removes only the default.
+same('Saved: a snapshot of each of 1 dataset(s) (tank/vm and below) every Wednesday at 07:00; it keeps all it takes', zfsmScheduleSnapshotSave('tank/vm', 'days', '07:00', '3', 0, $cfg)['said'], 'tank/vm\'s own');
+$ids = array_column($stored(), 'id', 'dataset');
+$reset();
+$pool('datasets', array_values(array_diff(explode("\n", trim($listed)), array("tank/vm\tvolume"))));
+same(1, zfsmScheduleRun($ids['tank/vm'], $cfg, $t + 50400), 'a run whose dataset is gone');
+file_put_contents($work.'/pool/datasets', $listed);
+same(array(array(), array('warning: Scheduled snapshots of tank/vm not taken: tank/vm is gone; remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array($takes(), $read('notify-detail.log')), 'says to remove it');
+// Its pool not imported (a stopped array exports it): only logged, as for the default.
+$reset();
+$pool('datasets', array("backup\tfilesystem", "backup/copy\tfilesystem"));
+same(array(0, 1, array()), array(zfsmScheduleRun($ids['tank/data'], $cfg, $t + 54000), $ran_as($ids['tank/data'], 'Scheduled snapshots of tank/data not taken: its pool is not imported'),
+	$read('notify-detail.log')), 'a run whose pool is not imported');
+file_put_contents($work.'/pool/datasets', $listed);
+// A dataset in another pool that can't be read is no problem of tank/data's; one above it is.
+$reset();
+putenv('ZFSM_TEST_COVER_FAIL=backup/copy');
+same(array(0, array()), array(zfsmScheduleRun($ids['tank/data'], $cfg, $t + 57600), $read('notify-detail.log')), 'a run, with a dataset in another pool unread');
+putenv('ZFSM_TEST_COVER_FAIL=tank');
+same(array(1, array('warning: Scheduled snapshots of 1 of 1 dataset(s) (tank/data and below) taken. Not every dataset could be read: cannot open ?tank?: Input/output error. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array(zfsmScheduleRun($ids['tank/data'], $cfg, $t + 61200), $read('notify-detail.log')), 'and with the dataset above it unread');
+putenv('ZFSM_TEST_COVER_FAIL');
+@unlink(zfsmScheduleStateFile($ids['tank/data']));
+// None keeps its id, not its count of runs with a problem: it never runs to clear it.
+$problem = function() use ($cfg) { return strpos(zfsmSchedulesHtml($cfg), 'run(s) in a row with a problem') !== false; };
+same(array(1, true), array(zfsmScheduleFailures($ids['tank/vm']), $problem()), 'the gone run is counted, and Settings says so');
+zfsmScheduleSnapshotSave('tank/vm', 'none', '', '', 0, $cfg);
+same(array($ids['tank/vm'], false, false), array(array_column($stored(), 'id', 'dataset')['tank/vm'], is_file(zfsmScheduleStateFile($ids['tank/vm'])), $problem()), 'None keeps its id, not its count');
+// A run going as None is saved records its problem after: still none shown.
+zfsmScheduleSnapshotSave('tank/vm', 'hourly', '', '', 0, $cfg);
+$notify = zfsmScheduleNotifier($ids['tank/vm']);
+zfsmScheduleSnapshotSave('tank/vm', 'none', '', '', 0, $cfg);
+$notify('ZFS Snapshot', 'Scheduled snapshots of tank/vm not taken: tank/vm is gone.', 'warning');
+same(array(1, false), array(zfsmScheduleFailures($ids['tank/vm']), $problem()), 'a problem a run records after None is saved is not shown');
+touch(zfsmScheduleStateFile($ids['tank/vm']));
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: tank/vm follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes'), zfsmScheduleSnapshotSave('tank/vm', 'default', '', '', 0, $cfg), 'Default');
+same(array(false, false, 0), array(isset(array_column($stored(), 'id', 'dataset')['tank/vm']), is_file(zfsmScheduleStateFile($ids['tank/vm'])), substr_count($cron(), $ids['tank/vm'])), 'removes it, its count and its cron line');
+same('Snapshot Every Dataset is off; the snapshots it took stay', zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg)['said'], 'Off');
+$own = array_column($stored(), 'dataset');
+sort($own);
+same(array(array('tank', 'tank/data', 'tank/docker'), 'off', 'Snapshot Every Dataset, which is off: no scheduled snapshots'),
+	array($own, zfsmScheduleSnapshotShown()['every'], zfsmScheduleSnapshotPreview('backup')['inherited']), 'leaves the datasets\' own');
+same('Saved: tank follows Snapshot Every Dataset, which is off: no scheduled snapshots', zfsmScheduleSnapshotSave('tank', 'default', '', '', 0, $cfg)['said'], 'Default with nothing above');
+
+// Rename: the own schedules of it and below follow it, ids kept, and one left at the new name gives way, its count too.
+$pool('datasets', array_merge(explode("\n", trim($listed)), array("tank/data/sub\tfilesystem")));
+zfsmScheduleSnapshotSave('tank/data/sub', 'hourly', '', '', 0, $cfg);
+zfsmScheduleChange(function($jobs) use ($every) {
+	return $jobs + array('5a5a5a5a' => array('id' => '5a5a5a5a', 'dataset' => 'tank/new') + $every, '5b5b5b5b' => array('id' => '5b5b5b5b', 'dataset' => 'tank/new/sub', 'every' => 'none') + $every);
+});
+touch(zfsmScheduleStateFile('5a5a5a5a'));
+touch(zfsmScheduleStateFile('5b5b5b5b'));
+$ids = array_column($stored(), 'id', 'dataset');
+$own = function() use ($stored) { $by = array_column($stored(), 'id', 'dataset'); ksort($by); return $by; };
+same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0), 'a rename');
+same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/data'], 'tank/new/sub' => $ids['tank/data/sub']), 3, false, false),
+	array($own(), count($stored()), is_file(zfsmScheduleStateFile('5a5a5a5a')), is_file(zfsmScheduleStateFile('5b5b5b5b'))), 'its own schedules and those below follow it');
+$inode = fileinode(zfsmScheduleFile());
+same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
+$pool('datasets', array("tank\tfilesystem", "tank/new\tfilesystem", "tank/new/sub\tfilesystem", "tank/docker\tfilesystem"));
+$lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
+same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Snapshot schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
+	renameDataset('tank/new', 'tank/newer', 0), 'one whose schedules could not be moved says so');
+zfsmJobUnlock($lock);
+// Destroy: they go, counts too.
+touch(zfsmScheduleStateFile($ids['tank/data']));
+same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), destroyDataset('tank/new', 1), 'a destroy');
+same(array(array('tank/docker' => $ids['tank/docker']), false), array($own(), is_file(zfsmScheduleStateFile($ids['tank/data']))), 'its own schedules and those below go');
 
 echo "snapshot schedule tests passed\n";

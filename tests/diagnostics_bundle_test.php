@@ -122,6 +122,13 @@ $log_lines = array(
 	// Snapshot Every Dataset: the first few it could not take, each with why, and a pool whose snapshots its Keep could not read.
 	"Schedule 0a1b2c3f: Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/CanarySnapSched@CanaryPrefix_1 (cannot create snapshot 'tank/CanarySnapSched@CanaryPrefix_1': out of space); "
 		."tank/CanaryDs One@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryDs One@CanaryPrefix_1': dataset is busy). Keep could not remove the snapshots of tank (they could not be read: cannot open 'tank': Input/output error); the next run tries again",
+	// A dataset's own snapshot schedule: its dataset in running text, and why it takes none of one.
+	'Schedule 0a1b2c3e: Scheduled snapshots of 2 of 2 dataset(s) (tank/CanaryOwn Ds and below) taken',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: tank/CanaryOwnRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnGone not taken: tank/CanaryOwnGone is gone; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnLeg not taken: tank/CanaryOwnLeg is mounted legacy, as Docker image layers are; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnOff not taken: its pool is not imported',
+	'ZFS Dataset Rename: Snapshot schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules',
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld (past the newest 3 its schedule keeps)',
 	// Snapshots Prefix can put any words in a snapshot's name, Keep's own among them.
@@ -286,6 +293,16 @@ $snap = zfsmDiagToken('CanaryPrefix_1');
 has("Schedule ".zfsmDiagToken('0a1b2c3f').": Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/".$token('CanarySnapSched')."@$snap (cannot create snapshot ?tank/".$token('CanarySnapSched')."@$snap?: out of space); tank/$ds@$snap (cannot create snapshot ?tank/$ds@$snap?: dataset is busy). "
 	."Keep could not remove the snapshots of tank (they could not be read: cannot open ?tank?: Input/output error); the next run tries again\n", $log, 'a snapshot run\'s line');
 has("\n0a1b2c3f\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $files['plugin/replication-schedules.txt'], 'its row');
+// A dataset's own: its name a token, and the plugin's words after it in clear.
+$own = 'Schedule '.zfsmDiagToken('0a1b2c3e').': Scheduled snapshots ';
+has($own.'of 2 of 2 dataset(s) (tank/'.$token('CanaryOwn Ds')." and below) taken\n", $log, 'an own schedule\'s run says whose datasets it took');
+has($own.'of tank/'.$token('CanaryOwnRo').' not taken: tank/'.$token('CanaryOwnRo').' is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings'."\n",
+	$log, 'and why it took none');
+has($own.'of tank/'.$token('CanaryOwnGone').' not taken: tank/'.$token('CanaryOwnGone')." is gone; remove its schedule in Settings\n", $log, 'of one gone');
+has($own.'of tank/'.$token('CanaryOwnLeg').' not taken: tank/'.$token('CanaryOwnLeg')." is mounted legacy, as Docker image layers are; remove its schedule in Settings\n", $log, 'of one mounted legacy');
+has($own.'of tank/'.$token('CanaryOwnOff')." not taken: its pool is not imported\n", $log, 'of one whose pool is not imported');
+has('ZFS Dataset Rename: Snapshot schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
+	$log, 'a rename whose schedules were not moved');
 // Keep Replicas on a copy received here, which the next receive tries again.
 $in = 'tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/';
 has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (past the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');

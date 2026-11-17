@@ -57,6 +57,7 @@ assert.match(review({network: true}).error, /The request failed/);
 assert.match(html(review({network: true}), 'h'), /Nothing was changed/, 'and the dialog shows it');
 assert.equal(review({network: true, after: ''}).error, 'The request failed.', 'a read-only caller drops "Nothing was changed"');
 assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}', after: ''}).error, 'zfs timed out');
+assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}'}).error, 'zfs timed out. Nothing was changed.', 'a reason ends before what follows it');
 
 const page = fs.readFileSync(path.resolve(__dirname, '../zfs.master/ZFSMaster.page'), 'utf8');
 const popup = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMAdminDatasetSnaps.php'), 'utf8');
