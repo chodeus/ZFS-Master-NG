@@ -523,6 +523,8 @@ unlink($work.'/unlisted/names.txt');
 chmod($work.'/unlisted/plugin', 0000);
 same(array(0, 'false', false), $rewrite(), 'a work folder that can\'t be listed to its end is not rewritten, and no names.txt is written');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
+foreach (array('receive-zstd', 'send-xz') as $verb) same('(zfsm-replica 1 '.$verb.' (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')',
+	zfsmDiagAnonText('(zfsm-replica 1 '.$verb.' '.bin2hex('gonepool/Secret Share/x').')'), 'nor one whose verb has a hyphen: '.$verb.', known or not');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
 // A setting or a finding that names a dataset with nothing around it: its pool stays, and one word alone only when it is a pool.

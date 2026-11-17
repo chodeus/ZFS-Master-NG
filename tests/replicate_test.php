@@ -145,6 +145,16 @@ putenv('ZFSM_TEST_RECV_FAIL=1');
 same(1, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a receive that fails fails the run');
 putenv('ZFSM_TEST_RECV_FAIL');
 same(true, strpos($read('notify-detail.log')[0] ?? '', 'failed: cannot receive new filesystem stream: out of space') !== false, 'with receive\'s error: '.($read('notify-detail.log')[0] ?? ''));
+// Only send and receive hold the pipe between them: once receive stops, a send with more to write fails on it at once.
+$reset();
+putenv('ZFSM_TEST_RECV_FAIL=early');
+putenv('ZFSM_TEST_SEND_PAD=1000000');
+$began = microtime(true);
+same(1, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a receive that stops before a long stream ends');
+$took = microtime(true) - $began;
+putenv('ZFSM_TEST_SEND_PAD');
+putenv('ZFSM_TEST_RECV_FAIL');
+same(array(true, true), array($took < 5, strpos($read('notify-detail.log')[0] ?? '', 'failed: cannot receive new filesystem stream: out of space') !== false), 'ends the send at once, with receive\'s reason: '.round($took, 1).'s');
 $fresh();
 putenv('ZFSM_TEST_SEND_FAIL_PART=1');
 same(1, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a send that fails part-way fails the run');
@@ -436,6 +446,73 @@ same(array('warning: Replication of tank/data to data on server nas not started:
 	$notes, 'is refused, and says so through its schedule');
 same(array(array(), false, array()), array($read('notify-detail.log'), in_array('tank/data@h', $names('tank/data', 'snapshot'), true), $calls('send')), 'with no other notification, no send, and without the snapshot it took');
 $ssh();
+
+// zstd: a run whose server has it too asks exists of the area there, which says so (zfsmServeReplica), and the stream goes through
+// the real zstd at both ends; nas gets its own tools (fixtures/fake_ssh_serve.php). Without it at either end the stream goes as it is.
+$zstd = trim((string)shell_exec('command -v zstd'));
+same(true, $zstd !== '', 'zstd is installed, as tests/ci_php.sh installs it');
+symlink($zstd, $work.'/bin/zstd');
+mkdir($work.'/nasbin');
+foreach (array('zfs', 'zpool') as $fake) copy($work.'/bin/'.$fake, $work.'/nasbin/'.$fake) && chmod($work.'/nasbin/'.$fake, 0755);
+putenv('ZFSM_TEST_SERVE_BIN_DIR='.$work.'/nasbin');
+$asked = function() use ($ssh) {
+	return array_values(array_map(function($line) {
+		preg_match('/zfsm-replica 1 ([a-z-]+)(?: ([0-9a-f]+))?$/', $line, $match);
+		return $match[1].(isset($match[2]) ? ' '.hex2bin($match[2]) : '');
+	}, preg_grep('/zfsm-replica 1 /', $ssh())));
+};
+$started = function() { preg_match_all('/ started: (.*)$/m', (string)@file_get_contents(zfsmLogFile()), $lines); return end($lines[1]); };
+$z = 'backup/replicas/tower/zdata';
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'g', 'zdata', null, false, 'nas'), 'a run to nas, which has no zstd');
+same(array('hello', 'exists backup/replicas/tower', 'exists '.$z, 'receive '.$z), $asked(), 'asks the area, then sends as it is');
+same(array($z.'@g'), $names($z, 'snapshot'), 'and the copy there holds g');
+symlink($zstd, $work.'/nasbin/zstd');
+symlink(trim((string)shell_exec('command -v prlimit')), $work.'/nasbin/prlimit');
+$reset();
+runProcess('zfs', array('snapshot', 'tank/data@z1'));
+same(0, zfsmRunReplicate('tank/data', 'z1', 'zdata', null, false, 'nas'), 'once nas has zstd too');
+same(array('hello', 'exists backup/replicas/tower', 'exists '.$z, 'token '.$z, 'snapshots '.$z, 'receive-zstd '.$z), $asked(), 'the stream goes through it');
+same('zfs send -P -v -L -i tank/data@g tank/data@z1 | zstd -q -c -3 -T0 | ssh 10.0.20.11 zfsm-replica 1 receive-zstd '.bin2hex($z), $started(), 'as the log says');
+$guid = function($snapshot) { return array_column(zfsmReplicaMarks(explode('@', $snapshot)[0], 'snapshot') ?? array(), 'guid', 'name')[$snapshot] ?? null; };
+same(array(array($z.'@g', $z.'@z1'), $guid('tank/data@z1')), array($names($z, 'snapshot'), $guid($z.'@z1')), 'and lands whole, with the guid z1 has here');
+same(array('normal: Replication of tank/data@z1 to '.$z.' on server nas finished (changes since g).'), $read('notify-detail.log'), 'saying so');
+$reset();
+same(0, zfsmRunReplicate('tank/enc', 'e', 'enc', null, false, 'nas'), 'an encrypted dataset to nas');
+same(array('hello', 'exists backup/replicas/tower', 'exists backup/replicas/tower/enc', 'receive backup/replicas/tower/enc'), $asked(), 'goes raw as it is: zstd can\'t shrink it');
+$reset();
+runProcess('zfs', array('snapshot', 'tank/data@z2'));
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/data', 'z2', 'zdata', null, false, 'nas'), 'a stream cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+same(array('warning: Replication of tank/data@z2 to '.$z.' on server nas failed: cannot receive incremental stream: checksum mismatch or incomplete stream. Replicate it again to carry on from where it stopped.'),
+	$read('notify-detail.log'), 'fails with receive\'s reason, through both zstd');
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'z1', 'zdata', null, false, 'nas'), 'and the next run');
+same(array('send -P -v -t tok:tank/data@z2'), $calls('send'), 'carries on from the token there');
+same(array($z.'@g', $z.'@z1', $z.'@z2'), $names($z, 'snapshot'), 'through zstd again');
+$reset();
+runProcess('zfs', array('snapshot', 'tank/data@z3'));
+putenv('ZFSM_TEST_SSH_DROP=100');
+same(1, zfsmRunReplicate('tank/data', 'z3', 'zdata', null, false, 'nas'), 'a connection that drops part-way through a compressed stream');
+putenv('ZFSM_TEST_SSH_DROP');
+same(array('warning: Replication of tank/data@z3 to '.$z.' on server nas failed: The connection to nas dropped.'), $read('notify-detail.log'), 'says so, not zstd\'s reason');
+$ssh();
+// zstd failing here: its own line says why, as send saw only the pipe close.
+unlink($work.'/bin/zstd');
+file_put_contents($work.'/bin/zstd', "#!/bin/sh\nhead -c 1 > /dev/null\necho 'zstd: error 11 : Allocation error : not enough memory' >&2\nexit 11\n");
+chmod($work.'/bin/zstd', 0755);
+$reset();
+same(1, zfsmRunReplicate('tank/data', 'z3', 'zdata', null, false, 'nas'), 'a run whose zstd fails here');
+same(array('warning: Replication of tank/data@z3 to '.$z.' on server nas failed: zstd: error 11 : Allocation error : not enough memory.'), $read('notify-detail.log'), 'says zstd\'s reason');
+same(array($z.'@g', $z.'@z1', $z.'@z2'), $names($z, 'snapshot'), 'and the copy there gains nothing');
+unlink($work.'/bin/zstd');
+$ssh();
+$reset();
+same(0, zfsmRunReplicate('tank/data', 'z3', 'zdata', null, false, 'nas'), 'with no zstd here');
+same(array('hello', 'exists '.$z, 'token '.$z, 'snapshots '.$z, 'receive '.$z), $asked(), 'nas is not asked about it, and the stream goes as it is');
+same(array($z.'@g', $z.'@z1', $z.'@z2', $z.'@z3'), $names($z, 'snapshot'), 'and lands');
+putenv('ZFSM_TEST_SERVE_BIN_DIR');
 
 // A start in the background passes the server to the job, with a snapshot it takes or one picked. The job finds the key, the
 // servers and this server's name where Unraid keeps them: here the tmpfs run_http_inventory_tests.sh mounts on /boot/config.

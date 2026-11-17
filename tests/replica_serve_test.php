@@ -34,6 +34,7 @@ same(array('list', '-H', '-o', 'name,type', 'backup/replicas/tower/data'), $chec
 same(array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', 'backup/replicas/tower/data'), $check($req('snapshots', 'backup/replicas/tower/data')), 'snapshots lists a copy\'s snapshots');
 same(array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', 'backup/replicas/tower/data'), $check($req('token', 'backup/replicas/tower/data')), 'token reads a copy\'s resume token');
 same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'volmode', '-x', 'setuid', '-x', 'devices', '-x', 'exec', '-x', 'sharenfs', '-x', 'sharesmb', '-x', 'snapdev', 'backup/replicas/tower/my data'), $check($req('receive', 'backup/replicas/tower/my data')), 'receive takes a stream read-only, never -F, and the stream can\'t set what the area holds off');
+same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'volmode', '-x', 'setuid', '-x', 'devices', '-x', 'exec', '-x', 'sharenfs', '-x', 'sharesmb', '-x', 'snapdev', 'backup/replicas/tower/z'), $check($req('receive-zstd', 'backup/replicas/tower/z')), 'receive-zstd runs the same receive, behind zstd -d');
 
 // Everything else is refused.
 $data = bin2hex('backup/replicas/tower/data');
@@ -52,6 +53,9 @@ $refused = array(
 	'a name longer than ZFS allows' => array($req('exists', 'backup/replicas/tower/'.str_repeat('x', 240)), 'Not a replication request'),
 	'hello with a name' => array('zfsm-replica 1 hello '.$data, 'Not a replication request'),
 	'receive with no name' => array('zfsm-replica 1 receive', 'Not a dataset name'),
+	'receive-zstd with no name' => array('zfsm-replica 1 receive-zstd', 'Not a dataset name'),
+	'another compression' => array('zfsm-replica 1 receive-gzip '.$data, 'Not a replication request'),
+	'receive-zstd into the area itself' => array($req('receive-zstd', 'backup/replicas/tower'), 'backup/replicas/tower is not inside backup/replicas/tower'),
 	'odd-length hex' => array('zfsm-replica 1 exists '.substr($data, 0, -1), 'Not a dataset name'),
 	'a snapshot' => array($req('exists', 'backup/replicas/tower/data@s'), 'Not a dataset name'),
 	'a bookmark' => array($req('exists', 'backup/replicas/tower/data#b'), 'Not a dataset name'),
@@ -151,6 +155,56 @@ foreach (array('mountpoint' => '/mnt/backup/replicas/tower', 'exec' => 'on') as 
 	same(1, $serve('zfsm-replica 1 hello')[0], 'and so is hello');
 	file_put_contents($work.'/pool/props', "backup/replicas/tower\t$property\t".zfsmReplicaAreaProps()[$property]."\n", FILE_APPEND);
 }
+
+// A sender that has zstd asks exists of the area itself: the answer adds zstd once this server reads it too, and never for a copy.
+// receive-zstd reads the stream through the real zstd -d under the real prlimit, its first record checked as receive's is.
+$zstd = trim((string)shell_exec('command -v zstd'));
+$prlimit = trim((string)shell_exec('command -v prlimit'));
+same(array(true, true), array($zstd !== '', $prlimit !== ''), 'zstd and prlimit are installed, as tests/ci_php.sh and util-linux have them');
+mkdir($work.'/zbin');
+foreach (array('zfs', 'zpool') as $fake) copy(dirname($fake_zfs).'/'.$fake, $work.'/zbin/'.$fake) && chmod($work.'/zbin/'.$fake, 0755);
+symlink($zstd, $work.'/zbin/zstd');
+foreach (array('stream', 'clone') as $name) exec(escapeshellarg($zstd).' -q -c < '.escapeshellarg($work.'/'.$name).' > '.escapeshellarg($work.'/'.$name.'.zst'));
+@unlink($work.'/calls.log');
+same(array(1, '', "This server needs zstd and prlimit to read a compressed stream\n"), $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.zst'), 'without zstd here, receive-zstd is refused');
+putenv('ZFSM_TEST_BIN_DIR='.$work.'/zbin');
+same(array(0, "backup/replicas/tower\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with zstd but no prlimit to cap it, exists of the area says nothing of zstd');
+same(array(1, '', "This server needs zstd and prlimit to read a compressed stream\n"), $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.zst'), 'and receive-zstd is refused');
+symlink($prlimit, $work.'/zbin/prlimit');
+same(array(0, "backup/replicas/tower\tfilesystem\nzstd\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with it, exists of the area says so');
+same(array(0, "backup/replicas/tower/data\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower/data')), 'and exists of a copy says nothing more');
+same(array(1, '', "A clone's stream is not accepted\n"), $serve($req('receive-zstd', 'backup/replicas/tower/evil'), $work.'/clone.zst'), 'a clone\'s stream is refused compressed too');
+$plain = $serve($req('receive-zstd', 'backup/replicas/tower/evil'), $work.'/stream');
+same(array(1, 1), array($plain[0], preg_match('/\Azstd: .*unsupported format *\nNot a send stream\n\z/', $plain[2])), 'and a stream that isn\'t compressed, with zstd\'s own reason first: '.$plain[2]);
+// zstd -d reads lzma too: one whose header claims a 1.5 GiB dictionary gets no more than the cap.
+exec('xz --format=lzma -c < '.escapeshellarg($work.'/stream').' > '.escapeshellarg($work.'/stream.lzma'));
+$lzma = file_get_contents($work.'/stream.lzma');
+file_put_contents($work.'/stream.lzma', $lzma[0].pack('V', 0x60000000).substr($lzma, 5));
+$big = $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.lzma');
+same(array(1, 1), array($big[0], preg_match('/\Azstd: .*lzma.*\nNot a send stream\n\z/', $big[2])), 'and an lzma stream claiming 1.5 GiB stops at the cap: '.$big[2]);
+same(array(), $calls('receive'), 'none of them reaching zfs receive');
+same(array(0, '', ''), $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.zst'), 'a compressed stream is received');
+same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev backup/replicas/tower/z'), $calls('receive'), 'by the fixed receive');
+same(1, preg_match('/\Abackup\/replicas\/tower\/z@a\t11\t[0-9]+\n\z/', $serve($req('snapshots', 'backup/replicas/tower/z'))[1]), 'and the copy holds a, with the guid tank/data@a sent');
+// A refusal while the sender still sends: zstd -d, blocked writing what nothing reads now, stops without a word of its own.
+file_put_contents($work.'/clone-big', file_get_contents($work.'/clone').random_bytes(1 << 20));
+exec(escapeshellarg($zstd).' -q -c < '.escapeshellarg($work.'/clone-big').' > '.escapeshellarg($work.'/clone-big.zst'));
+$feeder = proc_open(array('sh', '-c', 'cat "$0" 2>/dev/null; exec sleep 20', $work.'/clone-big.zst'), array(1 => array('pipe', 'w')), $feed);
+$io = array($feed[1], fopen($work.'/out', 'w'), fopen($work.'/err', 'w'));
+$code = zfsmServeReplica($req('receive-zstd', 'backup/replicas/tower/evil'), 'backup/replicas/tower', $io);
+proc_terminate($feeder);
+foreach ($io as $handle) fclose($handle);
+proc_close($feeder);
+same(array(1, "A clone's stream is not accepted\n"), array($code, file_get_contents($work.'/err')), 'a refusal while the stream goes on says only why');
+putenv('ZFSM_TEST_BIN_DIR='.dirname($fake_zfs));
+// A run started from a page has no PATH (php-fpm's clear_env): zstd is still found where execvp looks.
+$path = getenv('PATH');
+putenv('ZFSM_TEST_BIN_DIR');
+putenv('PATH');
+$found = zfsmToolPath('zstd');
+putenv('PATH='.$path);
+putenv('ZFSM_TEST_BIN_DIR='.dirname($fake_zfs));
+same(realpath($zstd), is_string($found) ? realpath($found) : $found, 'zstd is found with no PATH');
 
 // Keep Replicas: once a receive lands, only the copy's newest $keep snapshots stay, whichever run sent each; held or cloned ones stay.
 mkdir($work.'/docroot/plugins/dynamix/scripts', 0755, true);
