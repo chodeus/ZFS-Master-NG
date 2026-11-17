@@ -67,8 +67,8 @@ function zfsmReplicaTargetSnapshots($target, $zdest) {
 // zstd's options for a stream to a server: its default level, on every core.
 define('ZFSM_REPLICA_ZSTD', array('-q', '-c', '-3', '-T0'));
 
-// zstd here when a run's stream to $target goes through it: both servers have it, as that server's answer to exists on its area
-// says (zfsmServeReplica). null here, or for a server without zstd or on an earlier version; a failed ask sends the stream as it is.
+// zstd here when the stream to $target goes through it: that server's answer to exists on its area says it reads zstd, as one with
+// zstd and prlimit does (zfsmServeReplica). Else null, a failed ask included: the stream goes as it is.
 function zfsmReplicaTargetZstd($target) {
 	if (($target['server'] ?? '') === '' || isset($target['error'])) return null;
 	$zstd = zfsmToolPath('zstd');
