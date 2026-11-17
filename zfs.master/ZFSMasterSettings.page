@@ -11,7 +11,10 @@ require_once "$docroot/plugins/$plugin/include/ZFSMReplicaServe.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMReplicaRemote.php";
 require_once "$docroot/plugins/$plugin/include/ZFSMSchedule.php";
 
-$zfsm_cfg = loadConfig(parse_plugin_cfg($plugin, true));
+$zfsm_saved = parse_plugin_cfg($plugin, true);
+$zfsm_cfg = loadConfig($zfsm_saved);
+// Keep Replicas' field shows what applies (empty: all), so a saved value it can't read never holds up Apply; the warning names it.
+$zfsm_keep_warning = zfsmKeepReplicaWarning((string)($zfsm_saved['general']['replica_keep'] ?? ''));
 $zfsm_snapsched = zfsmScheduleSnapshotShown();
 $zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
 
@@ -230,10 +233,10 @@ _(Accept Replicas Into)_:
 :end
 
 _(Keep Replicas)_:
-: <input type="text" name="replica_keep" inputmode="numeric" maxlength="4" pattern="[0-9]*" value="<?=$zfsm_cfg['replica_keep'] ?: ''?>" placeholder="all">
+: <input type="text" name="replica_keep" maxlength="40" pattern="[ \t,]*([0-9]+[hdwmyHDWMY]?([ \t,]+[0-9]+[hdwmyHDWMY]?)*[ \t,]*)?" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>" placeholder="all"> <span id="zfsm-replica-keep-warning" style="color:#e22828"><?=zfsmHtml($zfsm_keep_warning)?></span>
 
 :zc_settings_replica_keep_plug:
-> After each copy a server sends lands here, only the newest this many of that copy's snapshots stay, up to 50 removed a time; the rest go with the next one. Every snapshot of a copy counts, whichever run sent it, but one held or cloned here stays. The newest always stays: the sender's next run sends the changes since it. A copy that stops part-way loses nothing. When one can't be removed, this server's log and a notification say which and why. Empty keeps all.
+> After each copy a server sends lands here, only the snapshots of that copy it keeps stay, up to 50 removed a time; the rest go with the next one. It reads as **Snapshots To Keep** under Schedules does: a number keeps the newest that many, and `7d`, `4w` and `12m` the newest of each of the last 7 days, 4 weeks and 12 months that have one (such as `24 7d 4w 12m`), by when the sender took each, in this server's time zone. Every snapshot of a copy counts, whichever run sent it, but one held or cloned here stays. The newest always stays: the sender's next run sends the changes since it. A copy that stops part-way loses nothing. When one can't be removed, this server's log and a notification say which and why. Empty keeps all.
 :end
 
 _(This Server's Host Key)_:
@@ -384,7 +387,7 @@ var zfsm_tips = <?=zfsmJson(array(
 	'alert_interval' => _('How often to check pool health and send Unraid notifications.'),
 	'alert_stale' => _('Also notify when snapshots are older than the Max Days setting.'),
 	'replica_accept' => _('An existing dataset other servers may send copies into. Empty turns this off.'),
-	'replica_keep' => _('How many snapshots of each copy received here stay, newest first. Empty keeps all.'),
+	'replica_keep' => _('Which snapshots of each copy received here stay: a number keeps the newest that many; 7d, 4w and 12m the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.'),
 ), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
@@ -521,4 +524,19 @@ function zfsmCheckAccept() {
 }
 $('input[name="replica_accept"]').on('change', zfsmCheckAccept);
 zfsmCheckAccept();
+// Keep Replicas: once the server says it can't read the value (all stay), Apply is refused; one sent sooner saves it, and the reload names it.
+function zfsmCheckKeep() {
+	var input = $('input[name="replica_keep"]');
+	var value = input.val();
+	input[0].setCustomValidity('');
+	var warning = $('#zfsm-replica-keep-warning').text('');
+	if (value.trim() === '') return;
+	zfsmSendPost({cmd: 'validatekeep', keep: value}, function(answer) {
+		if (input.val() !== value) return;
+		if (answer.error) return warning.text('This could not be checked: '+answer.error);
+		warning.text(answer.warning);
+		input[0].setCustomValidity(answer.warning);
+	});
+}
+$('input[name="replica_keep"]').on('change', zfsmCheckKeep);
 </script>

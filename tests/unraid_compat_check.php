@@ -122,6 +122,19 @@ switch ($check) {
 		if (strpos($settings, 'name="snap_prefix" value="'.$shown.'"') === false) { fwrite(STDERR, "the Settings field lost the prefix\n"); exit(1); }
 		break;
 
+	case 'replica_keep_unread':
+		// Keep Replicas saved as no Keep: all stay, the field shows that (empty) so Apply still goes, and the warning names what was saved.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$saved = loadConfig(parse_plugin_cfg('zfs.master', true))['replica_keep'];
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if ($saved !== 0 || strpos($html, 'value="" placeholder="all"> <span id="zfsm-replica-keep-warning" style="color:#e22828">&quot;7d 7d&quot; is not read, so all stay: give a number') === false) {
+			fwrite(STDERR, 'Keep Replicas "7d 7d" read as '.json_encode($saved)." or shown without why\n");
+			exit(1);
+		}
+		break;
+
 	case 'main_page_stuck_zfs':
 		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
@@ -140,9 +153,11 @@ switch ($check) {
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
 		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1, 'alert_interval' => 60, 'alert_stale' => 1, 'size_units' => 'binary',
-			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
+			'replica_keep' => '24 7d 4w', 'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
 		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if (strpos($html, 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="24 7d 4w" placeholder="all">') === false) { fwrite(STDERR, "Keep Replicas saved as periods is not shown as Keep reads it\n"); exit(1); }
 		break;
 
 	case 'menu_order':
@@ -252,6 +267,8 @@ switch ($check) {
 			if ($to === false || preg_match('#<dt>[^\n]*'.$field.'#', substr($rendered, $from, $to - $from)) !== 1) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
 		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		// Markdown leaves Keep Replicas' pattern whole.
+		if (!$row_has('Keep Replicas', 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="" placeholder="all">')) { fwrite(STDERR, "settings page lost the Keep Replicas row or its pattern\n"); exit(1); }
 		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"') as $label => $control) {
 			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}

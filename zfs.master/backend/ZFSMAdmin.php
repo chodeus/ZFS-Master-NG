@@ -135,6 +135,10 @@ try {
 			echo zfsmJson(array('valid' => $valid, 'missing' => $missing));
 			break;
 
+		case 'validatekeep':
+			echo zfsmJson(array('warning' => zfsmKeepReplicaWarning(zfsmPostString('keep'))));
+			break;
+
 		case 'replicakey':
 			$made = zfsmReplicaKeyMake();
 			echo zfsmJson(isset($made['error']) ? $made : array('key_html' => zfsmReplicaKeyHtml(), 'servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));

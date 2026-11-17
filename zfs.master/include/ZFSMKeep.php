@@ -2,63 +2,15 @@
 // Keep: after a schedule's run lands, its snapshots that its Keep (zfsmKeepRules) doesn't keep go; a run holds what it sends until a
 // run to the copy lands or none is left to carry on.
 // zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases; zfsmServeReplica and zfsmScheduleSnapshotRun prune.
+require_once __DIR__.'/ZFSMKeepRules.php';
 
 define('ZFSM_KEEP_TAG', 'zfs.master:schedule');
 // The tag on every snapshot a snapshot schedule takes: no copy's (16 hex), and one value for all, so a rename keeps counting them.
 define('ZFSM_KEEP_SNAPSHOTS', 'snapshots');
-define('ZFSM_KEEP_MAX', 9999);
 define('ZFSM_KEEP_HOLD', 'zfsm-resume-');
 // A run or receive removes at most this many of a dataset's snapshots, oldest first, and their twins in a copy here; the next
 // one removes more.
 define('ZFSM_KEEP_PER_RUN', 50);
-// Keep's periods by letter: how date() names one in this server's time zone (ISO weeks, Monday first), and its word.
-define('ZFSM_KEEP_PERIODS', array('h' => array('Y-m-d H', 'hourly'), 'd' => array('Y-m-d', 'daily'), 'w' => array('o-W', 'weekly'),
-	'm' => array('Y-m', 'monthly'), 'y' => array('Y', 'yearly')));
-
-function zfsmKeepValid($keep) {
-	return zfsmKeepRules($keep) !== null;
-}
-
-// A Keep's rules, a count by letter: '' the newest that many, a ZFSM_KEEP_PERIODS letter the newest of each of that many last periods
-// with one. From an int ('' alone; 0: none) or words such as "10 7d 4w 12m", each letter once; null from anything else.
-function zfsmKeepRules($keep) {
-	if (is_int($keep)) return $keep < 0 || $keep > ZFSM_KEEP_MAX ? null : array_filter(array('' => $keep));
-	if (!is_string($keep) || strlen($keep) > 64) return null;
-	$rules = array();
-	foreach (preg_split('/[\s,]+/', strtolower($keep), -1, PREG_SPLIT_NO_EMPTY) as $word) {
-		if (preg_match('/^([0-9]+)([a-z]?)$/D', $word, $parts) !== 1) return null;
-		list(, $count, $unit) = $parts;
-		if (isset($rules[$unit]) || ($unit !== '' && !array_key_exists($unit, ZFSM_KEEP_PERIODS)) || (int)$count < 1 || (int)$count > ZFSM_KEEP_MAX) return null;
-		$rules[$unit] = (int)$count;
-	}
-	return $rules ? array_replace(array_intersect_key(array('' => 0) + ZFSM_KEEP_PERIODS, $rules), $rules) : null;
-}
-
-// What Snapshots to keep holds, as Keep is saved: empty keeps all (0), and a number alone stays an int, which versions before rules
-// read; else its rules in one order. Null when it is none of those.
-function zfsmKeepParse($text) {
-	$text = trim($text);
-	$number = $text === '' ? 0 : zfsmDigits($text, strlen((string)ZFSM_KEEP_MAX), null);
-	if ($number !== null) return $number;
-	$rules = zfsmKeepRules($text);
-	if ($rules === null) return null;
-	return array_keys($rules) === array('') ? $rules[''] : zfsmKeepField($text);
-}
-
-// $keep as Snapshots to keep shows it: '' when all stay, else its rules in one order ("10 7d 4w 12m").
-function zfsmKeepField($keep) {
-	$words = array();
-	foreach (zfsmKeepRules($keep) ?? array() as $unit => $count) $words[] = $count.$unit;
-	return implode(' ', $words);
-}
-
-// $keep in words ("the newest 10, 7 daily and 4 weekly"); '' when all stay.
-function zfsmKeepWords($keep) {
-	$words = array();
-	foreach (zfsmKeepRules($keep) ?? array() as $unit => $count) $words[] = $unit === '' ? 'the newest '.$count : $count.' '.ZFSM_KEEP_PERIODS[$unit][1];
-	$last = array_pop($words);
-	return $words ? implode(', ', $words).' and '.$last : (string)$last;
-}
 
 // Why Keep removed a snapshot, as its log line says: $who keeps the others ("its schedule").
 function zfsmKeepWhy($keep, $who) {
@@ -201,7 +153,7 @@ function zfsmKeepStayed($who, $stayed, $then) {
 	return $stayed ? $who.' could not remove '.zfsmKeepFirst($stayed).'; the next '.$then.' tries again' : '';
 }
 
-// After a receive into $zdataset here landed: its snapshots past the newest $keep (Settings, Keep Replicas; 0 keeps all) go, every
+// After a receive into $zdataset here landed: its snapshots $keep doesn't keep (Settings, Keep Replicas; 0 keeps all) go, every
 // one counting. A failure is logged and notified on this server; the receive's answer stays as it was.
 function zfsmKeepReplica($from, $zdataset, $keep) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, null);

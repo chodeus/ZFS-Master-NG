@@ -125,8 +125,10 @@ set_version "$version"
 # Real CSRF prepend, helpers, backend and pages, with fake zfs and zpool binaries.
 reset; cp "$work/dist/$package" "$flash/"
 $plugin install "$work/zfs.master.plg" > "$work/install2.log" 2>&1 || fail 'second install'
-printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\n' > "$flash/zfs.master.cfg"
+printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\nreplica_keep=" 24 7D, 4w "\r\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
+printf '[general]\nreplica_keep="7d 7d"\n' > "$flash/zfs.master.cfg"
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_unread "$version" || fail 'Keep Replicas saved as no Keep'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
 rm -f /usr/sbin/zpool
