@@ -438,6 +438,9 @@ putenv('ZFSM_TEST_COVER_FAIL=tank/data');
 $text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
 putenv('ZFSM_TEST_COVER_FAIL');
 has("datasets each snapshot schedule takes now: 0b0b0b0b 1 (not every dataset could be read: cannot open 'tank/data': Input/output error)\n", $text, 'one it can\'t read: the rest counted, and it named');
+file_put_contents($work.'/pool/marks', "tank/data@autosnap_2026-11-17_00:00:01_hourly\t1\t1\n");
+has("datasets each snapshot schedule takes now: 0b0b0b0b 1\n", $found('zfsmDiagReplicaSchedules', $snapped)[1], 'one with Sanoid\'s snapshots left out');
+file_put_contents($work.'/pool/marks', '');
 // A dataset's own (Main, Schedules) and a None: each row named, each count apart; None has no cron line to miss, and is not counted.
 $own = array('id' => '0c0c0c0c', 'dataset' => 'tank/data', 'minute' => 45) + $every;
 $none = array('id' => '0d0d0d0d', 'dataset' => 'tank', 'every' => 'none', 'minute' => 0, 'keep' => 0) + $every;

@@ -462,6 +462,7 @@ async function confirm() {
     assert.deepEqual([Array.from(every().options, option => option.textContent), every().value, every().labels[0].textContent.startsWith('Snapshots:'), rows()],
       [['Default', 'None', 'Every hour', 'On days of the week'], 'days', true, [true, true, true, false]], 'its own schedule is picked, with its rows');
     assert.deepEqual([days().filter(box => box.checked).map(box => box.value), field('time').value, field('keep').value], [['1'], '05:00', '1'], 'and its days, time and Keep');
+    assert.equal(field('skipped'), null, 'one a run can take says nothing of it');
     await pick('default');
     assert.deepEqual([rows(), field('default').textContent], [[false, false, false, true], 'Default follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes.'], 'Default says what it follows');
     await pick('none');
@@ -494,6 +495,13 @@ async function confirm() {
     replies.at(-1).reject();
     await settle();
     assert.deepEqual(result(), ['Schedules Result', true, 'The request failed. Reload the page and open Schedules to see what was saved.'], 'a request that fails says so');
+    schedulePreview = {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes',
+      skipped: 'tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'};
+    await schedules();
+    const line = field('skipped');
+    assert.deepEqual([line?.textContent, line?.querySelectorAll('i').length, line?.parentElement.firstElementChild === line],
+      ['tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool.', 0, true], 'one no run takes says why, first and as text');
+    window.Swal2.close();
     schedulePreview = {failed: {request: 'Invalid dataset name'}};
     await schedules();
     assert.deepEqual([window.Swal2.getIcon().classList.contains('swal2-error'), text(), posts.at(-1).cmd], [true, 'Invalid dataset name', 'previewschedules'], 'a dataset it can\'t read says why, with nothing to save');

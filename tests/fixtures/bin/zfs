@@ -33,19 +33,31 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 	held() { awk -F'\t' -v n="$1" -v t="$2" '$1 == n && (t == "" || $2 == t) { f = 1 } END { exit !f }' "$R/holds"; }
 	case "$1" in
 	list)
-		# What a snapshot schedule covers (include/ZFSMScheduleSnapshot.php): readonly and mountpoint from props, else off and
-		# /mnt/<name> (a volume's -). ZFSM_TEST_COVER_FAIL: 1 fails the read, hang answers only after 30 s, and a dataset's name fails that
-		# one as zfs does: the rest listed, then exit 1.
+		# A snapshot schedule's dataset read (include/ZFSMScheduleSnapshot.php): readonly, mountpoint from props, else off, /mnt/<name> (a volume -);
+		# -d 1 <name>: it and its children. ZFSM_TEST_COVER_FAIL: 1 fails it, hang waits 30 s, a dataset's name fails that one, then exit 1.
 		if contains_arg 'name,readonly,mountpoint' "$@"; then
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = hang ] && { sleep 30; exit 1; }
-			code=0
+			code=0; under=''
+			contains_arg '-d' "$@" && under=$last_arg
+			if [ -n "$under" ] && ! exists "$under"; then printf "cannot open '%s': dataset does not exist\n" "$under" >&2; exit 1; fi
 			while IFS="$(printf '\t')" read -r n ty; do
+				if [ -n "$under" ]; then case "$n" in "$under") ;; "$under"/*/*) continue ;; "$under"/*) ;; *) continue ;; esac; fi
 				[ "$n" = "${ZFSM_TEST_COVER_FAIL:-}" ] && { printf "cannot open '%s': Input/output error\n" "$n" >&2; code=1; continue; }
 				if [ "$ty" = volume ]; then mp=-; else mp=/mnt/$n; fi
 				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" readonly off)" "$(prop "$n" mountpoint "$mp")"
 			done < "$R/datasets"
 			exit $code
+		fi
+		# And its read of snapshot names alone, sorted; with -d 1 <name> only that one's. ZFSM_TEST_NAMES_FAIL=1 fails it, and
+		# ZFSM_TEST_COVER_FAIL's dataset fails here too, as zfs does.
+		if [ "$4" = name ] && [ "$5" = -s ] && [ "$8" = snapshot ]; then
+			[ "${ZFSM_TEST_NAMES_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
+			under=''; contains_arg '-d' "$@" && under=$last_arg
+			f=${ZFSM_TEST_COVER_FAIL:-}; case $f in 1|hang) f='' ;; esac; [ -n "$under" ] && [ "$under" != "$f" ] && f=''
+			awk -F'\t' -v d="$under" -v f="$f" '((d == "" && index($1, "@")) || (d != "" && index($1, d "@") == 1)) && index($1, f "@") != 1 { print $1 }' "$R/marks" | LC_ALL=C sort
+			[ -z "$f" ] || { printf "cannot open '%s': Input/output error\n" "$f" >&2; exit 1; }
+			exit 0
 		fi
 		# Retention's read (include/ZFSMKeep.php) of each dataset after the options, as zfs does: one that can't be read fails the
 		# command, the others still listed. ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails.

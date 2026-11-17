@@ -136,16 +136,17 @@ function zfsmReplicateRepeatSync(root) {
 	return every;
 }
 
-// The Schedules dialog, from zfsmScheduleSnapshotPreview in include/ZFSMScheduleSnapshot.php: Default (what it follows now), None, or
-// the dataset's own schedule; zfsmScheduleDialogSync shows the rows that fit.
+// The Schedules dialog, from zfsmScheduleSnapshotPreview in include/ZFSMScheduleSnapshot.php: why no run takes the dataset, if so; Default
+// (what it follows now), None, or the dataset's own schedule; zfsmScheduleDialogSync shows the rows that fit.
 function zfsmScheduleDialogHtml(preview) {
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
-	return '<div style="text-align:left">'+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']], preview)
+	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+zfsmEscape(preview.skipped)+'.</b></p>' : '';
+	return '<div style="text-align:left">'+skipped+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']], preview)
 		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+zfsmEscape(preview.inherited)+'.</p>'
 		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset in Settings.')
 		+say('None: no scheduled snapshots. Every hour or On days of the week: its own schedule.')
 		+say('Datasets below this one follow its choice, unless they have their own.')
-		+say('Read-only datasets, such as copies received here, and those mounted legacy, such as Docker\'s image layers, are never taken.')
+		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken.')
 		+say('Snapshots to keep: after each run, only the newest this many scheduled snapshots of each dataset stay. Empty keeps all. Snapshots made by hand or by a copy\'s schedule are never removed.')
 		+say('Settings lists every schedule.')+'</div>';
 }

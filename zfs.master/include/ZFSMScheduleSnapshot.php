@@ -51,8 +51,9 @@ function zfsmScheduleSnapshotShown() {
 	return $job['every'] === 'hourly' ? array('minute' => $off['minute'], 'hour' => $off['hour']) + $job : $job;
 }
 
-// The Schedules dialog's start: $zdataset's own schedule as the page shows it ('default' with none), and what Default follows.
-function zfsmScheduleSnapshotPreview($zdataset) {
+// The Schedules dialog's start: $zdataset's own schedule as the page shows it ('default' with none), what Default follows, and why no
+// run takes it ('' when one can), from reads of it, the datasets just below it, and its snapshots.
+function zfsmScheduleSnapshotPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure('request', 'Invalid dataset name');
 	$read = zfsmScheduleRead();
 	if ($read === null) return zfsmFailure($zdataset, zfsmScheduleUnreadable());
@@ -60,32 +61,61 @@ function zfsmScheduleSnapshotPreview($zdataset) {
 	$job = reset($own) ?: array('every' => 'default', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
 	return array('every' => $job['every'], 'time' => $job['every'] === 'days' ? sprintf('%02d:%02d', $job['hour'], $job['minute']) : '00:00',
 		'days' => $job['days'], 'keep' => $job['keep'] > 0 ? (string)$job['keep'] : '',
-		'inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))));
+		'inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))),
+		'skipped' => zfsmScheduleSnapshotNot($zdataset, zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset))));
 }
 
 define('ZFSM_SCHEDULE_COVERED', array('list', '-H', '-o', 'name,readonly,mountpoint', '-t', 'filesystem,volume'));
-// Save's and a run's reads of ZFSM_SCHEDULE_COVERED stop here: a hung pool would hold the request, or the run and its lock, for good.
+// Names alone, sorted by name: zfs then lists snapshots without reading their properties, fast with thousands of them.
+define('ZFSM_SCHEDULE_SNAPSHOTS', array('list', '-H', '-o', 'name', '-s', 'name', '-t', 'snapshot'));
+// Each read of zfsmScheduleCoverRead for Save, the dialog and a run stops here: a hung pool would hold the request, or the run and its
+// lock, for good.
 define('ZFSM_SCHEDULE_COUNT_WAIT', 10);
 define('ZFSM_SCHEDULE_COVER_WAIT', 30);
 
-// $listed, zfs's answer to ZFSM_SCHEDULE_COVERED, as array(readonly, mountpoint) by dataset, and the lines that don't parse.
-function zfsmScheduleListed($listed) {
-	$rows = $errors = array();
-	foreach (zfsmLines($listed['output'] ?? '') as $line) {
-		$parts = explode("\t", $line, 3);
-		if (count($parts) === 3 && zfsmValidDatasetName($parts[0])) $rows[$parts[0]] = array($parts[1], $parts[2]);
-		else $errors[] = $line;
-	}
-	return array($rows, $errors);
+// What a schedule covers, as one answer for zfsmScheduleListed: the datasets, their snapshots' names (both read with $more) and $cfg's
+// Snapshots Prefix. $read runs as zfsmReadWithin does.
+function zfsmScheduleCoverRead($cfg, $wait, $more = array(), $read = 'zfsmReadWithin') {
+	$listed = $read($wait, 'zfs', array_merge(ZFSM_SCHEDULE_COVERED, $more)) + array('prefix' => (string)($cfg['snap_prefix'] ?? ''));
+	// None listed (a hung pool waits its whole limit): no dataset for the names to mark, so no second wait.
+	if (!zfsmScheduleListed($listed)[0]) return $listed;
+	// Names it can't read mark none: those datasets are still taken, and zfsmScheduleCovered says why.
+	$names = $read($wait, 'zfs', array_merge(ZFSM_SCHEDULE_SNAPSHOTS, $more));
+	return array('code' => $listed['code'] !== 0 ? $listed['code'] : $names['code'], 'output' => $listed['output']."\n".$names['output']) + $listed;
 }
 
-// From $listed: by pool, each dataset that follows $job (zfsmScheduleFollowed in $jobs) but read-only ones (a copy received here: a
-// snapshot stops the next receive) and those mounted legacy (Docker's layers); and why some weren't read ('' when all were).
+// $listed (zfsmScheduleCoverRead) as array(readonly, mountpoint, has Sanoid's or Syncoid's snapshots) by dataset, and the lines that
+// don't parse. With a Snapshots Prefix that starts as theirs do, a name that starts with it is the plugin's own.
+function zfsmScheduleListed($listed) {
+	$rows = $errors = $automatic = array();
+	$own = zfsmIsAutomaticSnapshot('@'.($listed['prefix'] ?? '')) ? '@'.$listed['prefix'] : '';
+	foreach (zfsmLines($listed['output'] ?? '') as $line) {
+		$parts = explode("\t", $line, 3);
+		$of = (string)strstr($line, '@', true);
+		if (count($parts) === 3 && zfsmValidDatasetName($parts[0])) $rows[$parts[0]] = array($parts[1], $parts[2]);
+		elseif (count($parts) === 1 && zfsmValidDatasetName($of)) $automatic[$of] = ($automatic[$of] ?? false) || (zfsmIsAutomaticSnapshot($line) && ($own === '' || strpos($line, $of.$own) !== 0));
+		else $errors[] = $line;
+	}
+	foreach ($rows as $zdataset => $row) $rows[$zdataset][] = $automatic[$zdataset] ?? false;
+	// Both reads fail a dataset they can't open: say so once.
+	return array($rows, array_values(array_unique($errors)));
+}
+
+// Why no run takes $zdataset, listed as $row (zfsmScheduleListed); '' when one can.
+function zfsmScheduleSkipped($zdataset, $row) {
+	if ($row[0] === 'on') return $zdataset.' is read-only, as a copy received here is: a snapshot in it stops the next replication into it';
+	// Syncoid sends every snapshot since its last by default (-I): ours would pile up in its copies, where Sanoid removes only its own.
+	if ($row[2]) return $zdataset.' has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool';
+	return $row[1] === 'legacy' ? $zdataset.' is mounted legacy, as Docker image layers are' : '';
+}
+
+// From $listed: by pool, each dataset that follows $job (zfsmScheduleFollowed in $jobs) and a run can take (zfsmScheduleSkipped); and
+// why some weren't read ('' when all were).
 function zfsmScheduleCovered($listed, $job, $jobs) {
 	list($rows, $errors) = zfsmScheduleListed($listed);
 	$pools = array();
 	foreach ($rows as $zdataset => $row) {
-		if ($row[0] !== 'on' && $row[1] !== 'legacy' && (zfsmScheduleFollowed($zdataset, $jobs)['id'] ?? null) === $job['id']) $pools[explode('/', $zdataset)[0]][] = $zdataset;
+		if (zfsmScheduleSkipped($zdataset, $row) === '' && (zfsmScheduleFollowed($zdataset, $jobs)['id'] ?? null) === $job['id']) $pools[explode('/', $zdataset)[0]][] = $zdataset;
 	}
 	// zfs lists what it can read, and fails for the rest: a dataset's own minds errors naming none, its datasets or one above.
 	if (($listed['code'] ?? 1) === 0) return array($pools, '');
@@ -93,15 +123,20 @@ function zfsmScheduleCovered($listed, $job, $jobs) {
 		return $job['dataset'] === '' || !preg_match("/'([^']+)'/", $line, $name) || zfsmUnderAny($name[1], array($job['dataset'])) || zfsmUnderAny($job['dataset'], array($name[1]));
 	});
 	if ($errors && !$mine) return array($pools, '');
-	return array($pools, $mine ? zfsmKeepFirst($mine) : zfsmCommandError($listed, 'zfs list failed'));
+	return array($pools, zfsmScheduleUnreadWhy($mine, $listed));
 }
 
-// Why no run takes $zdataset, from $listed: gone, read-only, mounted legacy, or not read; '' when one can.
+// Why $listed failed: its first $errors, else its exit code (the rest of its output is datasets and names).
+function zfsmScheduleUnreadWhy($errors, $listed) {
+	return $errors ? zfsmKeepFirst($errors) : zfsmCommandError(array('code' => $listed['code'] ?? 1), 'zfs list failed');
+}
+
+// Why no run takes $zdataset, from $listed: gone, not read, or as zfsmScheduleSkipped says; '' when one can.
 function zfsmScheduleSnapshotNot($zdataset, $listed) {
-	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
-	if ($row === null) return ($listed['code'] ?? 1) === 0 ? $zdataset.' is gone' : $zdataset.' could not be read: '.zfsmCommandError($listed, 'zfs list failed');
-	if ($row[0] === 'on') return $zdataset.' is read-only, as a copy received here is: a snapshot in it stops the next replication into it';
-	return $row[1] === 'legacy' ? $zdataset.' is mounted legacy, as Docker image layers are' : '';
+	list($rows, $errors) = zfsmScheduleListed($listed);
+	$row = $rows[$zdataset] ?? null;
+	if ($row === null) return ($listed['code'] ?? 1) === 0 ? $zdataset.' is gone' : $zdataset.' could not be read: '.zfsmScheduleUnreadWhy($errors, $listed);
+	return zfsmScheduleSkipped($zdataset, $row);
 }
 
 // The record Save makes of what the page sent: None runs at no time and keeps all.
@@ -123,8 +158,8 @@ function zfsmScheduleSnapshotSave($zdataset, $every, $time, $days, $keep, $cfg, 
 	$job = zfsmScheduleSnapshotRecord($zdataset, $every, $time, $days, $keep);
 	$wrong = zfsmScheduleSnapshotWrong($job, $remove);
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');
-	// One read: a dataset's own must be one a run can take, and the answer counts what a schedule that runs takes.
-	$listed = $remove || $every === 'none' ? null : zfsmReadWithin($wait, 'zfs', ZFSM_SCHEDULE_COVERED);
+	// One zfsmScheduleCoverRead: a dataset's own must be one a run can take, and the answer counts what a schedule that runs takes.
+	$listed = $remove || $every === 'none' ? null : zfsmScheduleCoverRead($cfg, $wait);
 	$not = $zdataset === '' || $listed === null ? '' : zfsmScheduleSnapshotNot($zdataset, $listed);
 	if ($not !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$not, 'said' => '');
 	$after = array();
@@ -243,9 +278,10 @@ function zfsmScheduleSnapshotRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_
 
 // What a run took and kept, and whether it had a problem: null when zfs read every pool and the default had no dataset to take.
 function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
-	$listed = zfsmReadWithin($wait, 'zfs', ZFSM_SCHEDULE_COVERED);
+	$listed = zfsmScheduleCoverRead($cfg, $wait);
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
 	if (!$pools) return zfsmScheduleSnapshotNone($job, $listed, $unread);
+	$self = zfsmScheduleSnapshotSelf($job, $listed);
 	$name = zfsmNewSnapshotName($cfg, $now);
 	$taken = 0;
 	$failed = $stayed = array();
@@ -256,8 +292,15 @@ function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
 		$stayed = array_merge($stayed, zfsmScheduleSnapshotKeep($pool, $took, $job['keep']));
 	}
 	$of = $job['dataset'] === '' ? '' : ' ('.$job['dataset'].' and below)';
-	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.($unread !== '' ? '. Not every dataset could be read: '.$unread : '')
-		.($failed ? '. Could not take '.zfsmKeepFirst($failed) : '').($stayed ? '. '.zfsmKeepStayed('Keep', $stayed, 'run') : ''), $unread !== '' || $failed || $stayed);
+	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.($self !== '' ? '. Not taken: '.$self : '')
+		.($unread !== '' ? '. Not every dataset could be read: '.$unread : '').($failed ? '. Could not take '.zfsmKeepFirst($failed) : '')
+		.($stayed ? '. '.zfsmKeepStayed('Keep', $stayed, 'run') : ''), $self !== '' || $unread !== '' || $failed || $stayed);
+}
+
+// Why a dataset's own run, which took datasets below its dataset, did not take that one; '' when it did, was not read, or is the default.
+function zfsmScheduleSnapshotSelf($job, $listed) {
+	$row = zfsmScheduleListed($listed)[0][$job['dataset']] ?? null;
+	return $row === null ? '' : zfsmScheduleSkipped($job['dataset'], $row);
 }
 
 // A run that took nothing: why, and whether that is a problem. The default with nothing to take is only logged; a dataset's own
