@@ -116,6 +116,18 @@ function zfsmCommandPath($command) {
 	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
 }
 
+// $tool (zstd, prlimit) on this server, or null; in a test, only ZFSM_TEST_BIN_DIR's. A run started from a page has no PATH
+// (php-fpm's clear_env), so that falls back to execvp's own.
+function zfsmToolPath($tool) {
+	$test_bin_dir = (string)getenv('ZFSM_TEST_BIN_DIR');
+	$path = (string)getenv('PATH');
+	foreach (explode(':', $test_bin_dir !== '' ? $test_bin_dir : ($path !== '' ? $path : '/bin:/usr/bin')) as $dir) {
+		$found = rtrim($dir, '/').'/'.$tool;
+		if ($dir !== '' && is_file($found) && is_executable($found)) return $found;
+	}
+	return null;
+}
+
 // A read that ran out of its time limit: still a RuntimeException to every catch that knows it as one.
 class ZFSMTimeout extends RuntimeException {}
 

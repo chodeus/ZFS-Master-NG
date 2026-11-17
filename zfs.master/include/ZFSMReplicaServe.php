@@ -15,6 +15,7 @@ function zfsmReplicaVerbArgs($verb, $name) {
 		case 'snapshots': return array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', $name);
 		case 'token': return array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', $name);
 		case 'receive':
+		case 'receive-zstd':
 			$args = array('receive', '-s', '-u', '-o', 'readonly=on');
 			foreach (array_merge(array_keys(zfsmReplicaAreaProps()), array('sharenfs', 'sharesmb', 'snapdev')) as $property) array_push($args, '-x', $property);
 			$args[] = $name;
@@ -62,7 +63,7 @@ function zfsmReplicaSenderName($sender) {
 // What a request may run: array('verb', 'name', 'args'), or array('error' => why it is refused).
 function zfsmReplicaServeCheck($request, $area) {
 	if ($area === null) return array('error' => 'This server does not accept replicas from this key');
-	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|receive)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
+	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
 		return array('error' => 'Not a replication request');
 	}
 	$verb = $match[1];
@@ -147,6 +148,49 @@ function zfsmReplicaRun($args, $io, $first = null) {
 	return proc_close($process);
 }
 
+// receive-zstd's fixed zstd -d, or null without zstd or prlimit. Capped at 256 MiB: it reads xz and lzma too, whose headers may claim gigabytes.
+function zfsmReplicaUnzipCommand() {
+	$prlimit = zfsmToolPath('prlimit');
+	$zstd = zfsmToolPath('zstd');
+	return $prlimit === null || $zstd === null ? null : array($prlimit, '--as='.(256 << 20), '--', $zstd, '-d', '-q', '-c');
+}
+
+// That zstd -d, reading the sender's stream from $io: array(it, its output), or why it can't run.
+function zfsmReplicaUnzip($io) {
+	$command = zfsmReplicaUnzipCommand();
+	if ($command === null) return 'This server needs zstd and prlimit to read a compressed stream';
+	$process = @proc_open($command, array(0 => $io[0], 1 => array('pipe', 'w'), 2 => $io[2]), $pipes, null, null, array('bypass_shell' => true));
+	return is_resource($process) ? array($process, $pipes[1]) : 'Unable to start zstd';
+}
+
+// exists, snapshots or token. A sender with zstd asks exists of the area itself, as no earlier version does (zfsmReplicaTargetZstd):
+// the answer adds whether this one reads it.
+function zfsmReplicaServeAsk($checked, $area, $io) {
+	$code = zfsmReplicaRun($checked['args'], $io);
+	if ($code === 0 && $checked['verb'] === 'exists' && $checked['name'] === $area && zfsmReplicaUnzipCommand() !== null) fwrite($io[1], "zstd\n");
+	return $code;
+}
+
+// A stream's first record (zfsmReplicaStreamCheck), or what came before it ended.
+function zfsmReplicaFirstRecord($input) {
+	$record = '';
+	while (strlen($record) < 312) {
+		$chunk = fread($input, 312 - strlen($record));
+		if ($chunk === false || $chunk === '') break;
+		$record .= $chunk;
+	}
+	return $record;
+}
+
+// Stops zfsmReplicaUnzip's zstd before its output closes: it ignores SIGPIPE, as PHP does, so a write after that would print a broken
+// pipe to the sender.
+function zfsmReplicaUnzipStop($unzip) {
+	if (!is_array($unzip)) return;
+	proc_terminate($unzip[0]);
+	fclose($unzip[1]);
+	proc_close($unzip[0]);
+}
+
 // sshd's forced command (scripts/replica-serve.php): $sender's area and Keep Replicas, from $cfg (loadConfig's).
 function zfsmServeReplicaSettings($request, $cfg, $sender) {
 	return zfsmServeReplica($request, zfsmReplicaArea($cfg['replica_accept'], $sender), null, $cfg['replica_keep']);
@@ -164,20 +208,22 @@ function zfsmServeReplica($request, $area, $io = null, $keep = 0) {
 		fwrite($io[1], "zfsm-replica 1\narea ".$area."\n");
 		return 0;
 	}
-	if ($checked['verb'] !== 'receive') return zfsmReplicaRun($checked['args'], $io);
+	if ($checked['verb'] !== 'receive' && $checked['verb'] !== 'receive-zstd') return zfsmReplicaServeAsk($checked, $area, $io);
 	$slot = zfsmReplicaReceiveSlot($area);
 	if (is_string($slot)) return zfsmReplicaRefuse($slot, $request, $from, $io);
+	$unzip = null;
 	try {
-		$record = '';
-		while (strlen($record) < 312) {
-			$chunk = fread($io[0], 312 - strlen($record));
-			if ($chunk === false || $chunk === '') break;
-			$record .= $chunk;
+		if ($checked['verb'] === 'receive-zstd') {
+			$unzip = zfsmReplicaUnzip($io);
+			if (is_string($unzip)) return zfsmReplicaRefuse($unzip, $request, $from, $io);
+			$io[0] = $unzip[1];
 		}
+		$record = zfsmReplicaFirstRecord($io[0]);
 		$why = zfsmReplicaStreamCheck($record);
 		if ($why !== '') return zfsmReplicaRefuse($why, $request, $from, $io);
 		$code = zfsmReplicaRun($checked['args'], $io, $record);
 	} finally {
+		zfsmReplicaUnzipStop($unzip);
 		zfsmJobUnlock($slot);
 	}
 	zfsmLog('Replication from '.$from.' into '.$checked['name'].($code === 0 ? ' received' : ' failed with exit code '.$code), $code === 0 ? LOG_NOTICE : LOG_ERR);

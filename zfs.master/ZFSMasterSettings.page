@@ -231,6 +231,8 @@ _(Accept Replicas Into)_:
 >
 > That line lets the sender's key only list, check and receive copies inside its own dataset here: it can't destroy, roll back or replace anything, or run anything else. Paste it unchanged: the sender's key on a line without these limits, such as the key alone, can run anything as root here.
 > Copies never mount or show as block devices, and run with setuid, devices and exec off. A quota on this dataset caps the space all copies use. Leave this empty to accept none.
+>
+> When both servers have zstd, as current Unraid does, copies of unencrypted datasets travel compressed with it and land just as they would without; with an earlier version of ZFS Master NG at either end they travel as they are.
 :end
 
 _(Keep Replicas)_:

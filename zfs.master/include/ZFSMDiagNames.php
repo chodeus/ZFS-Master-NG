@@ -144,7 +144,8 @@ function zfsmDiagNamePattern() {
 			.'|(?<resume>(?<![0-9a-f-])\d+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]{16,})'
 			.'|(?<key>\b(?:ssh-(?:ed25519|rsa|dss)|ecdsa-sha2-[\w-]+|sk-[\w-]+@openssh\.com)[ \t]+(?<blob>AAAA[0-9A-Za-z+/]+=*))'
 			.'|(?<query>(?<=[\w/.])\?[\w%.-]+=[^\s"\'<>]*|\b(?:host|referrer|server): ?(?:"[^"]*"|[^\s,]*))'
-			.'|(?<request>zfsm-replica 1 [a-z]+ )(?<hex>[0-9a-f]{2,})'
+			// Any verb, receive-zstd's too: a refusal quotes whatever the sender asked.
+			.'|(?<request>zfsm-replica 1 [a-z][a-z-]* )(?<hex>[0-9a-f]{2,})'
 			.'|(?<since>(?<=changes since )[^)\t\r\n]+)'
 			// A copy on another server is one name inside its area, with nothing to mark it (zfsmReplicaTargetWhere, zfsmReplicatePlan).
 			.'|(?<bare>(?<= to )[^\s/][^/\r\n]*?(?= on server )|(?<=one name with no slash, such as )[^\s/][^/\r\n]*?(?=[\r\n]|\z))'

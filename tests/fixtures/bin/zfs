@@ -133,9 +133,13 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		begin
 		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw" "$(prop "$snap" creation "$(mark "$snap" 3)")"
 		[ "${ZFSM_TEST_SEND_CUT:-0}" = 1 ] || printf 'ZFSMEND\n'
+		# ZFSM_TEST_SEND_PAD: that many bytes more, past a pipe's buffer; a pipe that never breaks costs 10 seconds, not the suite.
+		[ -z "${ZFSM_TEST_SEND_PAD:-}" ] || timeout 10 head -c "$ZFSM_TEST_SEND_PAD" /dev/zero || exit 1
 		exit 0 ;;
 	receive)
 		dest=$last_arg
+		# ZFSM_TEST_RECV_FAIL=early: fails before it reads, as a receive that stops part-way leaves the rest unread.
+		[ "${ZFSM_TEST_RECV_FAIL:-0}" = early ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		stream=$(tail -c +313)
 		header=$(printf '%s\n' "$stream" | head -1)
 		[ -n "$header" ] || { printf 'cannot receive: failed to read from stream\n' >&2; exit 1; }

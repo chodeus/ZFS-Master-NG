@@ -29,36 +29,63 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $k
 	return array('succeeded' => array($zdataset => $said.'; a notification says when it is done'), 'failed' => array());
 }
 
-// Runs zfs send into the target's receive (zfsmReplicaTargetReceive), the stream passing straight between them; reports the bytes
-// sent, the first error that says why, and 'lost' when the connection there ended it (zfsmReplicaTargetLost).
+// Starts $steps in order, each reading the one before: array(the processes, the output to read from each), or the step that didn't start.
+function zfsmReplicateStart($steps) {
+	$processes = $streams = array();
+	$input = array('file', '/dev/null', 'r');
+	foreach ($steps as $side => $command) {
+		$last = $side === 'receive';
+		$pipes = array();
+		$process = @proc_open($command, array(0 => $input, 1 => array('pipe', 'w'), 2 => $last ? array('redirect', 1) : array('pipe', 'w')), $pipes, null, null, array('bypass_shell' => true));
+		// Only the two steps a pipe joins may hold it: with a copy here, a step whose reader stopped would wait, not fail.
+		if (is_resource($input)) fclose($input);
+		if (!is_resource($process)) {
+			foreach ($processes as $started) proc_terminate($started);
+			foreach ($streams as $stream) fclose($stream);
+			foreach ($processes as $started) proc_close($started);
+			return $side;
+		}
+		$processes[$side] = $process;
+		$streams[$side] = $last ? $pipes[1] : $pipes[2];
+		if (!$last) $input = $pipes[1];
+	}
+	return array($processes, $streams);
+}
+
+// Why a stream failed, its first line: ssh's own (zfsmReplicaTargetLost), else receive's unless only a short stream, else send's, else
+// zstd's, else receive's when it failed, else send's; send and zstd fail on a broken pipe once another step fails. array(it, whether ssh's).
+function zfsmReplicateReason($target, $codes, $errors) {
+	$receive_failed = $codes['receive'] !== 0 && trim($errors['receive']) !== '' && preg_match('/failed to read from stream|incomplete stream|^Not a send stream$/im', $errors['receive']) !== 1;
+	$failed = function($side) use ($codes, $errors) {
+		return ($codes[$side] ?? 0) !== 0 && trim($errors[$side]) !== '' && stripos($errors[$side], 'broken pipe') === false;
+	};
+	$lost = zfsmReplicaTargetLost($target, $codes['receive'], $errors['receive']);
+	$side = $receive_failed ? 'receive' : ($failed('send') ? 'send' : ($failed('zstd') ? 'zstd' : ($codes['receive'] !== 0 ? 'receive' : 'send')));
+	return array(trim(strtok(trim($lost ?? $errors[$side])."\n", "\n")), $lost !== null);
+}
+
+// Runs zfs send into the target's receive (zfsmReplicaTargetReceive), through any zstd step, the stream passing straight between them;
+// reports the bytes sent, the first error that says why, and 'lost' when the connection there ended it (zfsmReplicaTargetLost).
 function zfsmReplicateStream($plan, $zdataset, $target) {
 	$zfs = zfsmCommandPath('zfs');
 	if ($zfs === null) return array('code' => 127, 'bytes' => 0, 'errors' => 'zfs must come from ZFSM_TEST_BIN_DIR in a test');
-	$options = array('bypass_shell' => true);
-	$send_pipes = $receive_pipes = array();
-	$send = @proc_open(array_merge(array($zfs), zfsmReplicateSendArgs($plan)), array(0 => array('file', '/dev/null', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $send_pipes, null, null, $options);
-	if (!is_resource($send)) return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start zfs send');
-	$receive = @proc_open(zfsmReplicaTargetReceive($target, $plan), array(0 => $send_pipes[1], 1 => array('pipe', 'w'), 2 => array('redirect', 1)), $receive_pipes, null, null, $options);
-	// Only send and receive may hold the stream: a copy left here would keep receive waiting after send ends.
-	fclose($send_pipes[1]);
-	if (!is_resource($receive)) {
-		proc_terminate($send);
-		fclose($send_pipes[2]);
-		proc_close($send);
-		return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start zfs receive');
-	}
-	$streams = array('send' => $send_pipes[2], 'receive' => $receive_pipes[1]);
+	$steps = array('send' => array_merge(array($zfs), zfsmReplicateSendArgs($plan)));
+	$zstd = zfsmReplicaTargetZstdStep($target, $plan);
+	if ($zstd !== null) $steps['zstd'] = $zstd;
+	$steps['receive'] = zfsmReplicaTargetReceive($target, $plan);
+	$started = zfsmReplicateStart($steps);
+	if (is_string($started)) return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start '.array('send' => 'zfs send', 'zstd' => 'zstd', 'receive' => 'zfs receive')[$started]);
+	list($processes, $streams) = $started;
 	foreach ($streams as $stream) stream_set_blocking($stream, false);
 	$bytes = 0;
-	$errors = array('send' => '', 'receive' => '');
-	$partial = array('send' => '', 'receive' => '');
+	$errors = $partial = array_fill_keys(array_keys($streams), '');
 	$reported = microtime(true);
 	$select_failures = 0;
 	while (true) {
 		$open = array_values(array_filter($streams, function($stream) { return !feof($stream); }));
 		if (!$open) break;
 		$write = $except = null;
-		// A signal can interrupt the wait: the two zfs go on, and so does the reading, unless it keeps failing.
+		// A signal can interrupt the wait: the steps go on, and so does the reading, unless it keeps failing.
 		if (@stream_select($open, $write, $except, 1) === false) {
 			if (++$select_failures > 50) break;
 			usleep(100000);
@@ -66,7 +93,7 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 		}
 		$select_failures = 0;
 		foreach ($open as $stream) {
-			$side = $stream === $streams['send'] ? 'send' : 'receive';
+			$side = array_search($stream, $streams, true);
 			$lines = explode("\n", $partial[$side].(string)fread($stream, 65536));
 			$partial[$side] = array_pop($lines);
 			foreach ($lines as $line) {
@@ -85,15 +112,10 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 		if (trim($partial[$side]) !== '' && !preg_match('/^[0-9]{2}:[0-9]{2}:[0-9]{2}\t/', $partial[$side])) $errors[$side] .= $partial[$side];
 		fclose($stream);
 	}
-	$send_code = proc_close($send);
-	$receive_code = proc_close($receive);
-	// One side failing fails the other: send on a broken pipe or a signal, receive on a short stream ("Not a send stream" if empty).
-	// The reason: ssh's own failure (zfsmReplicaTargetLost), else receive's unless only that, else send's; its first line only.
-	$receive_failed = $receive_code !== 0 && trim($errors['receive']) !== '' && preg_match('/failed to read from stream|incomplete stream|^Not a send stream$/im', $errors['receive']) !== 1;
-	$send_failed = $send_code !== 0 && trim($errors['send']) !== '' && stripos($errors['send'], 'broken pipe') === false;
-	$lost = zfsmReplicaTargetLost($target, $receive_code, $errors['receive']);
-	$why = $lost ?? ($receive_failed || (!$send_failed && $receive_code !== 0) ? $errors['receive'] : $errors['send']);
-	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")), 'lost' => $lost !== null);
+	$codes = array();
+	foreach ($processes as $side => $process) $codes[$side] = proc_close($process);
+	list($why, $lost) = zfsmReplicateReason($target, $codes, $errors);
+	return array('code' => $codes['send'] !== 0 ? $codes['send'] : $codes['receive'], 'bytes' => $bytes, 'errors' => $why, 'lost' => $lost);
 }
 
 // After a run: this destination's bookmark at the snapshot it now holds, and its older ones removed. Returns what went wrong, or ''.
@@ -152,6 +174,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			if ($taken['failed']) return $not_started(implode('; ', $taken['failed']));
 		}
 		$target = zfsmReplicaTargetOpen($server);
+		$target['zstd'] = zfsmReplicaTargetZstd($target);
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null));
 			if (!$plan['can_proceed']) return $refused($plan['error']);

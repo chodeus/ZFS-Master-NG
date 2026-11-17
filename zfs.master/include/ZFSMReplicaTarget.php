@@ -64,10 +64,33 @@ function zfsmReplicaTargetSnapshots($target, $zdest) {
 	return $answer['code'] === 0 ? array(zfsmReplicaMarksIn($zdest, $answer['output']), '') : array(null, $answer['error']);
 }
 
+// zstd's options for a stream to a server: its default level, on every core.
+define('ZFSM_REPLICA_ZSTD', array('-q', '-c', '-3', '-T0'));
+
+// zstd here when the stream to $target goes through it: that server's answer to exists on its area says it reads zstd, as one with
+// zstd and prlimit does (zfsmServeReplica). Else null, a failed ask included: the stream goes as it is.
+function zfsmReplicaTargetZstd($target) {
+	if (($target['server'] ?? '') === '' || isset($target['error'])) return null;
+	$zstd = zfsmToolPath('zstd');
+	if ($zstd === null) return null;
+	$answer = zfsmReplicaAsk($target, zfsmReplicaRequest('exists', $target['area']));
+	return $answer['code'] === 0 && in_array('zstd', zfsmLines($answer['output']), true) ? $zstd : null;
+}
+
+// zstd's step in $plan's stream to $target, or null: none without it at both ends, or for a raw stream, which it can't make smaller.
+function zfsmReplicaTargetZstdStep($target, $plan) {
+	return ($target['zstd'] ?? null) === null || $plan['raw'] ? null : array_merge(array($target['zstd']), ZFSM_REPLICA_ZSTD);
+}
+
+// The checker's receive for $target's stream: receive-zstd when it goes through zstd.
+function zfsmReplicaTargetReceiveRequest($target, $plan) {
+	return zfsmReplicaRequest(zfsmReplicaTargetZstdStep($target, $plan) !== null ? 'receive-zstd' : 'receive', $plan['dest']);
+}
+
 // The receive a plan's stream goes into (zfsmReplicateStream): zfs here, or the checker's receive on the connection.
 function zfsmReplicaTargetReceive($target, $plan) {
 	if ($target['server'] === '') return array_merge(array(zfsmCommandPath('zfs')), zfsmReplicateReceiveArgs($plan));
-	return array_merge(array(zfsmCommandPath('ssh')), zfsmReplicaSshArgs($target['remote'], $target['files'], zfsmReplicaRequest('receive', $plan['dest'])));
+	return array_merge(array(zfsmCommandPath('ssh')), zfsmReplicaSshArgs($target['remote'], $target['files'], zfsmReplicaTargetReceiveRequest($target, $plan)));
 }
 
 // Why ssh, not the checker, ended that receive (exit 255): what ssh said, or that the connection dropped, as ssh riding it says
@@ -77,10 +100,11 @@ function zfsmReplicaTargetLost($target, $code, $error) {
 	return trim($error) !== '' ? $error : 'The connection to '.$target['server'].' dropped';
 }
 
-// That receive as the log shows it.
+// That receive as the log shows it, after any zstd.
 function zfsmReplicaTargetReceiveText($target, $plan) {
 	if ($target['server'] === '') return 'zfs '.implode(' ', zfsmReplicateReceiveArgs($plan));
-	return 'ssh '.$target['remote']['host'].' '.zfsmReplicaRequest('receive', $plan['dest']);
+	$zstd = zfsmReplicaTargetZstdStep($target, $plan);
+	return ($zstd !== null ? 'zstd '.implode(' ', array_slice($zstd, 1)).' | ' : '').'ssh '.$target['remote']['host'].' '.zfsmReplicaTargetReceiveRequest($target, $plan);
 }
 
 // A request to the checker: its verb, and the dataset as hex.
