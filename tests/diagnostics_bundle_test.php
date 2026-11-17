@@ -119,6 +119,9 @@ $log_lines = array(
 	'Replication of tank/CanarySrc to canarytyped/CanaryDest not started: The copy goes inside canarytyped/CanaryDest, which doesn\'t exist',
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
+	// Snapshot Every Dataset: the first few it could not take, each with why, and a pool whose snapshots its Keep could not read.
+	"Schedule 0a1b2c3f: Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/CanarySnapSched@CanaryPrefix_1 (cannot create snapshot 'tank/CanarySnapSched@CanaryPrefix_1': out of space); "
+		."tank/CanaryDs One@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryDs One@CanaryPrefix_1': dataset is busy). Keep could not remove the snapshots of tank (they could not be read: cannot open 'tank': Input/output error); the next run tries again",
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld (past the newest 3 its schedule keeps)',
 	// Snapshots Prefix can put any words in a snapshot's name, Keep's own among them.
@@ -138,7 +141,8 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $send_ke
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519', "CanaryPrivateKey\n");
 	// Schedules here and to a server not in remotes.json, and a record the plugin can't use: only their collector names them.
 	$put('/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('id' => '0a1b2c3d', 'dataset' => 'tank/CanaryDs One', 'dest' => 'backup/CanarySchedCopy', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0),
-		array('id' => '0a1b2c3e', 'dataset' => 'tank/CanarySchedSrc', 'dest' => 'CanarySchedRemote', 'server' => 'canaryschedserver', 'every' => 'hourly', 'hour' => 0, 'day' => 0), array('id' => 'zz', 'dataset' => 'tank/CanaryOdd'))));
+		array('id' => '0a1b2c3e', 'dataset' => 'tank/CanarySchedSrc', 'dest' => 'CanarySchedRemote', 'server' => 'canaryschedserver', 'every' => 'hourly', 'hour' => 0, 'day' => 0), array('id' => 'zz', 'dataset' => 'tank/CanaryOdd'),
+		array('id' => '0a1b2c3f', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 2))));
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $send_key." zfs.master@CanaryNas\n");
 	$put('/boot/config/ident.cfg', "NAME=\"CanaryNas\"\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
@@ -276,6 +280,12 @@ $pfx = "tank/$ds@".zfsmDiagToken('CanaryPfx: cannot destroy private 2');
 has("takes it off: tank/$ds@".zfsmDiagToken('CanaryKeepHeld')." (cannot release hold from snapshot ?tank/$ds@".zfsmDiagToken('CanaryKeepHeld')."?: permission denied); $pfx (cannot release hold from snapshot ?$pfx?: permission denied)\n", $log,
 	'a hold left on keeps zfs\'s why, a name with Keep\'s words too');
 has("can take it first: tank/$ds@".zfsmDiagToken('CanarySnapA')." (cannot hold snapshot ?tank/$ds@".zfsmDiagToken('CanarySnapA')."?: permission denied).\n", $log, 'and one not put on');
+// Snapshot Every Dataset's run: each snapshot it could not take is its dataset's token and the snapshot's, and every why stays;
+// in running text its id is a word the plugin doesn't use, so a token too.
+$snap = zfsmDiagToken('CanaryPrefix_1');
+has("Schedule ".zfsmDiagToken('0a1b2c3f').": Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/".$token('CanarySnapSched')."@$snap (cannot create snapshot ?tank/".$token('CanarySnapSched')."@$snap?: out of space); tank/$ds@$snap (cannot create snapshot ?tank/$ds@$snap?: dataset is busy). "
+	."Keep could not remove the snapshots of tank (they could not be read: cannot open ?tank?: Input/output error); the next run tries again\n", $log, 'a snapshot run\'s line');
+has("\n0a1b2c3f\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $files['plugin/replication-schedules.txt'], 'its row');
 // Keep Replicas on a copy received here, which the next receive tries again.
 $in = 'tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/';
 has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (past the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');

@@ -403,9 +403,9 @@ same(1, preg_match('~\tevery day at 03:07\t7\t0$~m', $found('zfsmDiagReplicaSche
 same(1, preg_match('~\tevery Monday and Friday at 03:07\t0\t0$~m', $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array(array('days' => array(1, 5), 'keep' => 0) + zfsmScheduleUpgrade($job)))))[1]),
 	'and one saved with its days says them');
 same(false, strpos($text, 'private'), 'no name of the copy');
-same(array('replication schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'replication schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
+same(array('schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
 	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');
-same(array('replication schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
+same(array('schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
 	$scheduled()($root);
 	mkdir($work.'/jobs/schedule', 0700, true);
 	file_put_contents($work.'/jobs/schedule/0a1b2c3d.json', '{"failures":3}');
@@ -414,6 +414,31 @@ list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(true, tru
 same(array('schedules.json is not a list of schedules, so none run: '.$root.'/boot/config/plugins/zfs.master/schedules.json'), $findings, 'a list of schedules that is no list');
 has("(schedules.json is not a list of schedules)\n", $text, 'is not "no schedules"');
 same(array('1 record(s) in schedules.json are not schedules the plugin can use'), $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array($job, array('id' => 'zz')))))[0], 'a record the plugin does not use');
+// Snapshot Every Dataset: its row, and how many datasets it takes now (on the fake's small pool), read under a limit of its own.
+$every = array('id' => '0b0b0b0b', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 2);
+$snapped = function($root) use ($every) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every)), FILE_APPEND);
+};
+@mkdir($work.'/pool');
+file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\nbackup/copy\tfilesystem\n");
+file_put_contents($work.'/pool/props', "backup/copy\treadonly\ton\n");
+putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', $snapped);
+same(array(array(), false), array($findings, $GLOBALS['zfsm_diag']['unread']), 'Snapshot Every Dataset with its lines in both has no findings');
+has("records in schedules.json the plugin does not use: 0\ndatasets Snapshot Every Dataset takes now: 2\n\n", $text, 'how many datasets it takes, read-only ones left out');
+has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'its row');
+putenv('ZFSM_TEST_COVER_FAIL=1');
+$text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+same(true, $GLOBALS['zfsm_diag']['unread'], 'a count that can\'t be read marks the file (zfsmDiagRead)');
+has("datasets Snapshot Every Dataset takes now: (could not be read: cannot iterate filesystems: Input/output error)\n", $text, 'and says why');
+putenv('ZFSM_TEST_COVER_FAIL=tank/data');
+$text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+has("datasets Snapshot Every Dataset takes now: 1 (not every dataset could be read: cannot open 'tank/data': Input/output error)\n", $text, 'one it can\'t read: the rest counted, and it named');
+putenv('ZFSM_TEST_REPL_DIR');
 // A flash drive's read that fails once: plain files through this wrapper, whose one open of $fail fails.
 class ZfsmFlakyFile {
 	public static $fail = '';
@@ -511,6 +536,16 @@ has("== zpool status -p tank\npool: tank\n", file_get_contents($work.'/hung/zfs/
 has("\ttimed out\tzfs list -H -o name -t filesystem,volume -r tank\n", file_get_contents($work.'/hung/zfs/timings.txt'), 'the read that timed out is in the timings');
 same("skipped, because zfs list timed out on a pool\n", file_get_contents($work.'/hung/plugin/inventory.json.txt'), 'the Main tab\'s read asks about every pool, so it is skipped too');
 same('datasets: not read on every pool', explode("\n", strstr(file_get_contents($work.'/hung/summary.txt'), 'datasets: '))[0], 'a count that could not be read is not 0');
+// Snapshot Every Dataset's count: a zfs that hangs costs that line, not the rest of its file.
+$build();
+$snapped($root);
+putenv('ZFSM_TEST_LIST_HANG=1');
+zfsmDiagRun($work.'/hung-schedules', $context(), array(array('plugin/replication-schedules.txt', 10, 'zfsmDiagReplicaSchedules')));
+putenv('ZFSM_TEST_LIST_HANG');
+same(array('plugin/replication-schedules.txt', 'timed out'), array_slice(explode("\t", file($work.'/hung-schedules/collectors.txt', FILE_IGNORE_NEW_LINES)[1]), 0, 2), 'the count\'s read times out');
+$text = file_get_contents($work.'/hung-schedules/plugin/replication-schedules.txt');
+has("datasets Snapshot Every Dataset takes now: (could not be read: zfs timed out)\n", $text, 'and says so');
+has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'with the rest of the file');
 
 // A read its collector's limit cut short says nothing about the pool; one that ran its whole limit does.
 $build();
