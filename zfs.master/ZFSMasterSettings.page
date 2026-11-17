@@ -93,6 +93,7 @@ _(Destructive Mode)_:
 :zc_settings_destructive_mode_plug:
 > **Yes** adds Rename, Edit and Destroy to dataset menus, and Convert and Delete to folder menus.
 > It also lets a rollback remove newer snapshots, and a snapshot delete include child datasets. Each action still asks first.
+> Snapshots to keep and Keep Replicas remove old snapshots by their own rules whatever this is set to.
 :end
 
 _(Debug Log)_:
@@ -524,7 +525,7 @@ function zfsmCheckAccept() {
 }
 $('input[name="replica_accept"]').on('change', zfsmCheckAccept);
 zfsmCheckAccept();
-// Keep Replicas: once the server says it can't read the value (all stay), Apply is refused; one sent sooner saves it, and the reload names it.
+// Keep Replicas, checked as it is typed: once the server says it can't read the value (all stay), Apply is refused; one sent sooner saves it, and the reload names it.
 function zfsmCheckKeep() {
 	var input = $('input[name="replica_keep"]');
 	var value = input.val();
@@ -538,5 +539,5 @@ function zfsmCheckKeep() {
 		input[0].setCustomValidity(answer.warning);
 	});
 }
-$('input[name="replica_keep"]').on('change', zfsmCheckKeep);
+$('input[name="replica_keep"]').on('input', zfsmCheckKeep);
 </script>

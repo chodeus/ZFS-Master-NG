@@ -136,10 +136,11 @@ accept('backup/replicas').done({valid: true, missing: false});
 older.done({valid: true, missing: true});
 assert.equal(text('zfsm-replica-accept-warning'), '', 'the older answer does not replace the newer one');
 
-// Keep Replicas: what the server can't read is said, and Apply refused on it once it answers, until the field changes; empty asks nothing.
+// Keep Replicas, asked as it is typed (input, not change, which waits for the field to lose the focus, often to Apply itself): what the server can't read is said,
+// and Apply refused on it once it answers, until the field changes; empty asks nothing.
 const keepIn = $('input[name="replica_keep"]')[0];
 const keepAsk = value => {
-  $(keepIn).val(value).trigger('change');
+  $(keepIn).val(value).trigger('input');
   return posts.pop();
 };
 const unread = '"7d 7d" is not read, so all stay: give a number up to 9999';
@@ -156,7 +157,7 @@ keepAsk('7d').done({warning: ''});
 keepOlder.done({warning: unread});
 assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], ['', true], 'the older answer does not replace the newer one');
 keepAsk('3x').done({warning: unread});
-$(keepIn).val(' ').trigger('change');
+$(keepIn).val(' ').trigger('input');
 assert.deepEqual([posts.length, text('zfsm-replica-keep-warning'), keepIn.validity.valid], [0, '', true], 'emptied, it asks nothing and refuses nothing');
 
 // Keep Replicas, its tag as the page writes it: the browser refuses Apply on what is no number or periods, at once; the server check above
