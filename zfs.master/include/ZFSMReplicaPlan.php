@@ -128,6 +128,7 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	if (!$missing) {
 		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
 		if ($held === null) return $refuse('The snapshots of '.$where.' could not be read'.$because($why));
+		if (!$held && zfsmReplicaHolder($target, $zdest)) return $refuse($where.' only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them');
 		if (!$held) return $refuse($where.' already exists and holds no snapshot, so it can\'t be updated without destroying it');
 		$newest = end($held);
 		$base = null;

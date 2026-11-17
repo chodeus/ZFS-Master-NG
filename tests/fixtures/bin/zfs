@@ -99,6 +99,15 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			exit 0 ;;
 		esac
 		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		# -o source: local where it was set, else inherited from the nearest dataset above that set it, as a user property is.
+		if [ "$5" = source ]; then
+			d=$last_arg
+			while :; do
+				awk -F'\t' -v n="$d" -v p="$6" '$1 == n && $2 == p { f = 1 } END { exit !f }' "$R/props" && { if [ "$d" = "$last_arg" ]; then echo local; else echo "inherited from $d"; fi; exit 0; }
+				[ "${d%/*}" = "$d" ] && { echo -; exit 0; }
+				d=${d%/*}
+			done
+		fi
 		if [ "$5" = property,value ]; then for p in $(printf '%s' "$6" | tr , ' '); do printf '%s\t%s\n' "$p" "$(prop "$last_arg" "$p" -)"; done; exit 0; fi
 		case "$6" in
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
@@ -148,6 +157,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = changes ] && [ "$base" != - ] && [ "$base" != RESUME ] && { printf 'cannot receive incremental stream: out of space\n' >&2; exit 1; }
 		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		# zfs makes a new copy only inside a dataset that exists.
+		exists "$dest" || exists "${dest%/*}" || { printf "cannot receive new filesystem stream: parent of '%s' does not exist\n" "$dest" >&2; exit 1; }
 		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
 			printf 'cannot receive incremental stream: most recent snapshot of %s does not match incremental source\n' "$dest" >&2; exit 1
 		fi

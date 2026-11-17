@@ -130,6 +130,10 @@ $log_lines = array(
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnSan not taken: tank/CanaryOwnSan has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings',
 	'Schedule 0a1b2c3e: Scheduled snapshots of 1 of 1 dataset(s) (tank/CanaryOwnSelf and below) taken. Not taken: tank/CanaryOwnSelf has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnOff not taken: its pool is not imported',
+	// Replicate Every Dataset: how many it copied, those waiting for the copy above them, a holder it could not make, one in a copy's place.
+	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/CanaryWaitA, tank/CanaryWait B, tank/CanaryWaitC, and 2 more). '
+		."The dataset to hold the copies below tank/CanaryUnder/tank/CanaryHold could not be made: cannot create 'tank/CanaryUnder/tank/CanaryHold': out of space",
+	'Replication of tank/CanaryCpSrc to tank/CanaryUnder/tank/CanaryCpSrc not started: tank/CanaryUnder/tank/CanaryCpSrc only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them',
 	'ZFS Dataset Rename: Snapshot schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules',
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld (not among the newest 3, 7 daily and 4 weekly its schedule keeps)',
@@ -306,6 +310,13 @@ has($own.'of tank/'.$token('CanaryOwnSan').' not taken: tank/'.$token('CanaryOwn
 has($own.'of 1 of 1 dataset(s) (tank/'.$token('CanaryOwnSelf').' and below) taken. Not taken: tank/'.$token('CanaryOwnSelf')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool\n",
 	$log, 'and one that took those below but not its own');
 has($own.'of tank/'.$token('CanaryOwnOff')." not taken: its pool is not imported\n", $log, 'of one whose pool is not imported');
+$under = 'tank/'.$token('CanaryUnder');
+// Below Copy Under a copy's path names its pool again, as a dataset there: a token too.
+$cp = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryCpSrc');
+$hold = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryHold');
+has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryWaitA').', tank/'.$token('CanaryWait B').', tank/'.$token('CanaryWaitC').', and 2 more). '
+	."The dataset to hold the copies below $hold could not be made: cannot create ?$hold?: out of space\n", $log, 'a run of copies under a dataset: each name a token, the plugin\'s words in clear');
+has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');
 has('ZFS Dataset Rename: Snapshot schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
 	$log, 'a rename whose schedules were not moved');
 // Keep Replicas on a copy received here, which the next receive tries again.
@@ -438,7 +449,7 @@ same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/lo
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
 	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock'
 	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts'
-	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm /boot/config/plugins/zfs.master/schedules.json /boot/config/plugins/zfs.master/schedules.cron /var/run/zfs.master.schedule/0a1b2c3d.json /var/run/zfs.master.schedule/settings.lock';
+	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm /boot/config/plugins/zfs.master/schedules.json /boot/config/plugins/zfs.master/schedules.cron /var/run/zfs.master.schedule/0a1b2c3d.json /var/run/zfs.master.schedule/0a1b2c3d.lock /var/run/zfs.master.schedule/settings.lock';
 same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
 // In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
 same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');

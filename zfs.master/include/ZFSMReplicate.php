@@ -137,12 +137,13 @@ function zfsmReplicaMark($zdataset, $plan) {
 // The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
-// $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone.
+// $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
+// 'tag' for a schedule of many datasets (zfsmScheduleCopiesRun), which names its holds and Keep instead of the copy's.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
 // them $keep keeps stay (0: all, zfsmKeepPrune).
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null) {
 	$title = 'ZFS Replication';
-	$tag = zfsmKeepTag($server, $zdest);
+	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
 	$notify = $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); };
 	$to = zfsmReplicaTargetWhere(array('server' => $server), $zdest);
 	$not_started = function($why) use ($zdataset, $to, $title, $started, $notify) {
@@ -157,12 +158,13 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		return $not_started($why);
 	};
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
-	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.($schedule !== null ? '; remove its schedule in Settings' : '') : 'its guid could not be read');
+	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.($schedule !== null && !isset($schedule['tag']) ? '; remove its schedule in Settings' : '') : 'its guid could not be read');
 	$lock = zfsmJobLock($lock_file);
 	for ($until = time() + ($schedule['wait'] ?? 0); $lock === false && time() < $until; $lock = zfsmJobLock($lock_file)) sleep(max(1, min(10, $until - time())));
 	if ($lock === null) return $not_started('its lock file could not be opened');
 	// No page starts a scheduled run again: one that waited in vain is a problem.
-	if ($lock === false && $schedule !== null) return $not_started('another replication of this dataset was still running after this run waited '.(int)ceil(($schedule['wait'] ?? 0) / 60).' minute(s) for it');
+	$waited = (int)ceil(($schedule['wait'] ?? 0) / 60);
+	if ($lock === false && $schedule !== null) return $not_started('another replication of this dataset was still running'.($waited > 0 ? ' after this run waited '.$waited.' minute(s) for it' : ', and the run had no time left to wait for it'));
 	// Another run holds it: two starts at once leave one replication, and that one sends the notification.
 	if ($lock === false) {
 		zfsmLog('Replication of '.$zdataset.' to '.$to.' not started: another replication of this dataset is running', LOG_NOTICE);

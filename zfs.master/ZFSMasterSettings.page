@@ -15,7 +15,8 @@ $zfsm_saved = parse_plugin_cfg($plugin, true);
 $zfsm_cfg = loadConfig($zfsm_saved);
 // Keep Replicas' field shows what applies (empty: all), so a saved value it can't read never holds up Apply; the warning names it.
 $zfsm_keep_warning = zfsmKeepReplicaWarning((string)($zfsm_saved['general']['replica_keep'] ?? ''));
-$zfsm_snapsched = zfsmScheduleSnapshotShown();
+$zfsm_snapsched = zfsmScheduleShown();
+$zfsm_copysched = zfsmScheduleShown('zfsmScheduleCopiesUnder');
 $zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
 
 ?>
@@ -332,13 +333,47 @@ _(Snapshots To Keep)_:
 : <input type="text" id="zfsm-snapsched-keep" maxlength="40" placeholder="all" value="<?=zfsmHtml(zfsmKeepField($zfsm_snapsched['keep']))?>">
 
 &nbsp;
-: <input type="button" id="zfsm-snapsched-save" value="_(Save)_" onclick="zfsmSnapshotsSave()"> <span id="zfsm-snapsched-status" aria-live="polite"></span>
+: <input type="button" id="zfsm-snapsched-save" value="_(Save)_" onclick="zfsmEverySave('zfsm-snapsched', 'schedulesnapshots')"> <span id="zfsm-snapsched-status" aria-live="polite"></span>
+
+_(Replicate Every Dataset)_:
+: <select id="zfsm-copysched-every">
+	<?=mk_option($zfsm_copysched['every'], 'off', _('Off'))?>
+	<?=mk_option($zfsm_copysched['every'], 'hourly', _('Every hour'))?>
+	<?=mk_option($zfsm_copysched['every'], 'days', _('On days of the week'))?>
+  </select>
+
+:zc_settings_copysched_plug:
+> Copies every dataset in every pool into the dataset you name under **Copy Under**, on this server, each copy named for its dataset: with `backup`, `cache/appdata` is copied to `backup/cache/appdata`. It runs every hour at a minute of its own, or at the time you set on the days you tick (all seven: every day), in this server's time zone. Save changes it, and the answer says how many datasets it copies. Off stops it; the copies and the snapshots it made stay.
+>
+> - Each run takes a new snapshot of each dataset, named by **Snapshots Pattern**, and sends the changes since the last one, as a copy's schedule does (see **Schedules** below): the first run sends each dataset in full. The copies are read-only and not mounted.
+> - It leaves out the datasets in the pool it copies into, and the ones Snapshot Every Dataset leaves out: read-only datasets, such as copies received here, those mounted `legacy`, and those with Sanoid or Syncoid snapshots. It also leaves out a dataset whose own copy schedule (**Actions**, **Replicate** in the Main tab) makes that same copy.
+> - A dataset's copy goes after the copy of the dataset above it. Where the dataset above one is not copied, an empty dataset, read-only and not mounted, is made in its place to hold the copies below it. When the copy of the dataset above one is missing because it failed, that one waits for the next run.
+> - **Snapshots To Keep**: for each dataset, as for a copy's schedule: only the snapshots this schedule took that it keeps stay, on the dataset and in its copy. Empty keeps all.
+> - It and a snapshot schedule or copy's schedule of the same dataset can't start in the same minute: saving either one says so.
+> - A run waits for another replication of a dataset that is still sending; its waits add up to 55 minutes at most. A dataset that can't start in that time is skipped, and counts as a problem.
+> - Each run sends one notification at most: what it copied and its first problems. The first run with a problem sends it; later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so. The log has each dataset's replication.
+:end
+
+_(Copy Under)_:
+: <input type="text" id="zfsm-copysched-under" maxlength="255" placeholder="backup" value="<?=zfsmHtml(rtrim($zfsm_copysched['dest'], '/'))?>">
+
+_(Days)_:
+: <span id="zfsm-copysched-days" role="group" aria-label="Days"><?php foreach (array(1, 2, 3, 4, 5, 6, 0) as $day): ?><label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="zfsm-copysched-day" value="<?=$day?>"<?=in_array($day, $zfsm_copysched['days'], true) ? ' checked' : ''?>> <?=substr(ZFSM_SCHEDULE_DAYS[$day], 0, 3)?></label><?php endforeach; ?></span>
+
+_(Starts At)_:
+: <input type="time" id="zfsm-copysched-time" value="<?=sprintf('%02d:%02d', $zfsm_copysched['hour'], $zfsm_copysched['minute'])?>">
+
+_(Snapshots To Keep)_:
+: <input type="text" id="zfsm-copysched-keep" maxlength="40" placeholder="all" value="<?=zfsmHtml(zfsmKeepField($zfsm_copysched['keep']))?>">
+
+&nbsp;
+: <input type="button" id="zfsm-copysched-save" value="_(Save)_" onclick="zfsmEverySave('zfsm-copysched', 'schedulecopies')"> <span id="zfsm-copysched-status" aria-live="polite"></span>
 
 _(Schedules)_:
 : <span id="zfsm-schedules"><?=zfsmSchedulesHtml($zfsm_cfg)?></span> <span id="zfsm-schedules-status" style="color:#e22828"></span>
 
 :zc_settings_schedules_plug:
-> Snapshot Every Dataset, set above, each dataset's own snapshot schedule (set under **Actions**, **Schedules** in the Main tab; Remove here sets it back to Default), and the replications that run on their own. To add one of those, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again every hour at a minute of its own, or at the time you set on the days you tick (all seven: every day), in this server's time zone. This list shows when.
+> Snapshot Every Dataset and Replicate Every Dataset, set above, each dataset's own snapshot schedule (set under **Actions**, **Schedules** in the Main tab; Remove here sets it back to Default), and the replications that run on their own. To add one of those, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again every hour at a minute of its own, or at the time you set on the days you tick (all seven: every day), in this server's time zone. This list shows when.
 >
 > - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. If the run before it stopped part-way, it carries that on first.
 > - **Snapshots to keep** (set in Replicate; Remove the schedule and add it again to change it): from its second run on, once a run lands, only those it keeps of the snapshots this copy's schedules took stay, as **Snapshots To Keep** above reads it (such as `24 7d 4w 12m`), up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned, there or here, stays on both. Snapshots made by hand, by Snapshot Every Dataset or by a schedule of another copy are never counted or removed. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them, unless that server's **Keep Replicas** keeps fewer. Empty keeps all.
@@ -482,28 +517,34 @@ function zfsmScheduleRemove(id) {
 		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
 }
-// Snapshot Every Dataset: Days and Starts At for days of the week, Snapshots To Keep for any repeat.
-function zfsmSnapshotsSync() {
-	var every = $('#zfsm-snapsched-every').val();
+// Snapshot and Replicate Every Dataset, by their rows' id prefix: Days and Starts At for days of the week, the rest for any repeat.
+function zfsmEverySync(prefix) {
+	var every = $('#' + prefix + '-every').val();
 	// Not .toggle(): jQuery 2 (Unraid 6.9) writes display:block over the theme's own display.
 	var show = function(id, shown) { var dd = $(id).closest('dd'); dd.add(dd.prev('dt')).css('display', shown ? '' : 'none'); };
-	show('#zfsm-snapsched-days', every === 'days');
-	show('#zfsm-snapsched-time', every === 'days');
-	show('#zfsm-snapsched-keep', every !== 'off');
+	show('#' + prefix + '-days', every === 'days');
+	show('#' + prefix + '-time', every === 'days');
+	show('#' + prefix + '-keep', every !== 'off');
+	show('#' + prefix + '-under', every !== 'off');
 }
-function zfsmSnapshotsSave() {
+function zfsmEverySave(prefix, cmd) {
 	// Off while it runs: a second click would save the same again.
-	var button = $('#zfsm-snapsched-save').prop('disabled', true);
-	var status = $('#zfsm-snapsched-status').css('color', '').text('Saving…');
-	var days = $('.zfsm-snapsched-day:checked').map(function() { return this.value; }).get().join(',');
-	zfsmSendPost({cmd: 'schedulesnapshots', every: $('#zfsm-snapsched-every').val(), time: $('#zfsm-snapsched-time').val(), days: days, keep: $('#zfsm-snapsched-keep').val()}, function(answer) {
+	var button = $('#' + prefix + '-save').prop('disabled', true);
+	var status = $('#' + prefix + '-status').css('color', '').text('Saving…');
+	var days = $('.' + prefix + '-day:checked').map(function() { return this.value; }).get().join(',');
+	var post = {cmd: cmd, every: $('#' + prefix + '-every').val(), time: $('#' + prefix + '-time').val(), days: days, keep: $('#' + prefix + '-keep').val()};
+	var under = $('#' + prefix + '-under');
+	if (under.length) post.under = under.val();
+	zfsmSendPost(post, function(answer) {
 		button.prop('disabled', false);
 		status.css('color', answer.error ? '#e22828' : '').text([answer.said, answer.error].filter(Boolean).join('. '));
 		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
 }
-$('#zfsm-snapsched-every').on('change', zfsmSnapshotsSync);
-zfsmSnapshotsSync();
+['zfsm-snapsched', 'zfsm-copysched'].forEach(function(prefix) {
+	$('#' + prefix + '-every').on('change', function() { zfsmEverySync(prefix); });
+	zfsmEverySync(prefix);
+});
 function zfsmSendTest(name, id) {
 	var status = $(document.getElementById(id)).css('color', '').text('Asking…');
 	zfsmSendPost({cmd: 'replicatest', name: name}, function(answer) {
