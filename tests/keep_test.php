@@ -201,6 +201,11 @@ putenv('ZFSM_TEST_SEND_CUT');
 $unheld = ' What it carries on from could not be held, so a Keep or a removal by hand can take it first: tank/data@'.$n(14).' (cannot hold snapshot \'tank/data@'.$n(14).'\': permission denied); tank/data@'.$n(13.9).' (cannot hold snapshot \'tank/data@'.$n(13.9).'\': permission denied).';
 same(array(array(), 1, 1, array()), array($read('pool/holds'), substr_count($notified()[0] ?? '', zfsmSafeText($unheld)), substr_count($log(), zfsmSafeText($unheld)), $destroys()),
 	'the notification and the log say which, and Keep removes nothing after a run that did not land, held or not');
+// Only zfs's closing diagnostic counts as held already: a snapshot's name can hold the words.
+$twice = array(zfsmKeepHoldOne('zfsm-test', 'tank/data@'.$n(13.9)), zfsmKeepHoldOne('zfsm-test', 'tank/data@'.$n(13.9)));
+runProcess('zfs', array('release', 'zfsm-test', 'tank/data@'.$n(13.9)));
+same(array('', '', "cannot hold snapshot 'tank/data@tag already exists on this dataset': dataset does not exist"),
+	array_merge($twice, array(zfsmKeepHoldOne('zfsm-test', 'tank/data@tag already exists on this dataset'))), 'a hold on already, and a failed one whose name has the words');
 $reset();
 $run(15);
 // A hold that can't come off: the run says its snapshots stay held, and they do, its own with them.

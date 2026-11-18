@@ -35,7 +35,7 @@ $routes = array(
 	'scheduledataset' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => '',
 		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => ' 24 7D ', 'under' => 'backup'),
 	'scheduledatasetwrong' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '', 'days' => '', 'keep' => '',
-		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => 'x5', 'under' => ''),
+		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => 'x5', 'under' => 'backup'),
 	'previewschedules' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/data'),
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 );
@@ -127,7 +127,7 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'scheduledataset' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) \(tank\/data and below\) every Monday at 04:00; it keeps all it takes\. Saved: a copy of each of 1 dataset\(s\) \(tank\/data and below\) under backup every hour at :[0-5][0-9]; it keeps the newest 24 and 7 daily of the snapshots of each dataset it copies$/D', $answer['said'] ?? '') === 1
 			&& strpos($answer['schedules_html'] ?? '', '>Copies of tank/data and below under backup, every hour at :') !== false
 			&& array_map(null, ...array_map(function($key) { return array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), $key); }, array('dest', 'keep'))) === array(array('', 0), array('backup/', '24 7d')),
-		'scheduledatasetwrong' => $answer === array('error' => 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Copy Under, name a dataset on this server, such as backup')
+		'scheduledatasetwrong' => $answer === array('error' => 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
 			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots', 'skipped' => '',
 			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),

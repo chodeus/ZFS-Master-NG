@@ -80,9 +80,17 @@ $snapshots = array('id' => 'aaaa0000', 'dest' => '') + $every;
 $copy = array('id' => 'bbbb0000', 'dataset' => 'tank/data', 'dest' => 'backup/data') + $every;
 $own = function($dataset) use ($every) { return array('id' => 'cccc0000', 'dataset' => $dataset) + $every; };
 same(array(true, false, true, false, true, false, false),
-	array(zfsmScheduleShare($every, $snapshots), zfsmScheduleShare($every, $own('tank')), zfsmScheduleShare($own('tank'), $copy), zfsmScheduleShare($own('usb'), $copy),
-		zfsmScheduleShare($own('tank/data'), array('dataset' => 'tank') + $snapshots), zfsmScheduleShare($own('usb'), array('dataset' => 'tank') + $snapshots),
-		zfsmScheduleShare(array('every' => 'none', 'dest' => '/') + $own('tank'), $snapshots)), 'which schedules share a dataset');
+	array(zfsmScheduleShare($every, $snapshots, array()), zfsmScheduleShare($every, $own('tank'), array()), zfsmScheduleShare($own('tank'), $copy, array()), zfsmScheduleShare($own('usb'), $copy, array()),
+		zfsmScheduleShare($own('tank/data'), array('dataset' => 'tank') + $snapshots, array()), zfsmScheduleShare($own('usb'), array('dataset' => 'tank') + $snapshots, array()),
+		zfsmScheduleShare(array('every' => 'none', 'dest' => '/') + $own('tank'), $snapshots, array())), 'which schedules share a dataset');
+$tank = array('id' => 'dddd0000', 'dataset' => 'tank', 'dest' => '') + $every;
+$none = array('id' => 'eeee0000', 'dataset' => 'tank/data', 'every' => 'none', 'dest' => '') + $every;
+$mine = array('id' => 'ffff0000', 'dataset' => 'tank/data/sub') + $every;
+same(array(true, false, false, 30), array(zfsmScheduleShare($tank, $mine, array()), zfsmScheduleShare($tank, $mine, array($none['id'] => $none)),
+	zfsmScheduleShare($mine, $tank, array($none['id'] => $none)), zfsmScheduleFreeMinute(array($tank['id'] => $tank, $none['id'] => $none), $mine, 30)),
+	'a nearer one of its kind, None too, takes the datasets below it from one above');
+same('the copies of tank/data/sub and below (every hour at :30) starts then too; pick another time', zfsmScheduleSame(array($mine['id'] => $mine), $tank),
+	'one above is checked against one below it before it is in the list');
 
 // Covered: each dataset but those left out, by pool; not one whose own copy's schedule makes that copy.
 $listed = function() use ($cfg) { return zfsmScheduleCoverRead($cfg, 10); };
@@ -186,14 +194,14 @@ same(1, count(preg_grep('/^receive .*-F/', $read('calls.log'))), '-F only onto t
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/enc\tfilesystem", "backup/tank/enc\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/enc@a\t4242\t9000")));
 $pool('props', array_merge($read('pool/props'), array("tank/enc\tencryption\taes-256-gcm", "backup/tank/enc\tzfs.master:holder\ton")));
-same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: destroy that dataset and the copies below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: move aside (zfs rename) any copy below it that no schedule makes now, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
 	zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/enc', array('estimate' => false)), 'a raw stream onto a holder');
 // Nor any copy onto an encrypted holder, as one under an encrypted dataset is (live, 2.4.4); one not read is not sent onto.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/sealed\tfilesystem", "backup/tank/sealed\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/sealed@a\t4646\t9004")));
 $pool('props', array_merge($read('pool/props'), array("backup/tank/sealed\tzfs.master:holder\ton", "backup/tank/sealed\tencryption\taes-256-gcm")));
 $plan = function() { return zfsmReplicatePlan('tank/sealed', 'a', 'backup/tank/sealed', array('estimate' => false)); };
-same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: destroy that dataset and the copies below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: move aside (zfs rename) any copy below it that no schedule makes now, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
 	$plan(), 'a stream onto an encrypted holder');
 putenv('ZFSM_TEST_CRYPT_FAIL=backup/tank/sealed');
 same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and whether it is encrypted could not be read'), $plan(), 'one whose encryption could not be read');

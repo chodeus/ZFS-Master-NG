@@ -177,10 +177,10 @@ function zfsmKeepHold($plan, $tag) {
 	return implode('; ', $failed);
 }
 
-// Puts hold $hold on $snapshot: '' when it is on, as it already was if zfs says the tag exists; else why not.
+// Puts hold $hold on $snapshot: '' when it is on, as it already was if zfs's closing diagnostic says the tag exists; else why not.
 function zfsmKeepHoldOne($hold, $snapshot) {
 	$held = runProcess('zfs', array('hold', $hold, $snapshot));
-	return ($held['code'] ?? 1) === 0 || strpos((string)($held['output'] ?? ''), 'tag already exists') !== false ? '' : zfsmCommandError($held, 'zfs hold failed');
+	return ($held['code'] ?? 1) === 0 || preg_match('/: tag already exists on this dataset\s*\z/', (string)($held['output'] ?? '')) === 1 ? '' : zfsmCommandError($held, 'zfs hold failed');
 }
 
 // The holds on $snapshots (zfs holds -H) as array(snapshot, tag) pairs; a string when they can't be read.

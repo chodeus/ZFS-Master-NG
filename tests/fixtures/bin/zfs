@@ -218,6 +218,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		eval "from=\${$(($# - 1))}"
 		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
 		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
+		[ "$from" = "$last_arg" ] && exit 0
 		exists "$last_arg" && { printf "cannot rename '%s': dataset already exists\n" "$from" >&2; exit 1; }
 		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }
 		for f in datasets marks props holds; do

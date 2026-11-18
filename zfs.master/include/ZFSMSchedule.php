@@ -131,17 +131,21 @@ function zfsmScheduleNewId($jobs) {
 // An hourly $job's minute: $prefer, or another, that no schedule sharing a dataset with it (zfsmScheduleShare) starts at; any with
 // none free.
 function zfsmScheduleFreeMinute($jobs, $job, $prefer = null) {
-	$free = array_diff(range(0, 59), array_column(array_filter($jobs, function($other) use ($job) { return zfsmScheduleShare($job, $other); }), 'minute'));
+	$free = array_diff(range(0, 59), array_column(array_filter($jobs, function($other) use ($job, $jobs) { return zfsmScheduleShare($job, $other, $jobs); }), 'minute'));
 	if (in_array($prefer, $free, true)) return $prefer;
 	return $free ? $free[array_rand($free)] : random_int(0, 59);
 }
 
 // Whether $a and $b can snapshot one dataset (so not in one minute or name): both of it, or one that covers (zfsmScheduleCovers) of
-// one above it or the default. A dataset follows one of each kind (zfsmScheduleFollowed); None takes none.
-function zfsmScheduleShare($a, $b) {
+// one above it or the default that it follows among $jobs (zfsmScheduleFollowed): a nearer one of its kind, None too, takes it.
+function zfsmScheduleShare($a, $b, $jobs) {
 	if (!zfsmScheduleRepeats($a['every']) || !zfsmScheduleRepeats($b['every'])) return false;
 	if (zfsmScheduleCovers($a) && zfsmScheduleCovers($b) && zfsmScheduleKindOf($a) === zfsmScheduleKindOf($b)) return false;
-	$in = function($job, $other) { return zfsmScheduleCovers($job) && ($job['dataset'] === '' || zfsmUnderAny($other['dataset'], array($job['dataset']))); };
+	$in = function($job, $other) use ($jobs) {
+		if (!zfsmScheduleCovers($job) || ($job['dataset'] !== '' && !zfsmUnderAny($other['dataset'], array($job['dataset'])))) return false;
+		$near = zfsmScheduleFollowed($other['dataset'], array_diff_key($jobs, array($job['id'] => 0)) + array($job['id'] => $job), zfsmScheduleKindOf($job));
+		return $near['id'] === $job['id'];
+	};
 	return $a['dataset'] === $b['dataset'] || $in($a, $b) || $in($b, $a);
 }
 
@@ -181,7 +185,7 @@ function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	$until = $now + 14 * 86400 + 3600;
 	$named = $first ? array(zfsmNewSnapshotName($cfg, $now) => 'this run') : array();
 	foreach ($jobs as $other) {
-		if ($other['id'] === $job['id'] || !zfsmScheduleShare($job, $other)) continue;
+		if ($other['id'] === $job['id'] || !zfsmScheduleShare($job, $other, $jobs)) continue;
 		foreach (zfsmScheduleRuns($other, $now, $until) as $at) $named[zfsmNewSnapshotName($cfg, $at)] = 'the run at '.date('D j M H:i', $at).' of '.zfsmScheduleWhat($other);
 	}
 	foreach (zfsmScheduleRuns($job, $now, $until) as $at) {
@@ -292,7 +296,7 @@ function zfsmScheduleSame($jobs, $job) {
 		if ($other['dataset'] === $job['dataset'] && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) return 'this copy already has a schedule ('.zfsmScheduleWhen($other).'); remove it in Settings first';
 	}
 	foreach ($jobs as $other) {
-		if (zfsmScheduleShare($job, $other) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';
+		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';
 	}
 	return '';
 }

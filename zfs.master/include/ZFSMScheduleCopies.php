@@ -236,6 +236,9 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after) {
 	$old = zfsmScheduleCopiesDest($job, $from);
 	$new = zfsmScheduleCopiesDest($job, $to);
 	$missing = zfsmDatasetMissing($old);
+	// zfs says the same of a copy in a pool not imported now.
+	$pool = $missing === true ? zfsmDatasetMissing(strtok($old, '/')) : false;
+	if ($pool !== false) return 'not renamed with it, as '.($pool ? 'its pool is not imported now' : 'whether its pool is imported could not be read').'. It stays under its old name, so the next copy of the renamed dataset is a full one';
 	if ($missing === true) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
 	if (!zfsmScheduleCopiesKept($to, $job['dest'], $after)) return 'left where it is, as no schedule copies the renamed dataset or one below it there';

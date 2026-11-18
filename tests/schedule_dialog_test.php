@@ -137,6 +137,13 @@ $beside[] = $save('tank/data', $part('days', $free, '1', 1), $part('days', $free
 $beside[] = $save('tank/data', $part('days', $free, '1', 1), $part('none', '', '', 0, 'usb'))['saved'];
 same(array(true, true, true, 'Nothing was saved: Snapshots: the copies of tank/data and below (every Monday at '.$free.') starts then too; pick another time', true), $beside,
 	'hourly snapshots clear the copies\' time; snapshots at the time of copies as saved are refused');
+// A dataset's own of either kind, None too, takes it and those below from the one above: no clash with that one.
+$nearer = array($save('tank/data/sub', $part('none'), $part('days', $free, '1', 2, 'usb'))['why']);
+$nearer[] = zfsmScheduleDialogSave('tank/data/sub', $part('none'), $part('days', '06:00', '1', 2, 'usb'), array('snap_pattern' => 'Ymd') + $cfg)['why'];
+$nearer[] = $save('tank/docker', $part('days', $clash, '1'), $part('days', $free, '1', 2, 'usb'))['why'];
+$save('tank/data/sub', $part('default'), $part('default'));
+$save('tank/docker', $part('default'), $part('default'));
+same(array('', '', ''), $nearer, 'copies below snapshots set to None there, and snapshots of one with its own copies, clash with neither above');
 
 // None: no copies of it and below; Copy Under starts at what Default would follow.
 same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: no scheduled copies of tank/data and below, but for datasets with their own and repeats set in Replicate; the copies made stay',
@@ -210,6 +217,14 @@ putenv('ZFSM_TEST_RENAME_FAIL');
 $add = function($names) use ($pool, $read) { $pool('datasets', array_merge($read('pool/datasets'), array_map(function($name) { return $name."\tfilesystem"; }, $names))); };
 $add(array('backup/tank/again'));
 same(array($copy('tank/docker') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/docker', 'tank/again', 0)['failed'], 'a name already taken there');
+same(array('succeeded' => array('tank/again' => 0), 'failed' => array()), renameDataset('tank/again', 'tank/again', 0), 'a rename to its own name, which zfs does nothing for');
+// Its copy in a pool not imported now: zfs says the copy does not exist, so it is told as left behind.
+$all = $read('pool/datasets');
+$pool('datasets', array_values(preg_grep('~^backup[\t/]~', $all, PREG_GREP_INVERT)));
+$gone = renameDataset('tank/again', 'tank/away', 0)['failed'];
+$pool('datasets', array_merge($read('pool/datasets'), preg_grep('~^backup[\t/]~', $all)));
+same(array($copy('tank/again') => 'not renamed with it, as its pool is not imported now. It stays under its old name, so the next copy of the renamed dataset is a full one'), $gone,
+	'a copy in a pool not imported is told');
 // A copy of the renamed dataset: its newest snapshot is on it.
 $copied = function($zdataset, $guid) use ($pool, $read) { $pool('marks', array_merge($read('pool/marks'), array("$zdataset@s\t$guid\t500", "backup/$zdataset@s\t$guid\t500"))); };
 $add(array('tank/r', 'backup/tank/r', 'tank/q', 'backup/tank/q'));

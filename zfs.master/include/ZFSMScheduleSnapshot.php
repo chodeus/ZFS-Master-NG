@@ -230,7 +230,8 @@ function zfsmScheduleOwnMove($from, $to) {
 // $answer of zfs renaming $from to $to, or destroying it ($to ''), gaining what did not follow when that worked: its own schedules
 // (zfsmScheduleOwnMove) and, on a rename only, its copies under each Copy Under (zfsmScheduleCopiesMove).
 function zfsmScheduleOwnFollow($answer, $from, $to) {
-	if (!$answer['succeeded'] || $answer['failed']) return $answer;
+	// zfs renames a dataset to its own name by doing nothing.
+	if (!$answer['succeeded'] || $answer['failed'] || $from === $to) return $answer;
 	$moved = zfsmScheduleOwnMove($from, $to);
 	$left = $to === '' ? 'not removed ('.$moved['why'].'): Remove them in Settings'
 		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules';
@@ -263,10 +264,11 @@ function zfsmScheduleSnapshotPlace($jobs, &$job, $remove) {
 	return $jobs + array($job['id'] => $job);
 }
 
-// Why $job, placed in $jobs, can't run beside the others there but $aside: one starts in its minute, or Snapshots Pattern names two
-// runs alike. '' when it can.
+// Why $job, placed in $jobs, can't run beside the others there but $aside (still nearer, as zfsmScheduleShare reads them): one starts
+// in its minute, or Snapshots Pattern names two runs alike. '' when it can.
 function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
-	$others = array_diff_key($jobs, array($job['id'] => 0), $aside);
+	$others = array_diff_key($jobs, array($job['id'] => 0));
+	foreach (array_keys(array_intersect_key($others, $aside)) as $id) $others[$id]['every'] = 'none';
 	$same = zfsmScheduleSame($others, $job);
 	if ($same !== '') return $same;
 	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
