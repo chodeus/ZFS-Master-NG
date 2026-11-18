@@ -32,9 +32,14 @@ function zfsmScheduleCopiesNot($job, $jobs, $zdataset, $row, $name) {
 	$dest = zfsmScheduleCopiesDest($job, $zdataset);
 	if (!zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark(array('server' => $job['server']), $dest), $name)) return 'the names of '.$zdataset.' and its copy are too long for the bookmark a copy keeps';
 	foreach ($jobs as $other) {
-		if ($other['dataset'] === $zdataset && $other['dest'] === $dest && $other['server'] === $job['server']) return $zdataset.' has a schedule of its own for that copy';
+		if (zfsmScheduleCopiesOwnRepeat($job, $other, $zdataset)) return $zdataset.' has a schedule of its own for that copy';
 	}
 	return '';
+}
+
+// Whether $other, a repeat set in Replicate, makes the copy of $zdataset that $job, copies under a dataset, would make.
+function zfsmScheduleCopiesOwnRepeat($job, $other, $zdataset) {
+	return zfsmScheduleCopiesUnder($job) && $other['dataset'] === $zdataset && $other['dest'] === zfsmScheduleCopiesDest($job, $zdataset) && $other['server'] === $job['server'];
 }
 
 // The record Save makes of copies under $under here: Settings' Replicate Every Dataset ($zdataset ''), or a dataset's own; None
@@ -216,11 +221,15 @@ function zfsmScheduleCopiesLevels($dest, $zdest) {
 }
 
 // The datasets above $zdest, a copy under $dest: '' when each is there or made a holder, null to wait where a copy is $coming, else
-// why a holder could not be made. $here gains each holder.
+// why a holder could not be made, as for a dataset renamed or destroyed since a run listed it. $here gains each holder.
 function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here) {
+	$zdataset = substr($zdest, strlen($dest));
+	$missing = null;
 	foreach (zfsmScheduleCopiesLevels($dest, $zdest) as $level) {
 		if (isset($here[$level])) continue;
 		if (isset($coming[$level])) return null;
+		$missing = $missing ?? zfsmDatasetMissing($zdataset);
+		if ($missing !== false) return ($missing ? $zdataset.' is gone' : 'whether '.$zdataset.' is still there could not be read').', so no dataset was made to hold its copy';
 		$why = zfsmReplicaHolderMake($level);
 		if ($why !== '') return $why;
 		$here[$level] = true;
@@ -306,6 +315,8 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
 	if ($pool !== false) return 'not checked, as '.($pool ? 'its pool is not imported now' : 'whether its pool is imported could not be read').': if it is there, it keeps its old name, and the next copy of the renamed dataset is a full one';
 	if ($missing === true) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
+	$into = zfsmScheduleCopiesInto($from, $old, $after);
+	if ($into !== '') return 'left where it is, as a schedule sends copies into it ('.$into.'), so the next copy of the renamed dataset is a full one';
 	$whose = zfsmScheduleCopiesWhose($old, $to);
 	if ($whose !== '') return $whose;
 	$free = zfsmDatasetMissing($new);
@@ -314,6 +325,16 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
 	if ($why !== '') return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
 	$left = implode('; ', array_filter(array(zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));
 	return $left === '' ? '' : 'renamed with it, but '.$left;
+}
+
+// What of $jobs sends a copy here to $old or below it, which it would not find after a move; '' when none. A repeat set in Replicate
+// of $from or below, which kept that name, finds no dataset to send anyway.
+function zfsmScheduleCopiesInto($from, $old, $jobs) {
+	foreach ($jobs as $job) {
+		$dest = zfsmScheduleCopiesUnder($job) ? substr($job['dest'], 0, -1) : $job['dest'];
+		if ($job['server'] === '' && $dest !== '' && zfsmUnderAny($dest, array($old)) && !zfsmUnderAny($job['dataset'], array($from))) return zfsmScheduleWhat($job);
+	}
+	return '';
 }
 
 // '' when the copy at $old is $to's: its newest snapshot is on $to (as zfsmReplicaPlanOnto finds it), or it is a holder; else why
@@ -395,7 +416,7 @@ function zfsmScheduleCopiesKept($zdataset, $dest, $jobs) {
 }
 
 // zfs rename of copy $old to $new under $dest, after a holder is made where a level above $new is missing, as zfs rename needs its
-// parent (live, 2.4.4), unless that holder would stop a copy $jobs make there (zfsmScheduleCopiesBlocked). '' or why not.
+// parent, unless that holder would stop a copy $jobs make there (zfsmScheduleCopiesBlocked). '' or why not.
 function zfsmScheduleCopiesRename($dest, $old, $new, $jobs, $cfg) {
 	$here = array();
 	foreach (zfsmScheduleCopiesLevels($dest, $new) as $level) {

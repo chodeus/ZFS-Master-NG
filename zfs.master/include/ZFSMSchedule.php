@@ -146,6 +146,8 @@ function zfsmScheduleShare($a, $b, $jobs) {
 		$near = zfsmScheduleFollowed($other['dataset'], array_diff_key($jobs, array($job['id'] => 0)) + array($job['id'] => $job), zfsmScheduleKindOf($job));
 		return $near['id'] === $job['id'];
 	};
+	// A run of copies leaves out the one dataset a repeat set in Replicate copies there (zfsmScheduleCopiesNot).
+	if (zfsmScheduleCopiesOwnRepeat($a, $b, $b['dataset']) || zfsmScheduleCopiesOwnRepeat($b, $a, $a['dataset'])) return false;
 	return $a['dataset'] === $b['dataset'] || $in($a, $b) || $in($b, $a);
 }
 

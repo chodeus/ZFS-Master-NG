@@ -489,11 +489,11 @@ async function confirm() {
     window.document.querySelectorAll('.zfsm-copies-day').forEach(box => { box.checked = box.value === '6'; });
     copy('time').value = '02:15';
     copy('keep').value = ' 7d ';
-    copy('under').value = ' backup ';
+    copy('under').value = 'backup/Cold Storage ';
     scheduleAnswer = JSON.stringify({said: 'Saved: <b>tank/data</b>', schedules_html: '<span>x</span>'});
     await confirm();
-    assert.deepEqual(posts.at(-1), {cmd: 'scheduledataset', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2', copy_every: 'days', copy_time: '02:15', copy_days: '6', copy_keep: '7d', under: 'backup'},
-      'Save sends both parts as on screen');
+    assert.deepEqual(posts.at(-1), {cmd: 'scheduledataset', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2', copy_every: 'days', copy_time: '02:15', copy_days: '6', copy_keep: '7d', under: 'backup/Cold Storage '},
+      'Save sends both parts as on screen, Copy Under as typed: a name may end in a space');
     const text = () => window.Swal2.getHtmlContainer().textContent;
     const result = () => [window.Swal2.getTitle().textContent, window.Swal2.getIcon().classList.contains('swal2-error'), text()];
     assert.deepEqual(result(), ['Schedules Result', false, 'Saved: <b>tank/data</b>'], 'and shows what was saved, as text');

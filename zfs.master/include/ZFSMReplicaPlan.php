@@ -134,7 +134,7 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 }
 
 // $plan carrying on the run that stopped part-way and left $token on the copy (zfs send -t), whatever snapshot is picked now; onto
-// a holder with -F again, which zfs asks for there (live, 2.4.4). Else why not.
+// a holder with -F again, which zfs asks for there. Else why not.
 function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	$zdest = $plan['dest'];
 	$where = zfsmReplicaTargetWhere($target, $zdest);
@@ -157,7 +157,7 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 }
 
 // The snapshot zfs send -P -v -n -t $token sends, by the name zfs finds it under by guid; the token's toname keeps the one it had
-// before a rename (live, 2.4.4). Null when $output names none.
+// before a rename. Null when $output names none.
 function zfsmReplicaResumeSnapshot($output) {
 	return preg_match('/^(?:full|incremental\t[^\t\n]+)\t([^\t\n]+)\t[0-9]+\s*$/m', (string)$output, $match) ? $match[1] : null;
 }
@@ -184,13 +184,13 @@ function zfsmReplicaUnread($where, $why) {
 	return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
 }
 
-// $plan into a copy that holds no snapshot: in full with -F when it is a holder, which keeps the copies below it (live, 2.4.4); zfs
+// $plan into a copy that holds no snapshot: in full with -F when it is a holder, which keeps the copies below it; zfs
 // refuses a raw stream there, and any stream onto an encrypted holder. Else why not.
 function zfsmReplicaPlanHolder($plan, $target) {
 	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
 	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
 	$held = $where.' only holds the copies of datasets below this one, and ';
-	$fix = ': copy it elsewhere instead, or move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all; a copy destroyed loses the snapshots only it had (one a repeat set in Replicate made asks for one Replicate by hand)';
+	$fix = ': copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)';
 	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it'.$fix;
 	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
 	if ($crypt === null) return $held.'whether it is encrypted could not be read';

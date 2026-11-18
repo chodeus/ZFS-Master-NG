@@ -15,11 +15,8 @@ for arg in "$@"; do last_arg="$arg"; done
 # Every call, for a test that counts how many reads a page makes.
 if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
 
-# Replication (include/ZFSMReplicate.php) against a small pool kept in ZFSM_TEST_REPL_DIR: datasets ("name<TAB>type"),
-# marks (snapshots and bookmarks, "name<TAB>guid<TAB>createtxg", oldest first), props ("name<TAB>property<TAB>value", a
-# snapshot's clones and user properties too) and holds ("snapshot<TAB>tag"). destroy refuses a held or cloned snapshot, as ZFS does.
-# send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream, and
-# the snapshot guid that token carries in tokens ("token<TAB>guid").
+# Replication (include/ZFSMReplicate.php) against the pool in ZFSM_TEST_REPL_DIR: datasets, marks (oldest first), props, holds and
+# tokens ("token<TAB>guid"), tab-separated. destroy refuses a held or cloned snapshot; receive makes only the checks below.
 if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n "$@"; }; then # a dry run: answered below, pool unchanged
 	R=$ZFSM_TEST_REPL_DIR
 	touch "$R/datasets" "$R/marks" "$R/props" "$R/holds"
@@ -173,7 +170,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		snap=$last_arg
 		if [ -n "$token" ]; then
 			toname=${token#tok:}; snap=$toname; base=RESUME
-			# As zfs: by its guid, in its pool, under the name it has now (live, 2.4.4: after a rename too); by name for a token a test wrote.
+			# As zfs: by its guid, in its pool, under the name it has now (after a rename too); by name for a token a test wrote.
 			g=$(awk -F'\t' -v t="$token" '$1 == t { g = $2 } END { print g }' "$R/tokens" 2>/dev/null)
 			[ -z "$g" ] || snap=$(awk -F'\t' -v g="$g" -v n="$toname" -v p="${toname%%[/@]*}" '$2 == g && $1 == n { e = $1 } $2 == g && index($1, "@") && (index($1, p "/") == 1 || index($1, p "@") == 1) && f == "" { f = $1 } END { print e != "" ? e : f }' "$R/marks")
 			[ -n "$snap" ] || { printf "cannot resume send: '%s' used in the initial send no longer exists\n" "$toname" >&2; exit 255; }
@@ -206,11 +203,11 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = 1 ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = changes ] && [ "$base" != - ] && [ "$base" != RESUME ] && { printf 'cannot receive incremental stream: out of space\n' >&2; exit 1; }
-		# A full stream onto one that is there needs -F; one cut off there carries on only with -F too (2.4.4, live).
+		# A full stream onto one that is there needs -F; one cut off there carries on only with -F too.
 		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ] && [ "$force" = 0 ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
 		if [ "$base" = RESUME ] && [ "$(prop "$dest" zfsm_test_onto -)" = 1 ] && [ "$force" = 0 ]; then printf "cannot receive resume stream: Resuming recv on existing destination '%s'\nmust specify -F to overwrite it\n" "$dest" >&2; exit 1; fi
 		onto=0; [ "$base" = - ] && exists "$dest" && onto=1
-		# Nor onto an encrypted one (live, 2.4.4).
+		# Nor onto an encrypted one.
 		if [ "$onto" = 1 ] && [ "$(prop "$dest" encryption off)" != off ]; then printf 'cannot receive new filesystem stream: zfs receive -F cannot be used to destroy an encrypted filesystem or overwrite an unencrypted one with an encrypted one\n' >&2; exit 1; fi
 		# zfs makes a new copy only inside a dataset that exists.
 		exists "$dest" || exists "${dest%/*}" || { printf "cannot receive new filesystem stream: parent of '%s' does not exist\n" "$dest" >&2; exit 1; }
@@ -238,7 +235,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		awk -F'\t' -v n="$last_arg" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new" && mv "$R/props.new" "$R/props"
 		exit 0 ;;
 	rename)
-		# Moves it and all below it, with their snapshots, bookmarks, properties and holds; ZFSM_TEST_RENAME_FAIL names one that is busy.
+		# Moves it and all below it, with their snapshots, bookmarks, properties and holds; ZFSM_TEST_RENAME_FAIL names one that is busy,
+		# ZFSM_TEST_RENAME_UNMOUNTED one that moves, then fails to mount there.
 		# ZFSM_TEST_LOCK_PROBE: a lock file whose state at each rename goes to probe.log, held or free, as ZFSM_TEST_PHP finds it.
 		[ -z "${ZFSM_TEST_LOCK_PROBE:-}" ] || "$ZFSM_TEST_PHP" -r 'echo flock(fopen(getenv("ZFSM_TEST_LOCK_PROBE"), "c"), LOCK_EX | LOCK_NB) ? "free\n" : "held\n";' >> "$R/probe.log"
 		eval "from=\${$(($# - 1))}"
@@ -250,6 +248,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		for f in datasets marks props holds; do
 			awk -F'\t' -v OFS='\t' -v a="$from" -v b="$last_arg" '{ n = length(a); c = substr($1, n + 1, 1); if (substr($1, 1, n) == a && (c == "" || c == "/" || c == "@" || c == "#")) $1 = b substr($1, n + 1); print }' "$R/$f" > "$R/$f.new" && mv "$R/$f.new" "$R/$f"
 		done
+		[ "${ZFSM_TEST_RENAME_UNMOUNTED:-}" = "$from" ] && { printf "cannot mount '/mnt/%s': mountpoint is not a directory\n" "$last_arg" >&2; exit 1; }
 		exit 0 ;;
 	bookmark)
 		guid=$(mark "$2" 2); txg=$(mark "$2" 3)

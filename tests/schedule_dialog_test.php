@@ -263,7 +263,7 @@ $pool('marks', array_values(preg_grep('~^tank/new/u@auto-20270115080100\t~', $re
 $under = preg_quote('tank/new/u#'.zfsmReplicaBookmarkPrefix('usb/tank/new/u').'auto-20270115080100 tank/new/u@', '~');
 same(array(0, 1, 0), array(zfsmScheduleRun($usb, $cfg, $t + 3660), $sends('~^send -P -v -L -i '.$under.'~'), $sends('~^send -P -v -L tank/new/u@~')), 'and the one under usb, from its own');
 same(true, zfsmScheduleRemove($usb, $cfg)['saved'], 'its copies under usb removed, which later checks leave out');
-// A run cut off part-way, then a rename: zfs finds the snapshot by guid under its new name (live, 2.4.4), so the next run carries it on.
+// A run cut off part-way, then a rename: zfs finds the snapshot by guid under its new name, so the next run carries it on.
 putenv('ZFSM_TEST_SEND_CUT=1');
 zfsmScheduleRun($id, $cfg, $t + 7200);
 putenv('ZFSM_TEST_SEND_CUT');
@@ -305,6 +305,16 @@ $add = function($names) use ($pool, $read) { $pool('datasets', array_merge($read
 $add(array('backup/tank/again'));
 same(array($copy('tank/docker') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/docker', 'tank/again', 0, $cfg)['failed'], 'a name already taken there');
 same(array('succeeded' => array('tank/again' => 0), 'failed' => array()), renameDataset('tank/again', 'tank/again', 0, $cfg), 'a rename to its own name, which zfs does nothing for');
+// A rename that lands but can't be mounted there, which zfs 2.0 and 2.1 fail: its schedules follow it all the same, and the error stays.
+$add(array('tank/um'));
+same(true, $save('tank/um', $part('days', '02:10', '1'), $part('default'))['saved'], 'its own snapshots');
+putenv('ZFSM_TEST_RENAME_UNMOUNTED=tank/um');
+$unmounted = renameDataset('tank/um', 'tank/um2', 0, $cfg)['failed'];
+putenv('ZFSM_TEST_RENAME_UNMOUNTED');
+$um = array_filter($stored(), function($job) { return zfsmUnderAny($job['dataset'], array('tank/um', 'tank/um2')); });
+same(array(array('tank/um2' => 'cannot mount \'/mnt/tank/um2\': mountpoint is not a directory'), array('tank/um2')), array($unmounted, array_values(array_column($um, 'dataset'))),
+	'its schedule follows, and the mount error stays');
+foreach ($um as $job) zfsmScheduleRemove($job['id'], $cfg);
 // Its copy in a pool not imported now: zfs says the copy does not exist, so it is told as not checked; where no schedule copies it,
 // nothing is said.
 $add(array('tank/o'));
@@ -350,6 +360,18 @@ $copied('tank/sealed/d5', 75);
 same(array(true, true), array($save('tank/sealed/u2', $part('default'), $part('days', '05:20', '1', 0, 'usb'))['saved'], $save('tank/sealed/d5', $part('default'), $part('days', '06:20', '1', 0, 'backup'))['saved']), 'copies under usb above, and under backup below');
 same(array(array(), true), array(renameDataset('tank/sealed/d5', 'tank/sealed/u2/d5', 0, $cfg)['failed'], in_array('backup/tank/sealed/u2/d5', $datasets(), true)), 'under one copied elsewhere, it moves');
 foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/sealed/u2', 'tank/sealed/u2/d5'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
+// A copy another schedule sends copies into stays where it is, so that one still finds them; a repeat set in Replicate of the renamed
+// dataset itself, which keeps its old name, doesn't hold it.
+$add(array('tank/nest', 'tank/nest/sub', 'backup/tank/nest', 'tank/nest3', 'backup/tank/nest3'));
+$copied('tank/nest', 76);
+$copied('tank/nest3', 77);
+same(array(true, true), array($save('tank/nest/sub', $part('default'), $part('days', '06:40', '1', 0, 'backup/tank/nest'))['saved'],
+	zfsmScheduleChange(function($jobs) { return $jobs + array('3e5a7c9b' => array('id' => '3e5a7c9b', 'dataset' => 'tank/nest3', 'dest' => 'backup/tank/nest3', 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', '03:30', '1') + array('keep' => 0)); })['saved']),
+	'copies of the one below under its copy, and a repeat set in Replicate of another to its copy');
+same(array(array($copy('tank/nest') => 'left where it is, as a schedule sends copies into it (the copies of tank/nest2/sub and below), so the next copy of the renamed dataset is a full one'), true, array(), true),
+	array(renameDataset('tank/nest', 'tank/nest2', 0, $cfg)['failed'], in_array('backup/tank/nest', $datasets(), true), renameDataset('tank/nest3', 'tank/nest4', 0, $cfg)['failed'], in_array('backup/tank/nest4', $datasets(), true)),
+	'a copy another Copy Under is in stays; one only its own stale repeat goes to moves');
+foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 $add(array('tank/r', 'backup/tank/r', 'tank/q', 'backup/tank/q'));
 $copied('tank/q', 81);
 putenv('ZFSM_TEST_LIST_FAIL=backup/tank/r');

@@ -159,7 +159,7 @@ function zfsmScheduleDialogHtml(preview) {
 		+say('None: no scheduled snapshots, or copies under Copy Under; a repeat set in Replicate still runs. Every hour or On days of the week: its own schedule.')
 		+say('Datasets below this one follow its choice, unless they have their own.')
 		+say('Replication copies this dataset and those below into Copy Under, a dataset on this server in another pool, each by its full name: tank/data goes to backup/tank/data. Each copy is read-only and unmounted; a run sends only the changes since its newest snapshot, or the whole dataset when it has no copy there yet.')
-		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied. Schedules saves no repeat of either part on such a dataset itself, but a dataset below it that a run can take may have its own.')
+		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied. Schedules saves no new or changed repeat of either part on such a dataset itself (one saved before stays, and its runs leave the dataset out), but a dataset below it that a run can take may have its own.')
 		+say('Snapshots to keep: for Snapshots, after each run only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them; for Replication, only those it keeps of the snapshots taken for copies under the same Copy Under stay, on each dataset and in its copy, whichever schedule took them, such as Replicate Every Dataset. A run removes up to 50 from each, and one held or cloned stays. '+zfsmKeepHelp()+' Snapshots made by hand are never removed.')
 		+say('Settings lists every schedule.')+'</div>';
 }
@@ -178,7 +178,7 @@ function zfsmScheduleDialogSync(root) {
 function zfsmScheduleDialogChoices(root) {
 	const copies = zfsmRepeatChoices(root, 'zfsm-copies');
 	return Object.assign(zfsmRepeatChoices(root, 'zfsm-schedules'), {copy_every: copies.every, copy_time: copies.time, copy_days: copies.days, copy_keep: copies.keep,
-		under: root.querySelector('#zfsm-copies-under').value.trim()});
+		under: root.querySelector('#zfsm-copies-under').value});
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy
