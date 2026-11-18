@@ -238,17 +238,18 @@ function zfsmScheduleOwnFollow($answer, $from, $to) {
 }
 
 // $jobs with $job in place of its dataset's schedule of its kind (none with $remove), keeping that one's id and an hourly one's
-// minute; or why it can't be, after $part (the dialog's 'Snapshots: ' or 'Replication: ').
-function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg, $part = '') {
+// minute; or why it can't be, after $part (the dialog's 'Snapshots: ' or 'Replication: '). $aside: kept, but not checked against.
+function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg, $part = '', $aside = array()) {
 	$old = zfsmScheduleOwn($jobs, $job['dataset'], zfsmScheduleKindOf($job));
 	$jobs = array_diff_key($jobs, $old);
 	if ($remove) return $jobs;
 	$was = reset($old);
 	$job['id'] = $was ? $was['id'] : zfsmScheduleNewId($old + $jobs);
 	if ($job['every'] === 'hourly') $job['minute'] = zfsmScheduleFreeMinute($jobs, $job, $was && $was['every'] === 'hourly' ? $was['minute'] : null);
-	$same = zfsmScheduleSame($jobs, $job);
+	$others = array_diff_key($jobs, $aside);
+	$same = zfsmScheduleSame($others, $job);
 	if ($same !== '') return 'Nothing was saved: '.$part.$same;
-	$clash = zfsmScheduleClash($job, $jobs, $cfg, time(), false);
+	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
 	if ($clash !== '') return 'Nothing was saved: '.$part.$clash.'; add the time to Snapshots Pattern';
 	return $jobs + array($job['id'] => $job);
 }

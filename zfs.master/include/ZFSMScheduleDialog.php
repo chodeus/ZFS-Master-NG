@@ -51,7 +51,8 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 	$changed = zfsmScheduleSnapshotChange(function($all) use (&$snap, &$copy, $drop, $repeats, $listed, $cfg) {
 		$not = zfsmScheduleDialogWhy($repeats[0] ? zfsmScheduleSnapshotNot($snap['dataset'], $listed) : '', $repeats[1] ? zfsmScheduleCopiesOwnNot($copy, $all, $listed) : '');
 		if ($not !== '') return 'Nothing was saved: '.$not;
-		$all = zfsmScheduleSnapshotPut($all, $snap, $drop[0], $cfg, 'Snapshots: ');
+		// The copies record this replaces sits out the snapshots' checks, so the pair is checked as saved.
+		$all = zfsmScheduleSnapshotPut($all, $snap, $drop[0], $cfg, 'Snapshots: ', zfsmScheduleOwn($all, $copy['dataset'], zfsmScheduleKindOf($copy)));
 		return is_array($all) ? zfsmScheduleSnapshotPut($all, $copy, $drop[1], $cfg, 'Replication: ') : $all;
 	}, $after);
 	if (!$changed['saved']) return $changed + array('said' => '');

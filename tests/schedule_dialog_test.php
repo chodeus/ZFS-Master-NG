@@ -105,6 +105,22 @@ same(array(array('/'), 'none', 'backup', 'the copies of tank/data and below, Non
 same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: the copies of tank/data follow '.$every,
 	$save('tank/data', $part('default'), $part('default'))['said'], 'Default removes it');
 same(array(), array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data'; })), 'none of its own stay');
+// Each part is checked against the other as saved: a time the copies leave is free for the snapshots, and the two can swap.
+$free2 = sprintf('05:%02d', ($m + 20) % 60);
+$pair = function($snapshots, $copies) use ($save, $part) {
+	return $save('tank/data', $part('days', $snapshots, '1'), $copies === '' ? $part('none', '', '', 0, 'usb') : $part('days', $copies, '1', 0, 'usb'))['why'];
+};
+same(array('', '', '', ''), array($pair($free, $free2), $pair($free2, ''), $pair($free, $free2), $pair($free2, $free)), 'each pair saved, none refused');
+// Names too: under a pattern of hours, a copies record set aside does not clash with a snapshot time in its hour, and it stays.
+$old = array('c0ffee00' => array('id' => 'c0ffee00') + zfsmScheduleCopiesRecord('tank/data', 'days', 'usb', '07:20', '1', 0));
+$put = function($aside) use ($old) {
+	$new = zfsmScheduleSnapshotRecord('tank/data', 'days', '07:10', '1', 0);
+	return zfsmScheduleSnapshotPut($old, $new, false, array('snap_prefix' => 'auto-', 'snap_pattern' => 'YmdH', 'snap_utc' => 1), '', $aside);
+};
+same(array('c0ffee00', 1), array(is_array($kept = $put($old)) ? array_keys($kept)[0] : $kept, preg_match('/^Nothing was saved: Snapshots Pattern would give /', $put(array()))),
+	'set aside, no clash and kept; not set aside, a clash');
+same(array('', array()), array($save('tank/data', $part('default'), $part('default'))['why'], array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data'; }))),
+	'back to Default');
 
 // Rename: the copy under each dataset copies go under takes the new name, the datasets below it with it, and stays incremental.
 $id = array_values($stored())[0]['id'];
@@ -119,10 +135,21 @@ same(array('tank/new#'.zfsmReplicaBookmarkPrefix('backup/tank/new').'auto-202701
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 3600), 'the next run');
 same(array(1, 0), array($sends('~^send -P -v -L -i \S+ tank/new@~'), $sends('~^send -P -v -L tank/new@~')), 'sends only the changes to the renamed copy');
+// A run cut off part-way, then a rename: zfs finds the snapshot by guid under its new name (live, 2.4.4), so the next run carries it on.
+putenv('ZFSM_TEST_SEND_CUT=1');
+zfsmScheduleRun($id, $cfg, $t + 7200);
+putenv('ZFSM_TEST_SEND_CUT');
+$tokens = function($copy) use ($read) { return array_values(preg_grep('~^'.preg_quote($copy, '~').'(/sub)?\treceive_resume_token\ttok:~', $read('pool/props'))); };
+same(array(2, array('succeeded' => array('tank/cut' => 0), 'failed' => array())), array(count($tokens('backup/tank/new')), renameDataset('tank/new', 'tank/cut', 0)),
+	'a rename after a run cut off part-way');
+$reset();
+$marks = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/marks')); };
+same(array(0, 2, array(), array()), array(zfsmScheduleRun($id, $cfg, $t + 10800), $sends('~^send -P -v -t tok:tank/new(/sub)?@auto-20270115100000$~'), $tokens('backup/tank/cut'),
+	array_values(array_diff(array('backup/tank/cut@auto-20270115100000', 'backup/tank/cut/sub@auto-20270115100000'), $marks()))), 'the next run carries each on from its token, and both copies land');
 // Into a dataset whose copy is not made yet: an empty holder takes its place first, as zfs rename needs the parent.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/deep\tfilesystem")));
 $reset();
-same(array('succeeded' => array('tank/deep/data' => 0), 'failed' => array()), renameDataset('tank/new', 'tank/deep/data', 0), 'a rename into a new dataset');
+same(array('succeeded' => array('tank/deep/data' => 0), 'failed' => array()), renameDataset('tank/cut', 'tank/deep/data', 0), 'a rename into a new dataset');
 same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/tank/deep'), true, true),
 	array(array_values(preg_grep('/^create /', $read('calls.log'))), zfsmReplicaHolder(array('server' => ''), 'backup/tank/deep'), in_array('backup/tank/deep/data/sub', $datasets(), true)), 'a holder, then the copy');
 

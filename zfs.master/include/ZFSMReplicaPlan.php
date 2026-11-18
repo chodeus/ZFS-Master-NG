@@ -137,7 +137,8 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	$zdest = $plan['dest'];
 	$where = zfsmReplicaTargetWhere($target, $zdest);
 	$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
-	if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
+	// The name zfs finds the snapshot under by guid, renamed or not; the token's toname keeps the one it had (live, 2.4.4).
+	if (($info['code'] ?? 1) !== 0 || !preg_match('/^(?:full|incremental\t[^\t\n]+)\t([^\t\n]+)\t[0-9]+\s*$/m', (string)$info['output'], $match)) {
 		return $where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there');
 	}
 	if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$match[1].', not of this dataset';

@@ -18,7 +18,8 @@ if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL
 # Replication (include/ZFSMReplicate.php) against a small pool kept in ZFSM_TEST_REPL_DIR: datasets ("name<TAB>type"),
 # marks (snapshots and bookmarks, "name<TAB>guid<TAB>createtxg", oldest first), props ("name<TAB>property<TAB>value", a
 # snapshot's clones and user properties too) and holds ("snapshot<TAB>tag"). destroy refuses a held or cloned snapshot, as ZFS does.
-# send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream.
+# send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream, and
+# the snapshot guid that token carries in tokens ("token<TAB>guid").
 if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n "$@"; }; then # a dry run: answered below, pool unchanged
 	R=$ZFSM_TEST_REPL_DIR
 	touch "$R/datasets" "$R/marks" "$R/props" "$R/holds"
@@ -148,10 +149,16 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			prev=$a
 		done
 		snap=$last_arg
-		if [ -n "$token" ]; then snap=${token#tok:}; base=RESUME; fi
+		if [ -n "$token" ]; then
+			toname=${token#tok:}; snap=$toname; base=RESUME
+			# As zfs: by its guid, in its pool, under the name it has now (live, 2.4.4: after a rename too); by name for a token a test wrote.
+			g=$(awk -F'\t' -v t="$token" '$1 == t { g = $2 } END { print g }' "$R/tokens" 2>/dev/null)
+			[ -z "$g" ] || snap=$(awk -F'\t' -v g="$g" -v n="$toname" -v p="${toname%%[/@]*}" '$2 == g && $1 == n { e = $1 } $2 == g && index($1, "@") && (index($1, p "/") == 1 || index($1, p "@") == 1) && f == "" { f = $1 } END { print e != "" ? e : f }' "$R/marks")
+			[ -n "$snap" ] || { printf "cannot resume send: '%s' used in the initial send no longer exists\n" "$toname" >&2; exit 255; }
+		fi
 		guid=$(mark "$snap" 2)
 		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$snap" >&2; exit 1; }
-		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$snap" >&2
+		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$toname" >&2
 		if [ "$base" = - ]; then printf 'full\t%s\t1000\n' "$snap" >&2; else printf 'incremental\t%s\t%s\t1000\n' "$base" "$snap" >&2; fi
 		printf 'size\t1000\n' >&2
 		[ "$dry" = 1 ] && exit 0
@@ -191,6 +198,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
 		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
 			set_prop "$dest" receive_resume_token "tok:$snap"
+			printf 'tok:%s\t%s\n' "$snap" "$guid" >> "$R/tokens"
 			[ "$onto" = 1 ] && set_prop "$dest" zfsm_test_onto 1
 			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
 		fi
