@@ -180,6 +180,16 @@ same(1, preg_match('/^warning: Scheduled copies under backup: 6 of 7 dataset\(s\
 same(array(), $snaps('tank/san'), 'the snapshot it took for it goes');
 same(array("backup/tank/san/kid@$o"), array_keys($snaps('backup/tank/san/kid')), 'the one below is copied');
 
+// One cut off part-way holds for each copy, as a run by hand does: carried on by hand, its holds come off.
+putenv('ZFSM_TEST_SEND_CUT=1');
+zfsmScheduleRun($id, $cfg, $t + 12600);
+putenv('ZFSM_TEST_SEND_CUT');
+$p = $name($t + 12600);
+$hold = zfsmKeepHoldTag(zfsmKeepTag('', 'backup/tank/data'));
+same(array("tank/data@$p\t$hold", "tank/data@$o\t$hold"), array_values(preg_grep('~^tank/data@~', $read('pool/holds'))), 'a run cut off holds for the copy');
+same(0, zfsmRunReplicate('tank/data', $p, 'backup/tank/data'), 'carried on by hand');
+same(array(), preg_grep('~^tank/data@~', $read('pool/holds')), 'which takes its holds off');
+
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and
 // they share it, so the second has none left.
 $fresh();
