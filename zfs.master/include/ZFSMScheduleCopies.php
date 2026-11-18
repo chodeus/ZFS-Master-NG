@@ -107,7 +107,8 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 	if ($remove) return 'Saved: the copies of '.$job['dataset'].' follow '.zfsmScheduleCopiesFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs, 'zfsmScheduleCopiesUnder'));
 	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own and repeats set in Replicate; the copies made stay';
-	return zfsmScheduleCopiesSaved($job, $listed, $jobs);
+	$down = zfsmScheduleCopiesUnderNot(substr($job['dest'], 0, -1), $listed);
+	return zfsmScheduleCopiesSaved($job, $listed, $jobs).($down !== '' ? '; no run copies while '.$down : '');
 }
 
 // Cron's run of copies under a dataset: each dataset it covers, parents first, sent to its copy as a copy's schedule sends it

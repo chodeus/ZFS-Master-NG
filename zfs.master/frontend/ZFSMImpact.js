@@ -160,7 +160,7 @@ function zfsmScheduleDialogHtml(preview) {
 		+say('Datasets below this one follow its choice, unless they have their own.')
 		+say('Replication copies this dataset and those below into Copy Under, a dataset on this server in another pool, each by its full name: tank/data goes to backup/tank/data. Each copy is read-only and unmounted; a run sends only the changes since its newest snapshot, or the whole dataset when it has no copy there yet.')
 		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied.')
-		+say('Snapshots to keep: for Snapshots, after each run only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them; for Replication, only those it keeps of the snapshots it took for its copies stay, on each dataset and in its copy. '+zfsmKeepHelp()+' Snapshots made by hand are never removed.')
+		+say('Snapshots to keep: for Snapshots, after each run only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them; for Replication, only those it keeps of the snapshots it took for its copies stay, on each dataset and in its copy. A run removes up to 50 from each, and one held or cloned stays. '+zfsmKeepHelp()+' Snapshots made by hand are never removed.')
 		+say('Settings lists every schedule.')+'</div>';
 }
 

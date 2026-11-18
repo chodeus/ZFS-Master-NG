@@ -99,11 +99,13 @@ same(1, preg_match('/>Copies of tank\/data and below under usb, every hour at '.
 // Its Copy Under offline: Snapshots set to None saves beside the copies as saved; copies changed are checked.
 $all = $read('pool/datasets');
 $pool('datasets', array_values(preg_grep('~^usb[\t/]~', $all, PREG_GREP_INVERT)));
-$offline = array($save('tank/data', $part('none'), $part('hourly', '', '', 2, 'usb'))['saved']);
+$down = $save('tank/data', $part('none'), $part('hourly', '', '', 2, 'usb'));
+$offline = array($down['saved'], preg_match('/ under usb every hour at :\d\d; it keeps the newest 2 of the snapshots of each dataset it copies; no run copies while usb does not exist on this server$/', $down['said']));
 $offline[] = array_column(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] === ''; }), 'every');
 $offline[] = $save('tank/data', $part('none'), $part('hourly', '', '', 3, 'usb'))['why'];
 $pool('datasets', $all);
-same(array(true, array('none'), 'Nothing was saved: Replication: usb does not exist on this server'), $offline, 'with its Copy Under offline, Snapshots None saves; changed copies are refused');
+same(array(true, 1, array('none'), 'Nothing was saved: Replication: usb does not exist on this server'), $offline,
+	'with its Copy Under offline, Snapshots None saves and says no run copies: '.$down['said'].'; changed copies are refused');
 // Sanoid snapshots on it since: Replication set to None saves beside the snapshots as saved; snapshots changed are checked.
 $late = array($save('tank/data', $part('days', $free, '1', 1), $part('hourly', '', '', 2, 'usb'))['saved']);
 $marks = $read('pool/marks');
@@ -114,6 +116,27 @@ $late[] = $save('tank/data', $part('days', $free, '1', 2), $part('none', '', '',
 $pool('marks', $marks);
 same(array(true, true, array('none'), 'Nothing was saved: Snapshots: tank/data has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'), $late,
 	'with Sanoid snapshots on it since, Replication None saves; changed snapshots are refused');
+
+// Snapshots Pattern since names a day's runs alike: a part as saved isn't refused for it, either way round; a changed one is.
+$daily = function($snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave('tank/data', $snapshots, $copies, array('snap_pattern' => 'Ymd') + $cfg); };
+$named = array($save('tank/data', $part('days', $free, '1', 1), $part('hourly', '', '', 2, 'usb'))['saved']);
+$named[] = $daily($part('none'), $part('hourly', '', '', 2, 'usb'))['saved'];
+$named[] = preg_match('/^Nothing was saved: Replication: Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
+	$daily($part('none'), $part('hourly', '', '', 3, 'usb'))['why']);
+$named[] = $save('tank/data', $part('hourly', '', '', 1), $part('hourly', '', '', 2, 'usb'))['saved'];
+$named[] = $daily($part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'];
+same(array(true, true, 1, true, true), $named, 'Snapshots None saves beside copies as saved, and Replication None beside snapshots; changed copies are refused');
+// Copies at a time the hourly snapshots start in: the snapshots move to another minute. Snapshots set to the copies' time as saved
+// are checked against them.
+$minute = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] === ''; }))[0]['minute']; };
+$was = $minute();
+$beside = array($save('tank/data', $part('hourly', '', '', 1), $part('days', sprintf('04:%02d', $was), '1', 2, 'usb'))['saved']);
+$beside[] = $minute() !== $was;
+$beside[] = $save('tank/data', $part('none'), $part('days', $free, '1', 2, 'usb'))['saved'];
+$beside[] = $save('tank/data', $part('days', $free, '1', 1), $part('days', $free, '1', 2, 'usb'))['why'];
+$beside[] = $save('tank/data', $part('days', $free, '1', 1), $part('none', '', '', 0, 'usb'))['saved'];
+same(array(true, true, true, 'Nothing was saved: Snapshots: the copies of tank/data and below (every Monday at '.$free.') starts then too; pick another time', true), $beside,
+	'hourly snapshots clear the copies\' time; snapshots at the time of copies as saved are refused');
 
 // None: no copies of it and below; Copy Under starts at what Default would follow.
 same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: no scheduled copies of tank/data and below, but for datasets with their own and repeats set in Replicate; the copies made stay',
@@ -138,12 +161,12 @@ same(array(array('', '', '', ''), array('' => $free2, 'usb/' => $free)), array(a
 	'each pair saved, none refused, and the swap stands');
 // Names too: under a pattern of hours, a copies record set aside does not clash with a snapshot time in its hour, and it stays.
 $old = array('c0ffee00' => array('id' => 'c0ffee00') + zfsmScheduleCopiesRecord('tank/data', 'days', 'usb', '07:20', '1', 0));
-$put = function($aside) use ($old) {
+$check = function($aside) use ($old) {
 	$new = zfsmScheduleSnapshotRecord('tank/data', 'days', '07:10', '1', 0);
-	return zfsmScheduleSnapshotPut($old, $new, false, array('snap_prefix' => 'auto-', 'snap_pattern' => 'YmdH', 'snap_utc' => 1), '', $aside);
+	$placed = zfsmScheduleSnapshotPlace($old, $new, false);
+	return array(array_keys($placed)[0], zfsmScheduleSnapshotCheck($placed, $new, array('snap_prefix' => 'auto-', 'snap_pattern' => 'YmdH', 'snap_utc' => 1), $aside));
 };
-same(array('c0ffee00', 1), array(is_array($kept = $put($old)) ? array_keys($kept)[0] : $kept, preg_match('/^Nothing was saved: Snapshots Pattern would give /', $put(array()))),
-	'set aside, no clash and kept; not set aside, a clash');
+same(array(array('c0ffee00', ''), 1), array($check($old), preg_match('/^Snapshots Pattern would give /', $check(array())[1])), 'set aside, no clash and kept; not set aside, a clash');
 same(array('', array()), array($save('tank/data', $part('default'), $part('default'))['why'], array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data'; }))),
 	'back to Default');
 

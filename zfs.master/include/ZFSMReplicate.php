@@ -146,16 +146,17 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
 	$notify = $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); };
 	$to = zfsmReplicaTargetWhere(array('server' => $server), $zdest);
-	$not_started = function($why) use ($zdataset, $to, $title, $started, $notify) {
+	// $first: a step this run carried on before, as zfsmReplicateTold takes it.
+	$not_started = function($why, $first = array('', 'normal')) use ($zdataset, $to, $title, $started, $notify) {
 		zfsmLog('Replication of '.$zdataset.' to '.$to.' not started: '.$why);
-		$notify($title, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning');
+		$notify($title, ...zfsmReplicateTold($first, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning'));
 		if ($started !== null) fwrite(STDOUT, zfsmOneLine($why)."\n");
 		return 1;
 	};
 	// Only the snapshot this run just took, which nothing has used.
-	$refused = function($why) use ($zdataset, $snapshot, $take, $not_started) {
+	$refused = function($why, $first) use ($zdataset, $snapshot, $take, $not_started) {
 		if ($take) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
-		return $not_started($why);
+		return $not_started($why, $first);
 	};
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.(isset($schedule['gone']) ? '; '.$schedule['gone'] : '') : 'its guid could not be read');
@@ -179,7 +180,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false)));
-			if (!$plan['can_proceed']) return $refused($plan['error']);
+			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));

@@ -244,21 +244,33 @@ function zfsmScheduleOwnFollow($answer, $from, $to) {
 	return $answer;
 }
 
+// zfsmScheduleSnapshotPlace, or why it can't be (zfsmScheduleSnapshotCheck).
+function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg) {
+	$jobs = zfsmScheduleSnapshotPlace($jobs, $job, $remove);
+	$why = $remove ? '' : zfsmScheduleSnapshotCheck($jobs, $job, $cfg);
+	return $why === '' ? $jobs : 'Nothing was saved: '.$why;
+}
+
 // $jobs with $job in place of its dataset's schedule of its kind (none with $remove), keeping that one's id and an hourly one's
-// minute; or why it can't be, after $part (the dialog's 'Snapshots: ' or 'Replication: '). $aside: kept, but not checked against.
-function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg, $part = '', $aside = array()) {
+// minute while no other there starts in it.
+function zfsmScheduleSnapshotPlace($jobs, &$job, $remove) {
 	$old = zfsmScheduleOwn($jobs, $job['dataset'], zfsmScheduleKindOf($job));
 	$jobs = array_diff_key($jobs, $old);
 	if ($remove) return $jobs;
 	$was = reset($old);
 	$job['id'] = $was ? $was['id'] : zfsmScheduleNewId($old + $jobs);
 	if ($job['every'] === 'hourly') $job['minute'] = zfsmScheduleFreeMinute($jobs, $job, $was && $was['every'] === 'hourly' ? $was['minute'] : null);
-	$others = array_diff_key($jobs, $aside);
-	$same = zfsmScheduleSame($others, $job);
-	if ($same !== '') return 'Nothing was saved: '.$part.$same;
-	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
-	if ($clash !== '') return 'Nothing was saved: '.$part.$clash.'; add the time to Snapshots Pattern';
 	return $jobs + array($job['id'] => $job);
+}
+
+// Why $job, placed in $jobs, can't run beside the others there but $aside: one starts in its minute, or Snapshots Pattern names two
+// runs alike. '' when it can.
+function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
+	$others = array_diff_key($jobs, array($job['id'] => 0), $aside);
+	$same = zfsmScheduleSame($others, $job);
+	if ($same !== '') return $same;
+	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
+	return $clash === '' ? '' : $clash.'; add the time to Snapshots Pattern';
 }
 
 // Save's answer: what $job does now, with $jobs as saved; one that runs is counted in $listed.

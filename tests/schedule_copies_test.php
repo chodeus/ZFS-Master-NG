@@ -262,6 +262,19 @@ putenv('ZFSM_TEST_INHERIT_FAIL');
 same(array(1, 1), array(preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/ahres@'.$name($t + 13800), '/').' to backup\/tank\/ahres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
 	implode("\n", $read('notify-detail.log'))), count(preg_grep('~^'.preg_quote('backup/tank/ahres@'.$name($t + 14100), '~').'\t~', $read('pool/marks')))),
 	'the mark told, and the next step landed: '.implode("\n", $read('notify-detail.log')));
+// Carried on with a warning, then the next step can't be planned: the first step's warning is told with why.
+$told = array();
+$by = array('notify' => function($title, $text, $type) use (&$told) { $told[] = $type.': '.$text; });
+putenv('ZFSM_TEST_SEND_CUT=1');
+zfsmRunReplicate('tank/data', 'cut1', 'backup/tank/data', null, true);
+putenv('ZFSM_TEST_SEND_CUT');
+putenv('ZFSM_TEST_BOOKMARK_FAIL=1');
+putenv('ZFSM_TEST_MARKS_FAIL=backup/tank/data');
+$code = zfsmRunReplicate('tank/data', 'cut2', 'backup/tank/data', null, true, '', $by);
+putenv('ZFSM_TEST_BOOKMARK_FAIL');
+putenv('ZFSM_TEST_MARKS_FAIL');
+same(array(1, 1), array($code, preg_match('/^warning: Replication of tank\/data@cut1 to backup\/tank\/data finished \(carried on from where it stopped\)\. The bookmark that keeps the next run incremental could not be made: .*\. Replication of tank\/data to backup\/tank\/data not started: The snapshots of backup\/tank\/data could not be read$/', implode("\n", $told))),
+	'the first step\'s warning, then why the next was not started: '.implode("\n", $told));
 
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and
 // they share it, so the second has none left.
