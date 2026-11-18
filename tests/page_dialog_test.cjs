@@ -522,7 +522,7 @@ async function confirm() {
     assert.deepEqual([line?.textContent, line?.querySelectorAll('i').length, line?.parentElement.firstElementChild === line],
       ['tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool.', 0, true], 'one no run takes says why, first and as text');
     const unsent = window.document.getElementById('zfsm-copies-skipped');
-    assert.deepEqual([unsent?.textContent, unsent?.querySelectorAll('i').length, unsent?.previousElementSibling.id], ['tank/<i>data</i> is in pool backup, where its copy would go.', 0, 'zfsm-copies-default'],
+    assert.deepEqual([unsent?.textContent, unsent?.querySelectorAll('i').length, unsent?.previousElementSibling.id], ['Replication as saved: tank/<i>data</i> is in pool backup, where its copy would go.', 0, 'zfsm-copies-default'],
       'and one Replication leaves out says why under it, as text');
     window.Swal2.close();
     schedulePreview = {failed: {request: 'Invalid dataset name'}};

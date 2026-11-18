@@ -102,13 +102,6 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 	return $not !== '' ? $not : zfsmScheduleCopiesNot($job, $jobs, $job['dataset'], zfsmScheduleListed($listed)[0][$job['dataset']], $listed['name']);
 }
 
-// Whether $job, a dataset's own copies under a dataset, is the one $jobs hold, but for what Save sets: the id, an hourly one's minute.
-function zfsmScheduleCopiesAsSaved($job, $jobs) {
-	$set = array('id' => 0) + ($job['every'] === 'hourly' ? array('minute' => 0) : array());
-	foreach (zfsmScheduleOwn($jobs, $job['dataset'], 'zfsmScheduleCopiesUnder') as $was) return array_diff_key($was, $set) == array_diff_key($job, $set);
-	return false;
-}
-
 // The dialog Save's answer for $job, a dataset's own copies under a dataset ($remove: gone), with $jobs as saved; one that runs is
 // counted in $listed.
 function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
@@ -244,7 +237,7 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after) {
 	$missing = zfsmDatasetMissing($old);
 	if ($missing === true) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
-	if (!zfsmScheduleCopiesKept($to, $job['dest'], $after)) return 'left where it is, as no schedule copies the renamed dataset there';
+	if (!zfsmScheduleCopiesKept($to, $job['dest'], $after)) return 'left where it is, as no schedule copies the renamed dataset or one below it there';
 	$whose = zfsmScheduleCopiesWhose($old, $to);
 	if ($whose !== '') return $whose;
 	$free = zfsmDatasetMissing($new);
@@ -270,10 +263,12 @@ function zfsmScheduleCopiesWhose($old, $to) {
 // The bookmarks on $to and below, named for their copies (zfsmReplicaTargetMark): those of $old and below take $new's. '' or what
 // went wrong.
 function zfsmScheduleCopiesMarks($old, $new, $to) {
-	$listed = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'bookmark', '-r', $to));
+	// A second field keeps the last name's trailing spaces from runProcess's trim, as zfsmScheduleCopiesHolds does.
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid', '-t', 'bookmark', '-r', $to));
 	if (($listed['code'] ?? 1) !== 0) return 'its bookmarks could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	$failed = array();
-	foreach (zfsmLines($listed['output']) as $mark) {
+	foreach (zfsmLines($listed['output']) as $line) {
+		$mark = explode("\t", $line, 2)[0];
 		list($zdataset, $name) = explode('#', $mark, 2) + array(1 => '');
 		$below = (string)substr($zdataset, strlen($to));
 		$was = zfsmReplicaBookmarkPrefix($old.$below);

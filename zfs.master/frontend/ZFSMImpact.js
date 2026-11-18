@@ -149,7 +149,7 @@ function zfsmScheduleDialogHtml(preview) {
 	const copies = preview.copies;
 	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']];
 	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
-	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>'+esc(copies.skipped)+'.</b></p>' : '';
+	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>Replication as saved: '+esc(copies.skipped)+'.</b></p>' : '';
 	return '<div style="text-align:left">'+skipped+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', choices, preview)
 		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+esc(preview.inherited)+'.</p>'
 		+zfsmRepeatHtml('zfsm-copies', 'Replication:', choices, copies)

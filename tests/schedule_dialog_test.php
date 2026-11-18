@@ -104,6 +104,16 @@ $offline[] = array_column(array_filter($stored(), function($job) { return $job['
 $offline[] = $save('tank/data', $part('none'), $part('hourly', '', '', 3, 'usb'))['why'];
 $pool('datasets', $all);
 same(array(true, array('none'), 'Nothing was saved: Replication: usb does not exist on this server'), $offline, 'with its Copy Under offline, Snapshots None saves; changed copies are refused');
+// Sanoid snapshots on it since: Replication set to None saves beside the snapshots as saved; snapshots changed are checked.
+$late = array($save('tank/data', $part('days', $free, '1', 1), $part('hourly', '', '', 2, 'usb'))['saved']);
+$marks = $read('pool/marks');
+$pool('marks', array_merge($marks, array("tank/data@autosnap_2027-01-15_00:00:00_daily\t9101\t900")));
+$late[] = $save('tank/data', $part('days', $free, '1', 1), $part('none', '', '', 0, 'usb'))['saved'];
+$late[] = array_column(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] !== ''; }), 'every');
+$late[] = $save('tank/data', $part('days', $free, '1', 2), $part('none', '', '', 0, 'usb'))['why'];
+$pool('marks', $marks);
+same(array(true, true, array('none'), 'Nothing was saved: Snapshots: tank/data has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'), $late,
+	'with Sanoid snapshots on it since, Replication None saves; changed snapshots are refused');
 
 // None: no copies of it and below; Copy Under starts at what Default would follow.
 same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: no scheduled copies of tank/data and below, but for datasets with their own and repeats set in Replicate; the copies made stay',
@@ -118,7 +128,14 @@ $free2 = sprintf('05:%02d', ($m + 20) % 60);
 $pair = function($snapshots, $copies) use ($save, $part) {
 	return $save('tank/data', $part('days', $snapshots, '1'), $copies === '' ? $part('none', '', '', 0, 'usb') : $part('days', $copies, '1', 0, 'usb'))['why'];
 };
-same(array('', '', '', ''), array($pair($free, $free2), $pair($free2, ''), $pair($free, $free2), $pair($free2, $free)), 'each pair saved, none refused');
+$times = function() use ($stored) {
+	$at = array();
+	foreach ($stored() as $job) if ($job['dataset'] === 'tank/data') $at[$job['dest']] = sprintf('%02d:%02d', $job['hour'], $job['minute']);
+	ksort($at);
+	return $at;
+};
+same(array(array('', '', '', ''), array('' => $free2, 'usb/' => $free)), array(array($pair($free, $free2), $pair($free2, ''), $pair($free, $free2), $pair($free2, $free)), $times()),
+	'each pair saved, none refused, and the swap stands');
 // Names too: under a pattern of hours, a copies record set aside does not clash with a snapshot time in its hour, and it stays.
 $old = array('c0ffee00' => array('id' => 'c0ffee00') + zfsmScheduleCopiesRecord('tank/data', 'days', 'usb', '07:20', '1', 0));
 $put = function($aside) use ($old) {
@@ -188,7 +205,7 @@ putenv('ZFSM_TEST_LIST_FAIL');
 // One whose own Replication is None: nothing copies it there, so its copy stays.
 $add(array('tank/n', 'backup/tank/n'));
 same(true, $save('tank/n', $part('default'), $part('none'))['saved'], 'None');
-same(array($copy('tank/n') => 'left where it is, as no schedule copies the renamed dataset there'), renameDataset('tank/n', 'tank/final', 0)['failed'], 'nothing copies it there');
+same(array($copy('tank/n') => 'left where it is, as no schedule copies the renamed dataset or one below it there'), renameDataset('tank/n', 'tank/final', 0)['failed'], 'nothing copies it there');
 same(array(true, false), array(in_array('backup/tank/n', $datasets(), true), in_array('backup/tank/final', $datasets(), true)), 'it stays');
 
 // One below it still copied there: the holder over that copy follows the rename too.
@@ -239,6 +256,11 @@ same(array($copy('tank/b3') => 'renamed with it, but not all its bookmarks were:
 	renameDataset('tank/b3', 'tank/b3x', 0)['failed'], 'the old one not removed');
 putenv('ZFSM_TEST_DESTROY_FAIL');
 same(array('backup/tank/b1x', 'backup/tank/b2x', 'backup/tank/b3x'), array_values(preg_grep('~^backup/tank/b\d~', $datasets())), 'each copy renamed');
+// A bookmark name can end in a space (OpenZFS), the last one listed too.
+$marked('tank/b4', 91);
+$pool('marks', preg_replace('~^(tank/b4#[^\t]*s)\t~', "$1 \t", $read('pool/marks')));
+same(array(array(), array('tank/b4x#'.zfsmReplicaBookmarkPrefix('backup/tank/b4x').'s ')), array(renameDataset('tank/b4', 'tank/b4x', 0)['failed'], $bookmarks('tank/b4x')),
+	'a bookmark whose name ends in a space takes the copy\'s new name');
 // A stopped run's holds take the copy's new name, so the run that carries it on takes them off; another hold stays.
 $tag = function($zdest) { return zfsmKeepHoldTag(zfsmKeepTag('', $zdest)); };
 $held = function($zdataset, $guid) use ($pool, $read, $marked, $tag) {
@@ -298,8 +320,13 @@ same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), arr
 // Destroy removes what it and below had under Schedules and leaves its copies.
 $under = function($root) use ($stored) { return array_values(preg_grep('~^'.preg_quote($root, '~').'(/|$)~', array_column($stored() ?? array(), 'dataset'))); };
 same(array(true, array('tank/p3/kid')), array($save('tank/p3/kid', $part('default'), $part('hourly', '', '', 0, 'backup'))['saved'], $under('tank/p3')), 'its own copies below it');
+$others = function() use ($stored) {
+	$all = $stored();
+	return is_array($all) ? array_values(array_filter($all, function($job) { return !preg_match('~^tank/p3(/|$)~', $job['dataset']); })) : null;
+};
+$kept = $others();
 same(array('succeeded' => array('tank/p3' => 0), 'failed' => array()), destroyDataset('tank/p3', 1), 'a destroy');
-same(array(array(), array(), array('backup/tank/p3', 'backup/tank/p3/kid')), array($under('tank/p3'), array_values(preg_grep('~^tank/p3~', $datasets())), array_values(preg_grep('~^backup/tank/p~', $datasets()))),
-	'it goes with the schedule below it, its copies stay');
+same(array(array(), array(), array('backup/tank/p3', 'backup/tank/p3/kid'), true, $kept), array($under('tank/p3'), array_values(preg_grep('~^tank/p3~', $datasets())),
+	array_values(preg_grep('~^backup/tank/p~', $datasets())), $kept !== array(), $others()), 'it goes with the schedule below it, its copies stay, and the other schedules stay as they were');
 
 echo "schedule dialog tests passed\n";

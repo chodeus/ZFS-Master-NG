@@ -259,8 +259,9 @@ $reset();
 putenv('ZFSM_TEST_INHERIT_FAIL=1');
 zfsmScheduleRun($id, $cfg, $t + 14100);
 putenv('ZFSM_TEST_INHERIT_FAIL');
-same(1, preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/ahres@'.$name($t + 13800), '/').' to backup\/tank\/ahres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
-	implode("\n", $read('notify-detail.log'))), 'the mark told: '.implode("\n", $read('notify-detail.log')));
+same(array(1, 1), array(preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/ahres@'.$name($t + 13800), '/').' to backup\/tank\/ahres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
+	implode("\n", $read('notify-detail.log'))), count(preg_grep('~^'.preg_quote('backup/tank/ahres@'.$name($t + 14100), '~').'\t~', $read('pool/marks')))),
+	'the mark told, and the next step landed: '.implode("\n", $read('notify-detail.log')));
 
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and
 // they share it, so the second has none left.

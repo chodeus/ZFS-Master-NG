@@ -30,6 +30,13 @@ function zfsmScheduleOwn($jobs, $zdataset, $kind = 'zfsmScheduleSnapshotsOnly') 
 	return array_filter($jobs, function($job) use ($zdataset, $kind) { return $kind($job) && $job['dataset'] === $zdataset; });
 }
 
+// Whether $job, a dataset's own schedule, is the one of its kind $jobs hold, but for what Save sets: the id, an hourly one's minute.
+function zfsmScheduleAsSaved($job, $jobs) {
+	$set = array('id' => 0) + ($job['every'] === 'hourly' ? array('minute' => 0) : array());
+	foreach (zfsmScheduleOwn($jobs, $job['dataset'], zfsmScheduleKindOf($job)) as $was) return array_diff_key($was, $set) == array_diff_key($job, $set);
+	return false;
+}
+
 // The schedule of $kind $zdataset follows: its own, else the one of the nearest dataset above it with one, else the default; null
 // when none of these is there.
 function zfsmScheduleFollowed($zdataset, $jobs, $kind = 'zfsmScheduleSnapshotsOnly') {

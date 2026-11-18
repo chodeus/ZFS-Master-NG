@@ -89,9 +89,9 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
 		# The bookmarks of a dataset and below; ZFSM_TEST_BOOKMARKS_FAIL=1 fails the read.
-		if [ "$4" = name ] && [ "$6" = bookmark ] && [ "$7" = -r ]; then
+		if [ "$4" = name,guid ] && [ "$6" = bookmark ] && [ "$7" = -r ]; then
 			[ "${ZFSM_TEST_BOOKMARKS_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
-			awk -F'\t' -v d="$last_arg" 'index($1, d "#") == 1 || (index($1, d "/") == 1 && index($1, "#")) { print $1 }' "$R/marks"
+			awk -F'\t' -v d="$last_arg" 'index($1, d "#") == 1 || (index($1, d "/") == 1 && index($1, "#")) { print $1 "\t" $2 }' "$R/marks"
 			exit 0
 		fi
 		# The snapshots of a dataset and below with their hold counts; ZFSM_TEST_HELD_FAIL=1 fails the read.

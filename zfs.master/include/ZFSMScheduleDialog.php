@@ -49,8 +49,9 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 	$listed = $repeats[0] || $repeats[1] ? zfsmScheduleCoverRead($cfg, $wait) : null;
 	$after = array();
 	$changed = zfsmScheduleSnapshotChange(function($all) use (&$snap, &$copy, $drop, $repeats, $listed, $cfg) {
-		// Copies as saved aren't checked again, so a Copy Under that is offline doesn't stop the snapshots' change.
-		$not = zfsmScheduleDialogWhy($repeats[0] ? zfsmScheduleSnapshotNot($snap['dataset'], $listed) : '', $repeats[1] && !zfsmScheduleCopiesAsSaved($copy, $all) ? zfsmScheduleCopiesOwnNot($copy, $all, $listed) : '');
+		// A part as saved isn't checked again, so what changed since (a Copy Under offline, Sanoid snapshots) doesn't stop the other's change.
+		$not = zfsmScheduleDialogWhy($repeats[0] && !zfsmScheduleAsSaved($snap, $all) ? zfsmScheduleSnapshotNot($snap['dataset'], $listed) : '',
+			$repeats[1] && !zfsmScheduleAsSaved($copy, $all) ? zfsmScheduleCopiesOwnNot($copy, $all, $listed) : '');
 		if ($not !== '') return 'Nothing was saved: '.$not;
 		// The copies record this replaces sits out the snapshots' checks, so the pair is checked as saved.
 		$all = zfsmScheduleSnapshotPut($all, $snap, $drop[0], $cfg, 'Snapshots: ', zfsmScheduleOwn($all, $copy['dataset'], zfsmScheduleKindOf($copy)));
