@@ -55,12 +55,15 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 		$not = zfsmScheduleDialogWhy($repeats[0] && $check[0] ? zfsmScheduleSnapshotNot($snap['dataset'], $listed) : '',
 			$repeats[1] && $check[1] ? zfsmScheduleCopiesOwnNot($copy, $all, $listed) : '');
 		if ($not !== '') return 'Nothing was saved: '.$not;
+		$was = $all;
 		// An hourly part goes in second, so its minute is picked clear of the other's time.
 		if ($snap['every'] === 'hourly') $all = zfsmScheduleSnapshotPlace(zfsmScheduleSnapshotPlace($all, $copy, $drop[1]), $snap, $drop[0]);
 		else $all = zfsmScheduleSnapshotPlace(zfsmScheduleSnapshotPlace($all, $snap, $drop[0]), $copy, $drop[1]);
 		// Both placed, so the pair is checked as saved: by the copies when they are checked.
 		$why = zfsmScheduleDialogWhy($check[0] ? zfsmScheduleSnapshotCheck($all, $snap, $cfg, $check[1] ? array($copy['id'] => 0) : array()) : '',
 			$check[1] ? zfsmScheduleSnapshotCheck($all, $copy, $cfg) : '');
+		// A part set to Default hands its datasets to the one above, which may then clash with one as saved.
+		if ($why === '' && ($drop[0] || $drop[1])) $why = zfsmScheduleNewClash($was, $all, $cfg);
 		return $why === '' ? $all : 'Nothing was saved: '.$why;
 	}, $after);
 	if (!$changed['saved']) return $changed + array('said' => '');

@@ -175,7 +175,9 @@ if ($test_log) {
 	$refused = createDataset('tank/newset', array('canmount' => 'off'));
 	assertSameValue(true, empty($refused['succeeded']) && strpos((string)reset($refused['failed']), 'Invalid dataset property: canmount') !== false, 'An option outside the allowed list was not refused');
 	assertSameValue(false, strpos((string)@file_get_contents($test_log), 'canmount'), 'A refused option reached zfs');
-	assertSameValue(true, !empty(renameDataset('tank/data', 'tank/data-renamed', 1)['succeeded']), 'Dataset rename failed');
+	// The rename's replication locks, never the host's.
+	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-backend-jobs');
+	assertSameValue(true, !empty(renameDataset('tank/data', 'tank/data-renamed', 1, $naming)['succeeded']), 'Dataset rename failed');
 	assertSameValue(true, !empty(setDatasetProperty('tank/data', 'compression', 'zstd')['succeeded']), 'Dataset property update failed');
 	assertSameValue(true, !empty(destroyDataset('tank/data', 1)['succeeded']), 'Recursive dataset destroy failed');
 	assertSameValue(true, !empty(createDatasetSnapshot('tank/data', 'manual', 1)['succeeded']), 'Recursive snapshot create failed');

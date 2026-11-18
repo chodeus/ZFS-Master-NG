@@ -102,6 +102,15 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			done
 			exit 0
 		fi
+		# A rename's read of a dataset and those below it with their guids (as get reads them); ZFSM_TEST_TREE_FAIL=1 fails it.
+		if [ "$4" = name,guid ] && [ "$6" = filesystem,volume ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_TREE_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '$1 == d || index($1, d "/") == 1 { print $1 }' "$R/datasets" | while IFS= read -r n; do
+				printf '%s\t%s\n' "$n" "$(prop "$n" guid "$(printf '%s' "$n" | cksum | cut -d' ' -f1)")"
+			done
+			exit 0
+		fi
 		# A name's read; ZFSM_TEST_LIST_FAIL names one whose read fails.
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
 			[ "${ZFSM_TEST_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
@@ -215,6 +224,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		exit 0 ;;
 	rename)
 		# Moves it and all below it, with their snapshots, bookmarks, properties and holds; ZFSM_TEST_RENAME_FAIL names one that is busy.
+		# ZFSM_TEST_LOCK_PROBE: a lock file whose state at each rename goes to probe.log, held or free, as ZFSM_TEST_PHP finds it.
+		[ -z "${ZFSM_TEST_LOCK_PROBE:-}" ] || "$ZFSM_TEST_PHP" -r 'echo flock(fopen(getenv("ZFSM_TEST_LOCK_PROBE"), "c"), LOCK_EX | LOCK_NB) ? "free\n" : "held\n";' >> "$R/probe.log"
 		eval "from=\${$(($# - 1))}"
 		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
 		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
@@ -388,6 +399,12 @@ fi
 
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
 	printf 'tank\t%s\n' "${ZFSM_TEST_FILESYSTEM_MOUNT:-/tmp/zfsm-test-mount}"
+	exit 0
+fi
+
+# A rename's read of a dataset and those below it with their guids: the dataset alone, its guid as get gives it.
+if [ "$1" = "list" ] && [ "$4" = name,guid ] && [ "$6" = filesystem,volume ] && [ "$7" = -r ]; then
+	printf '%s\t%s\n' "$last_arg" "${ZFSM_TEST_GUID:-$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)}"
 	exit 0
 fi
 

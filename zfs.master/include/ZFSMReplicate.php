@@ -213,6 +213,26 @@ function zfsmReplicateLock($lock_file, $schedule) {
 	return $lock;
 }
 
+// The replication locks of $zdataset and each dataset below it (zfsmJobLock, no command started holds them), by name; why not when
+// one is held or can't be had.
+function zfsmReplicateLockTree($zdataset) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid', '-t', 'filesystem,volume', '-r', $zdataset));
+	if (($listed['code'] ?? 1) !== 0) return 'the datasets at and below it could not be read: '.zfsmCommandError($listed, 'zfs list failed');
+	$locks = array();
+	foreach (zfsmLines($listed['output']) as $line) {
+		list($name, $guid) = explode("\t", $line, 2) + array(1 => '');
+		$file = zfsmJobGuidLock($guid, 'replicate');
+		$lock = $file === null ? null : zfsmJobLock($file, false);
+		if (is_resource($lock)) {
+			$locks[$name] = $lock;
+			continue;
+		}
+		array_map('zfsmJobUnlock', $locks);
+		return $lock === false ? 'a replication of '.$name.' is running' : 'the replication lock of '.$name.' could not be opened';
+	}
+	return $locks;
+}
+
 // One plan of zfsmRunReplicate's sent, with its log lines and the row's progress: array(0 when it landed, its notification's text and type).
 // $tag: the copy's (zfsmKeepTag), whose holds each run puts on before its send and a landed one takes off.
 function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag) {

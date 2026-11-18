@@ -177,7 +177,7 @@ try {
 			break;
 
 		case 'renamedataset':
-			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force')), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
+			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force'), $zfsm_cfg), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
 			break;
 
 		case 'destroydataset':

@@ -354,14 +354,14 @@ touch(zfsmScheduleStateFile('5a5a5a5a'));
 touch(zfsmScheduleStateFile('5b5b5b5b'));
 $ids = array_column($stored(), 'id', 'dataset');
 $own = function() use ($stored) { $by = array_column($stored(), 'id', 'dataset'); ksort($by); return $by; };
-same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0), 'a rename');
+same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0, $cfg), 'a rename');
 same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/data'], 'tank/new/sub' => $ids['tank/data/sub']), 3, false, false),
 	array($own(), count($stored()), is_file(zfsmScheduleStateFile('5a5a5a5a')), is_file(zfsmScheduleStateFile('5b5b5b5b'))), 'its own schedules and those below follow it');
 $inode = fileinode(zfsmScheduleFile());
-same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
+same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0, $cfg), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
 same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
-	renameDataset('tank/new', 'tank/newer', 0), 'one whose schedules could not be moved says so');
+	renameDataset('tank/new', 'tank/newer', 0, $cfg), 'one whose schedules could not be moved says so');
 zfsmJobUnlock($lock);
 // Destroy: they go, counts too.
 $pool('datasets', array("tank\tfilesystem", "tank/new\tfilesystem", "tank/new/sub\tfilesystem", "tank/docker\tfilesystem"));

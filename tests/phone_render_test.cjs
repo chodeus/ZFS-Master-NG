@@ -84,6 +84,25 @@ window.addEventListener('load', () => {
     checked++;
   }
 
+  // The Schedules dialog with both parts on Default, each following a dataset deep in a pool, as on the Main tab of a 390 px phone.
+  const deep = 'tank/' + 'appdata/nextcloud_data/'.repeat(4) + 'files';
+  for (const theme of ['black', 'white', 'azure', 'gray']) {
+    const where = `Schedules dialog on Default, ${theme} theme`;
+    const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+window.addEventListener('load', () => {
+  Swal2.fire({title: 'Schedules', html: zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'the snapshot schedule of ${deep}, every hour at :30; it keeps all it takes', skipped: '',
+    copies: {every: 'default', time: '', days: [], keep: '', under: '', inherited: 'the copies of ${deep} and below, under backup every hour at :40; it keeps all its snapshots', skipped: ''}}), showCancelButton: true, confirmButtonText: 'Save'});
+  zfsmScheduleDialogSync(Swal2.getPopup());
+});
+</script>`, `() => {
+  const popup = Swal2.getPopup(), seen = id => { const p = popup.querySelector(id); return p.getBoundingClientRect().height > 0 && p.textContent.includes('${deep}'); };
+  return {seen: [seen('#zfsm-schedules-default'), seen('#zfsm-copies-default')], wide: [Swal2.getHtmlContainer().scrollWidth, Swal2.getHtmlContainer().clientWidth, document.documentElement.scrollWidth, innerWidth]};
+}`);
+    assert.deepEqual(shown.seen, [true, true], `${where}: both Default lines must show what they follow: ${JSON.stringify(shown)}`);
+    assert.ok(shown.wide[0] <= shown.wide[1] && shown.wide[2] <= shown.wide[3], `${where}: nothing may scroll sideways in the dialog or past the screen: ${JSON.stringify(shown.wide)}`);
+    checked++;
+  }
+
   // Snapshots Admin in Shadowbox's 342 px frame: rows of two datasets with long names, as the page prints them.
   const admin = page('ZFSMAdminDatasetSnaps.php');
   const rows = ['tank/appdata/plex', 'tank/appdata/nextcloud'].flatMap(dataset => [1, 2, 3].map(n => `<tr data-snapshot="${dataset}@autosnap_2026-11-16_17:3${n}:44_hourly" data-automatic="1">`

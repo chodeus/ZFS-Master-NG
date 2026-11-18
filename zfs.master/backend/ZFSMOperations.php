@@ -624,13 +624,22 @@ function zfsmSetShareOwner($pool, $names) {
 	return $failed;
 }
 
-function renameDataset($zdataset, $new_name, $force) {
+function renameDataset($zdataset, $new_name, $force, $cfg) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidDatasetName($new_name)) return zfsmFailure($new_name, 'Invalid source or destination dataset');
-	$args = array('rename');
-	if ((string)$force === '1') $args[] = '-f';
-	$args[] = $zdataset;
-	$args[] = $new_name;
-	return zfsmScheduleOwnFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name);
+	// Held until its copies follow it, so no run copies it under its new name first.
+	$locks = zfsmReplicateLockTree($zdataset);
+	if (is_string($locks)) return zfsmFailure($new_name, 'Nothing was renamed: '.$locks);
+	try {
+		$why = zfsmScheduleCopiesFit(array_keys($locks), $zdataset, $new_name, $cfg);
+		if ($why !== '') return zfsmFailure($new_name, 'Nothing was renamed: '.$why);
+		$args = array('rename');
+		if ((string)$force === '1') $args[] = '-f';
+		$args[] = $zdataset;
+		$args[] = $new_name;
+		return zfsmScheduleOwnFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name, $cfg);
+	} finally {
+		array_map('zfsmJobUnlock', $locks);
+	}
 }
 
 function setDatasetProperty($zdataset, $property, $value) {
