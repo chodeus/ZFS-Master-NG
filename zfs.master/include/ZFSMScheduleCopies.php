@@ -309,8 +309,8 @@ function zfsmScheduleCopiesHolds($old, $new, $to) {
 
 // Hold $snapshot as $to too, then release $from; '' or what went wrong.
 function zfsmScheduleCopiesHoldMove($snapshot, $from, $to) {
-	$held = runProcess('zfs', array('hold', $to, $snapshot));
-	if (($held['code'] ?? 1) !== 0 && strpos((string)($held['output'] ?? ''), 'tag already exists') === false) return zfsmCommandError($held, 'zfs hold failed');
+	$why = zfsmKeepHoldOne($to, $snapshot);
+	if ($why !== '') return $why;
 	$released = runProcess('zfs', array('release', $from, $snapshot));
 	return ($released['code'] ?? 1) === 0 ? '' : zfsmCommandError($released, 'zfs release failed');
 }

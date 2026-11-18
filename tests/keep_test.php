@@ -216,6 +216,17 @@ same(array(3, 1), array(count($read('pool/holds')), preg_match('/A hold for this
 $reset();
 $run(18);
 same(array(array(), array($n(17), $n(18))), array($read('pool/holds'), array_slice($short('tank/data'), 3)), 'the next run takes them off, and Keep catches up');
+// The run that carries one on and stops again finds its holds on already: they count as held.
+putenv('ZFSM_TEST_SEND_CUT=1');
+$run(18.25);
+$reset();
+same(1, $run(18.5), 'carried on and cut off again');
+putenv('ZFSM_TEST_SEND_CUT');
+$failed = implode("\n", preg_grep('/tank\/data@'.$n(18.25).' to backup\/data \(carried on from where it stopped\) failed: /', explode("\n", $log())));
+same(array(array('tank/data@'.$n(18.25)."\t".$hold, 'tank/data@'.$n(18)."\t".$hold), 1, 1, 0), array($read('pool/holds'), count(preg_grep('/^hold '.preg_quote($hold.' tank/data@'.$n(18.25), '/').'$/', $read('calls.log'))),
+	substr_count($failed, 'failed: '), substr_count($failed, 'could not be held')), 'its holds stay as they were, and its log line does not say they could not be held: '.$failed);
+$reset();
+same(array(0, array()), array($run(18.75), $read('pool/holds')), 'the run that lands takes them off');
 
 // Keep 0 tags and removes nothing; the snapshot a run just sent stays, past the newest or not; a copy on a server: only here.
 $reset();
