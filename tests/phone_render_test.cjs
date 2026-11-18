@@ -95,7 +95,7 @@ window.addEventListener('load', () => {
   zfsmScheduleDialogSync(Swal2.getPopup());
 });
 </script>`, `() => {
-  const popup = Swal2.getPopup(), seen = id => { const p = popup.querySelector(id); return p.getBoundingClientRect().height > 0 && p.textContent.includes('${deep}'); };
+  const popup = Swal2.getPopup(), seen = id => { const p = popup.querySelector(id); return p.getBoundingClientRect().height > 0 && getComputedStyle(p).visibility === 'visible' && p.textContent.includes('${deep}'); };
   return {seen: [seen('#zfsm-schedules-default'), seen('#zfsm-copies-default')], wide: [Swal2.getHtmlContainer().scrollWidth, Swal2.getHtmlContainer().clientWidth, document.documentElement.scrollWidth, innerWidth]};
 }`);
     assert.deepEqual(shown.seen, [true, true], `${where}: both Default lines must show what they follow: ${JSON.stringify(shown)}`);

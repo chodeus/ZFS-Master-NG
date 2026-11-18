@@ -455,4 +455,19 @@ file_put_contents(zfsmScheduleFile(), '{');
 $placed = array();
 same(null, zfsmScheduleCopiesPlace('backup/', 'backup/tank/data/sub', array(), $placed, $cfg), 'nor where the schedules saved could not be read');
 
+// One the schedules saved since the run read them no longer copy there is left out and not counted: tank/data set to None, the
+// schedule removed, its Copy Under moved; with the schedules not read, the run goes as it read them.
+$then = zfsmScheduleRead(json_encode(array(array('keep' => 1) + $every)))['valid'];
+$midrun = function($saved) use ($then, $id, $cfg, $t, $reset, $pool, $datasets) {
+	$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "backup\tfilesystem"));
+	$pool('marks', array());
+	file_put_contents(zfsmScheduleFile(), $saved);
+	$reset();
+	return array(zfsmScheduleCopiesMade($then[$id], $then, $cfg, $t + 46800, ZFSM_SCHEDULE_WAIT), array_values(preg_grep('~^backup/~', $datasets())));
+};
+$ran = function($made, $copies) { return array(array('Scheduled copies under backup: '.$made.' dataset(s) copied', false), $copies); };
+same(array($ran('1 of 1', array('backup/tank')), $ran('0 of 0', array()), $ran('0 of 0', array()), $ran('2 of 2', array('backup/tank', 'backup/tank/data'))),
+	array($midrun(json_encode(array(array('keep' => 1) + $every, array('id' => 'dddd0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every))),
+	$midrun('[]'), $midrun(json_encode(array(array('keep' => 1, 'dest' => 'usb/') + $every))), $midrun('{')), 'a run leaves out one the schedules saved since no longer copy there');
+
 echo "schedule copies tests passed\n";

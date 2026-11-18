@@ -189,6 +189,13 @@ $removed[] = in_array($own, array_column($stored(), 'id'), true);
 $removed[] = zfsmScheduleRemove($own, $cfg)['saved'];
 same(array(array('why' => 1, 'saved' => false), true, true), array(array('why' => preg_match('/^Not removed: for (the copies of tank\/apps\/db and below|the snapshot schedule of tank\/apps), Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
 	$removed[0]['why'])) + $removed[0], $removed[1], $removed[2]), 'Remove in Settings is refused where Default would clash, and allowed where not');
+// Three repeats set in Replicate of one dataset on Mondays, a pattern of days naming them alike: Remove of one clashes nothing new.
+$repeats = array();
+foreach (array('03:00', '04:00', '05:00') as $i => $at) $repeats['5e0c1a0'.$i] = array('id' => '5e0c1a0'.$i, 'dataset' => 'tank/docker', 'dest' => 'backup/rx'.$i, 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', $at, '1') + array('keep' => 0);
+zfsmScheduleChange(function($jobs) use ($repeats) { return $jobs + $repeats; });
+same(array(true, true, array('5e0c1a00')), array(zfsmScheduleRemove('5e0c1a02', array('snap_pattern' => 'Y-m-d') + $cfg)['saved'], zfsmScheduleRemove('5e0c1a01', array('snap_pattern' => 'Y-m-d') + $cfg)['saved'],
+	array_values(array_intersect(array_keys($repeats), array_column($stored(), 'id')))), 'Remove of a repeat that clashes with others goes where the rest clashed already');
+zfsmScheduleRemove('5e0c1a00', $cfg);
 // A clash of each schedule there before (a pattern of months, so each run of the week names alike) does not hide a new one.
 $ym = function($zdataset, $snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave($zdataset, $snapshots, $copies, array('snap_pattern' => 'Ym') + $cfg); };
 same(array(true, 1), array($save('tank/apps/log', $part('none'), $part('days', '03:00', '1', 0, 'usb'))['saved'],

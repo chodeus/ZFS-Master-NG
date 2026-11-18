@@ -132,13 +132,18 @@ function zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $name) {
 	return $why === '' && zfsmScheduleCopiesUnder($job) ? zfsmScheduleCopiesNot($job, $jobs, $zdataset, $row, $name) : $why;
 }
 
+// Whether a run of $job takes $zdataset, listed as $row: it follows $job in $jobs, and nothing leaves it out (zfsmScheduleLeftOut).
+function zfsmScheduleTakes($job, $jobs, $zdataset, $row, $name) {
+	return zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $name) === '' && (zfsmScheduleFollowed($zdataset, $jobs, zfsmScheduleKindOf($job))['id'] ?? null) === $job['id'];
+}
+
 // From $listed: by pool, each dataset that follows $job (zfsmScheduleFollowed of its kind in $jobs) and a run can take
 // (zfsmScheduleLeftOut); and why some weren't read ('' when all were).
 function zfsmScheduleCovered($listed, $job, $jobs) {
 	list($rows, $errors) = zfsmScheduleListed($listed);
 	$pools = array();
 	foreach ($rows as $zdataset => $row) {
-		if (zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $listed['name']) === '' && (zfsmScheduleFollowed($zdataset, $jobs, zfsmScheduleKindOf($job))['id'] ?? null) === $job['id']) $pools[explode('/', $zdataset)[0]][] = $zdataset;
+		if (zfsmScheduleTakes($job, $jobs, $zdataset, $row, $listed['name'])) $pools[explode('/', $zdataset)[0]][] = $zdataset;
 	}
 	// zfs lists what it can read, and fails for the rest: a dataset's own minds errors naming none, its datasets or one above.
 	if (($listed['code'] ?? 1) === 0) return array($pools, '');
@@ -280,12 +285,18 @@ function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
 	return $clash === '' ? '' : $clash.'; add the time to Snapshots Pattern';
 }
 
-// The first clash (zfsmScheduleSnapshotCheck) $after has that $before, the same schedules by id before a change, did not, with the
-// schedule it stops; '' when none. One there before stays the owner's to change, though another of the same schedule is new.
+// The first clash (zfsmScheduleSnapshotCheck) a schedule in $after has with one it did not clash with in $before (the same schedules by
+// id before a change), with the schedule it stops; '' when none. One there before stays the owner's to change.
 function zfsmScheduleNewClash($before, $after, $cfg) {
 	foreach (array_intersect_key($after, $before) as $id => $job) {
-		$why = zfsmScheduleSnapshotCheck($after, $job, $cfg);
-		if ($why !== '' && zfsmScheduleSnapshotCheck($before, $before[$id], $cfg) !== $why) return 'for '.zfsmScheduleWhat($job).', '.$why;
+		if (zfsmScheduleSnapshotCheck($after, $job, $cfg) === '') continue;
+		// One other at a time, the rest set aside (None, still nearer): with all aside ('') it finds its own, which no caller changes.
+		$check = function($jobs, $with) use ($id, $cfg) { return zfsmScheduleSnapshotCheck($jobs, $jobs[$id], $cfg, array_diff_key($jobs, array($id => 0, $with => 0))); };
+		$own = array($check($after, ''), $check($before, ''));
+		foreach (array_keys(array_diff_key($after, array($id => 0))) as $with) {
+			$why = $check($after, $with);
+			if (!in_array($why, array('', $own[0]), true) && in_array($check($before, $with), array('', $own[1]), true)) return 'for '.zfsmScheduleWhat($job).', '.$why;
+		}
 	}
 	return '';
 }

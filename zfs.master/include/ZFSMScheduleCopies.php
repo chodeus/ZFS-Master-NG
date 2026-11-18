@@ -139,12 +139,17 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$datasets = array_merge(...array_values($pools));
 	// By name: a dataset's parents come before it.
 	sort($datasets, SORT_STRING);
-	$here = array_fill_keys(array_keys(zfsmScheduleListed($listed)[0]), true);
+	$rows = zfsmScheduleListed($listed)[0];
+	$here = array_fill_keys(array_keys($rows), true);
 	$coming = zfsmScheduleCopiesComing($job, $jobs, $listed);
 	$name = zfsmNewSnapshotName($cfg, $now);
-	$made = 0;
+	$made = $left = 0;
 	$problems = $waiting = array();
 	foreach ($datasets as $zdataset) {
+		if (!zfsmScheduleCopiesStill($job, $zdataset, $rows[$zdataset], $listed['name'])) {
+			$left++;
+			continue;
+		}
 		$zdest = zfsmScheduleCopiesDest($job, $zdataset);
 		$place = zfsmScheduleCopiesPlace($job['dest'], $zdest, $coming, $here, $cfg);
 		if ($place === null) $waiting[] = $zdataset;
@@ -159,7 +164,7 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 		}
 		if ($code !== 0 || $said[1] !== 'normal') $problems[] = $said[0];
 	}
-	return array(zfsmScheduleCopiesSaid($under, $made.' of '.count($datasets), $waiting, $unread, $problems), $waiting || $unread !== '' || $problems);
+	return array(zfsmScheduleCopiesSaid($under, $made.' of '.(count($datasets) - $left), $waiting, $unread, $problems), $waiting || $unread !== '' || $problems);
 }
 
 // What a run says when it copies none, as zfsmScheduleCopiesMade answers; null when it can copy.
@@ -168,6 +173,15 @@ function zfsmScheduleCopiesNone($under, $listed, $pools, $unread) {
 	if (!$pools) return array('Scheduled copies not made: '.($unread !== '' ? $what.' could not be read: '.$unread : 'no pool has a dataset it copies'), $unread !== '' ? true : null);
 	$not = zfsmScheduleCopiesUnderNot($under, $listed);
 	return $not !== '' ? array('Scheduled copies not made: '.$not, true) : null;
+}
+
+// Whether the schedules saved now still have $job's run take $zdataset to the same Copy Under (zfsmScheduleTakes), as a run takes hours;
+// true when they can't be read, as the run read them. One set to None copies under none.
+function zfsmScheduleCopiesStill($job, $zdataset, $row, $name) {
+	$read = zfsmScheduleRead();
+	if ($read === null) return true;
+	$now = $read['valid'][$job['id']] ?? null;
+	return ($now['dest'] ?? null) === $job['dest'] && zfsmScheduleTakes($now, $read['valid'], $zdataset, $row, $name);
 }
 
 // Where a copy is due here: each a schedule of copies under $job's dest makes, $job or another, and each a copy's own schedule
