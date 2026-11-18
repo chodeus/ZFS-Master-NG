@@ -177,7 +177,9 @@ try {
 			break;
 
 		case 'renamedataset':
-			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force'), $zfsm_cfg), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
+			$dataset = zfsmPostString('zdataset');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
+			zfsmReturnAnswer($blocked ?? renameDataset($dataset, zfsmPostString('newname'), zfsmPostString('force'), $zfsm_cfg), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
 			break;
 
 		case 'destroydataset':
@@ -252,7 +254,7 @@ try {
 
 		case 'scheduleremove':
 			// Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$removed = zfsmScheduleRemove(zfsmPostString('id'));
+			$removed = zfsmScheduleRemove(zfsmPostString('id'), $zfsm_cfg);
 			echo zfsmJson(($removed['why'] !== '' ? array('error' => $removed['why']) : array()) + ($removed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 

@@ -247,7 +247,7 @@ function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
 		$answer['failed']['Copies of '.$from] = 'not renamed with it, as the schedules that say where they go could not be read';
 		return $answer;
 	}
-	foreach (zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after']) as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
+	foreach (zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after'], $cfg) as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
 	return $answer;
 }
 
@@ -282,11 +282,11 @@ function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
 }
 
 // The first clash (zfsmScheduleSnapshotCheck) $after has that $before, the same schedules by id before a change, did not, with the
-// schedule it stops; '' when none. One there before stays the owner's to change.
+// schedule it stops; '' when none. One there before stays the owner's to change, though another of the same schedule is new.
 function zfsmScheduleNewClash($before, $after, $cfg) {
 	foreach (array_intersect_key($after, $before) as $id => $job) {
 		$why = zfsmScheduleSnapshotCheck($after, $job, $cfg);
-		if ($why !== '' && zfsmScheduleSnapshotCheck($before, $before[$id], $cfg) === '') return 'for '.zfsmScheduleWhat($job).', '.$why;
+		if ($why !== '' && zfsmScheduleSnapshotCheck($before, $before[$id], $cfg) !== $why) return 'for '.zfsmScheduleWhat($job).', '.$why;
 	}
 	return '';
 }

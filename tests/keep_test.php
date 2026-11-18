@@ -326,7 +326,7 @@ $pool('holds', array());
 $tagged = function() use ($tag) { return count(array_filter(zfsmKeepSnapshots('tank/data'), function($snapshot) use ($tag) { return $snapshot['tag'] === $tag; })); };
 $run(19);
 $run(20);
-same(array(2, true), array($tagged(), zfsmScheduleRemove($id)['saved']), 'two of the schedule\'s snapshots, and it is removed');
+same(array(2, true), array($tagged(), zfsmScheduleRemove($id, $cfg)['saved']), 'two of the schedule\'s snapshots, and it is removed');
 $reset();
 $add('tank/data', '', 'backup/data', '', 'hourly', '', '', 1, $cfg);
 $again = $stored()[0]['id'];
@@ -335,7 +335,7 @@ $reset();
 same(array(0, 6, 1), array(zfsmScheduleRun($again, $cfg, (int)($t0 + 3600 * 21)), count($destroys()), $tagged()), 'the next keeps the newest 1, removing the rest here and in the copy');
 // Rules go through the store and a run: Repeat saves them as text in one order; 1 1d keeps only the newest (the newest day's
 // newest is that one too).
-same(true, zfsmScheduleRemove($again)['saved'], 'that schedule is removed');
+same(true, zfsmScheduleRemove($again, $cfg)['saved'], 'that schedule is removed');
 $reset();
 $add('tank/data', '', 'backup/data', '', 'hourly', '', '', zfsmKeepParse(' 1D, 1 '), $cfg);
 $jobs = $stored();

@@ -13,6 +13,7 @@ $cases = array(
 	'rollback_newer' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '1'), '0', '', 'blocked'),
 	'destroy_recursive' => array(array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '1'), '0', '', 'blocked'),
 	'destroy_dataset' => array(array('cmd' => 'destroydataset', 'zdataset' => 'tank/data', 'force' => '0'), '0', '', 'blocked'),
+	'rename_dataset' => array(array('cmd' => 'renamedataset', 'zdataset' => 'tank/data', 'newname' => 'tank/data2', 'force' => '0'), '0', '', 'blocked'),
 	'rollback_plain' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '0'), '0', '', 'allowed'),
 	'destroy_plain' => array(array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '0'), '0', '', 'allowed'),
 	'newer_with_mode' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '1'), '1', '', 'allowed'),

@@ -206,6 +206,16 @@ same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the
 putenv('ZFSM_TEST_CRYPT_FAIL=backup/tank/sealed');
 same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and whether it is encrypted could not be read'), $plan(), 'one whose encryption could not be read');
 putenv('ZFSM_TEST_CRYPT_FAIL');
+// Nor while a copy below it is mounted, which receiving over it would unmount (live, 2.4.4); one not read is not sent over.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/mnt\tfilesystem", "backup/tank/mnt\tfilesystem", "backup/tank/mnt/kid\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/mnt@a\t4747\t9005")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/mnt\tzfs.master:holder\ton", "backup/tank/mnt/kid\tmounted\tyes")));
+$plan = function() { return zfsmReplicatePlan('tank/mnt', 'a', 'backup/tank/mnt', array('estimate' => false)); };
+$over = 'backup/tank/mnt only holds the copies of datasets below this one, and ';
+same(array('can_proceed' => false, 'error' => $over.'backup/tank/mnt/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted (zfs unmount backup/tank/mnt/kid), the next run sends it'), $plan(), 'one with a copy below it mounted');
+putenv('ZFSM_TEST_MOUNTED_FAIL=1');
+same(array('can_proceed' => false, 'error' => $over.'whether a copy below it is mounted could not be read: cannot open \'backup/tank/mnt\': Input/output error'), $plan(), 'one where that could not be read');
+putenv('ZFSM_TEST_MOUNTED_FAIL');
 
 // A first copy onto a holder that stops part-way carries on only with -F again (OpenZFS 2.4.4); the mark goes once it lands.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/res\tfilesystem", "backup/tank/res\tfilesystem")));
@@ -216,6 +226,11 @@ putenv('ZFSM_TEST_SEND_CUT=1');
 same(1, zfsmRunReplicate('tank/res', 'a', 'backup/tank/res'), 'a first copy onto a holder, cut off');
 putenv('ZFSM_TEST_SEND_CUT');
 same(array(true, 'resume'), array(zfsmReplicaHolder(array('server' => ''), 'backup/tank/res'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false))['mode']), 'still a holder, part-received');
+$pool('datasets', array_merge($read('pool/datasets'), array("backup/tank/res/kid\tfilesystem")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/res/kid\tmounted\tyes")));
+same(array('can_proceed' => false, 'error' => 'backup/tank/res only holds the copies of datasets below this one, and backup/tank/res/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted (zfs unmount backup/tank/res/kid), the next run sends it'),
+	zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false)), 'nor carried on over a copy below it mounted');
+$pool('props', array_values(preg_grep("~^backup/tank/res/kid\tmounted\t~", $read('pool/props'), PREG_GREP_INVERT)));
 putenv('ZFSM_TEST_MARKS_FAIL=backup/tank/res');
 same(array('can_proceed' => false, 'error' => 'The snapshots of backup/tank/res could not be read'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false)), 'not carried on when its snapshots could not be read');
 putenv('ZFSM_TEST_MARKS_FAIL');
@@ -247,14 +262,15 @@ $hold = zfsmKeepHoldTag(zfsmKeepTag('', 'backup/tank/data'));
 same(array("tank/data@$p\t$hold", "tank/data@$o\t$hold"), array_values(preg_grep('~^tank/data@~', $read('pool/holds'))), 'a run cut off holds for the copy');
 same(0, zfsmRunReplicate('tank/data', $p, 'backup/tank/data'), 'carried on by hand');
 same(array(), preg_grep('~^tank/data@~', $read('pool/holds')), 'which takes its holds off');
-// The next run carries the others on, then sends what it took: a warning of the first step is told with the second.
+// The next run carries the others on, then sends what it took: a warning of the second step is told whole, then the first's,
+// which a notification cut short loses.
 $reset();
 @unlink(zfsmScheduleStateFile($id));
 putenv('ZFSM_TEST_BOOKMARK_FAIL=1');
 zfsmScheduleRun($id, $cfg, $t + 13500);
 putenv('ZFSM_TEST_BOOKMARK_FAIL');
-same(1, preg_match('/^warning: .*'.preg_quote('tank@'.$p, '/').' to backup\/tank finished \(carried on from where it stopped\)\. The bookmark that keeps the next run incremental could not be made: .*?\. Replication of '.preg_quote('tank@'.$name($t + 13500), '/').' to backup\/tank finished \(changes since /',
-	implode("\n", $read('notify-detail.log'))), 'the first step\'s warning, then the second\'s: '.implode("\n", $read('notify-detail.log')));
+same(1, preg_match('/^warning: .*'.preg_quote('tank@'.$name($t + 13500), '/').' to backup\/tank finished \(changes since \S+\)\. The bookmark that keeps the next run incremental could not be made: [^.]*permission denied\. Before it: Replication of '.preg_quote('tank@'.$p, '/').' to backup\/tank finished \(carried on from where it stopped\)/',
+	implode("\n", $read('notify-detail.log'))), 'the second step\'s warning whole, then the first\'s: '.implode("\n", $read('notify-detail.log')));
 // A first copy onto a holder, cut off, then carried on: a mark that stays is a problem of the run, though the next step lands cleanly
 // (the notification's cut ends the line before that step).
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/ahres\tfilesystem", "backup/tank/ahres\tfilesystem")));
@@ -281,8 +297,8 @@ putenv('ZFSM_TEST_MARKS_FAIL=backup/tank/data');
 $code = zfsmRunReplicate('tank/data', 'cut2', 'backup/tank/data', null, true, '', $by);
 putenv('ZFSM_TEST_BOOKMARK_FAIL');
 putenv('ZFSM_TEST_MARKS_FAIL');
-same(array(1, 1), array($code, preg_match('/^warning: Replication of tank\/data@cut1 to backup\/tank\/data finished \(carried on from where it stopped\)\. The bookmark that keeps the next run incremental could not be made: .*\. Replication of tank\/data to backup\/tank\/data not started: The snapshots of backup\/tank\/data could not be read$/', implode("\n", $told))),
-	'the first step\'s warning, then why the next was not started: '.implode("\n", $told));
+same(array(1, 1), array($code, preg_match('/^\w+: Replication of tank\/data to backup\/tank\/data not started: The snapshots of backup\/tank\/data could not be read\. Before it: Replication of tank\/data@cut1 to backup\/tank\/data finished \(carried on from where it stopped\)\. The bookmark that keeps the next run incremental could not be made: .*$/', implode("\n", $told))),
+	'why the next was not started, then the first step\'s warning: '.implode("\n", $told));
 
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and
 // they share it, so the second has none left.
@@ -372,7 +388,8 @@ $under = array('id' => 'cccc0000', 'dataset' => 'tank/data/sub', 'minute' => 0) 
 file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => 1) + $every, array('id' => 'dddd0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every, $under)));
 $reset();
 same(array(1, array(), array()), array(zfsmScheduleRun('cccc0000', $cfg, $t + 32400), preg_grep('~^backup/~', $datasets()), preg_grep('/^create /', $read('calls.log'))), 'no holder where Replicate Every Dataset copies');
-same(array(0, 0, array('backup/tank', 'backup/tank/data', 'backup/tank/data/sub')), array(zfsmScheduleRun($id, $cfg, $t + 36000), zfsmScheduleRun('cccc0000', $cfg, $t + 36060), array_values(preg_grep('~^backup/~', $datasets()))),
+same(array(0, 0, array('backup/tank', 'backup/tank/data', 'backup/tank/data/sub'), array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/tank/data')),
+	array(zfsmScheduleRun($id, $cfg, $t + 36000), zfsmScheduleRun('cccc0000', $cfg, $t + 36060), array_values(preg_grep('~^backup/~', $datasets())), array_values(preg_grep('/^create /', $read('calls.log')))),
 	'its copy, then a holder for tank/data, which nothing copies, and the copy below');
 
 echo "schedule copies tests passed\n";

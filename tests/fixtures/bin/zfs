@@ -39,24 +39,27 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		if contains_arg 'name,readonly,mountpoint' "$@"; then
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = hang ] && { sleep 30; exit 1; }
-			code=0; under=''
+			code=0; under=''; deep=0
 			contains_arg '-d' "$@" && under=$last_arg
+			contains_arg '-r' "$@" && { under=$last_arg; deep=1; }
 			if [ -n "$under" ] && ! exists "$under"; then printf "cannot open '%s': dataset does not exist\n" "$under" >&2; exit 1; fi
 			while IFS="$(printf '\t')" read -r n ty; do
-				if [ -n "$under" ]; then case "$n" in "$under") ;; "$under"/*/*) continue ;; "$under"/*) ;; *) continue ;; esac; fi
+				if [ -n "$under" ]; then case "$n" in "$under") ;; "$under"/*/*) [ "$deep" = 1 ] || continue ;; "$under"/*) ;; *) continue ;; esac; fi
 				[ "$n" = "${ZFSM_TEST_COVER_FAIL:-}" ] && { printf "cannot open '%s': Input/output error\n" "$n" >&2; code=1; continue; }
 				if [ "$ty" = volume ]; then mp=-; else mp=/mnt/$n; fi
 				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" readonly off)" "$(prop "$n" mountpoint "$mp")"
 			done < "$R/datasets"
 			exit $code
 		fi
-		# And its read of snapshot names alone, sorted; with -d 1 <name> only that one's. ZFSM_TEST_NAMES_FAIL=1 fails it, and
-		# ZFSM_TEST_COVER_FAIL's dataset fails here too, as zfs does.
+		# And its read of snapshot names alone, sorted; with -d 1 <name> only that one's, with -r <name> its and below. ZFSM_TEST_NAMES_FAIL=1
+		# fails it, and ZFSM_TEST_COVER_FAIL's dataset fails here too, as zfs does.
 		if [ "$4" = name ] && [ "$5" = -s ] && [ "$8" = snapshot ]; then
 			[ "${ZFSM_TEST_NAMES_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
-			under=''; contains_arg '-d' "$@" && under=$last_arg
-			f=${ZFSM_TEST_COVER_FAIL:-}; case $f in 1|hang) f='' ;; esac; [ -n "$under" ] && [ "$under" != "$f" ] && f=''
-			awk -F'\t' -v d="$under" -v f="$f" '((d == "" && index($1, "@")) || (d != "" && index($1, d "@") == 1)) && index($1, f "@") != 1 { print $1 }' "$R/marks" | LC_ALL=C sort
+			under=''; deep=0; contains_arg '-d' "$@" && under=$last_arg
+			contains_arg '-r' "$@" && { under=$last_arg; deep=1; }
+			f=${ZFSM_TEST_COVER_FAIL:-}; case $f in 1|hang) f='' ;; esac
+			if [ -n "$under" ] && [ "$under" != "$f" ]; then case "$deep:$f" in 1:"$under"/*) ;; *) f='' ;; esac; fi
+			awk -F'\t' -v d="$under" -v r="$deep" -v f="$f" '((d == "" && index($1, "@")) || (d != "" && (index($1, d "@") == 1 || (r && index($1, d "/") == 1 && index($1, "@"))))) && index($1, f "@") != 1 { print $1 }' "$R/marks" | LC_ALL=C sort
 			[ -z "$f" ] || { printf "cannot open '%s': Input/output error\n" "$f" >&2; exit 1; }
 			exit 0
 		fi
@@ -87,6 +90,14 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name,type ]; then
 			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
+		fi
+		# A holder's filesystems and below it, mounted as props say, else no (a copy is received unmounted); ZFSM_TEST_MOUNTED_FAIL=1 fails it.
+		if [ "$4" = name,mounted ] && [ "$6" = filesystem ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_MOUNTED_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '($1 == d || index($1, d "/") == 1) && $2 == "filesystem" { print $1 }' "$R/datasets" | while IFS= read -r n; do
+				printf '%s\t%s\n' "$n" "$(prop "$n" mounted no)"
+			done
+			exit 0
 		fi
 		# The bookmarks of a dataset and below; ZFSM_TEST_BOOKMARKS_FAIL=1 fails the read.
 		if [ "$4" = name,guid ] && [ "$6" = bookmark ] && [ "$7" = -r ]; then
@@ -207,6 +218,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			printf 'cannot receive incremental stream: most recent snapshot of %s does not match incremental source\n' "$dest" >&2; exit 1
 		fi
 		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
+		# Each -o prop=value lands on the copy, as readonly=on keeps a run from snapshotting it.
+		o=0; for a in "$@"; do [ "$o" = 1 ] && set_prop "$dest" "${a%%=*}" "${a#*=}"; o=0; [ "$a" = -o ] && o=1; done
 		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
 			set_prop "$dest" receive_resume_token "tok:$snap"
 			printf 'tok:%s\t%s\n' "$snap" "$guid" >> "$R/tokens"

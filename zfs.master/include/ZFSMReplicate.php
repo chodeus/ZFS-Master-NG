@@ -199,9 +199,12 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	}
 }
 
-// A run's last step's $text and $type, after the first's when that one carried on a stopped run and warned ($first: its text, type).
+// A run's last step's $text and $type, with the first's when that one carried on a stopped run and warned ($first: its text, type);
+// a last step with a problem goes first, so a notification cut short still says it.
 function zfsmReplicateTold($first, $text, $type) {
-	return $first[1] === 'normal' ? array($text, $type) : array(rtrim($first[0], '.').'. '.$text, $type === 'normal' ? 'warning' : $type);
+	if ($first[1] === 'normal') return array($text, $type);
+	if ($type === 'normal') return array(rtrim($first[0], '.').'. '.$text, 'warning');
+	return array(rtrim($text, '.').'. Before it: '.$first[0], $type);
 }
 
 // zfsmJobLock of $lock_file, waiting out another run up to $schedule's 'wait' seconds; its 'waited' is told how long.

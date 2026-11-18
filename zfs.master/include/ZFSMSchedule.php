@@ -301,13 +301,15 @@ function zfsmScheduleSame($jobs, $job) {
 	return '';
 }
 
-// As zfsmScheduleChange answers: removed once 'saved', even if the crontab could not be rebuilt after.
-function zfsmScheduleRemove($id) {
+// As zfsmScheduleChange answers: removed once 'saved', even if the crontab could not be rebuilt after; not when the schedule above
+// that its datasets then follow clashes with one as saved (zfsmScheduleNewClash, Snapshots Pattern from $cfg).
+function zfsmScheduleRemove($id, $cfg) {
 	if (!zfsmScheduleId($id)) return array('saved' => false, 'why' => 'No such schedule');
-	$changed = zfsmScheduleChange(function($jobs) use ($id) {
+	$changed = zfsmScheduleChange(function($jobs) use ($id, $cfg) {
 		if (!isset($jobs[$id])) return 'No such schedule; it may have been removed already';
-		unset($jobs[$id]);
-		return $jobs;
+		$after = array_diff_key($jobs, array($id => 0));
+		$clash = zfsmScheduleNewClash($jobs, $after, $cfg);
+		return $clash === '' ? $after : 'Not removed: '.$clash;
 	});
 	if ($changed['saved']) @unlink(zfsmScheduleStateFile($id));
 	return $changed;

@@ -168,6 +168,19 @@ same(array(array('tank/apps/mv' => 0), array('Schedules of tank/apps/mv'), 1, ar
 	preg_match('/^moved with it, but for (the copies of tank\/apps\/mv and below|the snapshot schedule of tank\/apps), Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
 	$moved['failed']['Schedules of tank/apps/mv'] ?? ''),
 	array_values(preg_grep('~^tank/(apps/)?mv$~', array_column($stored(), 'dataset')))), 'a rename into a clash says it, and its schedule moves');
+// Remove in Settings sets a dataset's own back to Default too: checked as that is.
+$own = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/apps/db' && zfsmScheduleSnapshotsOnly($job); }))[0]['id'];
+$removed = array(zfsmScheduleRemove($own, array('snap_pattern' => 'Ymd') + $cfg));
+$removed[] = in_array($own, array_column($stored(), 'id'), true);
+$removed[] = zfsmScheduleRemove($own, $cfg)['saved'];
+same(array(array('why' => 1, 'saved' => false), true, true), array(array('why' => preg_match('/^Not removed: for (the copies of tank\/apps\/db and below|the snapshot schedule of tank\/apps), Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
+	$removed[0]['why'])) + $removed[0], $removed[1], $removed[2]), 'Remove in Settings is refused where Default would clash, and allowed where not');
+// A clash of each schedule there before (a pattern of months, so each run of the week names alike) does not hide a new one.
+$ym = function($zdataset, $snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave($zdataset, $snapshots, $copies, array('snap_pattern' => 'Ym') + $cfg); };
+same(array(true, 1), array($save('tank/apps/log', $part('none'), $part('days', '03:00', '1', 0, 'usb'))['saved'],
+	preg_match('/^Nothing was saved: for (the copies of tank\/apps\/log and below|the snapshot schedule of tank\/apps), the .* starts then too; pick another time$/', $ym('tank/apps/log', $part('default'), $part('days', '03:00', '1', 0, 'usb'))['why'])),
+	'a clash in its minute, new where each had a clash of names');
+same(true, $save('tank/apps/log', $part('default'), $part('default'))['saved'], 'and back');
 same(array(true, true, true), array_map(function($zdataset) use ($save, $part) { return $save($zdataset, $part('default'), $part('default'))['saved']; }, array('tank/apps/db', 'tank/apps/mv', 'tank/apps')),
 	'back to Default');
 $pool('datasets', $apps);
@@ -209,15 +222,21 @@ $id = array_values($stored())[0]['id'];
 $t = 1800000000;
 $sends = function($pattern) use ($read) { return count(preg_grep($pattern, $read('calls.log'))); };
 same(0, zfsmScheduleRun($id, $cfg, $t), 'the first copies');
+// And one below it with its own copies under usb, in place of those under backup: that copy follows too.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/data/u\tfilesystem")));
+same(true, $save('tank/data/u', $part('default'), $part('days', '05:00', '1', 0, 'usb'))['saved'], 'its own copies under usb');
+$usb = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data/u'; }))[0]['id'];
+same(0, zfsmScheduleRun($usb, $cfg, $t + 60), 'their first copy');
 putenv('ZFSM_TEST_PHP='.PHP_BINARY);
 putenv('ZFSM_TEST_LOCK_PROBE='.zfsmJobLockFile('tank/data', 'replicate'));
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0, $cfg), 'a rename');
 putenv('ZFSM_TEST_LOCK_PROBE');
-same(array('held', 'held'), $read('pool/probe.log'), 'its replication lock is held while it and its copy are renamed');
-same(array('backup/tank/new', 'backup/tank/new/sub'), array_values(preg_grep('~^backup/tank/(data|new)~', $datasets())), 'its copy and the one below follow it');
+same(array('held', 'held', 'held'), $read('pool/probe.log'), 'its replication lock is held while it and its copies are renamed');
+same(array(array('backup/tank/new', 'backup/tank/new/sub'), array('usb/tank/new', 'usb/tank/new/u')), array(array_values(preg_grep('~^backup/tank/(data|new)~', $datasets())),
+	array_values(preg_grep('~^usb/tank/(data|new)~', $datasets()))), 'its copy and the one below follow it, each under its Copy Under');
 $bookmarks = function($under) use ($read) { return array_values(preg_grep('~^'.preg_quote($under, '~').'[/#]~', preg_grep('/#/', array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/marks'))))); };
-same(array('tank/new#'.zfsmReplicaBookmarkPrefix('backup/tank/new').'auto-20270115080000', 'tank/new/sub#'.zfsmReplicaBookmarkPrefix('backup/tank/new/sub').'auto-20270115080000'),
-	$bookmarks('tank/new'), 'their bookmarks take the copies\' new names');
+same(array('tank/new#'.zfsmReplicaBookmarkPrefix('backup/tank/new').'auto-20270115080000', 'tank/new/sub#'.zfsmReplicaBookmarkPrefix('backup/tank/new/sub').'auto-20270115080000',
+	'tank/new/u#'.zfsmReplicaBookmarkPrefix('usb/tank/new/u').'auto-20270115080100'), $bookmarks('tank/new'), 'their bookmarks take the copies\' new names');
 $reset();
 // Its snapshots gone from the source, only the bookmarks that took the new names keep the next run incremental.
 $pool('marks', array_values(preg_grep('~^tank/new(/sub)?@auto-20270115080000\t~', $read('pool/marks'), PREG_GREP_INVERT)));
@@ -225,6 +244,11 @@ same(0, zfsmScheduleRun($id, $cfg, $t + 3600), 'the next run');
 $from = function($zdataset) { return preg_quote($zdataset.'#'.zfsmReplicaBookmarkPrefix('backup/'.$zdataset).'auto-20270115080000 '.$zdataset.'@', '~'); };
 same(array(1, 1, 0), array($sends('~^send -P -v -L -i '.$from('tank/new').'~'), $sends('~^send -P -v -L -i '.$from('tank/new/sub').'~'), $sends('~^send -P -v -L tank/new@~')),
 	'sends from the moved bookmarks only the changes to the renamed copies');
+$reset();
+$pool('marks', array_values(preg_grep('~^tank/new/u@auto-20270115080100\t~', $read('pool/marks'), PREG_GREP_INVERT)));
+$under = preg_quote('tank/new/u#'.zfsmReplicaBookmarkPrefix('usb/tank/new/u').'auto-20270115080100 tank/new/u@', '~');
+same(array(0, 1, 0), array(zfsmScheduleRun($usb, $cfg, $t + 3660), $sends('~^send -P -v -L -i '.$under.'~'), $sends('~^send -P -v -L tank/new/u@~')), 'and the one under usb, from its own');
+same(true, zfsmScheduleRemove($usb, $cfg)['saved'], 'its copies under usb removed, which later checks leave out');
 // A run cut off part-way, then a rename: zfs finds the snapshot by guid under its new name (live, 2.4.4), so the next run carries it on.
 putenv('ZFSM_TEST_SEND_CUT=1');
 zfsmScheduleRun($id, $cfg, $t + 7200);
@@ -252,7 +276,7 @@ same(array(false, true), array(in_array('backup/tank/vault/in', $datasets(), tru
 // Whether either is encrypted not read: the same, and why.
 renameDataset('tank/vault/in/data', 'tank/vault/data', 0, $cfg);
 putenv('ZFSM_TEST_CRYPT_FAIL=tank/vault/in');
-same(array('Copy backup/tank/vault/data' => 'not renamed with it: whether a dataset made at backup/tank/vault/in to hold this one would stop the copy due there could not be read. It stays under its old name, so the next copy of the renamed dataset is a full one'),
+same(array('Copy backup/tank/vault/data' => 'not renamed with it: whether a dataset made at backup/tank/vault/in to hold this one would stop a copy due there could not be read. It stays under its old name, so the next copy of the renamed dataset is a full one'),
 	renameDataset('tank/vault/data', 'tank/vault/in/data', 0, $cfg)['failed'], 'one whose encryption could not be read');
 putenv('ZFSM_TEST_CRYPT_FAIL');
 same(array(false, true), array(in_array('backup/tank/vault/in', $datasets(), true), in_array('backup/tank/vault/data', $datasets(), true)), 'no holder made there either');
@@ -294,6 +318,24 @@ same(array(array($copy('tank/sealed/data') => $blocked('backup/tank/sealed/in'))
 	array(renameDataset('tank/sealed/data', 'tank/sealed/in/data', 0, $cfg)['failed'], renameDataset('tank/vault/x', 'tank/vault/by/x', 0, $cfg)['failed'],
 	array_map(function($zdataset) use ($datasets) { return in_array($zdataset, $datasets(), true); }, array('backup/tank/sealed/in', 'backup/tank/vault/by', 'backup/tank/sealed/data', 'backup/tank/vault/x'))),
 	'under an encrypted copy, and where a repeat set in Replicate is due: no holder made, and each copy stays');
+// Under one there that no run copies, as one left to Sanoid: no copy is due there, so the holder is made and the copy moves; nor
+// held up where whether a run copies it could not be read.
+$add(array('tank/sealed/sn', 'tank/sealed/d2', 'backup/tank/sealed/d2', 'tank/sealed/d3', 'backup/tank/sealed/d3'));
+$copied('tank/sealed/d2', 73);
+$copied('tank/sealed/d3', 74);
+$pool('marks', array_merge($read('pool/marks'), array("tank/sealed/sn@autosnap_2027-01-15_00:00:00_daily\t9201\t900")));
+putenv('ZFSM_TEST_COVER_FAIL=tank/sealed/in');
+$unsure = renameDataset('tank/sealed/d2', 'tank/sealed/in/d2', 0, $cfg)['failed'];
+putenv('ZFSM_TEST_COVER_FAIL');
+same(array(array($copy('tank/sealed/d2') => 'not renamed with it: whether a dataset made at backup/tank/sealed/in to hold this one would stop a copy due there could not be read. It stays under its old name, so the next copy of the renamed dataset is a full one'),
+	array(), array(true, false)), array($unsure, renameDataset('tank/sealed/d3', 'tank/sealed/sn/d3', 0, $cfg)['failed'], array(in_array('backup/tank/sealed/sn/d3', $datasets(), true), in_array('backup/tank/sealed/d3', $datasets(), true))),
+	'not read: the copy stays, and said; under one no run copies, it moves');
+// Nor under one whose copies go under another Copy Under: none is due here, so the holder is made and the copy moves.
+$add(array('tank/sealed/u2', 'tank/sealed/d5', 'backup/tank/sealed/d5'));
+$copied('tank/sealed/d5', 75);
+same(array(true, true), array($save('tank/sealed/u2', $part('default'), $part('days', '05:20', '1', 0, 'usb'))['saved'], $save('tank/sealed/d5', $part('default'), $part('days', '06:20', '1', 0, 'backup'))['saved']), 'copies under usb above, and under backup below');
+same(array(array(), true), array(renameDataset('tank/sealed/d5', 'tank/sealed/u2/d5', 0, $cfg)['failed'], in_array('backup/tank/sealed/u2/d5', $datasets(), true)), 'under one copied elsewhere, it moves');
+foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/sealed/u2', 'tank/sealed/u2/d5'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 $add(array('tank/r', 'backup/tank/r', 'tank/q', 'backup/tank/q'));
 $copied('tank/q', 81);
 putenv('ZFSM_TEST_LIST_FAIL=backup/tank/r');
@@ -315,6 +357,21 @@ $add(array('tank/k', 'tank/k/'.$kid, $long));
 same(array(array('succeeded' => array(), 'failed' => array('tank/kk' => 'Nothing was renamed: the names of tank/kk/'.$kid.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name')), true),
 	array(renameDataset('tank/k', 'tank/kk', 0, $cfg), in_array('tank/k/'.$kid, $datasets(), true)), 'a new name that leaves no room for a copy\'s bookmark');
 same(array($long.'2' => 0), renameDataset($long, $long.'2', 0, $cfg)['succeeded'], 'one with no room already');
+$add(array('backup/z'));
+same(array('backup/'.str_repeat('z', 200) => 0), renameDataset('backup/z', 'backup/'.str_repeat('z', 200), 0, $cfg)['succeeded'], 'one in the pool its copy would go to, which no run copies');
+// Nor one left to Sanoid, read-only or legacy-mounted, which no run copies either; one whose kind could not be read is checked.
+$add(array('tank/sz', 'tank/sz/a', 'tank/sz/a/b', 'tank/ro', 'tank/lg', 'tank/un'));
+$pool('marks', array_merge($read('pool/marks'), array("tank/sz@autosnap_2027-01-15_00:00:00_daily\t9301\t901", "tank/sz/a@autosnap_2027-01-15_00:00:00_daily\t9302\t902",
+	"tank/sz/a/b@autosnap_2027-01-15_00:00:00_daily\t9303\t903")));
+$pool('props', array_merge($read('pool/props'), array("tank/ro\treadonly\ton", "tank/lg\tmountpoint\tlegacy")));
+$longer = function($zdataset) { return $zdataset.str_repeat('w', 200); };
+$renamed = array();
+foreach (array('tank/sz', 'tank/ro', 'tank/lg') as $zdataset) $renamed += renameDataset($zdataset, $longer($zdataset), 0, $cfg)['succeeded'];
+putenv('ZFSM_TEST_COVER_FAIL=tank/un');
+$unread = renameDataset('tank/un', $longer('tank/un'), 0, $cfg)['failed'];
+putenv('ZFSM_TEST_COVER_FAIL');
+same(array(array($longer('tank/sz') => 0, $longer('tank/ro') => 0, $longer('tank/lg') => 0), array($longer('tank/un') => 'Nothing was renamed: the names of '.$longer('tank/un').' and its copy would be too long for the bookmark a copy keeps; pick a shorter name')),
+	array($renamed, $unread), 'one a run leaves out may take a long name; one not read may not');
 // Its own copies go with it, so the room is that under their Copy Under.
 $far = 'backup/'.str_repeat('c', 20);
 $kin = str_repeat('n', 50);
@@ -333,10 +390,10 @@ $loose = zfsmJobLock(zfsmJobLockFile('tank/lk', 'replicate'), false);
 same(array(array('succeeded' => array(), 'failed' => array('tank/lk2' => 'Nothing was renamed: a replication of tank/lk/kid is running')), true, true),
 	array($busy, is_resource($loose), in_array('tank/lk/kid', $datasets(), true)), 'nothing renamed while one below it copies, and its lock let go');
 zfsmJobUnlock($loose);
-// Docker's legacy-mounted image layers, which no run copies: not held, so not waited for. A read-only one and a legacy one a
-// repeat set in Replicate copies are.
-$add(array('tank/lk/layer', 'tank/lk/ro', 'tank/lk/leg'));
-$pool('props', array_merge($read('pool/props'), array("tank/lk/layer\tmountpoint\tlegacy", "tank/lk/leg\tmountpoint\tlegacy", "tank/lk/ro\treadonly\ton")));
+// Docker's legacy-mounted image layers, which no run copies: one is checked, where a run by hand made its lock, but not held. A
+// read-only one and a legacy one a repeat set in Replicate copies are held.
+$add(array('tank/lk/layer', 'tank/lk/fresh', 'tank/lk/ro', 'tank/lk/leg'));
+$pool('props', array_merge($read('pool/props'), array("tank/lk/layer\tmountpoint\tlegacy", "tank/lk/fresh\tmountpoint\tlegacy", "tank/lk/leg\tmountpoint\tlegacy", "tank/lk/ro\treadonly\ton")));
 same(true, zfsmScheduleChange(function($jobs) { return $jobs + array('6f8b2c3d' => array('id' => '6f8b2c3d', 'dataset' => 'tank/lk/leg', 'dest' => 'backup/leg', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0)); })['saved'],
 	'a repeat set in Replicate of a legacy-mounted one');
 $past = array();
@@ -347,8 +404,20 @@ foreach (array('tank/lk/layer', 'tank/lk/ro', 'tank/lk/leg') as $below) {
 	if ($past[count($past) - 1]['succeeded']) renameDataset('tank/lk3', 'tank/lk', 0, $cfg);
 }
 $running = function($zdataset) { return array('succeeded' => array(), 'failed' => array('tank/lk3' => 'Nothing was renamed: a replication of '.$zdataset.' is running')); };
-same(array(array('tank/lk3' => 0), $running('tank/lk/ro'), $running('tank/lk/leg')), array($past[0]['succeeded'], $past[1], $past[2]),
-	'a legacy-mounted one no run copies is not held; a read-only one, and one a repeat copies, are');
+same(array($running('tank/lk/layer'), $running('tank/lk/ro'), $running('tank/lk/leg')), $past, 'a replication of one below it, a legacy-mounted one by hand too, is waited for');
+$fresh = zfsmJobLockFile('tank/lk/fresh', 'replicate');
+putenv('ZFSM_TEST_LOCK_PROBE='.zfsmJobLockFile('tank/lk/layer', 'replicate'));
+$past = renameDataset('tank/lk', 'tank/lk3', 0, $cfg)['succeeded'];
+putenv('ZFSM_TEST_LOCK_PROBE');
+$probed = $read('pool/probe.log');
+renameDataset('tank/lk3', 'tank/lk', 0, $cfg);
+same(array(array('tank/lk3' => 0), 'free', false), array($past, end($probed), file_exists($fresh)), 'a legacy-mounted one no repeat copies is not held through the rename, nor its lock made');
+putenv('ZFSM_TEST_LOCK_PROBE='.zfsmJobLockFile('tank/lk/leg', 'replicate'));
+$past = renameDataset('tank/lk', 'tank/lk3', 0, $cfg)['succeeded'];
+putenv('ZFSM_TEST_LOCK_PROBE');
+$probed = $read('pool/probe.log');
+renameDataset('tank/lk3', 'tank/lk', 0, $cfg);
+same(array(array('tank/lk3' => 0), 'held'), array($past, end($probed)), 'one a repeat copies is');
 same(true, zfsmScheduleChange(function($jobs) { unset($jobs['6f8b2c3d']); return $jobs; })['saved'], 'the repeat removed');
 putenv('ZFSM_TEST_TREE_FAIL=1');
 $unread = renameDataset('tank/lk', 'tank/lk2', 0, $cfg)['failed'];

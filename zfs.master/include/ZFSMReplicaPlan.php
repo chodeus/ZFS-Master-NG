@@ -148,6 +148,8 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
 		if ($held === null) return zfsmReplicaUnread($where, $why);
 		$holder = $held === array();
+		$mounted = $holder ? zfsmReplicaHolderMounted($zdest) : '';
+		if ($mounted !== '') return $where.' only holds the copies of datasets below this one, and '.$mounted;
 	}
 	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $snapshot, 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
 }
@@ -191,7 +193,8 @@ function zfsmReplicaPlanHolder($plan, $target) {
 	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
 	if ($crypt === null) return $held.'whether it is encrypted could not be read';
 	if ($crypt !== 'off') return $held.'zfs cannot receive a copy over it, as it is encrypted'.$fix;
-	return array_merge($plan, array('holder' => true));
+	$mounted = zfsmReplicaHolderMounted($plan['dest']);
+	return $mounted === '' ? array_merge($plan, array('holder' => true)) : $held.$mounted;
 }
 
 // What the Replicate dialog shows: the snapshots to pick from, newest first, the last destination, the trusted servers, and the plan
