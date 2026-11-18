@@ -241,6 +241,11 @@ $unsure = zfsmScheduleCopiesPlace('backup/', 'backup/tank/gp/sub', array(), $pla
 putenv('ZFSM_TEST_LIST_FAIL');
 same(array('tank/gp/sub is gone, so no dataset was made to hold its copy', 'whether tank/gp/sub is still there could not be read, so no dataset was made to hold its copy', array(), array()),
 	array($gone, $unsure, $placed, array_values(preg_grep('~^backup/tank/gp[\t/]~', $read('pool/datasets')))), 'no holder for a dataset gone, or not read');
+// One another run made since this one listed is there to copy into; a create that fails where none is still says why.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/ar\tfilesystem", "tank/ar/slow\tfilesystem", "backup/tank/ar\tfilesystem")));
+$placed = array('backup/tank' => true, 'gone/tank' => true);
+same(array('', 'The dataset to hold the copies below gone/tank/ar could not be made: cannot create \'gone/tank/ar\': parent does not exist'),
+	array(zfsmScheduleCopiesPlace('backup/', 'backup/tank/ar/slow', array(), $placed), zfsmScheduleCopiesPlace('gone/', 'gone/tank/ar/slow', array(), $placed)), 'a parent made since');
 
 // A first copy onto a holder that stops part-way carries on only with -F again; the mark goes once it lands.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/res\tfilesystem", "backup/tank/res\tfilesystem")));
@@ -416,5 +421,17 @@ same(array(1, array(), array()), array(zfsmScheduleRun('cccc0000', $cfg, $t + 32
 same(array(0, 0, array('backup/tank', 'backup/tank/data', 'backup/tank/data/sub'), array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/tank/data')),
 	array(zfsmScheduleRun($id, $cfg, $t + 36000), zfsmScheduleRun('cccc0000', $cfg, $t + 36060), array_values(preg_grep('~^backup/~', $datasets())), array_values(preg_grep('/^create /', $read('calls.log')))),
 	'its copy, then a holder for tank/data, which nothing copies, and the copy below');
+
+// Nor above one where the snapshot names were read only in part: tank and tank/data, which have none, may be due, so the copy waits.
+$pool('datasets', array("tank\tfilesystem", "tank/bad\tfilesystem", "tank/data\tfilesystem", "tank/data/sub\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array("tank/data/sub@a\t5001\t9001"));
+file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => 1) + $every)));
+$reset();
+@unlink(zfsmScheduleStateFile($id));
+putenv('ZFSM_TEST_COVER_FAIL=tank/bad');
+$part_read = zfsmScheduleRun($id, $cfg, $t + 39600);
+putenv('ZFSM_TEST_COVER_FAIL');
+same(array(1, array(), array()), array($part_read, preg_grep('~^backup/~', $datasets()), preg_grep('/^create /', $read('calls.log'))), 'no holder where the names were read in part');
+same(1, preg_match('/Not copied, as the copy of a dataset above it is missing \(tank\/data\/sub\)/', $read('notify-detail.log')[0] ?? ''), 'it waits');
 
 echo "schedule copies tests passed\n";

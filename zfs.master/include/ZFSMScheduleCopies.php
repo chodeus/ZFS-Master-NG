@@ -176,6 +176,8 @@ function zfsmScheduleCopiesComing($job, $jobs, $listed) {
 	$coming = array();
 	foreach (zfsmScheduleListed($listed)[0] as $zdataset => $row) {
 		$by = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
+		// One whose snapshot names were not read may be due too.
+		$row[2] = $row[2] ?? false;
 		if (($by['dest'] ?? '') === $job['dest'] && zfsmScheduleLeftOut($by, $jobs, $zdataset, $row, $listed['name']) === '') $coming[zfsmScheduleCopiesDest($by, $zdataset)] = true;
 	}
 	foreach (zfsmScheduleCopiesRepeatsTo($jobs) as $zdest => $from) $coming[$zdest] = true;
@@ -231,7 +233,8 @@ function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here) {
 		$missing = $missing ?? zfsmDatasetMissing($zdataset);
 		if ($missing !== false) return ($missing ? $zdataset.' is gone' : 'whether '.$zdataset.' is still there could not be read').', so no dataset was made to hold its copy';
 		$why = zfsmReplicaHolderMake($level);
-		if ($why !== '') return $why;
+		// Another run may have made it since this one listed.
+		if ($why !== '' && !zfsmDatasetExists($level, 'filesystem')) return $why;
 		$here[$level] = true;
 	}
 	return '';
@@ -244,11 +247,16 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 	// The rename's follow-up says so.
 	if ($read === null) return '';
 	$snapshot = zfsmNewSnapshotName($cfg, time());
-	// One a run leaves out (zfsmScheduleSkipped) needs no room; one whose row could not be read is checked. Read once a name is too long.
-	$rows = null;
-	$skipped = function($zdataset, $name) use (&$rows, $cfg, $from) {
-		if ($rows === null) $rows = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-r', $from)))[0];
-		return isset($rows[$name]) && zfsmScheduleSkipped($zdataset, $rows[$name]) !== '';
+	// One a run leaves out (zfsmScheduleSkipped), there and once moved, needs no room; one whose row could not be read is checked. Read
+	// once a name is too long.
+	$rows = $parents = null;
+	$skipped = function($zdataset, $name) use (&$rows, &$parents, $cfg, $from, $to) {
+		if ($rows === null) {
+			$rows = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-r', $from)))[0];
+			$parents = zfsmScheduleCopiesParents($from, $to);
+		}
+		if (!isset($rows[$name])) return false;
+		return zfsmScheduleSkipped($zdataset, $zdataset === $name ? $rows[$name] : zfsmScheduleCopiesMovedRow($rows[$name], ...$parents)) !== '';
 	};
 	$fits = function($zdataset, $jobs, $name) use ($snapshot, $skipped) {
 		$job = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
@@ -264,17 +272,35 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 	return '';
 }
 
+// The rows (zfsmScheduleListed) of the datasets above $from and $to, each null when not read.
+function zfsmScheduleCopiesParents($from, $to) {
+	$up = array_map(function($zdataset) { return substr($zdataset, 0, (int)strrpos($zdataset, '/')); }, array($from, $to));
+	$listed = runProcess('zfs', array_merge(ZFSM_SCHEDULE_COVERED, $up));
+	$rows = ($listed['code'] ?? 1) === 0 ? zfsmScheduleListed(array('output' => $listed['output']))[0] : array();
+	return array($rows[$up[0]] ?? null, $rows[$up[1]] ?? null);
+}
+
+// $row of a dataset at or below one moved from under $old to under $new (zfsmScheduleCopiesParents): a read-only or legacy mount it
+// may take from $old takes $new's.
+function zfsmScheduleCopiesMovedRow($row, $old, $new) {
+	foreach (array('on', 'legacy') as $i => $skip) {
+		if ($row[$i] === $skip && ($old[$i] ?? $skip) === $skip) $row[$i] = $new[$i] ?? '';
+	}
+	return $row;
+}
+
 // The replication locks (zfsmJobLock, no command started holds them) of $zdataset and each dataset below it a run can copy, by
-// name; why not when one is held or can't be had.
+// name, and the names of all of them; why not when one is held or can't be had.
 function zfsmScheduleCopiesHold($zdataset) {
 	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid,mountpoint', '-t', 'filesystem,volume', '-r', $zdataset));
 	if (($listed['code'] ?? 1) !== 0) return 'the datasets at and below it could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	$read = zfsmScheduleRead();
 	$repeats = array();
 	foreach ($read === null ? array() : $read['valid'] as $job) if (!zfsmScheduleCovers($job)) $repeats[$job['dataset']] = true;
-	$locks = array();
+	$locks = $names = array();
 	foreach (zfsmLines($listed['output']) as $line) {
 		list($name, $guid, $mountpoint) = explode("\t", $line, 3) + array('', '', '');
+		$names[] = $name;
 		$file = zfsmJobGuidLock($guid, 'replicate');
 		// Docker's legacy-mounted image layers, often thousands, which Copy Under skips: a lock each held could run out of open files, so
 		// one no repeat copies is only checked, where a run made its lock.
@@ -288,7 +314,7 @@ function zfsmScheduleCopiesHold($zdataset) {
 		if ($check) zfsmJobUnlock($lock);
 		else $locks[$name] = $lock;
 	}
-	return $locks;
+	return array($locks, $names);
 }
 
 // After zfs renamed $from to $to and its own schedules followed ($before, $after): its copy under each dataset that copies go under
@@ -315,12 +341,12 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
 	if ($pool !== false) return 'not checked, as '.($pool ? 'its pool is not imported now' : 'whether its pool is imported could not be read').': if it is there, it keeps its old name, and the next copy of the renamed dataset is a full one';
 	if ($missing === true) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
-	$into = zfsmScheduleCopiesInto($from, $old, $after);
-	if ($into !== '') return 'left where it is, as a schedule sends copies into it ('.$into.'), so the next copy of the renamed dataset is a full one';
 	$whose = zfsmScheduleCopiesWhose($old, $to);
 	if ($whose !== '') return $whose;
 	$free = zfsmDatasetMissing($new);
 	if ($free !== true) return $free === null ? 'not renamed with it, as whether its new name is free could not be read' : 'left where it is, as a dataset already has its new name';
+	$into = zfsmScheduleCopiesInto($from, $old, $after);
+	if ($into !== '') return 'left where it is, as a schedule sends copies into it ('.$into.'), so the next copy of the renamed dataset is a full one';
 	$why = zfsmScheduleCopiesRename($job['dest'], $old, $new, $after, $cfg);
 	if ($why !== '' && !zfsmRenameLanded($old, $new)) return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
 	$left = implode('; ', array_filter(array($why, zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));

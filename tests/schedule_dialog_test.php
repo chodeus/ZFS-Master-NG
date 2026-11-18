@@ -374,7 +374,12 @@ same(array(true, true), array($save('tank/nest/sub', $part('default'), $part('da
 same(array(array($copy('tank/nest') => 'left where it is, as a schedule sends copies into it (the copies of tank/nest2/sub and below), so the next copy of the renamed dataset is a full one'), true, array(), true),
 	array(renameDataset('tank/nest', 'tank/nest2', 0, $cfg)['failed'], in_array('backup/tank/nest', $datasets(), true), renameDataset('tank/nest3', 'tank/nest4', 0, $cfg)['failed'], in_array('backup/tank/nest4', $datasets(), true)),
 	'a copy another Copy Under is in stays; one only its own stale repeat goes to moves');
-foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
+// Where a dataset has its new name already, that is why it stays: the next copy may go there as changes alone.
+$add(array('tank/nest6', 'tank/nest6/sub', 'backup/tank/nest6', 'backup/tank/nest7'));
+$copied('tank/nest6', 79);
+same(true, $save('tank/nest6/sub', $part('default'), $part('days', '06:50', '1', 0, 'backup/tank/nest6'))['saved'], 'copies of the one below under its copy');
+same(array($copy('tank/nest6') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/nest6', 'tank/nest7', 0, $cfg)['failed'], 'its new name taken');
+foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3', 'tank/nest7/sub'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 // Its copy that moves but can't be mounted there, which zfs 2.0 and 2.1 fail, is renamed with it all the same: its bookmark too.
 $add(array('tank/uc', 'backup/tank/uc'));
 $copied('tank/uc', 78);
@@ -420,6 +425,21 @@ $unread = renameDataset('tank/un', $longer('tank/un'), 0, $cfg)['failed'];
 putenv('ZFSM_TEST_COVER_FAIL');
 same(array(array($longer('tank/sz') => 0, $longer('tank/ro') => 0, $longer('tank/lg') => 0), array($longer('tank/un') => 'Nothing was renamed: the names of '.$longer('tank/un').' and its copy would be too long for the bookmark a copy keeps; pick a shorter name')),
 	array($renamed, $unread), 'one a run leaves out may take a long name; one not read may not');
+// One whose read-only or legacy mount may come from above it is checked under its new parent; one that sets its own is not.
+$add(array('tank/rp', 'tank/rp/c', 'tank/lp', 'tank/lp/c', 'tank/rq', 'tank/rq/c'));
+$pool('props', array_merge($read('pool/props'), array("tank/rp\treadonly\ton", "tank/rp/c\treadonly\ton", "tank/lp\tmountpoint\tlegacy", "tank/lp/c\tmountpoint\tlegacy", "tank/rq/c\treadonly\ton")));
+$moved = array();
+foreach (array('tank/rp/c' => 'tank/rpc', 'tank/lp/c' => 'tank/lpc', 'tank/rq/c' => 'tank/rqc') as $zdataset => $to) {
+	$answer = renameDataset($zdataset, $longer($to), 0, $cfg);
+	$moved += $answer['failed'] + $answer['succeeded'];
+}
+$too = function($zdataset) { return 'Nothing was renamed: the names of '.$zdataset.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name'; };
+same(array($longer('tank/rpc') => $too($longer('tank/rpc')), $longer('tank/lpc') => $too($longer('tank/lpc')), $longer('tank/rqc') => 0), $moved,
+	'one moved out from under a read-only or legacy parent is checked; one read-only itself is not');
+putenv('ZFSM_TEST_COVER_FAIL=tank');
+$unsure = renameDataset($longer('tank/rqc'), $longer('tank/rqd'), 0, $cfg)['failed'];
+putenv('ZFSM_TEST_COVER_FAIL');
+same(array($longer('tank/rqd') => $too($longer('tank/rqd'))), $unsure, 'one whose parents could not be read is checked');
 // Its own copies go with it, so the room is that under their Copy Under.
 $far = 'backup/'.str_repeat('c', 20);
 $kin = str_repeat('n', 50);
