@@ -102,11 +102,18 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 	return $not !== '' ? $not : zfsmScheduleCopiesNot($job, $jobs, $job['dataset'], zfsmScheduleListed($listed)[0][$job['dataset']], $listed['name']);
 }
 
+// Whether $job, a dataset's own copies under a dataset, is the one $jobs hold, but for what Save sets: the id, an hourly one's minute.
+function zfsmScheduleCopiesAsSaved($job, $jobs) {
+	$set = array('id' => 0) + ($job['every'] === 'hourly' ? array('minute' => 0) : array());
+	foreach (zfsmScheduleOwn($jobs, $job['dataset'], 'zfsmScheduleCopiesUnder') as $was) return array_diff_key($was, $set) == array_diff_key($job, $set);
+	return false;
+}
+
 // The dialog Save's answer for $job, a dataset's own copies under a dataset ($remove: gone), with $jobs as saved; one that runs is
 // counted in $listed.
 function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 	if ($remove) return 'Saved: the copies of '.$job['dataset'].' follow '.zfsmScheduleCopiesFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs, 'zfsmScheduleCopiesUnder'));
-	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own; the copies made stay';
+	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own and repeats set in Replicate; the copies made stay';
 	return zfsmScheduleCopiesSaved($job, $listed, $jobs);
 }
 

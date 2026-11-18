@@ -186,7 +186,7 @@ function zfsmReplicaPlanHolder($plan, $target) {
 	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
 	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
 	$held = $where.' only holds the copies of datasets below this one, and ';
-	$fix = ': destroy that dataset and the copies below it for the next run to send them all';
+	$fix = ': destroy that dataset and the copies below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)';
 	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it'.$fix;
 	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
 	if ($crypt === null) return $held.'whether it is encrypted could not be read';

@@ -186,14 +186,14 @@ same(1, count(preg_grep('/^receive .*-F/', $read('calls.log'))), '-F only onto t
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/enc\tfilesystem", "backup/tank/enc\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/enc@a\t4242\t9000")));
 $pool('props', array_merge($read('pool/props'), array("tank/enc\tencryption\taes-256-gcm", "backup/tank/enc\tzfs.master:holder\ton")));
-same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: destroy that dataset and the copies below it for the next run to send them all'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: destroy that dataset and the copies below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
 	zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/enc', array('estimate' => false)), 'a raw stream onto a holder');
 // Nor any copy onto an encrypted holder, as one under an encrypted dataset is (live, 2.4.4); one not read is not sent onto.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/sealed\tfilesystem", "backup/tank/sealed\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/sealed@a\t4646\t9004")));
 $pool('props', array_merge($read('pool/props'), array("backup/tank/sealed\tzfs.master:holder\ton", "backup/tank/sealed\tencryption\taes-256-gcm")));
 $plan = function() { return zfsmReplicatePlan('tank/sealed', 'a', 'backup/tank/sealed', array('estimate' => false)); };
-same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: destroy that dataset and the copies below it for the next run to send them all'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: destroy that dataset and the copies below it for the next run to send them all (a copy a repeat set in Replicate made asks for one Replicate by hand)'),
 	$plan(), 'a stream onto an encrypted holder');
 putenv('ZFSM_TEST_CRYPT_FAIL=backup/tank/sealed');
 same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and whether it is encrypted could not be read'), $plan(), 'one whose encryption could not be read');
@@ -249,8 +249,8 @@ same(1, preg_match('/^warning: .*'.preg_quote('tank@'.$p, '/').' to backup\/tank
 	implode("\n", $read('notify-detail.log'))), 'the first step\'s warning, then the second\'s: '.implode("\n", $read('notify-detail.log')));
 // A first copy onto a holder, cut off, then carried on: a mark that stays is a problem of the run, though the next step lands cleanly
 // (the notification's cut ends the line before that step).
-$pool('datasets', array_merge($read('pool/datasets'), array("tank/hres\tfilesystem", "backup/tank/hres\tfilesystem")));
-$pool('props', array_merge($read('pool/props'), array("backup/tank/hres\tzfs.master:holder\ton")));
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/ahres\tfilesystem", "backup/tank/ahres\tfilesystem")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/ahres\tzfs.master:holder\ton")));
 putenv('ZFSM_TEST_SEND_CUT=1');
 zfsmScheduleRun($id, $cfg, $t + 13800);
 putenv('ZFSM_TEST_SEND_CUT');
@@ -259,7 +259,7 @@ $reset();
 putenv('ZFSM_TEST_INHERIT_FAIL=1');
 zfsmScheduleRun($id, $cfg, $t + 14100);
 putenv('ZFSM_TEST_INHERIT_FAIL');
-same(1, preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/hres@'.$name($t + 13800), '/').' to backup\/tank\/hres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
+same(1, preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/ahres@'.$name($t + 13800), '/').' to backup\/tank\/ahres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
 	implode("\n", $read('notify-detail.log'))), 'the mark told: '.implode("\n", $read('notify-detail.log')));
 
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and

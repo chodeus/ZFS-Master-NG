@@ -97,7 +97,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		# The snapshots of a dataset and below with their hold counts; ZFSM_TEST_HELD_FAIL=1 fails the read.
 		if [ "$4" = name,userrefs ] && [ "$6" = snapshot ] && [ "$7" = -r ]; then
 			[ "${ZFSM_TEST_HELD_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
-			awk -F'\t' -v d="$last_arg" 'index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@")) { print $1 }' "$R/marks" | while read -r n; do
+			awk -F'\t' -v d="$last_arg" 'index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@")) { print $1 }' "$R/marks" | while IFS= read -r n; do
 				printf '%s\t%s\n' "$n" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')"
 			done
 			exit 0
@@ -285,11 +285,11 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		case "$last_arg" in *@*|*#*) exit 0 ;; esac
 		gone() { awk -F'\t' -v d="$last_arg" '$1 != d && index($1, d "/") != 1 && index($1, d "@") != 1 && index($1, d "#") != 1' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
 		if ! contains_arg -r "$@" && awk -F'\t' -v d="$last_arg" 'index($1, d "/") == 1 || index($1, d "@") == 1 { f = 1 } END { exit !f }' "$R/datasets" "$R/marks"; then printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2; exit 1; fi
-		# Nor with -r, as ZFS does, while a snapshot of it or below is held or has clones.
+		# Nor with -r, as ZFS does, while a snapshot of it or below is held or has a clone outside it.
 		below='index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@"))'
 		b=$(awk -F'\t' -v d="$last_arg" "($below) { print \$1; exit }" "$R/holds")
 		[ -n "$b" ] && { printf 'cannot destroy snapshot %s: dataset is busy\n' "$b" >&2; exit 1; }
-		b=$(awk -F'\t' -v d="$last_arg" "($below) && \$2 == \"clones\" && \$3 != \"-\" { print \$1 \"\\t\" \$3; exit }" "$R/props")
+		b=$(awk -F'\t' -v d="$last_arg" "($below) && \$2 == \"clones\" { n = split(\$3, c, \",\"); for (i = 1; i <= n; i++) if (c[i] != \"-\" && index(c[i], d \"/\") != 1) { print \$1 \"\\t\" c[i]; exit } }" "$R/props")
 		[ -n "$b" ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "${b%%	*}" "${b#*	}" >&2; exit 1; }
 		gone datasets; gone marks; gone props
 		exit 0 ;;

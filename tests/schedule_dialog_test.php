@@ -96,9 +96,17 @@ same($fields('hourly', '00:00', null, '2') + array('under' => 'usb', 'inherited'
 same(array('default', 'usb', 'the copies of tank/data and below, under usb every hour at '.$at.'; it keeps the newest 2 of the snapshots of each dataset it copies'),
 	array($copies('tank/data/sub')['every'], $copies('tank/data/sub')['under'], $copies('tank/data/sub')['inherited']), 'the one below follows it');
 same(1, preg_match('/>Copies of tank\/data and below under usb, every hour at '.$at.', keeps the newest 2 of the snapshots of each dataset it copies </', zfsmSchedulesHtml($cfg)), 'Settings lists it');
+// Its Copy Under offline: Snapshots set to None saves beside the copies as saved; copies changed are checked.
+$all = $read('pool/datasets');
+$pool('datasets', array_values(preg_grep('~^usb[\t/]~', $all, PREG_GREP_INVERT)));
+$offline = array($save('tank/data', $part('none'), $part('hourly', '', '', 2, 'usb'))['saved']);
+$offline[] = array_column(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] === ''; }), 'every');
+$offline[] = $save('tank/data', $part('none'), $part('hourly', '', '', 3, 'usb'))['why'];
+$pool('datasets', $all);
+same(array(true, array('none'), 'Nothing was saved: Replication: usb does not exist on this server'), $offline, 'with its Copy Under offline, Snapshots None saves; changed copies are refused');
 
 // None: no copies of it and below; Copy Under starts at what Default would follow.
-same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: no scheduled copies of tank/data and below, but for datasets with their own; the copies made stay',
+same('Saved: tank/data follows Snapshot Every Dataset, which is off: no scheduled snapshots. Saved: no scheduled copies of tank/data and below, but for datasets with their own and repeats set in Replicate; the copies made stay',
 	$save('tank/data', $part('default'), $part('none', '', '', 0, 'usb'))['said'], 'None, with the Copy Under the page still sends');
 same(array(array('/'), 'none', 'backup', 'the copies of tank/data and below, None: no scheduled copies'),
 	array(array_column(array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data'; })), 'dest'), $copies('tank/data')['every'], $copies('tank/data')['under'], $copies('tank/data/sub')['inherited']), 'stored as None');
@@ -253,6 +261,11 @@ foreach (array('h2' => array('ZFSM_TEST_HELD_FAIL', 'its holds could not be read
 	putenv($knob);
 }
 same(array("tank/h4x@s\t".$tag('backup/tank/h4'), "tank/h4x@s\tkeep"), $holds('tank/h4x'), 'a hold not moved stays as it was');
+// A snapshot name can end in a space (OpenZFS).
+$held('tank/h6', 96);
+foreach (array('marks', 'holds') as $file) $pool($file, preg_replace('~^tank/h6@s\t~', "tank/h6@s \t", $read('pool/'.$file)));
+same(array(array('tank/h6x' => 0), array("tank/h6x@s \tkeep", "tank/h6x@s \t".$tag('backup/tank/h6x'))), array(renameDataset('tank/h6', 'tank/h6x', 0)['succeeded'], $holds('tank/h6x')),
+	'the hold on a snapshot whose name ends in a space takes the new name');
 same(array('saved' => false, 'why' => 'Nothing was saved: that is no dataset name', 'said' => ''), $save('', $part('hourly'), $part('hourly', '', '', 0, 'usb')), 'the dialog saves no Settings schedule');
 
 // The schedules not read: where its copies go is not known, so none is renamed, and that is said.
@@ -268,17 +281,19 @@ same(array(array('Schedules of tank/w', 'Copies of tank/w'), 'not renamed with i
 // As zfs: a destroy preview changes nothing, and without -r one with a snapshot stays.
 $marked('tank/s1', 77);
 $now = array($read('pool/datasets'), $read('pool/marks'));
-zfsmDestroyPreview('tank/s1', 1);
-same($now, array($read('pool/datasets'), $read('pool/marks')), 'a destroy preview changes nothing');
+$preview = zfsmDestroyPreview('tank/s1', 1);
+same(array('', true, $now), array($preview['error'], in_array('tank/s1', $preview['objects'], true), array($read('pool/datasets'), $read('pool/marks'))),
+	'a destroy preview runs, and changes nothing');
 same(array(array('tank/s1'), true), array(array_keys(destroyDataset('tank/s1', 0)['failed']), in_array('tank/s1', $datasets(), true)), 'one with a snapshot is not destroyed without -r');
 foreach (array('holds' => array("tank/s1@s\tkeep", 'dataset is busy'), 'props' => array("tank/s1@s\tclones\ttank/c1", 'snapshot has dependent clones')) as $file => list($line, $why)) {
 	$pool($file, array_merge($read('pool/'.$file), array($line)));
 	same(array(1, true), array(substr_count(implode(' ', destroyDataset('tank/s1', 1)['failed']), $why), in_array('tank/s1', $datasets(), true)), 'nor with -r while: '.$why);
 	$pool($file, array_values(array_diff($read('pool/'.$file), array($line))));
 }
-$pool('props', array_merge($read('pool/props'), array("tank/s1\treceive_resume_token\ttok:tank/s1@s", "tank/s1@s\tzfs.master:schedule\tx")));
-same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), array()), array(destroyDataset('tank/s1', 1), preg_grep('~^tank/s1[\t@]~', $read('pool/props'))),
-	'with -r and neither, it goes, with its properties and its snapshots\'');
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/s1/c\tfilesystem")));
+$pool('props', array_merge($read('pool/props'), array("tank/s1\treceive_resume_token\ttok:tank/s1@s", "tank/s1@s\tzfs.master:schedule\tx", "tank/s1@s\tclones\ttank/s1/c")));
+same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), array(), false), array(destroyDataset('tank/s1', 1), preg_grep('~^tank/s1[\t@/]~', $read('pool/props')),
+	in_array('tank/s1/c', $datasets(), true)), 'with -r and neither (a clone below it is no dependent outside), it goes, with its properties, its snapshots\' and the clone');
 
 // Destroy removes what it and below had under Schedules and leaves its copies.
 $under = function($root) use ($stored) { return array_values(preg_grep('~^'.preg_quote($root, '~').'(/|$)~', array_column($stored() ?? array(), 'dataset'))); };

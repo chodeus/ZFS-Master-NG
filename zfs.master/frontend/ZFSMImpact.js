@@ -156,7 +156,7 @@ function zfsmScheduleDialogHtml(preview) {
 		+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'"></label></p>'
 		+'<p id="zfsm-copies-default" style="margin:.5em 0;display:none">Default follows '+esc(copies.inherited)+'.</p>'+unsent
 		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset or Replicate Every Dataset in Settings.')
-		+say('None: no scheduled snapshots, or copies. Every hour or On days of the week: its own schedule.')
+		+say('None: no scheduled snapshots, or copies under Copy Under; a repeat set in Replicate still runs. Every hour or On days of the week: its own schedule.')
 		+say('Datasets below this one follow its choice, unless they have their own.')
 		+say('Replication copies this dataset and those below into Copy Under, a dataset on this server in another pool, each by its full name: tank/data goes to backup/tank/data. Each copy is read-only and unmounted; a run sends only the changes since its newest snapshot, or the whole dataset when it has no copy there yet.')
 		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied.')
