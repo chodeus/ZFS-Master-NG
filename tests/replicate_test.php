@@ -123,6 +123,9 @@ same(array(array('backup/data@b'), array($bookmark('backup/data', 'b'))), array(
 same(array('normal: Replication of tank/data@b to backup/data finished (carried on from where it stopped).'), $read('notify-detail.log'), 'the notification says it carried on');
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/vol@v\n", FILE_APPEND);
 same('backup/data holds a part-received replication of tank/vol@v, not of this dataset', $refuse('b', 'backup/data'), 'another dataset\'s token is not resumed');
+// zfs send -P -v -n -t as it prints live (2.4.4) after the source and the copy were renamed, values made up: toname still says src@b.
+$dry = file_get_contents(__DIR__.'/fixtures/zfs_send_resume_renamed.txt');
+same(array('tank/new@b', 12345678), array(zfsmReplicaResumeSnapshot($dry), zfsmReplicateSize($dry)), 'a dry run in the live shape, after a rename, gives the snapshot\'s name now and its size');
 
 // The same snapshot again, after its copy was destroyed: the bookmark already there is this one, not a failure.
 $fresh();

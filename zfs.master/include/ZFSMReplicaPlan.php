@@ -137,19 +137,25 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	$zdest = $plan['dest'];
 	$where = zfsmReplicaTargetWhere($target, $zdest);
 	$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
-	// The name zfs finds the snapshot under by guid, renamed or not; the token's toname keeps the one it had (live, 2.4.4).
-	if (($info['code'] ?? 1) !== 0 || !preg_match('/^(?:full|incremental\t[^\t\n]+)\t([^\t\n]+)\t[0-9]+\s*$/m', (string)$info['output'], $match)) {
+	$snapshot = ($info['code'] ?? 1) === 0 ? zfsmReplicaResumeSnapshot($info['output']) : null;
+	if ($snapshot === null) {
 		return $where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there');
 	}
-	if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$match[1].', not of this dataset';
-	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($match[1], strlen($zdataset) + 1))) return ZFSM_REPLICA_TOO_LONG;
+	if (strncmp($snapshot, $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$snapshot.', not of this dataset';
+	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($snapshot, strlen($zdataset) + 1))) return ZFSM_REPLICA_TOO_LONG;
 	$holder = false;
 	if (zfsmReplicaHolder($target, $zdest)) {
 		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
 		if ($held === null) return zfsmReplicaUnread($where, $why);
 		$holder = $held === array();
 	}
-	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
+	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $snapshot, 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
+}
+
+// The snapshot zfs send -P -v -n -t $token sends, by the name zfs finds it under by guid; the token's toname keeps the one it had
+// before a rename (live, 2.4.4). Null when $output names none.
+function zfsmReplicaResumeSnapshot($output) {
+	return preg_match('/^(?:full|incremental\t[^\t\n]+)\t([^\t\n]+)\t[0-9]+\s*$/m', (string)$output, $match) ? $match[1] : null;
 }
 
 // $plan into a copy that is there: the changes since the snapshot or bookmark its newest snapshot came from, else in full onto a holder
