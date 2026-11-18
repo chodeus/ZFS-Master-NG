@@ -220,9 +220,8 @@ function zfsmScheduleOwnMove($from, $to) {
 	return $changed + array('before' => $before, 'after' => $after);
 }
 
-// $answer of zfs renaming $from to $to, or destroying it ($to ''): when that worked, its own schedules follow (zfsmScheduleOwnMove),
-// and on a rename its copies under a dataset (zfsmScheduleCopiesMove) as if they had when they could not, or why none could; a destroy
-// leaves its copies.
+// $answer of zfs renaming $from to $to, or destroying it ($to ''), gaining what did not follow when that worked: its own schedules
+// (zfsmScheduleOwnMove) and, on a rename only, its copies under each Copy Under (zfsmScheduleCopiesMove).
 function zfsmScheduleOwnFollow($answer, $from, $to) {
 	if (!$answer['succeeded'] || $answer['failed']) return $answer;
 	$moved = zfsmScheduleOwnMove($from, $to);
