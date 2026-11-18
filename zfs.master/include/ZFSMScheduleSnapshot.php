@@ -104,13 +104,18 @@ function zfsmScheduleListed($listed) {
 		$parts = explode("\t", $line, 3);
 		$of = (string)strstr($line, '@', true);
 		if (count($parts) === 3 && zfsmValidDatasetName($parts[0])) $rows[$parts[0]] = array($parts[1], $parts[2]);
-		elseif (count($parts) === 1 && zfsmValidDatasetName($of)) $automatic[$of] = ($automatic[$of] ?? false) || (zfsmIsAutomaticSnapshot($line) && ($own === '' || strpos($line, $of.$own) !== 0));
+		elseif (count($parts) === 1 && zfsmValidDatasetName($of)) $automatic[$of] = ($automatic[$of] ?? false) || zfsmScheduleTheirs($line, $of, $own);
 		else $errors[] = $line;
 	}
 	$unknown = ($listed['names'] ?? 0) === 0 ? false : null;
 	foreach ($rows as $zdataset => $row) $rows[$zdataset][] = $automatic[$zdataset] ?? $unknown;
 	// Both reads fail a dataset they can't open: say so once.
 	return array($rows, array_values(array_unique($errors)));
+}
+
+// Whether snapshot $line of $of is Sanoid's or Syncoid's: not ours, under a Snapshots Prefix that starts as theirs do ($own).
+function zfsmScheduleTheirs($line, $of, $own) {
+	return zfsmIsAutomaticSnapshot($line) && ($own === '' || strpos($line, $of.$own) !== 0);
 }
 
 // Why no run takes $zdataset, listed as $row (zfsmScheduleListed); '' when one can.
@@ -134,7 +139,7 @@ function zfsmScheduleCovered($listed, $job, $jobs) {
 	list($rows, $errors) = zfsmScheduleListed($listed);
 	$pools = array();
 	foreach ($rows as $zdataset => $row) {
-		if (zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $listed['name'] ?? '') === '' && (zfsmScheduleFollowed($zdataset, $jobs, zfsmScheduleKindOf($job))['id'] ?? null) === $job['id']) $pools[explode('/', $zdataset)[0]][] = $zdataset;
+		if (zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $listed['name']) === '' && (zfsmScheduleFollowed($zdataset, $jobs, zfsmScheduleKindOf($job))['id'] ?? null) === $job['id']) $pools[explode('/', $zdataset)[0]][] = $zdataset;
 	}
 	// zfs lists what it can read, and fails for the rest: a dataset's own minds errors naming none, its datasets or one above.
 	if (($listed['code'] ?? 1) === 0) return array($pools, '');

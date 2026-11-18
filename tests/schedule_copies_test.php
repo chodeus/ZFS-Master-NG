@@ -232,7 +232,7 @@ putenv('ZFSM_TEST_NAMES_FAIL=1');
 same(1, zfsmScheduleRun($id, $cfg, $t + 20400), 'a run without the names');
 putenv('ZFSM_TEST_NAMES_FAIL');
 same(array(array('backup', 'backup/old'), array()), array(array_values(preg_grep('~^backup~', $datasets())), preg_grep('/^(snapshot|send|create) /', $read('calls.log'))), 'nothing taken or copied');
-same(1, preg_match('/^warning: Scheduled copies not made: the datasets could not be read: cannot iterate filesystems: Input\/output error/', $read('notify-detail.log')[0] ?? ''), 'saying why');
+same(1, preg_match('/^warning: Scheduled copies not made: the snapshot names could not be read: cannot iterate filesystems: Input\/output error/', $read('notify-detail.log')[0] ?? ''), 'saying why');
 
 // Copy Under gone: none made; a later problem, so only logged.
 $pool('datasets', array_values(array_filter($read('pool/datasets'), function($line) { return strpos($line, 'backup') !== 0; })));

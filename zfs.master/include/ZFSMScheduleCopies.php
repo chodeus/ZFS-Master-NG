@@ -118,7 +118,8 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 
 // What a run says when it copies none, as zfsmScheduleCopiesMade answers; null when it can copy.
 function zfsmScheduleCopiesNone($under, $listed, $pools, $unread) {
-	if (!$pools) return array('Scheduled copies not made: '.($unread !== '' ? 'the datasets could not be read: '.$unread : 'no pool has a dataset it copies'), $unread !== '' ? true : null);
+	$what = ($listed['names'] ?? 0) !== 0 ? 'the snapshot names' : 'the datasets';
+	if (!$pools) return array('Scheduled copies not made: '.($unread !== '' ? $what.' could not be read: '.$unread : 'no pool has a dataset it copies'), $unread !== '' ? true : null);
 	$not = zfsmScheduleCopiesUnderNot($under, $listed);
 	return $not !== '' ? array('Scheduled copies not made: '.$not, true) : null;
 }

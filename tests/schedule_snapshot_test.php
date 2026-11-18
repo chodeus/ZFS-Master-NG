@@ -58,7 +58,7 @@ $every = array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '', 'server' => ''
 $records = array($every, array('dataset' => 'tank/data') + $every, array('dataset' => 'tank/data', 'every' => 'none') + $every, array('server' => 'nas') + $every,
 	array('every' => 'none') + $every, array('dataset' => 'tank/bad name!') + $every, array('every' => array('hourly')) + $every, $copy, array('every' => 'none') + $copy);
 same(array(true, true, true, false, false, false, false, true, false), array_map('zfsmScheduleValid', $records), 'which records are snapshot schedules');
-same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(runProcess('zfs', ZFSM_SCHEDULE_COVERED), $every, array($every)), 'it covers every dataset but read-only and legacy ones, by pool');
+same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(zfsmScheduleCoverRead(array(), 30), $every, array($every)), 'it covers every dataset but read-only and legacy ones, by pool');
 
 // Off with none saves none; Settings shows Off.
 same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg), 'off with none');
