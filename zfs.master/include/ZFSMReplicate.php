@@ -138,8 +138,7 @@ function zfsmReplicaMark($zdataset, $plan) {
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
 // $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
-// optional: 'waited'(seconds) told how long it waited, what to do when the dataset is 'gone', a 'tag' (zfsmKeepTag) for its holds and Keep,
-// and 'remake' to send a copy that is gone in full again.
+// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for holds and Keep, 'remake' a gone copy in full.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
 // them $keep keeps stay (0: all, zfsmKeepPrune).
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null) {
