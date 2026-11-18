@@ -164,6 +164,13 @@ same(array("backup/tank/san/kid@$m"), array_keys($snaps('backup/tank/san/kid')),
 same(6, count(preg_grep('/^send -P -v -L -i /', $read('calls.log'))), 'each sends its changes');
 same(array(), $read('notify.log'), 'only logged');
 
+// A copy gone, as when the pool it goes into was made again: the next run makes it again in full.
+$pool('datasets', array_values(array_filter($read('pool/datasets'), function($line) { return strpos($line, "backup/usb\t") !== 0; })));
+$pool('marks', array_values(array_filter($read('pool/marks'), function($line) { return strpos($line, 'backup/usb@') !== 0; })));
+$reset();
+same(0, zfsmScheduleRun($id, $cfg, $t + 9000), 'a run with a copy gone');
+same(array(true, 1), array(in_array('backup/usb', $datasets(), true), count(preg_grep('/^send -P -v -L usb@/', $read('calls.log')))), 'makes it again in full');
+
 // tank/san no longer Sanoid's: its copy's place holds a holder, which it can't replace; tank/san/kid goes on.
 $pool('marks', array_values(array_filter($read('pool/marks'), function($line) { return strpos($line, 'tank/san@autosnap_') !== 0; })));
 $reset();
@@ -186,13 +193,23 @@ array_map('zfsmJobUnlock', $locks);
 same(true, time() - $started < 8, 'in all, its budget and the slow send');
 same(1, preg_match('/^warning: Scheduled copies under backup: 4 of 6 dataset\(s\) copied\. Replication of tank\/data to backup\/tank\/data not started: another replication of this dataset was still running after this run waited 1 minute\(s\) for it; Replication of tank\/docker to backup\/tank\/docker not started: another replication of this dataset was still running, and the run had no time left to wait for it/', $read('notify-detail.log')[0] ?? ''), 'each says so');
 
-// A run while the one before still goes: none made, notified.
+// A run marks its start on its lock file, which the next start reads.
+$file = zfsmJobDir('schedule').'/'.$id.'.lock';
+touch($file, time() - 90000);
+$before = time();
+zfsmScheduleRun($id, $cfg, $t + 17400);
+clearstatcache();
+same(true, filemtime($file) >= $before, 'a run marks its start');
+// A start while the run before still goes: none made, only logged until that one has gone on a day, then notified.
 $reset();
 @unlink(zfsmScheduleStateFile($id));
-$held = zfsmJobLock(zfsmJobDir('schedule').'/'.$id.'.lock');
-same(1, zfsmScheduleRun($id, $cfg, $t + 18000), 'a run while the one before goes');
+$held = zfsmJobLock($file);
+same(0, zfsmScheduleRun($id, $cfg, $t + 18000), 'a start while the run before goes');
+same(array(array(), 1, 0), array($read('notify.log'), $logged('/ Schedule '.$id.': Scheduled copies not made: the run before is still going$/'), zfsmScheduleFailures($id)), 'only logged');
+touch($file, time() - 90000);
+same(1, zfsmScheduleRun($id, $cfg, $t + 18060), 'a start a day after it');
 zfsmJobUnlock($held);
-same(array(array('warning: ZFS Replication'), 1), array($read('notify.log'), preg_match('/^warning: Scheduled copies not made: the run before is still going/', $read('notify-detail.log')[0] ?? '')), 'notified');
+same(array(array('warning: ZFS Replication'), 1), array($read('notify.log'), preg_match('/^warning: Scheduled copies not made: the run before is still going, 25 hour\(s\) after it started/', $read('notify-detail.log')[0] ?? '')), 'notified');
 
 // An error in one dataset's replication ends only that one: the datasets below it wait, usb is copied.
 $fresh();

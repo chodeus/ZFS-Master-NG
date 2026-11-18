@@ -2,6 +2,9 @@
 // Copies under a dataset: records whose dest, a dataset here and '/', holds each covered dataset's copy (backup/ and cache/appdata:
 // backup/cache/appdata). Dataset '' is Settings' Replicate Every Dataset; None is dest '/'. Coverage: zfsmScheduleFollowed.
 
+// A start while the run before still goes is only logged for a day (zfsmScheduleLockedSkip): a first run sends each dataset in full.
+define('ZFSM_SCHEDULE_COPIES_GRACE', 86400);
+
 function zfsmScheduleCopiesUnder($job) {
 	return is_string($job['dest'] ?? null) && substr($job['dest'], -1) === '/';
 }
@@ -76,7 +79,7 @@ function zfsmScheduleCopiesSaved($job, $listed, $after) {
 function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SCHEDULE_WAIT) {
 	return zfsmScheduleLockedRun($job, 'ZFS Replication', 'Scheduled copies not made: ', $notify, function() use ($job, $jobs, $cfg, $now, $wait) {
 		return zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait);
-	});
+	}, ZFSM_SCHEDULE_COPIES_GRACE);
 }
 
 // What a run copied, and whether it had a problem: null when zfs read every pool and none had a dataset to copy. Its waits for other
@@ -136,7 +139,7 @@ function zfsmScheduleCopiesOne($job, $zdataset, $zdest, $name, &$wait) {
 	$tell = function($title, $text, $type) use (&$said) { $said = array(rtrim($text, '.'), $type); };
 	$waited = function($seconds) use (&$wait) { $wait = max(0, $wait - $seconds); };
 	try {
-		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, '', array('notify' => $tell, 'wait' => $wait, 'waited' => $waited, 'tag' => zfsmKeepTag('', $job['dest'])), $job['keep']);
+		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, '', array('notify' => $tell, 'wait' => $wait, 'waited' => $waited, 'tag' => zfsmKeepTag('', $job['dest']), 'remake' => true), $job['keep']);
 	} catch (Throwable $error) {
 		zfsmLog('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()));
 		return array(1, array('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()), 'warning'));

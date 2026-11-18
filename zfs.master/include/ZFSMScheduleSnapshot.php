@@ -291,16 +291,30 @@ function zfsmScheduleSnapshotRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_
 }
 
 // $run of $job (array(text, problem) as zfsmScheduleSnapshotTell takes them) under the job's lock; $not starts what a run that can't
-// start says. One at a time: a run still going at the next one's time (a long Keep, a hung pool) stops that one, so runs don't pile up.
-function zfsmScheduleLockedRun($job, $title, $not, $notify, $run) {
-	$lock = zfsmJobLock(zfsmJobDir('schedule').'/'.$job['id'].'.lock');
-	if (!is_resource($lock)) return zfsmScheduleSnapshotTell($job, $not.($lock === null ? 'the lock file could not be opened' : 'the run before is still going'), true, $notify, $title);
+// start says. One at a time: a run still going at the next one's time (a long send, a hung pool) stops that one (zfsmScheduleLockedSkip).
+function zfsmScheduleLockedRun($job, $title, $not, $notify, $run, $grace = 0) {
+	$file = zfsmJobDir('schedule').'/'.$job['id'].'.lock';
+	$lock = zfsmJobLock($file);
+	if ($lock === null) return zfsmScheduleSnapshotTell($job, $not.'the lock file could not be opened', true, $notify, $title);
+	if ($lock === false) return zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace);
+	// Its time is this run's start, which the next start reads.
+	@touch($file);
 	try {
 		list($text, $problem) = $run();
 	} finally {
 		zfsmJobUnlock($lock);
 	}
 	return zfsmScheduleSnapshotTell($job, $text, $problem, $notify, $title);
+}
+
+// A start while the run before still goes: only logged until that run, which started at $file's time, has gone on $grace seconds.
+function zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace) {
+	$age = time() - (int)@filemtime($file);
+	if ($age < $grace) {
+		zfsmLog('Schedule '.$job['id'].': '.$not.'the run before is still going', LOG_NOTICE);
+		return 0;
+	}
+	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 ? ', '.intdiv($age, 3600).' hour(s) after it started' : ''), true, $notify, $title);
 }
 
 // What a run took and kept, and whether it had a problem: null when zfs read every pool and the default had no dataset to take.
