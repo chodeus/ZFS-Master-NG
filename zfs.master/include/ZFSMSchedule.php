@@ -376,7 +376,6 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 	}
 }
 
-// Settings' list; $cfg for Snapshots Pattern, which can change after a schedule was saved.
 // Settings' Days boxes of the row whose ids start $prefix, $days ticked.
 function zfsmScheduleDaysHtml($prefix, $days) {
 	$html = '';
@@ -386,6 +385,7 @@ function zfsmScheduleDaysHtml($prefix, $days) {
 	return '<span id="'.$prefix.'-days" role="group" aria-label="Days">'.$html.'</span>';
 }
 
+// Settings' list; $cfg for Snapshots Pattern, which can change after a schedule was saved.
 function zfsmSchedulesHtml($cfg) {
 	$read = zfsmScheduleRead();
 	if ($read === null) return '<span style="color:#e22828">'.zfsmHtml(zfsmScheduleUnreadable()).'</span>';
