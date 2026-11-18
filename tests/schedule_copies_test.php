@@ -239,6 +239,28 @@ $hold = zfsmKeepHoldTag(zfsmKeepTag('', 'backup/tank/data'));
 same(array("tank/data@$p\t$hold", "tank/data@$o\t$hold"), array_values(preg_grep('~^tank/data@~', $read('pool/holds'))), 'a run cut off holds for the copy');
 same(0, zfsmRunReplicate('tank/data', $p, 'backup/tank/data'), 'carried on by hand');
 same(array(), preg_grep('~^tank/data@~', $read('pool/holds')), 'which takes its holds off');
+// The next run carries the others on, then sends what it took: a warning of the first step is told with the second.
+$reset();
+@unlink(zfsmScheduleStateFile($id));
+putenv('ZFSM_TEST_BOOKMARK_FAIL=1');
+zfsmScheduleRun($id, $cfg, $t + 13500);
+putenv('ZFSM_TEST_BOOKMARK_FAIL');
+same(1, preg_match('/^warning: .*'.preg_quote('tank@'.$p, '/').' to backup\/tank finished \(carried on from where it stopped\)\. The bookmark that keeps the next run incremental could not be made: .*?\. Replication of '.preg_quote('tank@'.$name($t + 13500), '/').' to backup\/tank finished \(changes since /',
+	implode("\n", $read('notify-detail.log'))), 'the first step\'s warning, then the second\'s: '.implode("\n", $read('notify-detail.log')));
+// A first copy onto a holder, cut off, then carried on: a mark that stays is a problem of the run, though the next step lands cleanly
+// (the notification's cut ends the line before that step).
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/hres\tfilesystem", "backup/tank/hres\tfilesystem")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/hres\tzfs.master:holder\ton")));
+putenv('ZFSM_TEST_SEND_CUT=1');
+zfsmScheduleRun($id, $cfg, $t + 13800);
+putenv('ZFSM_TEST_SEND_CUT');
+$reset();
+@unlink(zfsmScheduleStateFile($id));
+putenv('ZFSM_TEST_INHERIT_FAIL=1');
+zfsmScheduleRun($id, $cfg, $t + 14100);
+putenv('ZFSM_TEST_INHERIT_FAIL');
+same(1, preg_match('/^warning: Scheduled copies under backup: .*'.preg_quote('tank/hres@'.$name($t + 13800), '/').' to backup\/tank\/hres finished \(carried on from where it stopped\)\. The copy still carries the mark/m',
+	implode("\n", $read('notify-detail.log'))), 'the mark told: '.implode("\n", $read('notify-detail.log')));
 
 // Other replications of tank/data and tank/docker still running, after tank's send outlasted the budget: only waits use it, and
 // they share it, so the second has none left.

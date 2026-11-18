@@ -176,6 +176,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		}
 		$target = zfsmReplicaTargetOpen($server);
 		$target['zstd'] = zfsmReplicaTargetZstd($target);
+		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false)));
 			if (!$plan['can_proceed']) return $refused($plan['error']);
@@ -183,15 +184,23 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
 			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
-			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) continue;
+			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) {
+				$first = array($text, $type);
+				continue;
+			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type);
-			$notify($title, $text, $type);
+			$notify($title, ...zfsmReplicateTold($first, $text, $type));
 			return $code;
 		}
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
 		zfsmJobUnlock($lock);
 	}
+}
+
+// A run's last step's $text and $type, after the first's when that one carried on a stopped run and warned ($first: its text, type).
+function zfsmReplicateTold($first, $text, $type) {
+	return $first[1] === 'normal' ? array($text, $type) : array(rtrim($first[0], '.').'. '.$text, $type === 'normal' ? 'warning' : $type);
 }
 
 // zfsmJobLock of $lock_file, waiting out another run up to $schedule's 'wait' seconds; its 'waited' is told how long.

@@ -276,7 +276,9 @@ foreach (array('holds' => array("tank/s1@s\tkeep", 'dataset is busy'), 'props' =
 	same(array(1, true), array(substr_count(implode(' ', destroyDataset('tank/s1', 1)['failed']), $why), in_array('tank/s1', $datasets(), true)), 'nor with -r while: '.$why);
 	$pool($file, array_values(array_diff($read('pool/'.$file), array($line))));
 }
-same(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), destroyDataset('tank/s1', 1), 'with -r and neither, it goes');
+$pool('props', array_merge($read('pool/props'), array("tank/s1\treceive_resume_token\ttok:tank/s1@s", "tank/s1@s\tzfs.master:schedule\tx")));
+same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), array()), array(destroyDataset('tank/s1', 1), preg_grep('~^tank/s1[\t@]~', $read('pool/props'))),
+	'with -r and neither, it goes, with its properties and its snapshots\'');
 
 // Destroy removes what it and below had under Schedules and leaves its copies.
 $under = function($root) use ($stored) { return array_values(preg_grep('~^'.preg_quote($root, '~').'(/|$)~', array_column($stored() ?? array(), 'dataset'))); };
