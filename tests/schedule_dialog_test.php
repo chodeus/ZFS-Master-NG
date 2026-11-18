@@ -307,7 +307,7 @@ same(array($copy('tank/docker') => 'left where it is, as a dataset already has i
 same(array('succeeded' => array('tank/again' => 0), 'failed' => array()), renameDataset('tank/again', 'tank/again', 0, $cfg), 'a rename to its own name, which zfs does nothing for');
 // A rename that lands but can't be mounted there, which zfs 2.0 and 2.1 fail: its schedules follow it all the same, and the error stays.
 $add(array('tank/um', 'tank/um-taken'));
-same(true, $save('tank/um', $part('days', '02:10', '1'), $part('default'))['saved'], 'its own snapshots');
+same(true, $save('tank/um', $part('days', $free, '1'), $part('default'))['saved'], 'its own snapshots');
 $under_um = function() use ($stored) { return array_values(array_column(array_filter($stored(), function($job) { return zfsmUnderAny($job['dataset'], array('tank/um', 'tank/um-taken')); }), 'dataset')); };
 same(array(array('tank/um-taken' => 'cannot rename \'tank/um\': dataset already exists'), array('tank/um')), array(renameDataset('tank/um', 'tank/um-taken', 0, $cfg)['failed'], $under_um()),
 	'onto a name taken it fails where it is, and its schedule stays');
