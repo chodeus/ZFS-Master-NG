@@ -38,7 +38,7 @@ reviews:
         - "Inside a dataset" means equal to it, or starting with it plus `/` (`@` or `#` for its snapshots and bookmarks). Flag a bare string-prefix test: `tank/data2` is not inside `tank/data`.
         - Escape anything echoed into HTML or inline script. Config is saved to `/boot`, so saved values from older versions must keep working.
         - File names, ZFS user properties and anything from another server may not be valid UTF-8. htmlspecialchars() needs ENT_SUBSTITUTE, or it returns '' and the text disappears. json_encode() needs JSON_INVALID_UTF8_SUBSTITUTE, or its false result must be handled; never echo, publish or hash a json_encode() that can fail.
-        - Every `zfs receive` takes `-s -u -o readonly=on` and never `-F`. A copy of a volume must not appear as a block device (volmode=none).
+        - Every `zfs receive` takes `-s -u -o readonly=on`, and `-F` only onto a holder that holds no snapshot (zfsmReplicaPlanHolder, zfsmReplicaPlanResume), which zfs needs to replace it. A copy of a volume must not appear as a block device (volmode=none).
         - Replicate Every Dataset (include/ZFSMScheduleCopies.php) makes an empty holder (`zfs create -o canmount=off -o readonly=on -o zfs.master:holder=on`) only where a copy's parent is missing. The property inherits, so a dataset is a holder only where its source is `local` (zfsmReplicaHolder).
     - path: "zfs.master/{include/ZFSMDiag*.php,scripts/diagnostics.php}"
       instructions: |

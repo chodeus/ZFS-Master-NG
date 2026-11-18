@@ -147,6 +147,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		exit 0 ;;
 	receive)
 		dest=$last_arg
+		force=0; contains_arg -F "$@" && force=1
 		# ZFSM_TEST_RECV_FAIL=early: fails before it reads, as a receive that stops part-way leaves the rest unread.
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = early ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		stream=$(tail -c +313)
@@ -156,7 +157,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = 1 ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = changes ] && [ "$base" != - ] && [ "$base" != RESUME ] && { printf 'cannot receive incremental stream: out of space\n' >&2; exit 1; }
-		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		# A full stream onto one that is there needs -F; one cut off there carries on only with -F too (2.4.4, live).
+		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ] && [ "$force" = 0 ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		if [ "$base" = RESUME ] && [ "$(prop "$dest" zfsm_test_onto -)" = 1 ] && [ "$force" = 0 ]; then printf "cannot receive resume stream: Resuming recv on existing destination '%s'\nmust specify -F to overwrite it\n" "$dest" >&2; exit 1; fi
+		onto=0; [ "$base" = - ] && exists "$dest" && onto=1
 		# zfs makes a new copy only inside a dataset that exists.
 		exists "$dest" || exists "${dest%/*}" || { printf "cannot receive new filesystem stream: parent of '%s' does not exist\n" "$dest" >&2; exit 1; }
 		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
@@ -165,12 +169,30 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
 		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
 			set_prop "$dest" receive_resume_token "tok:$snap"
+			[ "$onto" = 1 ] && set_prop "$dest" zfsm_test_onto 1
 			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
 		fi
 		printf '%s@%s\t%s\t%s\n' "$dest" "${snap#*@}" "$guid" "$(next_txg)" >> "$R/marks"
 		# A received snapshot keeps when the sender took it, as the stream says.
 		creation=$(printf '%s' "$header" | cut -f6); [ -z "$creation" ] || set_prop "$dest@${snap#*@}" creation "$creation"
 		set_prop "$dest" receive_resume_token -
+		set_prop "$dest" zfsm_test_onto -
+		exit 0 ;;
+	inherit)
+		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		[ "${ZFSM_TEST_INHERIT_FAIL:-0}" = 1 ] && { printf "cannot inherit %s for '%s': permission denied\n" "$2" "$last_arg" >&2; exit 1; }
+		awk -F'\t' -v n="$last_arg" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new" && mv "$R/props.new" "$R/props"
+		exit 0 ;;
+	rename)
+		# Moves it and all below it, with their snapshots, bookmarks, properties and holds; ZFSM_TEST_RENAME_FAIL names one that is busy.
+		eval "from=\${$(($# - 1))}"
+		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
+		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
+		exists "$last_arg" && { printf "cannot rename '%s': dataset already exists\n" "$from" >&2; exit 1; }
+		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }
+		for f in datasets marks props holds; do
+			awk -F'\t' -v OFS='\t' -v a="$from" -v b="$last_arg" '{ n = length(a); c = substr($1, n + 1, 1); if (substr($1, 1, n) == a && (c == "" || c == "/" || c == "@" || c == "#")) $1 = b substr($1, n + 1); print }' "$R/$f" > "$R/$f.new" && mv "$R/$f.new" "$R/$f"
+		done
 		exit 0 ;;
 	bookmark)
 		guid=$(mark "$2" 2); txg=$(mark "$2" 3)

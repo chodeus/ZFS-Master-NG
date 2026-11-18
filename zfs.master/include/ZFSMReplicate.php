@@ -1,6 +1,6 @@
 <?php
 // Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy on another pool that each run brings up to date.
-// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and never with -F: a run only adds to it, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
+// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and with -F only onto a holder, which has no snapshot (zfsmReplicaPlanHolder): a run only adds to a copy, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
@@ -233,7 +233,7 @@ function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag) {
 	}
 	$marked = zfsmReplicaMark($zdataset, $plan);
 	$note = implode('. ', array_filter(array($marked === '' ? '' : 'The bookmark that keeps the next run incremental could not be made: '.$marked,
-		zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
+		$plan['holder'] ? zfsmReplicaHolderClear($plan['dest']) : '', zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
 	zfsmLog('Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.$note : ''), LOG_NOTICE);
 	return array(0, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), $note === '' ? 'normal' : 'warning');
 }

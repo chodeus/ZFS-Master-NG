@@ -36,6 +36,12 @@ function zfsmReplicaHolderMake($zdest) {
 	return ($made['code'] ?? 1) === 0 ? '' : 'The dataset to hold the copies below '.$zdest.' could not be made: '.zfsmCommandError($made, 'zfs create failed');
 }
 
+// After a copy landed in a holder's place (zfsmReplicaPlanHolder), which keeps the holder's mark: clears it. '' or why not.
+function zfsmReplicaHolderClear($zdest) {
+	$cleared = runProcess('zfs', array('inherit', ZFSM_REPLICA_HOLDER, $zdest));
+	return ($cleared['code'] ?? 1) === 0 ? '' : 'The copy still carries the mark of the empty dataset it replaced: '.zfsmCommandError($cleared, 'zfs inherit failed');
+}
+
 // Whether $zdest on $target is a holder; false on a trusted server, which makes none, and when it can't be read.
 function zfsmReplicaHolder($target, $zdest) {
 	if ($target['server'] !== '') return false;

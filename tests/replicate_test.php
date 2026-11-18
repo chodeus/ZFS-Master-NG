@@ -59,7 +59,7 @@ same(array(true, 'full', null, false, 1000), array($plan['can_proceed'], $plan['
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'it runs');
 same(array('send -P -v -L tank/data@b'), $calls('send'), 'send streams the snapshot itself, with progress and -L');
 same(array('send -P -v -n -L tank/data@b'), array_values(array_unique(preg_grep('/^send -P -v -n /', $read('calls.log')))), 'each estimate counts the same stream');
-same(array('receive -s -u -o readonly=on -o canmount=noauto backup/data'), $calls('receive'), 'receive keeps it resumable, unmounted and read-only, never -F');
+same(array('receive -s -u -o readonly=on -o canmount=noauto backup/data'), $calls('receive'), 'receive keeps it resumable, unmounted and read-only, with no -F into a new copy');
 same(array('backup/data@b'), $names('backup/data', 'snapshot'), 'the copy holds b');
 same(array($bookmark('backup/data', 'b')), $names('tank/data', 'bookmark'), 'and the dataset a bookmark for this destination at b');
 same(array('replicate_start', 'replicate_stop'), array_values(array_unique($GLOBALS['zfsm_feed'])), 'the row shows the run');

@@ -181,6 +181,7 @@ function zfsmReplicatePlanHtml(plan) {
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');
 	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
+	if (plan.holder) html += say('It replaces the empty dataset there, made to hold the copies below it, which stay.');
 	html = area+html;
 	// An incremental or resumed receive into a copy here that has a /dev/zvol device removes it (volmode=none, zfsmReplicateReceiveArgs);
 	// one on another server never had one (zfsmReplicaAreaProps).

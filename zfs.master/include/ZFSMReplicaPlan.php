@@ -61,9 +61,10 @@ function zfsmReplicateSendArgs($plan, $dry_run = false) {
 }
 
 // -s: a stopped run resumes. -u and canmount=noauto keep a filesystem's copy unmounted, even after a reboot; volmode=none keeps a volume's
-// copy from being a second block device of the same data. Resumed and incremental receives apply them too.
+// copy from being a second block device of the same data. Resumed and incremental receives apply them too. -F only onto a holder.
 function zfsmReplicateReceiveArgs($plan) {
 	$args = array('receive', '-s', '-u', '-o', 'readonly=on');
+	if ($plan['holder']) $args[] = '-F';
 	array_push($args, '-o', $plan['type'] === 'filesystem' ? 'canmount=noauto' : 'volmode=none');
 	$args[] = $plan['dest'];
 	return $args;
@@ -79,6 +80,8 @@ function zfsmReplicateEstimate($plan) {
 	return ($estimate['code'] ?? 1) === 0 ? zfsmReplicateSize($estimate['output']) : null;
 }
 
+define('ZFSM_REPLICA_TOO_LONG', 'The names are too long for the bookmark that keeps the next replication incremental');
+
 function zfsmReplicaBookmarkFits($zdataset, $mark, $snapshot) {
 	return strlen($zdataset.'#'.zfsmReplicaBookmarkPrefix($mark).$snapshot) <= 255;
 }
@@ -88,7 +91,6 @@ function zfsmReplicaBookmarkFits($zdataset, $mark, $snapshot) {
 // $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest).
 function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$refuse = function($why) { return array('can_proceed' => false, 'error' => $why); };
-	$too_long = 'The names are too long for the bookmark that keeps the next replication incremental';
 	$target = $with['target'] ?? array('server' => '');
 	if (isset($target['error'])) return $refuse($target['error']);
 	if (!isset($with['marks']) && !zfsmDatasetExists($zdataset)) return $refuse('Only an existing dataset can be replicated');
@@ -108,43 +110,66 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	list($missing, $why) = zfsmReplicaTargetMissing($target, $zdest);
 	if ($missing === null) return $refuse('Could not check whether '.$where.' exists'.$because($why));
 	$key = zfsmReplicaTargetMark($target, $zdest);
-	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off', 'type' => $type, 'base' => null, 'token' => null);
+	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off', 'type' => $type, 'base' => null, 'token' => null, 'holder' => false);
 	list($token, $why) = $missing ? array('', '') : zfsmReplicaTargetToken($target, $zdest);
 	if ($token === null) return $refuse('Could not check whether '.$where.' holds a part-received replication'.$because($why));
 	if ($token !== '') {
-		// A run that stopped part-way left a token on the copy: zfs send -t carries on from there, whatever snapshot is picked now.
-		$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
-		if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
-			return $refuse($where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there'));
-		}
-		if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $refuse($where.' holds a part-received replication of '.$match[1].', not of this dataset');
-		if (!zfsmReplicaBookmarkFits($zdataset, $key, substr($match[1], strlen($zdataset) + 1))) return $refuse($too_long);
-		return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output'])));
+		$plan = zfsmReplicaPlanResume($plan, $target, $zdataset, $token);
+		return is_string($plan) ? $refuse($plan) : $plan;
 	}
 	$snap = $from === null ? array('name' => null, 'guid' => '', 'txg' => PHP_INT_MAX) : null;
 	foreach ($marks as $mark) if ($from !== null && $mark['name'] === $from) $snap = $mark;
 	if ($snap === null) return $refuse('The snapshot '.$from.' no longer exists');
-	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return $refuse($too_long);
-	if (!$missing) {
-		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
-		if ($held === null) return $refuse('The snapshots of '.$where.' could not be read'.$because($why));
-		if (!$held && zfsmReplicaHolder($target, $zdest)) return $refuse($where.' only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them');
-		if (!$held) return $refuse($where.' already exists and holds no snapshot, so it can\'t be updated without destroying it');
-		$newest = end($held);
-		$base = null;
-		// The snapshot or bookmark the copy's newest snapshot came from; a snapshot first, as older OpenZFS can't send raw from some bookmarks.
-		foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
-		if ($base === null) return $refuse($newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it');
-		if ($base['guid'] === $snap['guid']) return $refuse($where.' already holds '.$from);
-		if ($base['txg'] > $snap['txg']) return $refuse($where.' already holds '.$base['name'].', which is newer than '.$from);
-		$plan = array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
-	}
+	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return $refuse(ZFSM_REPLICA_TOO_LONG);
+	if (!$missing) $plan = zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap);
+	if (is_string($plan)) return $refuse($plan);
 	// A bookmark for this copy means a run made it before: a schedule's full send there would refill what someone removed.
 	if ($missing && ($with['scheduled'] ?? false)) {
 		$prefix = $zdataset.'#'.zfsmReplicaBookmarkPrefix($key);
 		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.' is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
 	}
 	return array_merge($plan, array('size' => $from === null || ($with['estimate'] ?? true) === false ? null : zfsmReplicateEstimate($plan)));
+}
+
+// $plan carrying on the run that stopped part-way and left $token on the copy (zfs send -t), whatever snapshot is picked now; onto
+// a holder with -F again, which zfs asks for there (live, 2.4.4). Else why not.
+function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
+	$zdest = $plan['dest'];
+	$where = zfsmReplicaTargetWhere($target, $zdest);
+	$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
+	if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
+		return $where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there');
+	}
+	if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$match[1].', not of this dataset';
+	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($match[1], strlen($zdataset) + 1))) return ZFSM_REPLICA_TOO_LONG;
+	$holder = zfsmReplicaHolder($target, $zdest) && zfsmReplicaTargetSnapshots($target, $zdest)[0] === array();
+	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
+}
+
+// $plan into a copy that is there: the changes since the snapshot or bookmark its newest snapshot came from, else in full onto a holder
+// (zfsmReplicaPlanHolder); or why not. $snap: the mark it sends.
+function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap) {
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	list($held, $why) = zfsmReplicaTargetSnapshots($target, $plan['dest']);
+	if ($held === null) return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
+	if (!$held) return zfsmReplicaPlanHolder($plan, $target);
+	$newest = end($held);
+	$base = null;
+	// The snapshot or bookmark the copy's newest snapshot came from; a snapshot first, as older OpenZFS can't send raw from some bookmarks.
+	foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
+	if ($base === null) return $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it';
+	if ($base['guid'] === $snap['guid']) return $where.' already holds '.$snap['name'];
+	if ($base['txg'] > $snap['txg']) return $where.' already holds '.$base['name'].', which is newer than '.$snap['name'];
+	return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
+}
+
+// $plan into a copy that holds no snapshot: in full with -F when it is a holder, which keeps the copies below it (live, 2.4.4); zfs
+// refuses a raw stream there. Else why not.
+function zfsmReplicaPlanHolder($plan, $target) {
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
+	if ($plan['raw']) return $where.' only holds the copies of datasets below this one, and zfs can\'t receive this encrypted dataset\'s raw copy over it: set its Replication to None under Actions, Schedules, or destroy that dataset and the copies below it for the next run to send them all';
+	return array_merge($plan, array('holder' => true));
 }
 
 // What the Replicate dialog shows: the snapshots to pick from, newest first, the last destination, the trusted servers, and the plan

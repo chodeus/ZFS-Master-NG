@@ -153,7 +153,7 @@ same(array(true, false, false), array(zfsmReplicaHolder(array('server' => ''), '
 same(array('normal: Scheduled copies under backup: 6 of 6 dataset(s) copied. It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says so');
 same(array("tank/data@$n" => $tag), $snaps('tank/data'), 'its snapshot is tagged for the record');
 same(1, $logged('/ Schedule '.$id.': Scheduled copies under backup: 6 of 6 dataset\(s\) copied$/'), 'logged');
-same(array(), preg_grep('/receive .*-F/', $read('calls.log')), 'never with -F');
+same(array(), preg_grep('/receive .*-F/', $read('calls.log')), 'no -F, as no holder is replaced');
 
 // The one after sends changes; Keep leaves the newest 1 of the record's snapshots on each dataset.
 $reset();
@@ -171,14 +171,51 @@ $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 9000), 'a run with a copy gone');
 same(array(true, 1), array(in_array('backup/usb', $datasets(), true), count(preg_grep('/^send -P -v -L usb@/', $read('calls.log')))), 'makes it again in full');
 
-// tank/san no longer Sanoid's: its copy's place holds a holder, which it can't replace; tank/san/kid goes on.
+// tank/san no longer Sanoid's: its first copy replaces the holder in its place (receive -F), and the copy below stays; the copy loses
+// the holder's mark, which the one below inherited.
 $pool('marks', array_values(array_filter($read('pool/marks'), function($line) { return strpos($line, 'tank/san@autosnap_') !== 0; })));
 $reset();
-same(1, zfsmScheduleRun($id, $cfg, $t + 10800), 'a run with the holder in the way');
+same(0, zfsmScheduleRun($id, $cfg, $t + 10800), 'a run with a holder in a copy\'s place');
 $o = $name($t + 10800);
-same(1, preg_match('/^warning: Scheduled copies under backup: 6 of 7 dataset\(s\) copied\. Replication of tank\/san to backup\/tank\/san not started: backup\/tank\/san only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them/', $read('notify-detail.log')[0] ?? ''), 'says so');
-same(array(), $snaps('tank/san'), 'the snapshot it took for it goes');
-same(array("backup/tank/san/kid@$o"), array_keys($snaps('backup/tank/san/kid')), 'the one below is copied');
+same(array(1, array("backup/tank/san@$o")), array(count(preg_grep('/^receive -s -u -o readonly=on -F -o canmount=noauto backup\/tank\/san$/', $read('calls.log'))), array_keys($snaps('backup/tank/san'))), 'its copy replaces the holder');
+same(array(false, false), array(zfsmReplicaHolder(array('server' => ''), 'backup/tank/san'), zfsmReplicaHolder(array('server' => ''), 'backup/tank/san/kid')), 'the mark is cleared');
+same(array(1, array("backup/tank/san/kid@$o")), array(count(preg_grep('/^send -P -v -L -i \S+ tank\/san\/kid@/', $read('calls.log'))), array_keys($snaps('backup/tank/san/kid'))), 'the one below stays: it gets only the changes');
+same(1, count(preg_grep('/^receive .*-F/', $read('calls.log'))), '-F only onto the holder');
+
+// An encrypted dataset's raw copy can't replace a holder: zfs refuses it there, so the plan says what to do instead.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/enc\tfilesystem", "backup/tank/enc\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/enc@a\t4242\t9000")));
+$pool('props', array_merge($read('pool/props'), array("tank/enc\tencryption\taes-256-gcm", "backup/tank/enc\tzfs.master:holder\ton")));
+same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs can\'t receive this encrypted dataset\'s raw copy over it: set its Replication to None under Actions, Schedules, or destroy that dataset and the copies below it for the next run to send them all'),
+	zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/enc', array('estimate' => false)), 'a raw stream onto a holder');
+
+// A first copy onto a holder that stops part-way carries on only with -F again (OpenZFS 2.4.4); the mark goes once it lands.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/res\tfilesystem", "backup/tank/res\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/res@a\t4343\t9001")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/res\tzfs.master:holder\ton")));
+$reset();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/res', 'a', 'backup/tank/res'), 'a first copy onto a holder, cut off');
+putenv('ZFSM_TEST_SEND_CUT');
+same(array(true, 'resume'), array(zfsmReplicaHolder(array('server' => ''), 'backup/tank/res'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false))['mode']), 'still a holder, part-received');
+same(0, zfsmRunReplicate('tank/res', 'a', 'backup/tank/res'), 'carried on');
+same(array(2, array('backup/tank/res@a'), false), array(count(preg_grep('/^receive -s -u -o readonly=on -F /', $read('calls.log'))), array_keys($snaps('backup/tank/res')), zfsmReplicaHolder(array('server' => ''), 'backup/tank/res')), 'with -F both times, landed, the mark gone');
+
+// A mark that could not be cleared is told; the copy holds a snapshot then, so a later run of changes cut off carries on without -F.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/mark\tfilesystem", "backup/tank/mark\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/mark@a\t4444\t9002", "tank/mark@b\t4445\t9003")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/mark\tzfs.master:holder\ton")));
+$reset();
+putenv('ZFSM_TEST_INHERIT_FAIL=1');
+same(0, zfsmRunReplicate('tank/mark', 'a', 'backup/tank/mark'), 'a first copy onto a holder whose mark stays');
+putenv('ZFSM_TEST_INHERIT_FAIL');
+same(array('warning: Replication of tank/mark@a to backup/tank/mark finished (in full). The copy still carries the mark of the empty dataset it replaced: cannot inherit zfs.master:holder for ?backup/tank/mark?: permission denied'), $read('notify-detail.log'), 'says so');
+$reset();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(1, zfsmRunReplicate('tank/mark', 'b', 'backup/tank/mark'), 'its changes, cut off');
+putenv('ZFSM_TEST_SEND_CUT');
+same(array('resume', false), array_values(array_intersect_key(zfsmReplicatePlan('tank/mark', 'b', 'backup/tank/mark', array('estimate' => false)), array('mode' => 0, 'holder' => 0))), 'carried on as changes, not onto a holder');
+same(array(0, array(), array('backup/tank/mark@a', 'backup/tank/mark@b')), array(zfsmRunReplicate('tank/mark', 'b', 'backup/tank/mark'), preg_grep('/^receive .*-F/', $read('calls.log')), array_keys($snaps('backup/tank/mark'))), 'without -F');
 
 // One cut off part-way holds for each copy, as a run by hand does: carried on by hand, its holds come off.
 putenv('ZFSM_TEST_SEND_CUT=1');
