@@ -29,9 +29,15 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 	begin() { printf '\000\000\000\000\000\000\000\000\254\313\272\365\002\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000'; head -c 272 /dev/zero; }
 	newest() { awk -F'\t' -v d="$1@" 'index($1, d) == 1 { g = $2 } END { print g }' "$R/marks"; }
 	held() { awk -F'\t' -v n="$1" -v t="$2" '$1 == n && (t == "" || $2 == t) { f = 1 } END { exit !f }' "$R/holds"; }
+	# The nearest of $1 and those above it that sets property $2, or nothing.
+	setter() { s=$1; while :; do awk -F'\t' -v n="$s" -v p="$2" '$1 == n && $2 == p { f = 1 } END { exit !f }' "$R/props" && { echo "$s"; return; }; [ "${s%/*}" = "$s" ] && return; s=${s%/*}; done; }
+	# zfs list's $2 of $1: its setter's (a mountpoint path gains the rest of the name), else $3.
+	inherited() { s=$(setter "$1" "$2"); [ -n "$s" ] || { echo "$3"; return; }; v=$(prop "$s" "$2" ''); case "$2:$v" in mountpoint:/*) echo "$v${1#"$s"}" ;; *) echo "$v" ;; esac; }
+	# zfs get -o source of $1's $2.
+	source_of() { s=$(setter "$1" "$2"); if [ -z "$s" ]; then echo default; elif [ "$s" = "$1" ]; then echo local; else echo "inherited from $s"; fi; }
 	case "$1" in
 	list)
-		# A snapshot schedule's dataset read (include/ZFSMScheduleSnapshot.php): readonly, mountpoint from props, else off, /mnt/<name> (a volume -);
+		# A snapshot schedule's dataset read (include/ZFSMScheduleSnapshot.php): readonly, mountpoint set or inherited, else off, /mnt/<name> (a volume -);
 		# -d 1 <name>: it and its children. ZFSM_TEST_COVER_FAIL: 1 fails it, hang waits 30 s, a dataset's name fails that one, then exit 1.
 		if contains_arg 'name,readonly,mountpoint' "$@"; then
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
@@ -43,8 +49,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			while IFS="$(printf '\t')" read -r n ty; do
 				if [ -n "$under" ]; then case "$n" in "$under") ;; "$under"/*/*) [ "$deep" = 1 ] || continue ;; "$under"/*) ;; *) continue ;; esac; fi
 				[ "$n" = "${ZFSM_TEST_COVER_FAIL:-}" ] && { printf "cannot open '%s': Input/output error\n" "$n" >&2; code=1; continue; }
-				if [ "$ty" = volume ]; then mp=-; else mp=/mnt/$n; fi
-				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" readonly off)" "$(prop "$n" mountpoint "$mp")"
+				if [ "$ty" = volume ]; then mp=-; else mp=$(inherited "$n" mountpoint "/mnt/$n"); fi
+				printf '%s\t%s\t%s\n' "$n" "$(inherited "$n" readonly off)" "$mp"
 			done < "$R/datasets"
 			exit $code
 		fi
@@ -116,8 +122,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			[ "${ZFSM_TEST_TREE_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
 			awk -F'\t' -v d="$last_arg" '$1 == d || index($1, d "/") == 1' "$R/datasets" | while IFS="$(printf '\t')" read -r n ty; do
-				if [ "$ty" = volume ]; then mp=-; else mp=/mnt/$n; fi
-				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" guid "$(printf '%s' "$n" | cksum | cut -d' ' -f1)")" "$(prop "$n" mountpoint "$mp")"
+				if [ "$ty" = volume ]; then mp=-; else mp=$(inherited "$n" mountpoint "/mnt/$n"); fi
+				printf '%s\t%s\t%s\n' "$n" "$(prop "$n" guid "$(printf '%s' "$n" | cksum | cut -d' ' -f1)")" "$mp"
 			done
 			exit 0
 		fi
@@ -137,6 +143,16 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			exit 0 ;;
 		esac
 		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		# A rename's read of where readonly and mountpoint come from, at the dataset and below (a volume's mountpoint is -);
+		# ZFSM_TEST_SOURCE_FAIL=1 fails it.
+		if [ "$4" = name,property,source ]; then
+			[ "${ZFSM_TEST_SOURCE_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '$1 == d || index($1, d "/") == 1' "$R/datasets" | while IFS="$(printf '\t')" read -r n ty; do
+				printf '%s\treadonly\t%s\n' "$n" "$(source_of "$n" readonly)"
+				if [ "$ty" = volume ]; then printf '%s\tmountpoint\t-\n' "$n"; else printf '%s\tmountpoint\t%s\n' "$n" "$(source_of "$n" mountpoint)"; fi
+			done
+			exit 0
+		fi
 		# -o source: local where it was set, else inherited from the nearest dataset above that set it, as a user property is.
 		if [ "$5" = source ]; then
 			d=$last_arg

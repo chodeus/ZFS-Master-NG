@@ -255,6 +255,9 @@ $reset();
 // Its snapshots gone from the source, only the bookmarks that took the new names keep the next run incremental.
 $pool('marks', array_values(preg_grep('~^tank/new(/sub)?@auto-20270115080000\t~', $read('pool/marks'), PREG_GREP_INVERT)));
 same(0, zfsmScheduleRun($id, $cfg, $t + 3600), 'the next run');
+$landed = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-d', '1', 'backup/tank')))[0]['backup/tank'] ?? null;
+same('backup/tank is read-only, as a copy received here is: a snapshot in it stops the next replication into it', zfsmScheduleSkipped('backup/tank', $landed),
+	'a copy lands read-only, so no snapshot schedule takes it');
 $from = function($zdataset) { return preg_quote($zdataset.'#'.zfsmReplicaBookmarkPrefix('backup/'.$zdataset).'auto-20270115080000 '.$zdataset.'@', '~'); };
 same(array(1, 1, 0), array($sends('~^send -P -v -L -i '.$from('tank/new').'~'), $sends('~^send -P -v -L -i '.$from('tank/new/sub').'~'), $sends('~^send -P -v -L tank/new@~')),
 	'sends from the moved bookmarks only the changes to the renamed copies');
@@ -267,6 +270,8 @@ same(true, zfsmScheduleRemove($usb, $cfg)['saved'], 'its copies under usb remove
 putenv('ZFSM_TEST_SEND_CUT=1');
 zfsmScheduleRun($id, $cfg, $t + 7200);
 putenv('ZFSM_TEST_SEND_CUT');
+$pinned = function($zdataset) use ($read) { return array_values(preg_grep('~^'.preg_quote($zdataset, '~').'(/sub)?@auto-20270115100000\t'.ZFSM_KEEP_HOLD.'~', $read('pool/holds'))); };
+same(2, count($pinned('tank/new')), 'the cut-off run holds the snapshots it sends');
 $tokens = function($copy) use ($read) { return array_values(preg_grep('~^'.preg_quote($copy, '~').'(/sub)?\treceive_resume_token\ttok:~', $read('pool/props'))); };
 same(array(2, array('succeeded' => array('tank/cut' => 0), 'failed' => array())), array(count($tokens('backup/tank/new')), renameDataset('tank/new', 'tank/cut', 0, $cfg)),
 	'a rename after a run cut off part-way');
@@ -274,6 +279,7 @@ $reset();
 $marks = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/marks')); };
 same(array(0, 2, array(), array()), array(zfsmScheduleRun($id, $cfg, $t + 10800), $sends('~^send -P -v -t tok:tank/new(/sub)?@auto-20270115100000$~'), $tokens('backup/tank/cut'),
 	array_values(array_diff(array('backup/tank/cut@auto-20270115100000', 'backup/tank/cut/sub@auto-20270115100000'), $marks()))), 'the next run carries each on from its token, and both copies land');
+same(array(), $pinned('tank/cut'), 'and lets go of their holds');
 // Into a dataset whose copy is not made yet: an empty holder takes its place first, as zfs rename needs the parent.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/deep\tfilesystem")));
 $reset();
@@ -425,9 +431,9 @@ $unread = renameDataset('tank/un', $longer('tank/un'), 0, $cfg)['failed'];
 putenv('ZFSM_TEST_COVER_FAIL');
 same(array(array($longer('tank/sz') => 0, $longer('tank/ro') => 0, $longer('tank/lg') => 0), array($longer('tank/un') => 'Nothing was renamed: the names of '.$longer('tank/un').' and its copy would be too long for the bookmark a copy keeps; pick a shorter name')),
 	array($renamed, $unread), 'one a run leaves out may take a long name; one not read may not');
-// One whose read-only or legacy mount may come from above it is checked under its new parent; one that sets its own is not.
+// One that inherits a read-only or legacy mount from above it is checked under its new parent; one that sets its own is not.
 $add(array('tank/rp', 'tank/rp/c', 'tank/lp', 'tank/lp/c', 'tank/rq', 'tank/rq/c'));
-$pool('props', array_merge($read('pool/props'), array("tank/rp\treadonly\ton", "tank/rp/c\treadonly\ton", "tank/lp\tmountpoint\tlegacy", "tank/lp/c\tmountpoint\tlegacy", "tank/rq/c\treadonly\ton")));
+$pool('props', array_merge($read('pool/props'), array("tank/rp\treadonly\ton", "tank/lp\tmountpoint\tlegacy", "tank/rq/c\treadonly\ton")));
 $moved = array();
 foreach (array('tank/rp/c' => 'tank/rpc', 'tank/lp/c' => 'tank/lpc', 'tank/rq/c' => 'tank/rqc') as $zdataset => $to) {
 	$answer = renameDataset($zdataset, $longer($to), 0, $cfg);
@@ -436,10 +442,20 @@ foreach (array('tank/rp/c' => 'tank/rpc', 'tank/lp/c' => 'tank/lpc', 'tank/rq/c'
 $too = function($zdataset) { return 'Nothing was renamed: the names of '.$zdataset.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name'; };
 same(array($longer('tank/rpc') => $too($longer('tank/rpc')), $longer('tank/lpc') => $too($longer('tank/lpc')), $longer('tank/rqc') => 0), $moved,
 	'one moved out from under a read-only or legacy parent is checked; one read-only itself is not');
-putenv('ZFSM_TEST_COVER_FAIL=tank');
-$unsure = renameDataset($longer('tank/rqc'), $longer('tank/rqd'), 0, $cfg)['failed'];
+// Under a legacy or read-only parent, or inheriting that from a dataset that moves with it, no run copies it; with the parent or the
+// sources not read, it is checked.
+$add(array('tank/arch', 'tank/frz', 'tank/d1', 'tank/d2', 'tank/d3', 'tank/lx', 'tank/lx/c', 'tank/lq', 'tank/lq/c'));
+$pool('props', array_merge($read('pool/props'), array("tank/arch\tmountpoint\tlegacy", "tank/frz\treadonly\ton", "tank/lx\tmountpoint\tlegacy", "tank/lq\tmountpoint\tlegacy")));
+$into = array(renameDataset('tank/d1', $longer('tank/arch/d1'), 0, $cfg)['succeeded'], renameDataset('tank/d2', $longer('tank/frz/d2'), 0, $cfg)['succeeded'],
+	renameDataset('tank/lx', $longer('tank/lxx'), 0, $cfg)['succeeded']);
+putenv('ZFSM_TEST_COVER_FAIL=tank/arch');
+$into[] = renameDataset('tank/d3', $longer('tank/arch/d3'), 0, $cfg)['failed'];
 putenv('ZFSM_TEST_COVER_FAIL');
-same(array($longer('tank/rqd') => $too($longer('tank/rqd'))), $unsure, 'one whose parents could not be read is checked');
+putenv('ZFSM_TEST_SOURCE_FAIL=1');
+$into[] = renameDataset('tank/lq/c', $longer('tank/lqc'), 0, $cfg)['failed'];
+putenv('ZFSM_TEST_SOURCE_FAIL');
+same(array(array($longer('tank/arch/d1') => 0), array($longer('tank/frz/d2') => 0), array($longer('tank/lxx') => 0), array($longer('tank/arch/d3') => $too($longer('tank/arch/d3'))),
+	array($longer('tank/lqc') => $too($longer('tank/lqc')))), $into, 'one left out once moved may take a long name; with the parent or the sources not read it is checked');
 // Its own copies go with it, so the room is that under their Copy Under.
 $far = 'backup/'.str_repeat('c', 20);
 $kin = str_repeat('n', 50);
