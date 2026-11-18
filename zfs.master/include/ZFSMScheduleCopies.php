@@ -235,18 +235,22 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 	// The rename's follow-up says so.
 	if ($read === null) return '';
 	$snapshot = zfsmNewSnapshotName($cfg, time());
-	// One a run leaves out (zfsmScheduleSkipped) needs no room; one whose row could not be read is checked.
-	$rows = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-r', $from)))[0];
-	$fits = function($zdataset, $jobs, $row) use ($snapshot) {
+	// One a run leaves out (zfsmScheduleSkipped) needs no room; one whose row could not be read is checked. Read once a name is too long.
+	$rows = null;
+	$skipped = function($zdataset, $name) use (&$rows, $cfg, $from) {
+		if ($rows === null) $rows = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-r', $from)))[0];
+		return isset($rows[$name]) && zfsmScheduleSkipped($zdataset, $rows[$name]) !== '';
+	};
+	$fits = function($zdataset, $jobs, $name) use ($snapshot, $skipped) {
 		$job = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-		return $job === null || !zfsmScheduleRepeats($job['every']) || zfsmScheduleCopiesInPool($job, $zdataset) || ($row !== null && zfsmScheduleSkipped($zdataset, $row) !== '')
-			|| zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark(array('server' => $job['server']), zfsmScheduleCopiesDest($job, $zdataset)), $snapshot);
+		return $job === null || !zfsmScheduleRepeats($job['every']) || zfsmScheduleCopiesInPool($job, $zdataset)
+			|| zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark(array('server' => $job['server']), zfsmScheduleCopiesDest($job, $zdataset)), $snapshot)
+			|| $skipped($zdataset, $name);
 	};
 	$after = zfsmScheduleOwnMoved($read['valid'], $from, $to);
 	foreach ($names as $name) {
 		$renamed = $to.substr($name, strlen($from));
-		$row = $rows[$name] ?? null;
-		if (!$fits($renamed, $after, $row) && $fits($name, $read['valid'], $row)) return 'the names of '.$renamed.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name';
+		if (!$fits($renamed, $after, $name) && $fits($name, $read['valid'], $name)) return 'the names of '.$renamed.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name';
 	}
 	return '';
 }

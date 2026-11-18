@@ -212,10 +212,21 @@ $pool('marks', array_merge($read('pool/marks'), array("tank/mnt@a\t4747\t9005"))
 $pool('props', array_merge($read('pool/props'), array("backup/tank/mnt\tzfs.master:holder\ton", "backup/tank/mnt/kid\tmounted\tyes")));
 $plan = function() { return zfsmReplicatePlan('tank/mnt', 'a', 'backup/tank/mnt', array('estimate' => false)); };
 $over = 'backup/tank/mnt only holds the copies of datasets below this one, and ';
-same(array('can_proceed' => false, 'error' => $over.'backup/tank/mnt/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted (zfs unmount backup/tank/mnt/kid), the next run sends it'), $plan(), 'one with a copy below it mounted');
+same(array('can_proceed' => false, 'error' => $over.'backup/tank/mnt/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted, the next run sends it'), $plan(), 'one with a copy below it mounted');
 putenv('ZFSM_TEST_MOUNTED_FAIL=1');
 same(array('can_proceed' => false, 'error' => $over.'whether a copy below it is mounted could not be read: cannot open \'backup/tank/mnt\': Input/output error'), $plan(), 'one where that could not be read');
 putenv('ZFSM_TEST_MOUNTED_FAIL');
+// A schedule's full send onto a holder made where its copy was, as a rename below it makes one, is refused as for a copy gone; by
+// hand, or where the dataset made no copy before, it goes.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/rf\tfilesystem", "tank/rf2\tfilesystem", "backup/tank/rf\tfilesystem", "backup/tank/rf2\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/rf@a\t4848\t9007", 'tank/rf#'.zfsmReplicaBookmarkPrefix('backup/tank/rf')."a\t4848\t9007", "tank/rf2@a\t4949\t9008")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/rf\tzfs.master:holder\ton", "backup/tank/rf2\tzfs.master:holder\ton")));
+$refill = function($zdataset, $scheduled) {
+	$plan = zfsmReplicatePlan($zdataset, 'a', 'backup/'.$zdataset, array('estimate' => false, 'scheduled' => $scheduled));
+	return $plan['can_proceed'] ? $plan['holder'] : $plan['error'];
+};
+same(array('backup/tank/rf only holds the copies of datasets below this one, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy', true, true),
+	array($refill('tank/rf', true), $refill('tank/rf', false), $refill('tank/rf2', true)), 'a scheduled one where it made a copy is refused; by hand, or where it made none, it goes');
 
 // A first copy onto a holder that stops part-way carries on only with -F again (OpenZFS 2.4.4); the mark goes once it lands.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/res\tfilesystem", "backup/tank/res\tfilesystem")));
@@ -228,7 +239,7 @@ putenv('ZFSM_TEST_SEND_CUT');
 same(array(true, 'resume'), array(zfsmReplicaHolder(array('server' => ''), 'backup/tank/res'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false))['mode']), 'still a holder, part-received');
 $pool('datasets', array_merge($read('pool/datasets'), array("backup/tank/res/kid\tfilesystem")));
 $pool('props', array_merge($read('pool/props'), array("backup/tank/res/kid\tmounted\tyes")));
-same(array('can_proceed' => false, 'error' => 'backup/tank/res only holds the copies of datasets below this one, and backup/tank/res/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted (zfs unmount backup/tank/res/kid), the next run sends it'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/res only holds the copies of datasets below this one, and backup/tank/res/kid below it is mounted, which receiving this copy over it would unmount; once it is unmounted, the next run sends it'),
 	zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false)), 'nor carried on over a copy below it mounted');
 $pool('props', array_values(preg_grep("~^backup/tank/res/kid\tmounted\t~", $read('pool/props'), PREG_GREP_INVERT)));
 putenv('ZFSM_TEST_MARKS_FAIL=backup/tank/res');

@@ -48,7 +48,7 @@ function zfsmReplicaHolderMounted($zdest) {
 	if (($listed['code'] ?? 1) !== 0) return 'whether a copy below it is mounted could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	foreach (zfsmLines($listed['output']) as $line) {
 		list($name, $mounted) = explode("\t", $line, 2) + array(1 => '');
-		if ($mounted === 'yes') return $name.' below it is mounted, which receiving this copy over it would unmount; once it is unmounted (zfs unmount '.$name.'), the next run sends it';
+		if ($mounted === 'yes') return $name.' below it is mounted, which receiving this copy over it would unmount; once it is unmounted, the next run sends it';
 	}
 	return '';
 }

@@ -123,10 +123,12 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return $refuse(ZFSM_REPLICA_TOO_LONG);
 	if (!$missing) $plan = zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap);
 	if (is_string($plan)) return $refuse($plan);
-	// A bookmark for this copy means a run made it before: a schedule's full send there would refill what someone removed.
-	if ($missing && ($with['scheduled'] ?? false)) {
+	// A bookmark for this copy means a run made it before: a schedule's full send there, or onto a holder made there since, would
+	// refill what someone removed.
+	if (($missing || $plan['holder']) && ($with['scheduled'] ?? false)) {
 		$prefix = $zdataset.'#'.zfsmReplicaBookmarkPrefix($key);
-		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.' is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
+		$now = $missing ? ' is gone' : ' only holds the copies of datasets below this one';
+		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.$now.', though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
 	}
 	return array_merge($plan, array('size' => $from === null || ($with['estimate'] ?? true) === false ? null : zfsmReplicateEstimate($plan)));
 }

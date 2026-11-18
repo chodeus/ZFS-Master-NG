@@ -168,6 +168,20 @@ same(array(array('tank/apps/mv' => 0), array('Schedules of tank/apps/mv'), 1, ar
 	preg_match('/^moved with it, but for (the copies of tank\/apps\/mv and below|the snapshot schedule of tank\/apps), Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
 	$moved['failed']['Schedules of tank/apps/mv'] ?? ''),
 	array_values(preg_grep('~^tank/(apps/)?mv$~', array_column($stored(), 'dataset')))), 'a rename into a clash says it, and its schedule moves');
+// Of a dataset gone, as one destroyed outside the plugin, Remove goes though Default would clash, as no dataset follows it; not of one in
+// a pool not imported, which may be there. Each a copy of the schedules of tank/apps and tank/apps/db.
+$clone = function($root) { return zfsmScheduleChange(function($jobs) use ($root) {
+	foreach ($jobs as $job) if (in_array($job['dataset'], array('tank/apps', 'tank/apps/db'), true)) {
+		$job['id'] = substr(hash('sha256', $root.$job['id']), 0, 8);
+		$job['dataset'] = $root.substr($job['dataset'], strlen('tank/apps'));
+		$jobs[$job['id']] = $job;
+	}
+	return $jobs;
+})['saved']; };
+$own_snap = function($zdataset) use ($stored) { return array_values(array_filter($stored(), function($job) use ($zdataset) { return $job['dataset'] === $zdataset && zfsmScheduleSnapshotsOnly($job); }))[0]['id']; };
+same(array(true, true, true, 1), array($clone('tank/gone'), $clone('usb2/apps'), zfsmScheduleRemove($own_snap('tank/gone/db'), array('snap_pattern' => 'Ymd') + $cfg)['saved'],
+	preg_match('/^Not removed: for /', zfsmScheduleRemove($own_snap('usb2/apps/db'), array('snap_pattern' => 'Ymd') + $cfg)['why'])), 'a gone one goes; one in a pool not imported stays');
+zfsmScheduleChange(function($jobs) { return array_filter($jobs, function($job) { return !zfsmUnderAny($job['dataset'], array('tank/gone', 'usb2/apps')); }); });
 // Remove in Settings sets a dataset's own back to Default too: checked as that is.
 $own = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/apps/db' && zfsmScheduleSnapshotsOnly($job); }))[0]['id'];
 $removed = array(zfsmScheduleRemove($own, array('snap_pattern' => 'Ymd') + $cfg));
@@ -318,8 +332,8 @@ same(array(array($copy('tank/sealed/data') => $blocked('backup/tank/sealed/in'))
 	array(renameDataset('tank/sealed/data', 'tank/sealed/in/data', 0, $cfg)['failed'], renameDataset('tank/vault/x', 'tank/vault/by/x', 0, $cfg)['failed'],
 	array_map(function($zdataset) use ($datasets) { return in_array($zdataset, $datasets(), true); }, array('backup/tank/sealed/in', 'backup/tank/vault/by', 'backup/tank/sealed/data', 'backup/tank/vault/x'))),
 	'under an encrypted copy, and where a repeat set in Replicate is due: no holder made, and each copy stays');
-// Under one there that no run copies, as one left to Sanoid: no copy is due there, so the holder is made and the copy moves; nor
-// held up where whether a run copies it could not be read.
+// Under one there that no run copies, as one left to Sanoid: no copy is due there, so the holder is made and the copy moves; where
+// whether a run copies it could not be read, it stays.
 $add(array('tank/sealed/sn', 'tank/sealed/d2', 'backup/tank/sealed/d2', 'tank/sealed/d3', 'backup/tank/sealed/d3'));
 $copied('tank/sealed/d2', 73);
 $copied('tank/sealed/d3', 74);
@@ -439,12 +453,16 @@ same(array(true, false), array(in_array('backup/tank/n', $datasets(), true), in_
 $add(array('tank/p', 'tank/p/kid', 'backup/tank/p', 'backup/tank/p/kid'));
 $pool('props', array_merge($read('pool/props'), array("backup/tank/p\tzfs.master:holder\ton")));
 same(array(true, true), array($save('tank/p', $part('default'), $part('none'))['saved'], $save('tank/p/kid', $part('default'), $part('hourly', '', '', 0, 'backup'))['saved']), 'None above, its own below');
+$logged = count($read('calls.log'));
 same(array('succeeded' => array('tank/p2' => 0), 'failed' => array()), renameDataset('tank/p', 'tank/p2', 0, $cfg), 'a rename of the one above');
+same(array(), preg_grep('/^list -H -o name,readonly,mountpoint -t filesystem,volume -r /', array_slice($read('calls.log'), $logged)), 'whose names fit: the datasets below it are not listed');
 same(array('backup/tank/p2', 'backup/tank/p2/kid'), array_values(preg_grep('~^backup/tank/p~', $datasets())), 'its copy and the one below follow it');
 // Its schedules not moved, as another change holds them: its copies follow as they would have, ready for its schedules set again.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
+$kept = $stored();
 same(array('Schedules of tank/p2'), array_keys(renameDataset('tank/p2', 'tank/p3', 0, $cfg)['failed']), 'only the schedules are said');
 zfsmJobUnlock($lock);
+same($kept, $stored(), 'its schedules stay as they were');
 same(array('backup/tank/p3', 'backup/tank/p3/kid'), array_values(preg_grep('~^backup/tank/p~', $datasets())), 'its copies follow it');
 // One with no copy there: nothing to say.
 same(array('succeeded' => array('tank/r3' => 0), 'failed' => array()), renameDataset('tank/r2', 'tank/r3', 0, $cfg), 'one with no copy');

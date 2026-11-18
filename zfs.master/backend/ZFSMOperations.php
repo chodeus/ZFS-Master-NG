@@ -53,6 +53,11 @@ function zfsmDatasetMissing($name) {
 	return zfsmDatasetMissingSaid($result['output'] ?? '') ? true : null;
 }
 
+// True when ZFS says it does not exist in a pool imported now; one in a pool not imported, or not read, may be there.
+function zfsmDatasetGone($name) {
+	return zfsmDatasetMissing($name) === true && zfsmDatasetMissing(strtok($name, '/')) === false;
+}
+
 // Whether a failed zfs command's output says its dataset does not exist. Only the closing diagnostic counts: a name may itself contain the words.
 function zfsmDatasetMissingSaid($output) {
 	return preg_match('/: dataset does not exist\s*\z/', (string)$output) === 1;
@@ -626,7 +631,7 @@ function zfsmSetShareOwner($pool, $names) {
 
 function renameDataset($zdataset, $new_name, $force, $cfg) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidDatasetName($new_name)) return zfsmFailure($new_name, 'Invalid source or destination dataset');
-	// Held until its copies follow it, so no run copies it under its new name first.
+	// Held until its copies follow it, so no run sends it under its new name first.
 	$locks = zfsmScheduleCopiesHold($zdataset);
 	if (is_string($locks)) return zfsmFailure($new_name, 'Nothing was renamed: '.$locks);
 	try {
