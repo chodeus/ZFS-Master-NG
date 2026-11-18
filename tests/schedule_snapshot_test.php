@@ -58,11 +58,11 @@ $every = array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '', 'server' => ''
 $records = array($every, array('dataset' => 'tank/data') + $every, array('dataset' => 'tank/data', 'every' => 'none') + $every, array('server' => 'nas') + $every,
 	array('every' => 'none') + $every, array('dataset' => 'tank/bad name!') + $every, array('every' => array('hourly')) + $every, $copy, array('every' => 'none') + $copy);
 same(array(true, true, true, false, false, false, false, true, false), array_map('zfsmScheduleValid', $records), 'which records are snapshot schedules');
-same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(runProcess('zfs', ZFSM_SCHEDULE_COVERED), $every, array($every)), 'it covers every dataset but read-only and legacy ones, by pool');
+same(array(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/vm'), 'backup' => array('backup')), ''), zfsmScheduleCovered(zfsmScheduleCoverRead(array(), 30), $every, array($every)), 'it covers every dataset but read-only and legacy ones, by pool');
 
 // Off with none saves none; Settings shows Off.
 same(array('saved' => true, 'why' => '', 'said' => 'Snapshot Every Dataset is off; the snapshots it took stay'), zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg), 'off with none');
-same(array(array(), 'off'), array($stored(), zfsmScheduleSnapshotShown()['every']), 'saves no record');
+same(array(array(), 'off'), array($stored(), zfsmScheduleShown()['every']), 'saves no record');
 // Saved again every hour: its id and minute stay, though another minute is free.
 zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg);
 $first = array_values($stored())[0];
@@ -90,8 +90,8 @@ same('Snapshot Every Dataset (every hour at :30) starts then too; pick another t
 // Saved again, in place: its id and minute stay, and Keep changes.
 same('Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps all it takes', zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg)['said'], 'Keep changes in place');
 same(array_replace($every, array('id' => $id, 'keep' => 0)), zfsmScheduleRead()['valid'][$id], 'the same record');
-same(array(60, 'hourly'), array(count(zfsmScheduleRead()['valid']), zfsmScheduleSnapshotShown()['every']), 'no second one, and Settings shows it');
-same(array(3, 0), array(zfsmScheduleSnapshotShown()['hour'], zfsmScheduleSnapshotShown()['minute']), 'with Starts At at Off\'s 03:00, not the :30 it runs at');
+same(array(60, 'hourly'), array(count(zfsmScheduleRead()['valid']), zfsmScheduleShown()['every']), 'no second one, and Settings shows it');
+same(array(3, 0), array(zfsmScheduleShown()['hour'], zfsmScheduleShown()['minute']), 'with Starts At at Off\'s 03:00, not the :30 it runs at');
 // At a time a copy starts: refused, the copy named; the record stays as it was.
 file_put_contents(zfsmScheduleFile(), json_encode(array(array_replace($copy, array('id' => '0b0b0b0b', 'every' => 'days', 'minute' => 7, 'hour' => 3)), array_replace($every, array('id' => $id)))));
 $wrong = array(
@@ -106,7 +106,7 @@ same(1, preg_match('/^Nothing was saved: Snapshots Pattern would give the run at
 same('Saved: a snapshot of each of 5 dataset(s) every Monday and Saturday at 04:00; it keeps the newest 3 scheduled snapshots of each dataset', zfsmScheduleSnapshotSave('', 'days', '04:00', '6,1', 3, $cfg)['said'], 'on days');
 same(array_replace($every, array('id' => $id, 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 6), 'keep' => 3)), zfsmScheduleRead()['valid'][$id], 'saved so');
 same(1, substr_count((string)file_get_contents(zfsmScheduleCronFile()), "0 4 * * 1,6 $script run $id &> /dev/null\n"), 'its cron line');
-$shown = zfsmScheduleSnapshotShown();
+$shown = zfsmScheduleShown();
 same(array('days', 4, 0, array(1, 6)), array($shown['every'], $shown['hour'], $shown['minute'], $shown['days']), 'and Settings shows its time and days');
 file_put_contents(zfsmScheduleFile(), json_encode(array(array_replace($every, array('id' => $id)))));
 
@@ -228,7 +228,7 @@ same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of
 	zfsmScheduleSnapshotSave('tank/data', 'days', '05:00', '1', 1, $cfg), 'a dataset\'s own, counted');
 $ids = array_column($stored(), 'id', 'dataset');
 same(array_replace($every, array('id' => $ids['tank/data'], 'dataset' => 'tank/data', 'every' => 'days', 'minute' => 0, 'hour' => 5, 'days' => array(1), 'keep' => 1)), zfsmScheduleRead()['valid'][$ids['tank/data']], 'as its record');
-same(array(1, 'off'), array(substr_count($cron(), "0 5 * * 1 $script run {$ids['tank/data']} &> /dev/null\n"), zfsmScheduleSnapshotShown()['every']), 'its cron line; Snapshot Every Dataset stays Off');
+same(array(1, 'off'), array(substr_count($cron(), "0 5 * * 1 $script run {$ids['tank/data']} &> /dev/null\n"), zfsmScheduleShown()['every']), 'its cron line; Snapshot Every Dataset stays Off');
 // The default at the same time: two snapshot schedules never take one dataset's, so may share a minute.
 same('Saved: a snapshot of each of 4 dataset(s) every Monday at 05:00; it keeps all it takes', zfsmScheduleSnapshotSave('', 'days', '05:00', '1', 0, $cfg)['said'], 'the default counts all but tank/data');
 $ids = array_column($stored(), 'id', 'dataset');
@@ -340,7 +340,7 @@ same('Snapshot Every Dataset is off; the snapshots it took stay', zfsmScheduleSn
 $own = array_column($stored(), 'dataset');
 sort($own);
 same(array(array('tank', 'tank/data', 'tank/docker'), 'off', 'Snapshot Every Dataset, which is off: no scheduled snapshots'),
-	array($own, zfsmScheduleSnapshotShown()['every'], $preview('backup')['inherited']), 'leaves the datasets\' own');
+	array($own, zfsmScheduleShown()['every'], $preview('backup')['inherited']), 'leaves the datasets\' own');
 same('Saved: tank follows Snapshot Every Dataset, which is off: no scheduled snapshots', zfsmScheduleSnapshotSave('tank', 'default', '', '', 0, $cfg)['said'], 'Default with nothing above');
 
 // Rename: the own schedules of it and below follow it, ids kept, and one left at the new name gives way, its count too.

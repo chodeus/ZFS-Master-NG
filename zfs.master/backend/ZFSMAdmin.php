@@ -234,6 +234,12 @@ try {
 			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 
+		case 'schedulecopies':
+			// Settings' Replicate Every Dataset, answered as schedulesnapshots is.
+			$saved = zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
+			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
+			break;
+
 		case 'scheduleremove':
 			// Saved with only its cron step failed, the list changed all the same: the answer has both.
 			$removed = zfsmScheduleRemove(zfsmPostString('id'));

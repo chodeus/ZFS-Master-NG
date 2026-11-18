@@ -244,7 +244,9 @@ function zfsmDiagReplicaSchedules($ctx) {
 	foreach ($read['valid'] ?? array() as $id => $job) {
 		zfsmDiagKnowWord($job['server']);
 		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
-		$what = !zfsmScheduleSnapshotsOnly($job) ? array(zfsmDiagNamed($job['dataset']), $dest) : array($job['dataset'] === '' ? '(every dataset)' : zfsmDiagNamed($job['dataset']), '(snapshots only)');
+		$whose = $job['dataset'] === '' ? '(every dataset)' : zfsmDiagNamed($job['dataset']);
+		$under = $job['every'] === 'none' ? '(no copies)' : zfsmDiagNamed(rtrim($job['dest'], '/')).'/ (each dataset under it)';
+		$what = zfsmScheduleCopiesUnder($job) ? array($whose, $under) : (zfsmScheduleSnapshotsOnly($job) ? array($whose, '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest));
 		$runs = zfsmScheduleRepeats($job['every']);
 		$failures = zfsmScheduleProblems($job);
 		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), $job['keep'], $failures)))."\n";
@@ -406,10 +408,10 @@ function zfsmDiagPublicHalf($dir, $private, $public) {
 	return zfsmDiagWhole('file_get_contents', $dir.'/id_ed25519.pub') === false ? zfsmDiagUnread('unreadable') : 'there, but not a usable key';
 }
 
-// How many datasets each snapshot schedule that runs takes now, by id, from reads under a limit of their own so a hung pool costs
-// only this line; '' with none.
+// How many datasets each snapshot schedule and copies under a dataset that runs covers now, by id, from reads under a limit of their
+// own so a hung pool costs only this line; '' with none.
 function zfsmDiagScheduleCovers($jobs, $cfg) {
-	$runs = array_filter($jobs, function($job) { return zfsmScheduleSnapshotsOnly($job) && zfsmScheduleRepeats($job['every']); });
+	$runs = array_filter($jobs, function($job) { return zfsmScheduleCovers($job) && zfsmScheduleRepeats($job['every']); });
 	if (!$runs) return '';
 	$listed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return zfsmDiagRead($command, $args, $wait); });
 	$counts = array();
@@ -420,8 +422,8 @@ function zfsmDiagScheduleCovers($jobs, $cfg) {
 		// Each minds only its own errors (zfsmScheduleCovered): a later one's '' must not hide an earlier one's.
 		if ($unread === '') $unread = $one;
 	}
-	if ($unread !== '' && !zfsmScheduleListed($listed)[0]) return 'datasets each snapshot schedule takes now: (could not be read: '.$unread.')'."\n";
-	return 'datasets each snapshot schedule takes now: '.implode(', ', $counts).($unread !== '' ? ' (not every dataset could be read: '.$unread.')' : '')."\n";
+	if ($unread !== '' && !zfsmScheduleListed($listed)[0]) return 'datasets each schedule of snapshots or of copies under a dataset covers now: (could not be read: '.$unread.')'."\n";
+	return 'datasets each schedule of snapshots or of copies under a dataset covers now: '.implode(', ', $counts).($unread !== '' ? ' (not every dataset could be read: '.$unread.')' : '')."\n";
 }
 
 // What the Main tab's first read returns, logging a failure as that read does. It asks about every pool, so it is skipped once

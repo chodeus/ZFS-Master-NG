@@ -144,8 +144,8 @@ function zfsmKeepRemove($removable, $copies, $why) {
 }
 
 // The log and notifications keep 500 characters of a line: the first few of $items, and how many more.
-function zfsmKeepFirst($items) {
-	return implode('; ', array_slice($items, 0, 3)).(count($items) > 3 ? '; and '.(count($items) - 3).' more' : '');
+function zfsmKeepFirst($items, $join = '; ') {
+	return implode($join, array_slice($items, 0, 3)).(count($items) > 3 ? $join.'and '.(count($items) - 3).' more' : '');
 }
 
 // What $stayed (each a snapshot and why) says in a log line or notification, '' when none; the next $then tries again.

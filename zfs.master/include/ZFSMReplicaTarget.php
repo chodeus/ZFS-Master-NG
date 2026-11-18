@@ -26,6 +26,23 @@ function zfsmReplicaTargetDest($target, $zdataset, $name) {
 	return zfsmDatasetExists($parent, 'filesystem') ? array($name, '') : array(null, 'The copy goes inside '.$parent.', which doesn\'t exist');
 }
 
+// Marks a holder (zfsmReplicaHolderMake). The copies below one inherit it: only its own value (source local) makes one.
+define('ZFSM_REPLICA_HOLDER', 'zfs.master:holder');
+
+// Makes $zdest here an empty dataset, unmounted and read-only, that holds copies of datasets below the one whose copy it stands
+// for; '' or why not.
+function zfsmReplicaHolderMake($zdest) {
+	$made = runProcess('zfs', array('create', '-o', 'canmount=off', '-o', 'readonly=on', '-o', ZFSM_REPLICA_HOLDER.'=on', $zdest));
+	return ($made['code'] ?? 1) === 0 ? '' : 'The dataset to hold the copies below '.$zdest.' could not be made: '.zfsmCommandError($made, 'zfs create failed');
+}
+
+// Whether $zdest on $target is a holder; false on a trusted server, which makes none, and when it can't be read.
+function zfsmReplicaHolder($target, $zdest) {
+	if ($target['server'] !== '') return false;
+	$read = runProcess('zfs', array('get', '-H', '-p', '-o', 'source', ZFSM_REPLICA_HOLDER, $zdest));
+	return ($read['code'] ?? 1) === 0 && trim((string)$read['output']) === 'local';
+}
+
 // The copy as messages name it. "on server <name>" is how diagnostics learn a server's name (zfsmDiagLearnPools).
 function zfsmReplicaTargetWhere($target, $zdest) {
 	return $target['server'] === '' ? $zdest : $zdest.' on server '.$target['server'];
