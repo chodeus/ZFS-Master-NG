@@ -204,6 +204,28 @@ same(array($copy('tank/b3') => 'renamed with it, but not all its bookmarks were:
 	renameDataset('tank/b3', 'tank/b3x', 0)['failed'], 'the old one not removed');
 putenv('ZFSM_TEST_DESTROY_FAIL');
 same(array('backup/tank/b1x', 'backup/tank/b2x', 'backup/tank/b3x'), array_values(preg_grep('~^backup/tank/b\d~', $datasets())), 'each copy renamed');
+// A stopped run's holds take the copy's new name, so the run that carries it on takes them off; another hold stays.
+$tag = function($zdest) { return zfsmKeepHoldTag(zfsmKeepTag('', $zdest)); };
+$held = function($zdataset, $guid) use ($pool, $read, $marked, $tag) {
+	$marked($zdataset, $guid);
+	$pool('holds', array_merge($read('pool/holds'), array("$zdataset@s\t".$tag('backup/'.$zdataset), "$zdataset@s\tkeep")));
+};
+$holds = function($zdataset) use ($read) { return array_values(preg_grep('~^'.preg_quote($zdataset, '~').'@~', $read('pool/holds'))); };
+$held('tank/h1', 88);
+$held('tank/h1/k', 89);
+same(array('succeeded' => array('tank/h1x' => 0), 'failed' => array()), renameDataset('tank/h1', 'tank/h1x', 0), 'a copy a stopped run holds');
+same(array(array("tank/h1x@s\tkeep", "tank/h1x@s\t".$tag('backup/tank/h1x')), array("tank/h1x/k@s\tkeep", "tank/h1x/k@s\t".$tag('backup/tank/h1x/k'))),
+	array($holds('tank/h1x'), $holds('tank/h1x/k')), 'its hold and the one below take the new names');
+foreach (array('h2' => array('ZFSM_TEST_HELD_FAIL', 'its holds could not be read: cannot open \'tank/h2x\': Input/output error'),
+	'h3' => array('ZFSM_TEST_HOLDS_READ_FAIL', 'its holds could not be read: cannot get holds for \'tank/h3x@s\': permission denied'),
+	'h4' => array('ZFSM_TEST_HOLD_FAIL', 'not all its holds were: tank/h4x@s (cannot hold snapshot \'tank/h4x@s\': permission denied)'),
+	'h5' => array('ZFSM_TEST_RELEASE_FAIL', 'not all its holds were: tank/h5x@s (cannot release hold from snapshot \'tank/h5x@s\': permission denied)')) as $name => list($knob, $why)) {
+	$held('tank/'.$name, 90 + (int)substr($name, 1));
+	putenv($knob.'=1');
+	same(array($copy('tank/'.$name) => 'renamed with it, but '.$why), renameDataset('tank/'.$name, 'tank/'.$name.'x', 0)['failed'], $knob.': said');
+	putenv($knob);
+}
+same(array("tank/h4x@s\t".$tag('backup/tank/h4'), "tank/h4x@s\tkeep"), $holds('tank/h4x'), 'a hold not moved stays as it was');
 same(array('saved' => false, 'why' => 'Nothing was saved: that is no dataset name', 'said' => ''), $save('', $part('hourly'), $part('hourly', '', '', 0, 'usb')), 'the dialog saves no Settings schedule');
 
 // The schedules not read: where its copies go is not known, so none is renamed, and that is said.

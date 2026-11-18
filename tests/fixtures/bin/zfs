@@ -93,6 +93,14 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			awk -F'\t' -v d="$last_arg" 'index($1, d "#") == 1 || (index($1, d "/") == 1 && index($1, "#")) { print $1 }' "$R/marks"
 			exit 0
 		fi
+		# The snapshots of a dataset and below with their hold counts; ZFSM_TEST_HELD_FAIL=1 fails the read.
+		if [ "$4" = name,userrefs ] && [ "$6" = snapshot ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_HELD_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" 'index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@")) { print $1 }' "$R/marks" | while read -r n; do
+				printf '%s\t%s\n' "$n" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')"
+			done
+			exit 0
+		fi
 		# A name's read; ZFSM_TEST_LIST_FAIL names one whose read fails.
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
 			[ "${ZFSM_TEST_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
@@ -253,6 +261,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		awk -F'\t' -v n="$3" -v t="$2" '!($1 == n && $2 == t)' "$R/holds" > "$R/holds.new" && mv "$R/holds.new" "$R/holds"
 		exit 0 ;;
 	holds)
+		[ "${ZFSM_TEST_HOLDS_READ_FAIL:-0}" = 1 ] && { printf "cannot get holds for '%s': permission denied\n" "$3" >&2; exit 1; }
 		shift 2
 		for s in "$@"; do awk -F'\t' -v n="$s" '$1 == n { print $1 "\t" $2 "\tSun Nov 15 10:00 2026" }' "$R/holds"; done
 		exit 0 ;;

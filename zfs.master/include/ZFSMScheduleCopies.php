@@ -244,8 +244,8 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after) {
 	if ($free !== true) return $free === null ? 'not renamed with it, as whether its new name is free could not be read' : 'left where it is, as a dataset already has its new name';
 	$why = zfsmScheduleCopiesRename($job['dest'], $old, $new);
 	if ($why !== '') return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
-	$marks = zfsmScheduleCopiesMarks($old, $new, $to);
-	return $marks === '' ? '' : 'renamed with it, but '.$marks;
+	$left = implode('; ', array_filter(array(zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));
+	return $left === '' ? '' : 'renamed with it, but '.$left;
 }
 
 // '' when the copy at $old is $to's: its newest snapshot is on $to (as zfsmReplicaPlanOnto finds it), or it is a holder; else why
@@ -283,6 +283,36 @@ function zfsmScheduleCopiesMarkMove($mark, $name) {
 	if (($made['code'] ?? 1) !== 0) return zfsmCommandError($made, 'zfs bookmark failed');
 	$gone = runProcess('zfs', array('destroy', $mark));
 	return ($gone['code'] ?? 1) === 0 ? '' : zfsmCommandError($gone, 'zfs destroy failed');
+}
+
+// The holds a stopped run put on $to's snapshots and below for the copies at $old and below (zfsmKeepHold) take $new's, so the
+// run that carries it on takes them off. '' or what went wrong.
+function zfsmScheduleCopiesHolds($old, $new, $to) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,userrefs', '-t', 'snapshot', '-r', $to));
+	if (($listed['code'] ?? 1) !== 0) return 'its holds could not be read: '.zfsmCommandError($listed, 'zfs list failed');
+	$held = array();
+	foreach (zfsmLines($listed['output']) as $line) {
+		list($snapshot, $refs) = explode("\t", $line, 2) + array(1 => '0');
+		if ($refs !== '0') $held[] = $snapshot;
+	}
+	$holds = $held ? zfsmKeepHolds($held) : array();
+	if (is_string($holds)) return 'its holds could not be read: '.$holds;
+	$failed = array();
+	foreach ($holds as list($snapshot, $tag)) {
+		$below = (string)substr(strstr($snapshot, '@', true), strlen($to));
+		if ($tag !== zfsmKeepHoldTag(zfsmKeepTag('', $old.$below))) continue;
+		$why = zfsmScheduleCopiesHoldMove($snapshot, $tag, zfsmKeepHoldTag(zfsmKeepTag('', $new.$below)));
+		if ($why !== '') $failed[] = $snapshot.' ('.$why.')';
+	}
+	return $failed ? 'not all its holds were: '.zfsmKeepFirst($failed) : '';
+}
+
+// Hold $snapshot as $to too, then release $from; '' or what went wrong.
+function zfsmScheduleCopiesHoldMove($snapshot, $from, $to) {
+	$held = runProcess('zfs', array('hold', $to, $snapshot));
+	if (($held['code'] ?? 1) !== 0 && strpos((string)($held['output'] ?? ''), 'tag already exists') === false) return zfsmCommandError($held, 'zfs hold failed');
+	$released = runProcess('zfs', array('release', $from, $snapshot));
+	return ($released['code'] ?? 1) === 0 ? '' : zfsmCommandError($released, 'zfs release failed');
 }
 
 // Whether a schedule in $jobs copies $zdataset, or one below it, under $dest.
