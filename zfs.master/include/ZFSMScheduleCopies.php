@@ -322,8 +322,8 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
 	$free = zfsmDatasetMissing($new);
 	if ($free !== true) return $free === null ? 'not renamed with it, as whether its new name is free could not be read' : 'left where it is, as a dataset already has its new name';
 	$why = zfsmScheduleCopiesRename($job['dest'], $old, $new, $after, $cfg);
-	if ($why !== '') return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
-	$left = implode('; ', array_filter(array(zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));
+	if ($why !== '' && !zfsmRenameLanded($old, $new)) return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
+	$left = implode('; ', array_filter(array($why, zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));
 	return $left === '' ? '' : 'renamed with it, but '.$left;
 }
 

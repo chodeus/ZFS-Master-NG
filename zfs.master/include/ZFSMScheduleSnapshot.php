@@ -233,8 +233,8 @@ function zfsmScheduleOwnMove($from, $to) {
 // Once zfs renamed $from to $to, or destroyed it ($to ''), as $answer says: its own schedules follow (zfsmScheduleOwnMove), and on a
 // rename a clash they meet ($cfg names the snapshots) and its copies (zfsmScheduleCopiesMove). $answer gains each that did not.
 function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
-	// zfs renames a dataset to its own name by doing nothing; 2.0 and 2.1 fail a rename that lands but can't mount or share it there.
-	if ($from === $to || ($answer['failed'] && !($to !== '' && zfsmDatasetGone($from) && zfsmDatasetMissing($to) === false))) return $answer;
+	// zfs renames a dataset to its own name by doing nothing.
+	if ($from === $to || ($answer['failed'] && !($to !== '' && zfsmRenameLanded($from, $to)))) return $answer;
 	$moved = zfsmScheduleOwnMove($from, $to);
 	$left = $to === '' ? 'not removed ('.$moved['why'].'): Remove them in Settings'
 		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules';

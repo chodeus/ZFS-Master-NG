@@ -306,8 +306,11 @@ $add(array('backup/tank/again'));
 same(array($copy('tank/docker') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/docker', 'tank/again', 0, $cfg)['failed'], 'a name already taken there');
 same(array('succeeded' => array('tank/again' => 0), 'failed' => array()), renameDataset('tank/again', 'tank/again', 0, $cfg), 'a rename to its own name, which zfs does nothing for');
 // A rename that lands but can't be mounted there, which zfs 2.0 and 2.1 fail: its schedules follow it all the same, and the error stays.
-$add(array('tank/um'));
+$add(array('tank/um', 'tank/um-taken'));
 same(true, $save('tank/um', $part('days', '02:10', '1'), $part('default'))['saved'], 'its own snapshots');
+$under_um = function() use ($stored) { return array_values(array_column(array_filter($stored(), function($job) { return zfsmUnderAny($job['dataset'], array('tank/um', 'tank/um-taken')); }), 'dataset')); };
+same(array(array('tank/um-taken' => 'cannot rename \'tank/um\': dataset already exists'), array('tank/um')), array(renameDataset('tank/um', 'tank/um-taken', 0, $cfg)['failed'], $under_um()),
+	'onto a name taken it fails where it is, and its schedule stays');
 putenv('ZFSM_TEST_RENAME_UNMOUNTED=tank/um');
 $unmounted = renameDataset('tank/um', 'tank/um2', 0, $cfg)['failed'];
 putenv('ZFSM_TEST_RENAME_UNMOUNTED');
@@ -372,6 +375,15 @@ same(array(array($copy('tank/nest') => 'left where it is, as a schedule sends co
 	array(renameDataset('tank/nest', 'tank/nest2', 0, $cfg)['failed'], in_array('backup/tank/nest', $datasets(), true), renameDataset('tank/nest3', 'tank/nest4', 0, $cfg)['failed'], in_array('backup/tank/nest4', $datasets(), true)),
 	'a copy another Copy Under is in stays; one only its own stale repeat goes to moves');
 foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
+// Its copy that moves but can't be mounted there, which zfs 2.0 and 2.1 fail, is renamed with it all the same: its bookmark too.
+$add(array('tank/uc', 'backup/tank/uc'));
+$copied('tank/uc', 78);
+$pool('marks', array_merge($read('pool/marks'), array('tank/uc#'.zfsmReplicaBookmarkPrefix('backup/tank/uc')."s\t78\t500")));
+putenv('ZFSM_TEST_RENAME_UNMOUNTED=backup/tank/uc');
+$unmounted = renameDataset('tank/uc', 'tank/uc2', 0, $cfg)['failed'];
+putenv('ZFSM_TEST_RENAME_UNMOUNTED');
+same(array(array($copy('tank/uc') => 'renamed with it, but cannot mount \'/mnt/backup/tank/uc2\': mountpoint is not a directory'), true, array('tank/uc2#'.zfsmReplicaBookmarkPrefix('backup/tank/uc2').'s')),
+	array($unmounted, in_array('backup/tank/uc2', $datasets(), true), array_values(preg_grep('~^tank/uc2#~', $marks()))), 'a copy that moves but is not mounted there is renamed, and says so');
 $add(array('tank/r', 'backup/tank/r', 'tank/q', 'backup/tank/q'));
 $copied('tank/q', 81);
 putenv('ZFSM_TEST_LIST_FAIL=backup/tank/r');

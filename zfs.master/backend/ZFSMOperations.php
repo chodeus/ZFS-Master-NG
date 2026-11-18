@@ -58,6 +58,11 @@ function zfsmDatasetGone($name) {
 	return zfsmDatasetMissing($name) === true && zfsmDatasetMissing(strtok($name, '/')) === false;
 }
 
+// After zfs rename failed: whether it moved $from to $to all the same, as 2.0 and 2.1 fail one they can't mount or share there.
+function zfsmRenameLanded($from, $to) {
+	return zfsmDatasetGone($from) && zfsmDatasetMissing($to) === false;
+}
+
 // Whether a failed zfs command's output says its dataset does not exist. Only the closing diagnostic counts: a name may itself contain the words.
 function zfsmDatasetMissingSaid($output) {
 	return preg_match('/: dataset does not exist\s*\z/', (string)$output) === 1;
