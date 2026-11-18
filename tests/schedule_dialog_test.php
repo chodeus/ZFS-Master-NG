@@ -249,10 +249,15 @@ same(true, $save('tank/data/u', $part('default'), $part('days', '05:00', '1', 0,
 $usb = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data/u'; }))[0]['id'];
 same(0, zfsmScheduleRun($usb, $cfg, $t + 60), 'their first copy');
 putenv('ZFSM_TEST_PHP='.PHP_BINARY);
-putenv('ZFSM_TEST_LOCK_PROBE='.zfsmJobLockFile('tank/data', 'replicate'));
+$probe = zfsmJobLockFile('tank/data', 'replicate');
+putenv('ZFSM_TEST_LOCK_PROBE='.$probe);
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0, $cfg), 'a rename');
 putenv('ZFSM_TEST_LOCK_PROBE');
 same(array('held', 'held', 'held'), $read('pool/probe.log'), 'its replication lock is held while it and its copies are renamed');
+same($probe, zfsmJobLockFile('tank/new', 'replicate'), 'and a run under its new name takes that same lock');
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/data\tfilesystem")));
+same(true, zfsmJobLockFile('tank/data', 'replicate') !== $probe, 'one made since under its old name has a lock of its own');
+$pool('datasets', array_values(array_diff($read('pool/datasets'), array("tank/data\tfilesystem"))));
 same(array(array('backup/tank/new', 'backup/tank/new/sub'), array('usb/tank/new', 'usb/tank/new/u')), array(array_values(preg_grep('~^backup/tank/(data|new)~', $datasets())),
 	array_values(preg_grep('~^usb/tank/(data|new)~', $datasets()))), 'its copy and the one below follow it, each under its Copy Under');
 $bookmarks = function($under) use ($read) { return array_values(preg_grep('~^'.preg_quote($under, '~').'[/#]~', preg_grep('/#/', array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/marks'))))); };
