@@ -101,7 +101,7 @@ function zfsmKeepHelp() {
 }
 
 // Repeat's select of choices ([value, text]) and the rows it shows (zfsmRepeatSync), each id starting with prefix; start: what they
-// show first, as zfsmScheduleSnapshotPreview gives it (every, time 'HH:MM', days 0-6, keep), else the first choice at 00:00 every day.
+// show first, as zfsmScheduleDialogFields gives it (every, time 'HH:MM', days 0-6, keep), else the first choice at 00:00 every day.
 function zfsmRepeatHtml(prefix, label, choices, start = {}) {
 	const esc = zfsmEscape;
 	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];
@@ -141,25 +141,44 @@ function zfsmReplicateRepeatSync(root) {
 	return every;
 }
 
-// The Schedules dialog, from zfsmScheduleSnapshotPreview in include/ZFSMScheduleSnapshot.php: why no run takes the dataset, if so; Default
-// (what it follows now), None, or the dataset's own schedule; zfsmScheduleDialogSync shows the rows that fit.
+// The Schedules dialog, from zfsmScheduleDialogPreview in include/ZFSMScheduleDialog.php: why no run takes the dataset, if so; for its
+// snapshots and its copies (preview.copies) Default (what it follows now), None, or its own; zfsmScheduleDialogSync shows the rows that fit.
 function zfsmScheduleDialogHtml(preview) {
+	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
-	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+zfsmEscape(preview.skipped)+'.</b></p>' : '';
-	return '<div style="text-align:left">'+skipped+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']], preview)
-		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+zfsmEscape(preview.inherited)+'.</p>'
-		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset in Settings.')
-		+say('None: no scheduled snapshots. Every hour or On days of the week: its own schedule.')
+	const copies = preview.copies;
+	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']];
+	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
+	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>'+esc(copies.skipped)+'.</b></p>' : '';
+	return '<div style="text-align:left">'+skipped+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', choices, preview)
+		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+esc(preview.inherited)+'.</p>'
+		+zfsmRepeatHtml('zfsm-copies', 'Replication:', choices, copies)
+		+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'"></label></p>'
+		+'<p id="zfsm-copies-default" style="margin:.5em 0;display:none">Default follows '+esc(copies.inherited)+'.</p>'+unsent
+		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset or Replicate Every Dataset in Settings.')
+		+say('None: no scheduled snapshots, or copies. Every hour or On days of the week: its own schedule.')
 		+say('Datasets below this one follow its choice, unless they have their own.')
-		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken.')
-		+say('Snapshots to keep: after each run, only those it keeps of each dataset\'s scheduled snapshots stay. '+zfsmKeepHelp()+' Snapshots made by hand or by a copy\'s schedule are never removed.')
+		+say('Replication copies this dataset and those below into Copy Under, a dataset on this server in another pool, each by its full name: tank/data goes to backup/tank/data. Each copy is read-only and unmounted; a run sends only the changes since its newest snapshot, or the whole dataset when it has no copy there yet.')
+		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied.')
+		+say('Snapshots to keep: for Snapshots, after each run only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them; for Replication, only those it keeps of the snapshots it took for its copies stay, on each dataset and in its copy. '+zfsmKeepHelp()+' Snapshots made by hand are never removed.')
 		+say('Settings lists every schedule.')+'</div>';
 }
 
+// Shows the rows that fit each choice; Snapshots' value.
 function zfsmScheduleDialogSync(root) {
 	const every = zfsmRepeatSync(root, 'zfsm-schedules');
 	root.querySelector('#zfsm-schedules-default').style.display = every === 'default' ? '' : 'none';
+	const copies = zfsmRepeatSync(root, 'zfsm-copies');
+	root.querySelector('#zfsm-copies-default').style.display = copies === 'default' ? '' : 'none';
+	root.querySelector('#zfsm-copies-under-row').style.display = copies === 'hourly' || copies === 'days' ? '' : 'none';
 	return every;
+}
+
+// What the dialog holds, as the scheduledataset route reads it: Snapshots' rows, and Replication's as copy_* and under.
+function zfsmScheduleDialogChoices(root) {
+	const copies = zfsmRepeatChoices(root, 'zfsm-copies');
+	return Object.assign(zfsmRepeatChoices(root, 'zfsm-schedules'), {copy_every: copies.every, copy_time: copies.time, copy_days: copies.days, copy_keep: copies.keep,
+		under: root.querySelector('#zfsm-copies-under').value.trim()});
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy

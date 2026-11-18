@@ -25,9 +25,14 @@ function zfsmPostDigits($key, $digits, $default) {
 	return zfsmDigits(zfsmPostString($key), $digits, $default);
 }
 
-// Snapshots to keep as zfsmKeepParse saves it; -1, which no check accepts, when it is no Keep.
-function zfsmPostKeep() {
-	return zfsmKeepParse(zfsmPostString('keep')) ?? -1;
+// Snapshots to keep ($key) as zfsmKeepParse saves it; -1, which no check accepts, when it is no Keep.
+function zfsmPostKeep($key = 'keep') {
+	return zfsmKeepParse(zfsmPostString($key)) ?? -1;
+}
+
+// A schedule Save's answer for the page: what it said or why not, and Settings' list once saved, even if the crontab step failed.
+function zfsmScheduleSavedJson($saved, $cfg) {
+	return zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($cfg)) : array()));
 }
 
 function zfsmResolveAnswerCodes($answer) {
@@ -225,19 +230,24 @@ try {
 			break;
 
 		case 'previewschedules':
-			echo zfsmJson(zfsmScheduleSnapshotPreview(zfsmPostString('zdataset'), $zfsm_cfg), JSON_UNESCAPED_SLASHES);
+			echo zfsmJson(zfsmScheduleDialogPreview(zfsmPostString('zdataset'), $zfsm_cfg), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'schedulesnapshots':
-			// zdataset: '' (Settings) for the default. Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$saved = zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
-			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
+			// zdataset: '' (Settings) for the default.
+			echo zfsmScheduleSavedJson(zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg), $zfsm_cfg);
+			break;
+
+		case 'scheduledataset':
+			// Main's Schedules dialog: a dataset's own snapshot schedule and its own copies (copy_*, under) at once.
+			echo zfsmScheduleSavedJson(zfsmScheduleDialogSave(zfsmPostString('zdataset'),
+				array('every' => zfsmPostString('every'), 'time' => zfsmPostString('time'), 'days' => zfsmPostString('days'), 'keep' => zfsmPostKeep()),
+				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'under' => zfsmPostString('under')), $zfsm_cfg), $zfsm_cfg);
 			break;
 
 		case 'schedulecopies':
-			// Settings' Replicate Every Dataset, answered as schedulesnapshots is.
-			$saved = zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg);
-			echo zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
+			// Settings' Replicate Every Dataset.
+			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':

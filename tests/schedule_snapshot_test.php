@@ -265,7 +265,8 @@ $row = function($id, $text) use ($html) { return strpos($html, '<span style="dis
 same(array(true, true, true, true, false), array($row($ids['tank/data'], 'Snapshots of tank/data and below, every Monday at 05:00, keeps the newest 1 scheduled snapshots of each dataset'),
 	$row($ids['tank/docker'], 'No scheduled snapshots of tank/docker and below'), $row($ids['tank'], 'Snapshots of tank and below, every Tuesday at 06:00, keeps all it takes'),
 	strpos($html, '<span style="display:block">Snapshot Every Dataset, every Monday at 05:00, keeps all it takes</span>') !== false, strpos($html, "zfsmScheduleRemove('{$ids['']}')")), 'Settings\' rows');
-$preview = function($zdataset) use ($cfg) { return zfsmScheduleSnapshotPreview($zdataset, $cfg); };
+// Its snapshots' part; tests/schedule_dialog_test.php has the copies'.
+$preview = function($zdataset) use ($cfg) { return array_diff_key(zfsmScheduleDialogPreview($zdataset, $cfg), array('copies' => true)); };
 $previews = array_map($preview, array('tank/data', 'tank/docker', 'tank/docker/0a1b', 'tank', 'backup'));
 same(array(
 	array('every' => 'days', 'time' => '05:00', 'days' => array(1), 'keep' => '1', 'inherited' => 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes', 'skipped' => ''),
@@ -359,7 +360,7 @@ same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/
 $inode = fileinode(zfsmScheduleFile());
 same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Snapshot schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
+same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
 	renameDataset('tank/new', 'tank/newer', 0), 'one whose schedules could not be moved says so');
 zfsmJobUnlock($lock);
 // Destroy: they go, counts too.

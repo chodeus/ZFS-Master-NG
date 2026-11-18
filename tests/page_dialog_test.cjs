@@ -48,7 +48,7 @@ window.$.post = (url, data, done) => {
   if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
   if (data.cmd === 'previewschedules') done(JSON.stringify(schedulePreview));
-  if (data.cmd === 'schedulesnapshots' && scheduleAnswer !== null) done(scheduleAnswer);
+  if (data.cmd === 'scheduledataset' && scheduleAnswer !== null) done(scheduleAnswer);
   const reply = window.$.Deferred();
   replies.push(reply);
   return reply.promise();
@@ -445,7 +445,8 @@ async function confirm() {
   }
   // Schedules: starts at the dataset's own, shows the rows that fit its choice, and Save sends what is on screen and says the answer.
   {
-    schedulePreview = {every: 'days', time: '05:00', days: [1], keep: '1', inherited: 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes'};
+    schedulePreview = {every: 'days', time: '05:00', days: [1], keep: '1', inherited: 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes',
+      copies: {every: 'hourly', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '3', under: 'usb', inherited: 'Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots', skipped: ''}};
     const schedules = async () => {
       window.addDatasetContext('tank', 'tank/data', 0, 'menu', 0, 'none', '', 'filesystem');
       menu.find(option => option.text === 'Schedules').action({preventDefault() {}});
@@ -473,9 +474,26 @@ async function confirm() {
     days().forEach(box => { box.checked = ['1', '3'].includes(box.value); });
     field('time').value = '13:30';
     field('keep').value = ' 2 ';
+    // Replication: its own copies, with Copy Under for a repeat and what Default follows.
+    const copy = id => window.document.getElementById('zfsm-copies-'+id);
+    const copyRows = () => ['days', 'time', 'keep', 'under'].map(row => visible('zfsm-copies-'+row+'-row')).concat(visible('zfsm-copies-default'));
+    const pickCopies = async value => { copy('every').value = value; copy('every').dispatchEvent(new window.Event('change')); await settle(); };
+    assert.deepEqual([Array.from(copy('every').options, option => option.textContent), copy('every').value, copy('every').labels[0].textContent.startsWith('Replication:'), copyRows(), copy('under').value, copy('keep').value],
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'hourly', true, [false, false, true, true, false], 'usb', '3'], 'its own copies are picked, with Copy Under and Keep');
+    assert.deepEqual([rows(), copy('skipped')], [[true, true, true, false], null], 'Snapshots\' rows stay as they were, and one it copies says nothing of it');
+    await pickCopies('default');
+    assert.deepEqual([copyRows(), copy('default').textContent], [[false, false, false, false, true], 'Default follows Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots.'], 'Default says what it follows');
+    await pickCopies('none');
+    assert.deepEqual(copyRows(), [false, false, false, false, false], 'None has no rows');
+    await pickCopies('days');
+    window.document.querySelectorAll('.zfsm-copies-day').forEach(box => { box.checked = box.value === '6'; });
+    copy('time').value = '02:15';
+    copy('keep').value = ' 7d ';
+    copy('under').value = ' backup ';
     scheduleAnswer = JSON.stringify({said: 'Saved: <b>tank/data</b>', schedules_html: '<span>x</span>'});
     await confirm();
-    assert.deepEqual(posts.at(-1), {cmd: 'schedulesnapshots', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2'}, 'Save sends what is on screen');
+    assert.deepEqual(posts.at(-1), {cmd: 'scheduledataset', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2', copy_every: 'days', copy_time: '02:15', copy_days: '6', copy_keep: '7d', under: 'backup'},
+      'Save sends both parts as on screen');
     const text = () => window.Swal2.getHtmlContainer().textContent;
     const result = () => [window.Swal2.getTitle().textContent, window.Swal2.getIcon().classList.contains('swal2-error'), text()];
     assert.deepEqual(result(), ['Schedules Result', false, 'Saved: <b>tank/data</b>'], 'and shows what was saved, as text');
@@ -496,11 +514,16 @@ async function confirm() {
     await settle();
     assert.deepEqual(result(), ['Schedules Result', true, 'The request failed. Reload the page and open Schedules to see what was saved.'], 'a request that fails says so');
     schedulePreview = {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes',
-      skipped: 'tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'};
+      skipped: 'tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
+      copies: {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', under: 'backup', inherited: 'Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots',
+        skipped: 'tank/<i>data</i> is in pool backup, where its copy would go'}};
     await schedules();
     const line = field('skipped');
     assert.deepEqual([line?.textContent, line?.querySelectorAll('i').length, line?.parentElement.firstElementChild === line],
       ['tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool.', 0, true], 'one no run takes says why, first and as text');
+    const unsent = window.document.getElementById('zfsm-copies-skipped');
+    assert.deepEqual([unsent?.textContent, unsent?.querySelectorAll('i').length, unsent?.previousElementSibling.id], ['tank/<i>data</i> is in pool backup, where its copy would go.', 0, 'zfsm-copies-default'],
+      'and one Replication leaves out says why under it, as text');
     window.Swal2.close();
     schedulePreview = {failed: {request: 'Invalid dataset name'}};
     await schedules();

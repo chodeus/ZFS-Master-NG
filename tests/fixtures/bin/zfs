@@ -85,7 +85,9 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
+		# A name's read; ZFSM_TEST_LIST_FAIL names one whose read fails.
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
+			[ "${ZFSM_TEST_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			{ exists "$last_arg" || [ -n "$(mark "$last_arg" 2)" ]; } && { echo "$last_arg"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi ;;

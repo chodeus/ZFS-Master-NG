@@ -630,7 +630,7 @@ function renameDataset($zdataset, $new_name, $force) {
 	if ((string)$force === '1') $args[] = '-f';
 	$args[] = $zdataset;
 	$args[] = $new_name;
-	return zfsmScheduleSnapshotFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name);
+	return zfsmScheduleOwnFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name);
 }
 
 function setDatasetProperty($zdataset, $property, $value) {
@@ -663,7 +663,7 @@ function destroyDataset($zdataset, $force) {
 	$args = array('destroy');
 	if ((string)$force === '1') array_push($args, '-r', '-f');
 	$args[] = $zdataset;
-	return zfsmScheduleSnapshotFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
+	return zfsmScheduleOwnFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
 }
 
 function zfsmFilesystemMounts() {

@@ -6,6 +6,7 @@ require_once __DIR__.'/ZFSMReplicaTarget.php';
 require_once __DIR__.'/ZFSMKeep.php';
 require_once __DIR__.'/ZFSMScheduleSnapshot.php';
 require_once __DIR__.'/ZFSMScheduleCopies.php';
+require_once __DIR__.'/ZFSMScheduleDialog.php';
 
 define('ZFSM_SCHEDULE_SCRIPT', '/usr/local/emhttp/plugins/zfs.master/scripts/schedule.php');
 define('ZFSM_SCHEDULE_DAYS', array('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'));

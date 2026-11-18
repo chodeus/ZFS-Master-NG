@@ -54,9 +54,10 @@ let checked = 0;
 try {
   // The Replicate and Schedules dialogs with a repeat on days, as on the Main tab of a 390 px phone.
   const repeats = [['Replicate', "zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data')", 'zfsm-replicate', 'zfsmReplicateRepeatSync'],
-    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'})", 'zfsm-schedules', 'zfsmScheduleDialogSync']];
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-schedules', 'zfsmScheduleDialogSync'],
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-copies', 'zfsmScheduleDialogSync']];
   for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
-    const where = `${dialog} dialog, ${theme} theme`;
+    const where = `${dialog} dialog (${prefix}), ${theme} theme`;
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
 window.addEventListener('load', () => {
   Swal2.fire({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
@@ -68,9 +69,10 @@ window.addEventListener('load', () => {
     border: [s.borderTopWidth, s.borderRightWidth, s.borderLeftWidth, s.borderBottomWidth + ' ' + s.borderBottomStyle + ' ' + s.borderBottomColor, s.borderRadius], height: Math.round(box.getBoundingClientRect().height),
     focused: (box.focus(), getComputedStyle(box).backgroundColor)}; };
   return {align: Array.from(popup.querySelectorAll('p, [role=group]'), p => getComputedStyle(p).textAlign), time: look(popup.querySelector('#${prefix}-time')), text: look(popup.querySelector('#${prefix}-keep')),
-    themed: getComputedStyle(popup).getPropertyValue('--focus-input-bg-color').trim() !== ''};
+    themed: getComputedStyle(popup).getPropertyValue('--focus-input-bg-color').trim() !== '', wide: [Swal2.getHtmlContainer().scrollWidth, Swal2.getHtmlContainer().clientWidth, document.documentElement.scrollWidth, innerWidth]};
 }`);
     assert.ok(shown.align.length >= 5, `${where}: its rows and help found`);
+    assert.ok(shown.wide[0] <= shown.wide[1] && shown.wide[2] <= shown.wide[3], `${where}: nothing may scroll sideways in the dialog or past the screen: ${JSON.stringify(shown.wide)}`);
     assert.deepEqual([...new Set(shown.align)], ['left'], `${where}: every line of text must read left-aligned, not justified`);
     const {time, text} = shown;
     for (const key of ['background', 'color', 'font', 'size']) assert.equal(time[key], text[key], `${where}: Starts at must have the text box's ${key}: ${JSON.stringify(shown)}`);

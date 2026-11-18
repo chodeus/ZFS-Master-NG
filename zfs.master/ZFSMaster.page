@@ -843,13 +843,13 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			showCancelButton: true,
 			confirmButtonText: 'Save',
 			didOpen: (popup) => {
-				popup.querySelector('#zfsm-schedules-every').addEventListener('change', () => zfsmScheduleDialogSync(popup));
+				['#zfsm-schedules-every', '#zfsm-copies-every'].forEach(id => popup.querySelector(id).addEventListener('change', () => zfsmScheduleDialogSync(popup)));
 				zfsmScheduleDialogSync(popup);
 			},
-			preConfirm: () => zfsmRepeatChoices(Swal2.getPopup(), 'zfsm-schedules')
+			preConfirm: () => zfsmScheduleDialogChoices(Swal2.getPopup())
 		}).then((result) => {
 			if (!result.isConfirmed) return;
-			zfsmFetchReview('<?=$urlzmadmin?>', $.extend({cmd: 'schedulesnapshots', zdataset: zdataset}, result.value), function(answer) {
+			zfsmFetchReview('<?=$urlzmadmin?>', $.extend({cmd: 'scheduledataset', zdataset: zdataset}, result.value), function(answer) {
 				const text = [answer.said, answer.error].filter(Boolean).join('. ') || 'The answer could not be read.';
 				Swal2.fire({title: 'Schedules Result', icon: answer.error || !answer.said ? 'error' : 'info', html: zfsmEscape(text)});
 			}, ' Reload the page and open Schedules to see what was saved.');

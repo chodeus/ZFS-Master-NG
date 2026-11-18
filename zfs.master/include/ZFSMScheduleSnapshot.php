@@ -1,7 +1,7 @@
 <?php
 // Snapshot schedules: schedules.json records with no copy (dest, server ''). Dataset '' is Settings' Snapshot Every Dataset; a
 // dataset's own (Main, Actions, Schedules) or None covers it and those below with none of their own (zfsmScheduleFollowed).
-// Own, Followed, Covered, Put and the locked run serve copies under a dataset (ZFSMScheduleCopies.php) too, by $job's kind.
+// Own, Followed, Covered, Put, the rename move and the locked run serve copies under a dataset (ZFSMScheduleCopies.php) too, by kind.
 
 function zfsmScheduleSnapshotsOnly($job) {
 	return $job['dest'] === '';
@@ -60,20 +60,6 @@ function zfsmScheduleShown($kind = 'zfsmScheduleSnapshotsOnly') {
 	$job = zfsmScheduleFollowed('', zfsmScheduleRead()['valid'] ?? array(), $kind);
 	if ($job === null) return $off;
 	return $job['every'] === 'hourly' ? array('minute' => $off['minute'], 'hour' => $off['hour']) + $job : $job;
-}
-
-// The Schedules dialog's start: $zdataset's own schedule as the page shows it ('default' with none), what Default follows, and why no
-// run takes it ('' when one can), from reads of it, the datasets just below it, and its snapshots.
-function zfsmScheduleSnapshotPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
-	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure('request', 'Invalid dataset name');
-	$read = zfsmScheduleRead();
-	if ($read === null) return zfsmFailure($zdataset, zfsmScheduleUnreadable());
-	$own = zfsmScheduleOwn($read['valid'], $zdataset);
-	$job = reset($own) ?: array('every' => 'default', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
-	return array('every' => $job['every'], 'time' => $job['every'] === 'days' ? sprintf('%02d:%02d', $job['hour'], $job['minute']) : '00:00',
-		'days' => $job['days'], 'keep' => zfsmKeepField($job['keep']),
-		'inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))),
-		'skipped' => zfsmScheduleSnapshotNot($zdataset, zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset))));
 }
 
 define('ZFSM_SCHEDULE_COVERED', array('list', '-H', '-o', 'name,readonly,mountpoint', '-t', 'filesystem,volume'));
@@ -211,11 +197,12 @@ function zfsmScheduleSnapshotChange($change, &$after = array()) {
 	return $changed;
 }
 
-// After zfs renamed $from to $to, or destroyed it ($to ''): the own schedules of it and below follow it, or go. As zfsmScheduleChange
-// answers; 'why' '' and nothing written when it has none.
-function zfsmScheduleSnapshotMove($from, $to) {
+// After zfs renamed $from to $to, or destroyed it ($to ''): the own schedules of it and below, of both kinds (zfsmScheduleCovers),
+// follow it, or go. As zfsmScheduleChange answers, with the schedules 'before' and 'after' it, or as it would leave them when not
+// saved; 'why' '' and nothing written when it has none.
+function zfsmScheduleOwnMove($from, $to) {
 	$move = function($jobs) use ($from, $to) {
-		$under = function($root) use ($jobs) { return array_filter($jobs, function($job) use ($root) { return zfsmScheduleSnapshotsOnly($job) && zfsmUnderAny($job['dataset'], array($root)); }); };
+		$under = function($root) use ($jobs) { return array_filter($jobs, function($job) use ($root) { return zfsmScheduleCovers($job) && zfsmUnderAny($job['dataset'], array($root)); }); };
 		$moved = $under($from);
 		// zfs made $to new: one at or under it is left by a dataset destroyed before, and gives way.
 		$jobs = array_diff_key($jobs, $moved, $to === '' ? array() : $under($to));
@@ -226,24 +213,29 @@ function zfsmScheduleSnapshotMove($from, $to) {
 		return $jobs;
 	};
 	$read = zfsmScheduleRead();
-	if ($read !== null && $move($read['valid']) === $read['valid']) return array('saved' => false, 'why' => '');
-	return zfsmScheduleSnapshotChange($move);
+	if ($read !== null && $move($read['valid']) === $read['valid']) return array('saved' => false, 'why' => '', 'before' => $read['valid'], 'after' => $read['valid']);
+	$before = $after = array();
+	$changed = zfsmScheduleSnapshotChange(function($jobs) use ($move, &$before) { $before = $jobs; return $move($jobs); }, $after);
+	if (!$changed['saved']) $after = $move($before = $read['valid'] ?? array());
+	return $changed + array('before' => $before, 'after' => $after);
 }
 
-// $answer of zfs renaming $from to $to, or destroying it ($to ''): when that worked, its own schedules follow (zfsmScheduleSnapshotMove).
-function zfsmScheduleSnapshotFollow($answer, $from, $to) {
+// $answer of zfs renaming $from to $to, or destroying it ($to ''): when that worked, its own schedules follow (zfsmScheduleOwnMove),
+// and on a rename its copies under a dataset (zfsmScheduleCopiesMove), as if they had when they could not; a destroy leaves its copies.
+function zfsmScheduleOwnFollow($answer, $from, $to) {
 	if (!$answer['succeeded'] || $answer['failed']) return $answer;
-	$moved = zfsmScheduleSnapshotMove($from, $to);
-	if ($moved['why'] === '') return $answer;
+	$moved = zfsmScheduleOwnMove($from, $to);
 	$left = $to === '' ? 'not removed ('.$moved['why'].'): Remove them in Settings'
 		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules';
-	$answer['failed']['Snapshot schedules of '.$from] = $moved['saved'] ? $moved['why'] : $left;
+	if ($moved['why'] !== '') $answer['failed']['Schedules of '.$from] = $moved['saved'] ? $moved['why'] : $left;
+	$stayed = $to === '' ? array() : zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after']);
+	foreach ($stayed as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
 	return $answer;
 }
 
 // $jobs with $job in place of its dataset's schedule of its kind (none with $remove), keeping that one's id and an hourly one's
-// minute; or why it can't be.
-function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg) {
+// minute; or why it can't be, after $part (the dialog's 'Snapshots: ' or 'Replication: ').
+function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg, $part = '') {
 	$old = zfsmScheduleOwn($jobs, $job['dataset'], zfsmScheduleKindOf($job));
 	$jobs = array_diff_key($jobs, $old);
 	if ($remove) return $jobs;
@@ -251,9 +243,9 @@ function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg) {
 	$job['id'] = $was ? $was['id'] : zfsmScheduleNewId($old + $jobs);
 	if ($job['every'] === 'hourly') $job['minute'] = zfsmScheduleFreeMinute($jobs, $job, $was && $was['every'] === 'hourly' ? $was['minute'] : null);
 	$same = zfsmScheduleSame($jobs, $job);
-	if ($same !== '') return 'Nothing was saved: '.$same;
+	if ($same !== '') return 'Nothing was saved: '.$part.$same;
 	$clash = zfsmScheduleClash($job, $jobs, $cfg, time(), false);
-	if ($clash !== '') return 'Nothing was saved: '.$clash.'; add the time to Snapshots Pattern';
+	if ($clash !== '') return 'Nothing was saved: '.$part.$clash.'; add the time to Snapshots Pattern';
 	return $jobs + array($job['id'] => $job);
 }
 
