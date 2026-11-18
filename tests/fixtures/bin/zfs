@@ -19,7 +19,7 @@ if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL
 # marks (snapshots and bookmarks, "name<TAB>guid<TAB>createtxg", oldest first), props ("name<TAB>property<TAB>value", a
 # snapshot's clones and user properties too) and holds ("snapshot<TAB>tag"). destroy refuses a held or cloned snapshot, as ZFS does.
 # send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream.
-if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
+if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n "$@"; }; then # a dry run: answered below, pool unchanged
 	R=$ZFSM_TEST_REPL_DIR
 	touch "$R/datasets" "$R/marks" "$R/props" "$R/holds"
 	next_txg() { t=$(( $(cat "$R/txg" 2>/dev/null || echo 100) + 1 )); echo "$t" > "$R/txg"; echo "$t"; }
@@ -272,10 +272,17 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "$c" != - ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "$last_arg" "$c" >&2; exit 1; }
 		[ "${ZFSM_TEST_DESTROY_FAIL:-}" = "$last_arg" ] && { printf "cannot destroy '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 		awk -F'\t' -v n="$last_arg" '$1 != n' "$R/marks" > "$R/marks.new" && mv "$R/marks.new" "$R/marks"
-		# A dataset goes with its snapshots and bookmarks, and with -r the datasets below it.
+		# A dataset goes with its snapshots and bookmarks, and with -r the datasets below it; without -r, as ZFS does, a snapshot of
+		# it or a dataset below it refuses it.
 		case "$last_arg" in *@*|*#*) exit 0 ;; esac
 		gone() { awk -F'\t' -v d="$last_arg" '$1 != d && index($1, d "/") != 1 && index($1, d "@") != 1 && index($1, d "#") != 1' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
-		if ! contains_arg -r "$@" && awk -F'\t' -v d="$last_arg/" 'index($1, d) == 1 { f = 1 } END { exit !f }' "$R/datasets"; then printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2; exit 1; fi
+		if ! contains_arg -r "$@" && awk -F'\t' -v d="$last_arg" 'index($1, d "/") == 1 || index($1, d "@") == 1 { f = 1 } END { exit !f }' "$R/datasets" "$R/marks"; then printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2; exit 1; fi
+		# Nor with -r, as ZFS does, while a snapshot of it or below is held or has clones.
+		below='index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@"))'
+		b=$(awk -F'\t' -v d="$last_arg" "($below) { print \$1; exit }" "$R/holds")
+		[ -n "$b" ] && { printf 'cannot destroy snapshot %s: dataset is busy\n' "$b" >&2; exit 1; }
+		b=$(awk -F'\t' -v d="$last_arg" "($below) && \$2 == \"clones\" && \$3 != \"-\" { print \$1 \"\\t\" \$3; exit }" "$R/props")
+		[ -n "$b" ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "${b%%	*}" "${b#*	}" >&2; exit 1; }
 		gone datasets; gone marks
 		exit 0 ;;
 	esac

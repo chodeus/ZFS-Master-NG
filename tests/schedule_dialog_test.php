@@ -238,8 +238,24 @@ file_put_contents(zfsmScheduleFile(), $text);
 same(array(array('Schedules of tank/w', 'Copies of tank/w'), 'not renamed with it, as the schedules that say where they go could not be read', array('backup/tank/w')),
 	array(array_keys($answer['failed']), $answer['failed']['Copies of tank/w'] ?? '', array_values(preg_grep('~^backup/tank/w~', $datasets()))), 'schedules not read: copies not renamed, and said');
 
-// Destroy leaves its copies.
+// As zfs: a destroy preview changes nothing, and without -r one with a snapshot stays.
+$marked('tank/s1', 77);
+$now = array($read('pool/datasets'), $read('pool/marks'));
+zfsmDestroyPreview('tank/s1', 1);
+same($now, array($read('pool/datasets'), $read('pool/marks')), 'a destroy preview changes nothing');
+same(array(array('tank/s1'), true), array(array_keys(destroyDataset('tank/s1', 0)['failed']), in_array('tank/s1', $datasets(), true)), 'one with a snapshot is not destroyed without -r');
+foreach (array('holds' => array("tank/s1@s\tkeep", 'dataset is busy'), 'props' => array("tank/s1@s\tclones\ttank/c1", 'snapshot has dependent clones')) as $file => list($line, $why)) {
+	$pool($file, array_merge($read('pool/'.$file), array($line)));
+	same(array(1, true), array(substr_count(implode(' ', destroyDataset('tank/s1', 1)['failed']), $why), in_array('tank/s1', $datasets(), true)), 'nor with -r while: '.$why);
+	$pool($file, array_values(array_diff($read('pool/'.$file), array($line))));
+}
+same(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), destroyDataset('tank/s1', 1), 'with -r and neither, it goes');
+
+// Destroy removes what it and below had under Schedules and leaves its copies.
+$under = function($root) use ($stored) { return array_values(preg_grep('~^'.preg_quote($root, '~').'(/|$)~', array_column($stored() ?? array(), 'dataset'))); };
+same(array(true, array('tank/p3/kid')), array($save('tank/p3/kid', $part('default'), $part('hourly', '', '', 0, 'backup'))['saved'], $under('tank/p3')), 'its own copies below it');
 same(array('succeeded' => array('tank/p3' => 0), 'failed' => array()), destroyDataset('tank/p3', 1), 'a destroy');
-same(array(array(), array('backup/tank/p3', 'backup/tank/p3/kid')), array(array_values(preg_grep('~^tank/p3~', $datasets())), array_values(preg_grep('~^backup/tank/p~', $datasets()))), 'it goes, its copies stay');
+same(array(array(), array(), array('backup/tank/p3', 'backup/tank/p3/kid')), array($under('tank/p3'), array_values(preg_grep('~^tank/p3~', $datasets())), array_values(preg_grep('~^backup/tank/p~', $datasets()))),
+	'it goes with the schedule below it, its copies stay');
 
 echo "schedule dialog tests passed\n";

@@ -40,7 +40,7 @@ reviews:
         - File names, ZFS user properties and anything from another server may not be valid UTF-8. htmlspecialchars() needs ENT_SUBSTITUTE, or it returns '' and the text disappears. json_encode() needs JSON_INVALID_UTF8_SUBSTITUTE, or its false result must be handled; never echo, publish or hash a json_encode() that can fail.
         - Every `zfs receive` takes `-s -u -o readonly=on`, and `-F` only onto a holder that holds no snapshot (zfsmReplicaPlanHolder, zfsmReplicaPlanResume), which zfs needs to replace it. A copy of a volume must not appear as a block device (volmode=none).
         - Replicate Every Dataset (include/ZFSMScheduleCopies.php) makes an empty holder (`zfs create -o canmount=off -o readonly=on -o zfs.master:holder=on`) only where a copy's parent is missing. The property inherits, so a dataset is a holder only where its source is `local` (zfsmReplicaHolder).
-        - A rename moves the dataset's copies under each Copy Under (zfsmScheduleCopiesMove) only onto a free name, after holders for missing parents; a destroy leaves its copies, by design.
+        - A rename moves the dataset's copies under each Copy Under (zfsmScheduleCopiesMove) only onto a free name, after holders for missing parents; a destroy removes what it and below had under Actions, Schedules (zfsmScheduleOwnMove) and leaves its copy datasets, by design.
     - path: "zfs.master/{include/ZFSMDiag*.php,scripts/diagnostics.php}"
       instructions: |
         Diagnostics: a zip the owner may post in a public issue. Its privacy scope is fixed; report gaps inside it and nothing past it.
