@@ -130,7 +130,7 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	// By name: a dataset's parents come before it.
 	sort($datasets, SORT_STRING);
 	$here = array_fill_keys(array_keys(zfsmScheduleListed($listed)[0]), true);
-	$coming = zfsmScheduleCopiesComing($job, $jobs, $datasets);
+	$coming = zfsmScheduleCopiesComing($job, $jobs, $listed);
 	$name = zfsmNewSnapshotName($cfg, $now);
 	$made = 0;
 	$problems = $waiting = array();
@@ -160,9 +160,14 @@ function zfsmScheduleCopiesNone($under, $listed, $pools, $unread) {
 	return $not !== '' ? array('Scheduled copies not made: '.$not, true) : null;
 }
 
-// Where a copy is due here: each this run makes, and each a copy's own schedule makes, which a holder there would refuse.
-function zfsmScheduleCopiesComing($job, $jobs, $datasets) {
-	$coming = array_fill_keys(array_map(function($zdataset) use ($job) { return zfsmScheduleCopiesDest($job, $zdataset); }, $datasets), true);
+// Where a copy is due here: each a schedule of copies under $job's dest makes, $job or another, and each a copy's own schedule
+// makes; a holder there would refuse it.
+function zfsmScheduleCopiesComing($job, $jobs, $listed) {
+	$coming = array();
+	foreach (zfsmScheduleListed($listed)[0] as $zdataset => $row) {
+		$by = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
+		if (($by['dest'] ?? '') === $job['dest'] && zfsmScheduleLeftOut($by, $jobs, $zdataset, $row, $listed['name']) === '') $coming[zfsmScheduleCopiesDest($by, $zdataset)] = true;
+	}
 	foreach ($jobs as $other) {
 		if (!zfsmScheduleCovers($other) && $other['server'] === '') $coming[$other['dest']] = true;
 	}
@@ -214,7 +219,7 @@ function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here) {
 }
 
 // After zfs renamed $from to $to and its own schedules followed ($before, $after): its copy under each dataset that copies go under
-// takes $to's name there (zfsmScheduleCopiesMoveOne). Each that stayed, with why.
+// takes $to's name there (zfsmScheduleCopiesMoveOne). Each with a problem, with what.
 function zfsmScheduleCopiesMove($from, $to, $before, $after) {
 	$stayed = array();
 	foreach (array_column(array_filter($before, 'zfsmScheduleCopiesUnder'), null, 'dest') as $dest => $job) {
@@ -224,8 +229,8 @@ function zfsmScheduleCopiesMove($from, $to, $before, $after) {
 	return $stayed;
 }
 
-// The copy of $from under $job's dest, renamed to $to's when a schedule in $after still copies $to or one below it there; '' when
-// it moved or is not there, else why it stayed.
+// The copy of $from under $job's dest, with its bookmarks, renamed to $to's when it is a copy of $to or a holder and a schedule in
+// $after still copies $to or one below it there; '' when it moved or is not there, else what went wrong.
 function zfsmScheduleCopiesMoveOne($job, $from, $to, $after) {
 	$old = zfsmScheduleCopiesDest($job, $from);
 	$new = zfsmScheduleCopiesDest($job, $to);
@@ -233,10 +238,51 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after) {
 	if ($missing === true) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
 	if (!zfsmScheduleCopiesKept($to, $job['dest'], $after)) return 'left where it is, as no schedule copies the renamed dataset there';
+	$whose = zfsmScheduleCopiesWhose($old, $to);
+	if ($whose !== '') return $whose;
 	$free = zfsmDatasetMissing($new);
 	if ($free !== true) return $free === null ? 'not renamed with it, as whether its new name is free could not be read' : 'left where it is, as a dataset already has its new name';
 	$why = zfsmScheduleCopiesRename($job['dest'], $old, $new);
-	return $why === '' ? '' : 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
+	if ($why !== '') return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
+	$marks = zfsmScheduleCopiesMarks($old, $new, $to);
+	return $marks === '' ? '' : 'renamed with it, but '.$marks;
+}
+
+// '' when the copy at $old is $to's: its newest snapshot is on $to (as zfsmReplicaPlanOnto finds it), or it is a holder; else why
+// it stays.
+function zfsmScheduleCopiesWhose($old, $to) {
+	$here = array('server' => '');
+	list($held) = zfsmReplicaTargetSnapshots($here, $old);
+	if ($held === null) return 'not renamed with it, as its snapshots could not be read';
+	if (!$held) return zfsmReplicaHolder($here, $old) ? '' : 'left where it is, as it holds no snapshot of the renamed dataset';
+	$marks = zfsmReplicaMarks($to);
+	if ($marks === null) return 'not renamed with it, as the snapshots of the renamed dataset could not be read';
+	return in_array(end($held)['guid'], array_column($marks, 'guid'), true) ? '' : 'left where it is, as its newest snapshot is not on the renamed dataset';
+}
+
+// The bookmarks on $to and below, named for their copies (zfsmReplicaTargetMark): those of $old and below take $new's. '' or what
+// went wrong.
+function zfsmScheduleCopiesMarks($old, $new, $to) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'bookmark', '-r', $to));
+	if (($listed['code'] ?? 1) !== 0) return 'its bookmarks could not be read: '.zfsmCommandError($listed, 'zfs list failed');
+	$failed = array();
+	foreach (zfsmLines($listed['output']) as $mark) {
+		list($zdataset, $name) = explode('#', $mark, 2) + array(1 => '');
+		$below = (string)substr($zdataset, strlen($to));
+		$was = zfsmReplicaBookmarkPrefix($old.$below);
+		if (strncmp($name, $was, strlen($was)) !== 0) continue;
+		$why = zfsmScheduleCopiesMarkMove($mark, $zdataset.'#'.zfsmReplicaBookmarkPrefix($new.$below).substr($name, strlen($was)));
+		if ($why !== '') $failed[] = $why;
+	}
+	return $failed ? 'not all its bookmarks were: '.zfsmKeepFirst($failed) : '';
+}
+
+// Bookmark $mark again as $name, then remove it; '' or what went wrong.
+function zfsmScheduleCopiesMarkMove($mark, $name) {
+	$made = runProcess('zfs', array('bookmark', $mark, $name));
+	if (($made['code'] ?? 1) !== 0) return zfsmCommandError($made, 'zfs bookmark failed');
+	$gone = runProcess('zfs', array('destroy', $mark));
+	return ($gone['code'] ?? 1) === 0 ? '' : zfsmCommandError($gone, 'zfs destroy failed');
 }
 
 // Whether a schedule in $jobs copies $zdataset, or one below it, under $dest.

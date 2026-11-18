@@ -186,8 +186,18 @@ same(1, count(preg_grep('/^receive .*-F/', $read('calls.log'))), '-F only onto t
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/enc\tfilesystem", "backup/tank/enc\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/enc@a\t4242\t9000")));
 $pool('props', array_merge($read('pool/props'), array("tank/enc\tencryption\taes-256-gcm", "backup/tank/enc\tzfs.master:holder\ton")));
-same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs can\'t receive this encrypted dataset\'s raw copy over it: set its Replication to None under Actions, Schedules, or destroy that dataset and the copies below it for the next run to send them all'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: destroy that dataset and the copies below it for the next run to send them all'),
 	zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/enc', array('estimate' => false)), 'a raw stream onto a holder');
+// Nor any copy onto an encrypted holder, as one under an encrypted dataset is (live, 2.4.4); one not read is not sent onto.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/sealed\tfilesystem", "backup/tank/sealed\tfilesystem")));
+$pool('marks', array_merge($read('pool/marks'), array("tank/sealed@a\t4646\t9004")));
+$pool('props', array_merge($read('pool/props'), array("backup/tank/sealed\tzfs.master:holder\ton", "backup/tank/sealed\tencryption\taes-256-gcm")));
+$plan = function() { return zfsmReplicatePlan('tank/sealed', 'a', 'backup/tank/sealed', array('estimate' => false)); };
+same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: destroy that dataset and the copies below it for the next run to send them all'),
+	$plan(), 'a stream onto an encrypted holder');
+putenv('ZFSM_TEST_CRYPT_FAIL=backup/tank/sealed');
+same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and whether it is encrypted could not be read'), $plan(), 'one whose encryption could not be read');
+putenv('ZFSM_TEST_CRYPT_FAIL');
 
 // A first copy onto a holder that stops part-way carries on only with -F again (OpenZFS 2.4.4); the mark goes once it lands.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/res\tfilesystem", "backup/tank/res\tfilesystem")));
@@ -198,6 +208,9 @@ putenv('ZFSM_TEST_SEND_CUT=1');
 same(1, zfsmRunReplicate('tank/res', 'a', 'backup/tank/res'), 'a first copy onto a holder, cut off');
 putenv('ZFSM_TEST_SEND_CUT');
 same(array(true, 'resume'), array(zfsmReplicaHolder(array('server' => ''), 'backup/tank/res'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false))['mode']), 'still a holder, part-received');
+putenv('ZFSM_TEST_MARKS_FAIL=backup/tank/res');
+same(array('can_proceed' => false, 'error' => 'The snapshots of backup/tank/res could not be read'), zfsmReplicatePlan('tank/res', 'a', 'backup/tank/res', array('estimate' => false)), 'not carried on when its snapshots could not be read');
+putenv('ZFSM_TEST_MARKS_FAIL');
 same(0, zfsmRunReplicate('tank/res', 'a', 'backup/tank/res'), 'carried on');
 same(array(2, array('backup/tank/res@a'), false), array(count(preg_grep('/^receive -s -u -o readonly=on -F /', $read('calls.log'))), array_keys($snaps('backup/tank/res')), zfsmReplicaHolder(array('server' => ''), 'backup/tank/res')), 'with -F both times, landed, the mark gone');
 
@@ -307,5 +320,15 @@ same(array(0, true), array(zfsmScheduleRun('bbbb0000', $cfg, $t + 25260), in_arr
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 28800), 'the next run works');
 same(true, in_array('backup/tank/data/sub', $datasets(), true), 'and copies the one below');
+
+// Nor where another schedule of copies under backup makes one: tank's comes from Replicate Every Dataset, so tank/data/sub's own waits.
+$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "tank/data/sub\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array());
+$under = array('id' => 'cccc0000', 'dataset' => 'tank/data/sub', 'minute' => 0) + $every;
+file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => 1) + $every, array('id' => 'dddd0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every, $under)));
+$reset();
+same(array(1, array(), array()), array(zfsmScheduleRun('cccc0000', $cfg, $t + 32400), preg_grep('~^backup/~', $datasets()), preg_grep('/^create /', $read('calls.log'))), 'no holder where Replicate Every Dataset copies');
+same(array(0, 0, array('backup/tank', 'backup/tank/data', 'backup/tank/data/sub')), array(zfsmScheduleRun($id, $cfg, $t + 36000), zfsmScheduleRun('cccc0000', $cfg, $t + 36060), array_values(preg_grep('~^backup/~', $datasets()))),
+	'its copy, then a holder for tank/data, which nothing copies, and the copy below');
 
 echo "schedule copies tests passed\n";

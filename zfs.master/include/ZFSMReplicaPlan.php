@@ -142,7 +142,12 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	}
 	if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$match[1].', not of this dataset';
 	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($match[1], strlen($zdataset) + 1))) return ZFSM_REPLICA_TOO_LONG;
-	$holder = zfsmReplicaHolder($target, $zdest) && zfsmReplicaTargetSnapshots($target, $zdest)[0] === array();
+	$holder = false;
+	if (zfsmReplicaHolder($target, $zdest)) {
+		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
+		if ($held === null) return zfsmReplicaUnread($where, $why);
+		$holder = $held === array();
+	}
 	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
 }
 
@@ -151,7 +156,7 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap) {
 	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
 	list($held, $why) = zfsmReplicaTargetSnapshots($target, $plan['dest']);
-	if ($held === null) return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
+	if ($held === null) return zfsmReplicaUnread($where, $why);
 	if (!$held) return zfsmReplicaPlanHolder($plan, $target);
 	$newest = end($held);
 	$base = null;
@@ -163,12 +168,22 @@ function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap) {
 	return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
 }
 
+// Why the snapshots of the copy at $where (zfsmReplicaTargetSnapshots) could not be read.
+function zfsmReplicaUnread($where, $why) {
+	return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
+}
+
 // $plan into a copy that holds no snapshot: in full with -F when it is a holder, which keeps the copies below it (live, 2.4.4); zfs
-// refuses a raw stream there. Else why not.
+// refuses a raw stream there, and any stream onto an encrypted holder. Else why not.
 function zfsmReplicaPlanHolder($plan, $target) {
 	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
 	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
-	if ($plan['raw']) return $where.' only holds the copies of datasets below this one, and zfs can\'t receive this encrypted dataset\'s raw copy over it: set its Replication to None under Actions, Schedules, or destroy that dataset and the copies below it for the next run to send them all';
+	$held = $where.' only holds the copies of datasets below this one, and ';
+	$fix = ': destroy that dataset and the copies below it for the next run to send them all';
+	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it'.$fix;
+	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
+	if ($crypt === null) return $held.'whether it is encrypted could not be read';
+	if ($crypt !== 'off') return $held.'zfs cannot receive a copy over it, as it is encrypted'.$fix;
 	return array_merge($plan, array('holder' => true));
 }
 

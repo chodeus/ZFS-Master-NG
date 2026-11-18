@@ -197,9 +197,8 @@ function zfsmScheduleSnapshotChange($change, &$after = array()) {
 	return $changed;
 }
 
-// After zfs renamed $from to $to, or destroyed it ($to ''): the own schedules of it and below, of both kinds (zfsmScheduleCovers),
-// follow it, or go. As zfsmScheduleChange answers, with the schedules 'before' and 'after' it, or as it would leave them when not
-// saved; 'why' '' and nothing written when it has none.
+// After zfs renamed $from to $to, or destroyed it ($to ''): the own schedules of both kinds of it and below follow it, or go. As
+// zfsmScheduleChange answers, with 'before' and 'after' it (as it would leave them unsaved, null unread); 'why' '' when it has none.
 function zfsmScheduleOwnMove($from, $to) {
 	$move = function($jobs) use ($from, $to) {
 		$under = function($root) use ($jobs) { return array_filter($jobs, function($job) use ($root) { return zfsmScheduleCovers($job) && zfsmUnderAny($job['dataset'], array($root)); }); };
@@ -216,20 +215,26 @@ function zfsmScheduleOwnMove($from, $to) {
 	if ($read !== null && $move($read['valid']) === $read['valid']) return array('saved' => false, 'why' => '', 'before' => $read['valid'], 'after' => $read['valid']);
 	$before = $after = array();
 	$changed = zfsmScheduleSnapshotChange(function($jobs) use ($move, &$before) { $before = $jobs; return $move($jobs); }, $after);
-	if (!$changed['saved']) $after = $move($before = $read['valid'] ?? array());
+	if (!$changed['saved'] && $read === null) return $changed + array('before' => null, 'after' => null);
+	if (!$changed['saved']) $after = $move($before = $read['valid']);
 	return $changed + array('before' => $before, 'after' => $after);
 }
 
 // $answer of zfs renaming $from to $to, or destroying it ($to ''): when that worked, its own schedules follow (zfsmScheduleOwnMove),
-// and on a rename its copies under a dataset (zfsmScheduleCopiesMove), as if they had when they could not; a destroy leaves its copies.
+// and on a rename its copies under a dataset (zfsmScheduleCopiesMove) as if they had when they could not, or why none could; a destroy
+// leaves its copies.
 function zfsmScheduleOwnFollow($answer, $from, $to) {
 	if (!$answer['succeeded'] || $answer['failed']) return $answer;
 	$moved = zfsmScheduleOwnMove($from, $to);
 	$left = $to === '' ? 'not removed ('.$moved['why'].'): Remove them in Settings'
 		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules';
 	if ($moved['why'] !== '') $answer['failed']['Schedules of '.$from] = $moved['saved'] ? $moved['why'] : $left;
-	$stayed = $to === '' ? array() : zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after']);
-	foreach ($stayed as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
+	if ($to === '') return $answer;
+	if ($moved['before'] === null) {
+		$answer['failed']['Copies of '.$from] = 'not renamed with it, as the schedules that say where they go could not be read';
+		return $answer;
+	}
+	foreach (zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after']) as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
 	return $answer;
 }
 

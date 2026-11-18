@@ -75,8 +75,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			done
 			exit $code
 		fi
+		# ZFSM_TEST_MARKS_FAIL names a dataset whose read fails.
 		if contains_arg 'name,guid,createtxg' "$@"; then
 			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+			[ "${ZFSM_TEST_MARKS_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			types=$(for a in "$@"; do [ "${prev:-}" = -t ] && echo "$a"; prev=$a; done)
 			awk -F'\t' -v d="$last_arg" -v t="$types" '(index(t, "snapshot") && index($1, d "@") == 1) || (index(t, "bookmark") && index($1, d "#") == 1)' "$R/marks"
 			exit 0
@@ -84,6 +86,12 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name,type ]; then
 			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
+		fi
+		# The bookmarks of a dataset and below; ZFSM_TEST_BOOKMARKS_FAIL=1 fails the read.
+		if [ "$4" = name ] && [ "$6" = bookmark ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_BOOKMARKS_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" 'index($1, d "#") == 1 || (index($1, d "/") == 1 && index($1, "#")) { print $1 }' "$R/marks"
+			exit 0
 		fi
 		# A name's read; ZFSM_TEST_LIST_FAIL names one whose read fails.
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
@@ -114,7 +122,9 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		case "$6" in
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
 		guid) prop "$last_arg" guid "$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)" ;;
-		encryption) prop "$last_arg" encryption off ;;
+		encryption)
+			[ "${ZFSM_TEST_CRYPT_FAIL:-}" = "$last_arg" ] && { printf "cannot get property for '%s': permission denied\n" "$last_arg" >&2; exit 1; }
+			prop "$last_arg" encryption off ;;
 		receive_resume_token)
 			[ "${ZFSM_TEST_TOKEN_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			prop "$last_arg" receive_resume_token - ;;
@@ -163,6 +173,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ] && [ "$force" = 0 ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
 		if [ "$base" = RESUME ] && [ "$(prop "$dest" zfsm_test_onto -)" = 1 ] && [ "$force" = 0 ]; then printf "cannot receive resume stream: Resuming recv on existing destination '%s'\nmust specify -F to overwrite it\n" "$dest" >&2; exit 1; fi
 		onto=0; [ "$base" = - ] && exists "$dest" && onto=1
+		# Nor onto an encrypted one (live, 2.4.4).
+		if [ "$onto" = 1 ] && [ "$(prop "$dest" encryption off)" != off ]; then printf 'cannot receive new filesystem stream: zfs receive -F cannot be used to destroy an encrypted filesystem or overwrite an unencrypted one with an encrypted one\n' >&2; exit 1; fi
 		# zfs makes a new copy only inside a dataset that exists.
 		exists "$dest" || exists "${dest%/*}" || { printf "cannot receive new filesystem stream: parent of '%s' does not exist\n" "$dest" >&2; exit 1; }
 		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
@@ -199,6 +211,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 	bookmark)
 		guid=$(mark "$2" 2); txg=$(mark "$2" 3)
 		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$2" >&2; exit 1; }
+		[ "${ZFSM_TEST_BOOKMARK_FAIL:-0}" = 1 ] && { printf "cannot create bookmark '%s': permission denied\n" "$3" >&2; exit 1; }
 		[ -n "$(mark "$3" 1)" ] && { printf "cannot create bookmark '%s': bookmark exists\n" "$3" >&2; exit 1; }
 		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
 		exit 0 ;;
@@ -250,6 +263,11 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "$c" != - ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "$last_arg" "$c" >&2; exit 1; }
 		[ "${ZFSM_TEST_DESTROY_FAIL:-}" = "$last_arg" ] && { printf "cannot destroy '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 		awk -F'\t' -v n="$last_arg" '$1 != n' "$R/marks" > "$R/marks.new" && mv "$R/marks.new" "$R/marks"
+		# A dataset goes with its snapshots and bookmarks, and with -r the datasets below it.
+		case "$last_arg" in *@*|*#*) exit 0 ;; esac
+		gone() { awk -F'\t' -v d="$last_arg" '$1 != d && index($1, d "/") != 1 && index($1, d "@") != 1 && index($1, d "#") != 1' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
+		if ! contains_arg -r "$@" && awk -F'\t' -v d="$last_arg/" 'index($1, d) == 1 { f = 1 } END { exit !f }' "$R/datasets"; then printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2; exit 1; fi
+		gone datasets; gone marks
 		exit 0 ;;
 	esac
 fi
