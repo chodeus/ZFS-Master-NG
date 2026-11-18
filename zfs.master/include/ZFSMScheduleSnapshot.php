@@ -107,10 +107,16 @@ function zfsmScheduleListed($listed) {
 		elseif (count($parts) === 1 && zfsmValidDatasetName($of)) $automatic[$of] = ($automatic[$of] ?? false) || zfsmScheduleTheirs($line, $of, $own);
 		else $errors[] = $line;
 	}
-	$unknown = ($listed['names'] ?? 0) === 0 ? false : null;
+	$unknown = zfsmScheduleNamesUnread($listed) ? null : false;
 	foreach ($rows as $zdataset => $row) $rows[$zdataset][] = $automatic[$zdataset] ?? $unknown;
 	// Both reads fail a dataset they can't open: say so once.
 	return array($rows, array_values(array_unique($errors)));
+}
+
+// Whether $listed (zfsmScheduleCoverRead) read datasets but not their snapshots' names: only a read that exited 0 did, and one that
+// timed out has a null code.
+function zfsmScheduleNamesUnread($listed) {
+	return array_key_exists('names', $listed) && $listed['names'] !== 0;
 }
 
 // Whether snapshot $line of $of is Sanoid's or Syncoid's: not ours, under a Snapshots Prefix that starts as theirs do ($own).

@@ -233,6 +233,10 @@ same(1, zfsmScheduleRun($id, $cfg, $t + 20400), 'a run without the names');
 putenv('ZFSM_TEST_NAMES_FAIL');
 same(array(array('backup', 'backup/old'), array()), array(array_values(preg_grep('~^backup~', $datasets())), preg_grep('/^(snapshot|send|create) /', $read('calls.log'))), 'nothing taken or copied');
 same(1, preg_match('/^warning: Scheduled copies not made: the snapshot names could not be read: cannot iterate filesystems: Input\/output error/', $read('notify-detail.log')[0] ?? ''), 'saying why');
+// One that timed out (zfsmReadWithin's null code) is not read either.
+$timed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return in_array('snapshot', $args, true) ? array('code' => null, 'output' => 'zfs did not answer in 5 seconds') : zfsmReadWithin($wait, $command, $args); });
+same(array(array(), null), array(zfsmScheduleCovered($timed, $every, array($every))[0], zfsmScheduleListed($timed)[0]['tank'][2]), 'none copied after a names read that timed out');
+same(array('Scheduled copies not made: the snapshot names could not be read: zfs did not answer in 5 seconds', true), zfsmScheduleCopiesNone('backup', $timed, array(), zfsmScheduleCovered($timed, $every, array($every))[1]), 'saying why, not that the datasets were unread');
 
 // Copy Under gone: none made; a later problem, so only logged.
 $pool('datasets', array_values(array_filter($read('pool/datasets'), function($line) { return strpos($line, 'backup') !== 0; })));
