@@ -322,6 +322,8 @@ $add(array($far, 'tank/j', 'tank/j/'.$kin));
 same(true, $save('tank/j', $part('default'), $part('days', '05:00', '1', 0, $far))['saved'], 'own copies under a long name');
 same(array(array('tank/jj' => 'Nothing was renamed: the names of tank/jj/'.$kin.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name'), true),
 	array(renameDataset('tank/j', 'tank/jj', 0, $cfg)['failed'], $save('tank/j', $part('default'), $part('default'))['saved']), 'the room under its own Copy Under');
+same(array(true, array('tank/k'.str_repeat('x', 10) => 0)), array($save('tank/k', $part('default'), $part('none'))['saved'], renameDataset('tank/k', 'tank/k'.str_repeat('x', 10), 0, $cfg)['succeeded']),
+	'none needed where no copy is made');
 // A replication of it or one below it running: nothing is renamed, and the locks it took are let go.
 $add(array('tank/lk', 'tank/lk/kid'));
 $lock = zfsmJobLock(zfsmJobLockFile('tank/lk/kid', 'replicate'), false);
@@ -331,6 +333,23 @@ $loose = zfsmJobLock(zfsmJobLockFile('tank/lk', 'replicate'), false);
 same(array(array('succeeded' => array(), 'failed' => array('tank/lk2' => 'Nothing was renamed: a replication of tank/lk/kid is running')), true, true),
 	array($busy, is_resource($loose), in_array('tank/lk/kid', $datasets(), true)), 'nothing renamed while one below it copies, and its lock let go');
 zfsmJobUnlock($loose);
+// Docker's legacy-mounted image layers, which no run copies: not held, so not waited for. A read-only one and a legacy one a
+// repeat set in Replicate copies are.
+$add(array('tank/lk/layer', 'tank/lk/ro', 'tank/lk/leg'));
+$pool('props', array_merge($read('pool/props'), array("tank/lk/layer\tmountpoint\tlegacy", "tank/lk/leg\tmountpoint\tlegacy", "tank/lk/ro\treadonly\ton")));
+same(true, zfsmScheduleChange(function($jobs) { return $jobs + array('6f8b2c3d' => array('id' => '6f8b2c3d', 'dataset' => 'tank/lk/leg', 'dest' => 'backup/leg', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0)); })['saved'],
+	'a repeat set in Replicate of a legacy-mounted one');
+$past = array();
+foreach (array('tank/lk/layer', 'tank/lk/ro', 'tank/lk/leg') as $below) {
+	$held = zfsmJobLock(zfsmJobLockFile($below, 'replicate'), false);
+	$past[] = renameDataset('tank/lk', 'tank/lk3', 0, $cfg);
+	zfsmJobUnlock($held);
+	if ($past[count($past) - 1]['succeeded']) renameDataset('tank/lk3', 'tank/lk', 0, $cfg);
+}
+$running = function($zdataset) { return array('succeeded' => array(), 'failed' => array('tank/lk3' => 'Nothing was renamed: a replication of '.$zdataset.' is running')); };
+same(array(array('tank/lk3' => 0), $running('tank/lk/ro'), $running('tank/lk/leg')), array($past[0]['succeeded'], $past[1], $past[2]),
+	'a legacy-mounted one no run copies is not held; a read-only one, and one a repeat copies, are');
+same(true, zfsmScheduleChange(function($jobs) { unset($jobs['6f8b2c3d']); return $jobs; })['saved'], 'the repeat removed');
 putenv('ZFSM_TEST_TREE_FAIL=1');
 $unread = renameDataset('tank/lk', 'tank/lk2', 0, $cfg)['failed'];
 putenv('ZFSM_TEST_TREE_FAIL');

@@ -169,10 +169,15 @@ function zfsmScheduleCopiesComing($job, $jobs, $listed) {
 		$by = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
 		if (($by['dest'] ?? '') === $job['dest'] && zfsmScheduleLeftOut($by, $jobs, $zdataset, $row, $listed['name']) === '') $coming[zfsmScheduleCopiesDest($by, $zdataset)] = true;
 	}
-	foreach ($jobs as $other) {
-		if (!zfsmScheduleCovers($other) && $other['server'] === '') $coming[$other['dest']] = true;
-	}
+	foreach (zfsmScheduleCopiesRepeatsTo($jobs) as $zdest => $from) $coming[$zdest] = true;
 	return $coming;
+}
+
+// The datasets each repeat set in Replicate copies on this server, by the copy it makes.
+function zfsmScheduleCopiesRepeatsTo($jobs) {
+	$to = array();
+	foreach ($jobs as $job) if (!zfsmScheduleCovers($job) && $job['server'] === '') $to[$job['dest']][] = $job['dataset'];
+	return $to;
 }
 
 // One dataset's copy (zfsmRunReplicate): array(its code, array(its text, type)); an error ends only this one. $wait: what the run has
@@ -237,6 +242,31 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 		if (!$fits($renamed, $after) && $fits($name, $read['valid'])) return 'the names of '.$renamed.' and its copy would be too long for the bookmark a copy keeps; pick a shorter name';
 	}
 	return '';
+}
+
+// The replication locks (zfsmJobLock, no command started holds them) of $zdataset and each dataset below it a run can copy, by
+// name; why not when one is held or can't be had.
+function zfsmScheduleCopiesHold($zdataset) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid,mountpoint', '-t', 'filesystem,volume', '-r', $zdataset));
+	if (($listed['code'] ?? 1) !== 0) return 'the datasets at and below it could not be read: '.zfsmCommandError($listed, 'zfs list failed');
+	$read = zfsmScheduleRead();
+	$repeats = array();
+	foreach ($read === null ? array() : $read['valid'] as $job) if (!zfsmScheduleCovers($job)) $repeats[$job['dataset']] = true;
+	$locks = array();
+	foreach (zfsmLines($listed['output']) as $line) {
+		list($name, $guid, $mountpoint) = explode("\t", $line, 3) + array('', '', '');
+		// Docker's legacy-mounted image layers, often thousands: a lock each could run out of open files. Copy Under skips them.
+		if ($mountpoint === 'legacy' && !isset($repeats[$name])) continue;
+		$file = zfsmJobGuidLock($guid, 'replicate');
+		$lock = $file === null ? null : zfsmJobLock($file, false);
+		if (is_resource($lock)) {
+			$locks[$name] = $lock;
+			continue;
+		}
+		array_map('zfsmJobUnlock', $locks);
+		return $lock === false ? 'a replication of '.$name.' is running' : 'the replication lock of '.$name.' could not be opened';
+	}
+	return $locks;
 }
 
 // After zfs renamed $from to $to and its own schedules followed ($before, $after): its copy under each dataset that copies go under
@@ -390,8 +420,6 @@ function zfsmScheduleCopiesBlocked($dest, $zdest, $here, $jobs) {
 // one, so there) when a schedule copies it under $dest, and each a repeat set in Replicate sends there.
 function zfsmScheduleCopiesTo($dest, $level, $jobs) {
 	$zdataset = substr($level, strlen($dest));
-	$by = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-	$to = ($by['dest'] ?? '') === $dest && zfsmScheduleRepeats($by['every']) ? array($zdataset) : array();
-	foreach ($jobs as $job) if (!zfsmScheduleCovers($job) && $job['server'] === '' && $job['dest'] === $level) $to[] = $job['dataset'];
-	return $to;
+	$own = (zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder')['dest'] ?? '') === $dest ? array($zdataset) : array();
+	return array_merge($own, zfsmScheduleCopiesRepeatsTo($jobs)[$level] ?? array());
 }

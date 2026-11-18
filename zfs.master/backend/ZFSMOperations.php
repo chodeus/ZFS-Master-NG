@@ -627,7 +627,7 @@ function zfsmSetShareOwner($pool, $names) {
 function renameDataset($zdataset, $new_name, $force, $cfg) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidDatasetName($new_name)) return zfsmFailure($new_name, 'Invalid source or destination dataset');
 	// Held until its copies follow it, so no run copies it under its new name first.
-	$locks = zfsmReplicateLockTree($zdataset);
+	$locks = zfsmScheduleCopiesHold($zdataset);
 	if (is_string($locks)) return zfsmFailure($new_name, 'Nothing was renamed: '.$locks);
 	try {
 		$why = zfsmScheduleCopiesFit(array_keys($locks), $zdataset, $new_name, $cfg);
