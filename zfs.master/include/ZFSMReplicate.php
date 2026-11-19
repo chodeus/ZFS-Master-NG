@@ -1,6 +1,6 @@
 <?php
 // Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy on another pool that each run brings up to date.
-// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and never with -F: a run only adds to it, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
+// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and with -F only onto a holder, which has no snapshot (zfsmReplicaPlanHolder): a run only adds to a copy, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
@@ -146,16 +146,17 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
 	$notify = $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); };
 	$to = zfsmReplicaTargetWhere(array('server' => $server), $zdest);
-	$not_started = function($why) use ($zdataset, $to, $title, $started, $notify) {
+	// $first: a step this run carried on before, as zfsmReplicateTold takes it.
+	$not_started = function($why, $first = array('', 'normal')) use ($zdataset, $to, $title, $started, $notify) {
 		zfsmLog('Replication of '.$zdataset.' to '.$to.' not started: '.$why);
-		$notify($title, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning');
+		$notify($title, ...zfsmReplicateTold($first, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning'));
 		if ($started !== null) fwrite(STDOUT, zfsmOneLine($why)."\n");
 		return 1;
 	};
 	// Only the snapshot this run just took, which nothing has used.
-	$refused = function($why) use ($zdataset, $snapshot, $take, $not_started) {
+	$refused = function($why, $first) use ($zdataset, $snapshot, $take, $not_started) {
 		if ($take) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
-		return $not_started($why);
+		return $not_started($why, $first);
 	};
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.(isset($schedule['gone']) ? '; '.$schedule['gone'] : '') : 'its guid could not be read');
@@ -176,22 +177,34 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		}
 		$target = zfsmReplicaTargetOpen($server);
 		$target['zstd'] = zfsmReplicaTargetZstd($target);
+		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false)));
-			if (!$plan['can_proceed']) return $refused($plan['error']);
+			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
 			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
-			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) continue;
+			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) {
+				$first = array($text, $type);
+				continue;
+			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type);
-			$notify($title, $text, $type);
+			$notify($title, ...zfsmReplicateTold($first, $text, $type));
 			return $code;
 		}
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
 		zfsmJobUnlock($lock);
 	}
+}
+
+// A run's last step's $text and $type, with the first's when that one carried on a stopped run and warned ($first: its text, type);
+// a last step with a problem goes first, so a notification cut short still says it.
+function zfsmReplicateTold($first, $text, $type) {
+	if ($first[1] === 'normal') return array($text, $type);
+	if ($type === 'normal') return array(rtrim($first[0], '.').'. '.$text, 'warning');
+	return array(rtrim($text, '.').'. Before it: '.$first[0], $type);
 }
 
 // zfsmJobLock of $lock_file, waiting out another run up to $schedule's 'wait' seconds; its 'waited' is told how long.
@@ -233,7 +246,7 @@ function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag) {
 	}
 	$marked = zfsmReplicaMark($zdataset, $plan);
 	$note = implode('. ', array_filter(array($marked === '' ? '' : 'The bookmark that keeps the next run incremental could not be made: '.$marked,
-		zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
+		$plan['holder'] ? zfsmReplicaHolderClear($plan['dest']) : '', zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
 	zfsmLog('Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.$note : ''), LOG_NOTICE);
 	return array(0, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), $note === '' ? 'normal' : 'warning');
 }

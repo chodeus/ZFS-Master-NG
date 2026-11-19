@@ -59,7 +59,7 @@ same(array(true, 'full', null, false, 1000), array($plan['can_proceed'], $plan['
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'it runs');
 same(array('send -P -v -L tank/data@b'), $calls('send'), 'send streams the snapshot itself, with progress and -L');
 same(array('send -P -v -n -L tank/data@b'), array_values(array_unique(preg_grep('/^send -P -v -n /', $read('calls.log')))), 'each estimate counts the same stream');
-same(array('receive -s -u -o readonly=on -o canmount=noauto backup/data'), $calls('receive'), 'receive keeps it resumable, unmounted and read-only, never -F');
+same(array('receive -s -u -o readonly=on -o canmount=noauto backup/data'), $calls('receive'), 'receive keeps it resumable, unmounted and read-only, with no -F into a new copy');
 same(array('backup/data@b'), $names('backup/data', 'snapshot'), 'the copy holds b');
 same(array($bookmark('backup/data', 'b')), $names('tank/data', 'bookmark'), 'and the dataset a bookmark for this destination at b');
 same(array('replicate_start', 'replicate_stop'), array_values(array_unique($GLOBALS['zfsm_feed'])), 'the row shows the run');
@@ -123,6 +123,9 @@ same(array(array('backup/data@b'), array($bookmark('backup/data', 'b'))), array(
 same(array('normal: Replication of tank/data@b to backup/data finished (carried on from where it stopped).'), $read('notify-detail.log'), 'the notification says it carried on');
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/vol@v\n", FILE_APPEND);
 same('backup/data holds a part-received replication of tank/vol@v, not of this dataset', $refuse('b', 'backup/data'), 'another dataset\'s token is not resumed');
+// zfs send -P -v -n -t as it prints after the source and the copy were renamed, values made up: toname still says src@b.
+$dry = file_get_contents(__DIR__.'/fixtures/zfs_send_resume_renamed.txt');
+same(array('tank/new@b', 12345678), array(zfsmReplicaResumeSnapshot($dry), zfsmReplicateSize($dry)), 'a dry run in the live shape, after a rename, gives the snapshot\'s name now and its size');
 
 // The same snapshot again, after its copy was destroyed: the bookmark already there is this one, not a failure.
 $fresh();

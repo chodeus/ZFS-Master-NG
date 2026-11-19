@@ -314,7 +314,7 @@ same(array(2, 'Usage: schedule.php run <schedule id>'), $run('run ../x'), 'anyth
 $saved = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), '{"id":"'.$id.'"}');
 $unreadable = zfsmScheduleFile().' could not be read as a list of schedules; fix or remove it first';
-same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '01:00', $every, 0, $cfg)['failed'], zfsmScheduleRemove($id)['why'], file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
+same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '01:00', $every, 0, $cfg)['failed'], zfsmScheduleRemove($id, $cfg)['why'], file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
 same(true, strpos(zfsmSchedulesHtml($cfg), zfsmHtml($unreadable)) !== false, 'Settings says so');
 $reset();
 same(1, zfsmScheduleRun($id, $cfg, time()), 'and a run can\'t start');
@@ -325,12 +325,12 @@ same(true, strpos(zfsmSchedulesHtml($cfg), '1 record(s) in '.zfsmHtml(zfsmSchedu
 
 // Remove takes the schedule out of the list and the cron file, and Unraid rebuilds its crontab; Settings is refused while another change is saved.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id), 'a change while another is being saved');
+same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id, $cfg), 'a change while another is being saved');
 zfsmJobUnlock($lock);
 $reset();
-same(array('saved' => true, 'why' => ''), zfsmScheduleRemove($id), 'removed');
+same(array('saved' => true, 'why' => ''), zfsmScheduleRemove($id, $cfg), 'removed');
 same(array(array(array('id' => 'zz')), null, array('ran')), array($stored(), $cron(), $read('cron.log')), 'the record it can\'t use stays; the cron file goes, and the crontab is rebuilt');
-same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id)['why'], zfsmScheduleRemove('../x')['why']), 'removing it again, or something that is no id');
+same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id, $cfg)['why'], zfsmScheduleRemove('../x', $cfg)['why']), 'removing it again, or something that is no id');
 
 // A crontab that can't be rebuilt: the schedule is saved and its first run started, and the answer says cron runs the ones it had.
 $reset();
@@ -345,7 +345,7 @@ same(array(2, array(1, 6), 'every Monday and Saturday at 05:00'), array(count($s
 $weekly_id = $stored()[0]['id'];
 file_put_contents(zfsmScheduleStateFile($weekly_id), '{"failures":1}');
 touch($work.'/cron-fail');
-same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id), 'a removal whose crontab can\'t be rebuilt');
+same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id, $cfg), 'a removal whose crontab can\'t be rebuilt');
 unlink($work.'/cron-fail');
 same(array(array(array('id' => 'zz')), false, 0), array($stored(), strpos(zfsmSchedulesHtml($cfg), 'tank/data'), zfsmScheduleFailures($weekly_id)), 'is removed from the list and Settings, with its count');
 

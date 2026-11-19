@@ -134,7 +134,8 @@ $log_lines = array(
 	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/CanaryWaitA, tank/CanaryWait B, tank/CanaryWaitC, and 2 more). '
 		."The dataset to hold the copies below tank/CanaryUnder/tank/CanaryHold could not be made: cannot create 'tank/CanaryUnder/tank/CanaryHold': out of space",
 	'Replication of tank/CanaryCpSrc to tank/CanaryUnder/tank/CanaryCpSrc not started: tank/CanaryUnder/tank/CanaryCpSrc only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them',
-	'ZFS Dataset Rename: Snapshot schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules',
+	'ZFS Dataset Rename: Schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules',
+	"ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvCopy failed: not renamed with it: cannot rename 'tank/CanaryUnder/tank/CanaryMvCopy': dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one",
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld (not among the newest 3, 7 daily and 4 weekly its schedule keeps)',
 	// Snapshots Prefix can put any words in a snapshot's name, Keep's own among them.
@@ -317,8 +318,10 @@ $hold = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryHold');
 has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryWaitA').', tank/'.$token('CanaryWait B').', tank/'.$token('CanaryWaitC').', and 2 more). '
 	."The dataset to hold the copies below $hold could not be made: cannot create ?$hold?: out of space\n", $log, 'a run of copies under a dataset: each name a token, the plugin\'s words in clear');
 has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');
-has('ZFS Dataset Rename: Snapshot schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
+has('ZFS Dataset Rename: Schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
 	$log, 'a rename whose schedules were not moved');
+$mv = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryMvCopy');
+has("ZFS Dataset Rename: Copy $mv failed: not renamed with it: cannot rename ?$mv?: dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one\n", $log, 'and a copy left behind');
 // Keep Replicas on a copy received here, which the next receive tries again.
 $in = 'tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/';
 has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (not among the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');

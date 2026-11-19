@@ -53,6 +53,16 @@ function zfsmDatasetMissing($name) {
 	return zfsmDatasetMissingSaid($result['output'] ?? '') ? true : null;
 }
 
+// True when ZFS says it does not exist in a pool imported now; one in a pool not imported, or not read, may be there.
+function zfsmDatasetGone($name) {
+	return zfsmDatasetMissing($name) === true && zfsmDatasetMissing(strtok($name, '/')) === false;
+}
+
+// After zfs rename failed: whether it moved $from to $to all the same, as 2.0 and 2.1 fail one they can't mount or share there.
+function zfsmRenameLanded($from, $to) {
+	return zfsmDatasetGone($from) && zfsmDatasetMissing($to) === false;
+}
+
 // Whether a failed zfs command's output says its dataset does not exist. Only the closing diagnostic counts: a name may itself contain the words.
 function zfsmDatasetMissingSaid($output) {
 	return preg_match('/: dataset does not exist\s*\z/', (string)$output) === 1;
@@ -624,13 +634,23 @@ function zfsmSetShareOwner($pool, $names) {
 	return $failed;
 }
 
-function renameDataset($zdataset, $new_name, $force) {
+function renameDataset($zdataset, $new_name, $force, $cfg) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidDatasetName($new_name)) return zfsmFailure($new_name, 'Invalid source or destination dataset');
-	$args = array('rename');
-	if ((string)$force === '1') $args[] = '-f';
-	$args[] = $zdataset;
-	$args[] = $new_name;
-	return zfsmScheduleSnapshotFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name);
+	// Held until its copies follow it, so no run sends it under its new name first.
+	$held = zfsmScheduleCopiesHold($zdataset);
+	if (is_string($held)) return zfsmFailure($new_name, 'Nothing was renamed: '.$held);
+	list($locks, $names) = $held;
+	try {
+		$why = zfsmScheduleCopiesFit($names, $zdataset, $new_name, $cfg);
+		if ($why !== '') return zfsmFailure($new_name, 'Nothing was renamed: '.$why);
+		$args = array('rename');
+		if ((string)$force === '1') $args[] = '-f';
+		$args[] = $zdataset;
+		$args[] = $new_name;
+		return zfsmScheduleOwnFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name, $cfg);
+	} finally {
+		array_map('zfsmJobUnlock', $locks);
+	}
 }
 
 function setDatasetProperty($zdataset, $property, $value) {
@@ -663,7 +683,7 @@ function destroyDataset($zdataset, $force) {
 	$args = array('destroy');
 	if ((string)$force === '1') array_push($args, '-r', '-f');
 	$args[] = $zdataset;
-	return zfsmScheduleSnapshotFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
+	return zfsmScheduleOwnFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
 }
 
 function zfsmFilesystemMounts() {

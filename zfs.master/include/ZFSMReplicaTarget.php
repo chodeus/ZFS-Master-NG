@@ -36,6 +36,23 @@ function zfsmReplicaHolderMake($zdest) {
 	return ($made['code'] ?? 1) === 0 ? '' : 'The dataset to hold the copies below '.$zdest.' could not be made: '.zfsmCommandError($made, 'zfs create failed');
 }
 
+// After a copy landed in a holder's place (zfsmReplicaPlanHolder), which keeps the holder's mark: clears it. '' or why not.
+function zfsmReplicaHolderClear($zdest) {
+	$cleared = runProcess('zfs', array('inherit', ZFSM_REPLICA_HOLDER, $zdest));
+	return ($cleared['code'] ?? 1) === 0 ? '' : 'The copy still carries the mark of the empty dataset it replaced: '.zfsmCommandError($cleared, 'zfs inherit failed');
+}
+
+// Why a copy received over the holder $zdest would unmount one below it, which zfs leaves so (-u); '' when none is.
+function zfsmReplicaHolderMounted($zdest) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,mounted', '-t', 'filesystem', '-r', $zdest));
+	if (($listed['code'] ?? 1) !== 0) return 'whether a copy below it is mounted could not be read: '.zfsmCommandError($listed, 'zfs list failed');
+	foreach (zfsmLines($listed['output']) as $line) {
+		list($name, $mounted) = explode("\t", $line, 2) + array(1 => '');
+		if ($mounted === 'yes') return $name.' below it is mounted, which receiving this copy over it would unmount: unmount it first';
+	}
+	return '';
+}
+
 // Whether $zdest on $target is a holder; false on a trusted server, which makes none, and when it can't be read.
 function zfsmReplicaHolder($target, $zdest) {
 	if ($target['server'] !== '') return false;

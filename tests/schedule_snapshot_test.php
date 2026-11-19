@@ -265,7 +265,8 @@ $row = function($id, $text) use ($html) { return strpos($html, '<span style="dis
 same(array(true, true, true, true, false), array($row($ids['tank/data'], 'Snapshots of tank/data and below, every Monday at 05:00, keeps the newest 1 scheduled snapshots of each dataset'),
 	$row($ids['tank/docker'], 'No scheduled snapshots of tank/docker and below'), $row($ids['tank'], 'Snapshots of tank and below, every Tuesday at 06:00, keeps all it takes'),
 	strpos($html, '<span style="display:block">Snapshot Every Dataset, every Monday at 05:00, keeps all it takes</span>') !== false, strpos($html, "zfsmScheduleRemove('{$ids['']}')")), 'Settings\' rows');
-$preview = function($zdataset) use ($cfg) { return zfsmScheduleSnapshotPreview($zdataset, $cfg); };
+// Its snapshots' part; tests/schedule_dialog_test.php has the copies'.
+$preview = function($zdataset) use ($cfg) { return array_diff_key(zfsmScheduleDialogPreview($zdataset, $cfg), array('copies' => true)); };
 $previews = array_map($preview, array('tank/data', 'tank/docker', 'tank/docker/0a1b', 'tank', 'backup'));
 same(array(
 	array('every' => 'days', 'time' => '05:00', 'days' => array(1), 'keep' => '1', 'inherited' => 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes', 'skipped' => ''),
@@ -353,17 +354,17 @@ touch(zfsmScheduleStateFile('5a5a5a5a'));
 touch(zfsmScheduleStateFile('5b5b5b5b'));
 $ids = array_column($stored(), 'id', 'dataset');
 $own = function() use ($stored) { $by = array_column($stored(), 'id', 'dataset'); ksort($by); return $by; };
-same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0), 'a rename');
+same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0, $cfg), 'a rename');
 same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/data'], 'tank/new/sub' => $ids['tank/data/sub']), 3, false, false),
 	array($own(), count($stored()), is_file(zfsmScheduleStateFile('5a5a5a5a')), is_file(zfsmScheduleStateFile('5b5b5b5b'))), 'its own schedules and those below follow it');
 $inode = fileinode(zfsmScheduleFile());
-same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
-$pool('datasets', array("tank\tfilesystem", "tank/new\tfilesystem", "tank/new/sub\tfilesystem", "tank/docker\tfilesystem"));
+same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0, $cfg), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Snapshot schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
-	renameDataset('tank/new', 'tank/newer', 0), 'one whose schedules could not be moved says so');
+same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
+	renameDataset('tank/new', 'tank/newer', 0, $cfg), 'one whose schedules could not be moved says so');
 zfsmJobUnlock($lock);
 // Destroy: they go, counts too.
+$pool('datasets', array("tank\tfilesystem", "tank/new\tfilesystem", "tank/new/sub\tfilesystem", "tank/docker\tfilesystem"));
 touch(zfsmScheduleStateFile($ids['tank/data']));
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), destroyDataset('tank/new', 1), 'a destroy');
 same(array(array('tank/docker' => $ids['tank/docker']), false), array($own(), is_file(zfsmScheduleStateFile($ids['tank/data']))), 'its own schedules and those below go');

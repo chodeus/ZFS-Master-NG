@@ -94,6 +94,8 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incrementa
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: true}), /It replaces the empty dataset there, made to hold the copies below it, which stay\./, 'a copy onto a holder says it replaces it');
+assert.doesNotMatch(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: false}), /replaces the empty dataset/, 'only onto a holder');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset goes raw');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');

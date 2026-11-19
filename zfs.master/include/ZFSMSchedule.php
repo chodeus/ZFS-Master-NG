@@ -6,6 +6,7 @@ require_once __DIR__.'/ZFSMReplicaTarget.php';
 require_once __DIR__.'/ZFSMKeep.php';
 require_once __DIR__.'/ZFSMScheduleSnapshot.php';
 require_once __DIR__.'/ZFSMScheduleCopies.php';
+require_once __DIR__.'/ZFSMScheduleDialog.php';
 
 define('ZFSM_SCHEDULE_SCRIPT', '/usr/local/emhttp/plugins/zfs.master/scripts/schedule.php');
 define('ZFSM_SCHEDULE_DAYS', array('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'));
@@ -130,17 +131,23 @@ function zfsmScheduleNewId($jobs) {
 // An hourly $job's minute: $prefer, or another, that no schedule sharing a dataset with it (zfsmScheduleShare) starts at; any with
 // none free.
 function zfsmScheduleFreeMinute($jobs, $job, $prefer = null) {
-	$free = array_diff(range(0, 59), array_column(array_filter($jobs, function($other) use ($job) { return zfsmScheduleShare($job, $other); }), 'minute'));
+	$free = array_diff(range(0, 59), array_column(array_filter($jobs, function($other) use ($job, $jobs) { return zfsmScheduleShare($job, $other, $jobs); }), 'minute'));
 	if (in_array($prefer, $free, true)) return $prefer;
 	return $free ? $free[array_rand($free)] : random_int(0, 59);
 }
 
 // Whether $a and $b can snapshot one dataset (so not in one minute or name): both of it, or one that covers (zfsmScheduleCovers) of
-// one above it or the default. A dataset follows one of each kind (zfsmScheduleFollowed); None takes none.
-function zfsmScheduleShare($a, $b) {
+// one above it or the default that it follows among $jobs (zfsmScheduleFollowed): a nearer one of its kind, None too, takes it.
+function zfsmScheduleShare($a, $b, $jobs) {
 	if (!zfsmScheduleRepeats($a['every']) || !zfsmScheduleRepeats($b['every'])) return false;
 	if (zfsmScheduleCovers($a) && zfsmScheduleCovers($b) && zfsmScheduleKindOf($a) === zfsmScheduleKindOf($b)) return false;
-	$in = function($job, $other) { return zfsmScheduleCovers($job) && ($job['dataset'] === '' || zfsmUnderAny($other['dataset'], array($job['dataset']))); };
+	$in = function($job, $other) use ($jobs) {
+		if (!zfsmScheduleCovers($job) || ($job['dataset'] !== '' && !zfsmUnderAny($other['dataset'], array($job['dataset'])))) return false;
+		$near = zfsmScheduleFollowed($other['dataset'], array_diff_key($jobs, array($job['id'] => 0)) + array($job['id'] => $job), zfsmScheduleKindOf($job));
+		return $near['id'] === $job['id'];
+	};
+	// A run of copies leaves out the one dataset a repeat set in Replicate copies there (zfsmScheduleCopiesNot).
+	if (zfsmScheduleCopiesOwnRepeat($a, $b, $b['dataset']) || zfsmScheduleCopiesOwnRepeat($b, $a, $a['dataset'])) return false;
 	return $a['dataset'] === $b['dataset'] || $in($a, $b) || $in($b, $a);
 }
 
@@ -180,7 +187,7 @@ function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	$until = $now + 14 * 86400 + 3600;
 	$named = $first ? array(zfsmNewSnapshotName($cfg, $now) => 'this run') : array();
 	foreach ($jobs as $other) {
-		if ($other['id'] === $job['id'] || !zfsmScheduleShare($job, $other)) continue;
+		if ($other['id'] === $job['id'] || !zfsmScheduleShare($job, $other, $jobs)) continue;
 		foreach (zfsmScheduleRuns($other, $now, $until) as $at) $named[zfsmNewSnapshotName($cfg, $at)] = 'the run at '.date('D j M H:i', $at).' of '.zfsmScheduleWhat($other);
 	}
 	foreach (zfsmScheduleRuns($job, $now, $until) as $at) {
@@ -291,18 +298,21 @@ function zfsmScheduleSame($jobs, $job) {
 		if ($other['dataset'] === $job['dataset'] && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) return 'this copy already has a schedule ('.zfsmScheduleWhen($other).'); remove it in Settings first';
 	}
 	foreach ($jobs as $other) {
-		if (zfsmScheduleShare($job, $other) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';
+		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';
 	}
 	return '';
 }
 
-// As zfsmScheduleChange answers: removed once 'saved', even if the crontab could not be rebuilt after.
-function zfsmScheduleRemove($id) {
+// As zfsmScheduleChange answers: removed once 'saved', even if the crontab could not be rebuilt; not when the schedule its datasets then
+// follow clashes with one saved (zfsmScheduleNewClash, Snapshots Pattern from $cfg), unless its dataset is gone (zfsmDatasetGone).
+function zfsmScheduleRemove($id, $cfg) {
 	if (!zfsmScheduleId($id)) return array('saved' => false, 'why' => 'No such schedule');
-	$changed = zfsmScheduleChange(function($jobs) use ($id) {
+	$changed = zfsmScheduleChange(function($jobs) use ($id, $cfg) {
 		if (!isset($jobs[$id])) return 'No such schedule; it may have been removed already';
-		unset($jobs[$id]);
-		return $jobs;
+		$after = array_diff_key($jobs, array($id => 0));
+		$clash = zfsmScheduleNewClash($jobs, $after, $cfg);
+		if ($clash !== '' && $jobs[$id]['dataset'] !== '' && zfsmDatasetGone($jobs[$id]['dataset'])) $clash = '';
+		return $clash === '' ? $after : 'Not removed: '.$clash;
 	});
 	if ($changed['saved']) @unlink(zfsmScheduleStateFile($id));
 	return $changed;
