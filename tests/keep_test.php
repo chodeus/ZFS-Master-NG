@@ -296,6 +296,10 @@ putenv('ZFSM_TEST_KEEP_LIST_FAIL=backup/cu');
 $reset();
 same(array('Copy Keeps could not read the snapshots of backup/cu', array('c4', 'c5'), 3), array(zfsmKeepPrune('tank/cu', $plan, 2, $cu, 2), $short('tank/cu'), count($destroys())), 'a copy it can\'t read keeps all, and its source goes on');
 putenv('ZFSM_TEST_KEEP_LIST_FAIL');
+list($cs, $plan) = $pair('cs', 9700);
+$append('marks', "backup/cs@late\t9790\t9799");
+$reset();
+same(array('', array('c5', 'late')), array(zfsmKeepPrune('tank/cs', $plan, 2, $cs, 1), $short('backup/cs')), 'the one just sent stays in the copy, though Copy Keeps 1 keeps a newer one there');
 $pool('holds', array());
 // Keep Replicas too, and its held ones take no place either.
 $append('datasets', "tank/recv\tfilesystem");

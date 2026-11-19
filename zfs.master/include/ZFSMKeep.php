@@ -117,8 +117,8 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag, $copy_keeps = null) {
 	return implode('. ', array_filter(array(zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $copy_keeps === null), zfsmKeepCopyPrune($plan, $copy_keeps)), 'strlen'));
 }
 
-// $zdataset's snapshots $tag marks that $keep doesn't keep go; with $twins, a copy's here first (by guid). A source stays while its
-// copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
+// $zdataset's snapshots $tag marks that $keep doesn't keep go; with $twins, a copy's here first (by guid), and a source stays while
+// its copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
 function zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $twins) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, $tag);
 	if ($surplus === null) return 'Keep could not read the snapshots of '.$zdataset;
@@ -132,14 +132,22 @@ function zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $twins) {
 	return zfsmKeepStayed('Keep', zfsmKeepRemove($removable, $copies, zfsmKeepWhy($keep, 'its schedule')), 'run');
 }
 
-// Copy Keeps ($copy_keeps; null: none, 0: all) of a copy here: its snapshots that it doesn't keep go, every one counting, as Keep
-// Replicas counts on a server that receives copies. '' or what stayed and why.
+// Copy Keeps ($copy_keeps; null: none, 0: all) of a copy here, as Keep Replicas keeps on a server that receives copies. '' or what
+// stayed and why.
 function zfsmKeepCopyPrune($plan, $copy_keeps) {
 	// Never a copy on a server: a dataset here can have its name.
 	if ($copy_keeps === null || $plan['server'] !== '') return '';
-	$surplus = zfsmKeepSurplus($plan['dest'], $copy_keeps, null);
-	if ($surplus === null) return 'Copy Keeps could not read the snapshots of '.$plan['dest'];
-	return zfsmKeepStayed('Copy Keeps', zfsmKeepRemove($surplus, array(), zfsmKeepWhy($copy_keeps, 'Copy Keeps')), 'run');
+	// Not the one this run sent, whatever is newer there: the next run sends the changes since.
+	return zfsmKeepEvery($plan['dest'], $copy_keeps, 'Copy Keeps', 'run', $plan['dest'].strstr($plan['snapshot'], '@'));
+}
+
+// $zdataset's snapshots $keep doesn't keep go, every one counting, but $spare (a snapshot's name); $who keeps them. '' or what stayed
+// and why.
+function zfsmKeepEvery($zdataset, $keep, $who, $then, $spare = '') {
+	$surplus = zfsmKeepSurplus($zdataset, $keep, null);
+	if ($surplus === null) return $who.' could not read the snapshots of '.$zdataset;
+	$removable = array_filter($surplus, function($snapshot) use ($spare) { return $snapshot['name'] !== $spare; });
+	return zfsmKeepStayed($who, zfsmKeepRemove($removable, array(), zfsmKeepWhy($keep, $who)), $then);
 }
 
 // Destroys the first ZFSM_KEEP_PER_RUN of $removable, each one's twin in $copies (by guid) first: a source stays while its twin
@@ -172,9 +180,7 @@ function zfsmKeepStayed($who, $stayed, $then) {
 // After a receive into $zdataset here landed: its snapshots $keep doesn't keep (Settings, Keep Replicas; 0 keeps all) go, every
 // one counting. A failure is logged and notified on this server; the receive's answer stays as it was.
 function zfsmKeepReplica($from, $zdataset, $keep) {
-	$surplus = zfsmKeepSurplus($zdataset, $keep, null);
-	$kept = $surplus === null ? 'Keep Replicas could not read the snapshots of '.$zdataset
-		: zfsmKeepStayed('Keep Replicas', zfsmKeepRemove($surplus, array(), zfsmKeepWhy($keep, 'Keep Replicas')), 'receive');
+	$kept = zfsmKeepEvery($zdataset, $keep, 'Keep Replicas', 'receive');
 	if ($kept === '') return;
 	zfsmLog('Replication from '.$from.' into '.$zdataset.' received: '.$kept, LOG_WARNING);
 	zfsnotify('ZFS Replication', 'Replication from '.$from.' into '.$zdataset.' received. '.zfsmSafeText($kept).'.', '', 'warning');

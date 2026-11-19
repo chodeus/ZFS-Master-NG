@@ -103,12 +103,11 @@ function zfsmKeepHelp() {
 
 // Copy Keeps, as the help of each repeat that makes a copy on this server says it; copy names that copy.
 function zfsmCopyKeepsHelp(copy) {
-	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest always staying, so it can keep more or fewer than here.';
+	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here.';
 }
 
-// Repeat's select of choices ([value, text]) and the rows it shows (zfsmRepeatSync), each id starting with prefix; start: what they
-// show first, as zfsmScheduleDialogFields gives it (every, time 'HH:MM', days 0-6, keep, copy_keeps), else the first choice at 00:00 every
-// day; copies: a Copy Keeps row too.
+// Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:
+// what they show first (zfsmScheduleDialogFields: every, time 'HH:MM', days 0-6, keep, copy_keeps), else the first choice at 00:00 daily.
 function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false) {
 	const esc = zfsmEscape;
 	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];
@@ -127,12 +126,14 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false) {
 // with it while the copy is here (local). Its value.
 function zfsmRepeatSync(root, prefix, local = true) {
 	const every = root.querySelector('#'+prefix+'-every').value;
-	const show = (id, shown) => { const row = root.querySelector('#'+prefix+id); if (row) row.style.display = shown ? '' : 'none'; };
+	const show = (id, shown) => { root.querySelector('#'+prefix+id).style.display = shown ? '' : 'none'; };
 	const repeats = every === 'hourly' || every === 'days';
 	show('-keep-row', repeats);
-	show('-copy-keeps-row', local && repeats);
 	show('-days-row', every === 'days');
 	show('-time-row', every === 'days');
+	// Only Replicate and Replication have a Copy Keeps row.
+	const copy = root.querySelector('#'+prefix+'-copy-keeps-row');
+	if (copy) copy.style.display = local && repeats ? '' : 'none';
 	return every;
 }
 
