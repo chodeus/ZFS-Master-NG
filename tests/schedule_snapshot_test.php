@@ -135,6 +135,21 @@ $all = function() { return array_merge(...array_map(function($dataset) { return 
 same(array("tank@$n", "tank/docker@$n", "tank/vm@$n", "backup@$n"), array_values(preg_grep('/@'.preg_quote($n, '/').'$/', $all())), 'the rest are taken');
 same(array(array('warning: ZFS Snapshot'), array("warning: Scheduled snapshots of 4 of 5 dataset(s) taken. Could not take tank/data@$n (cannot create snapshot ?tank/data@$n?: out of space). Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.")),
 	array($read('notify.log'), $read('notify-detail.log')), 'notified, naming it and why');
+// A name too long after one dataset: that one is not sent, the rest go in one command; with none left, no command. The pool is put back.
+$reset();
+$kept = array_map(function($file) use ($work) { return file_get_contents($work.'/pool/'.$file); }, array('marks' => 'marks', 'props' => 'props'));
+$long = 'tank/'.str_repeat('d', 240);
+$m = $name($t + 5400);
+same(array(array(array('tank'), array("$long@$m (with its dataset and @ a name may be up to 255 long)")), array("snapshot -o zfs.master:schedule=snapshots tank@$m")),
+	array(zfsmScheduleSnapshotTake(array('tank', $long), $m), $takes()), 'a dataset the name is too long after is said, the rest taken at one moment');
+same(array(array(array(), array("$long@$m (with its dataset and @ a name may be up to 255 long)")), array("snapshot -o zfs.master:schedule=snapshots tank@$m")),
+	array(zfsmScheduleSnapshotTake(array($long), $m), $takes()), 'and alone, nothing is sent');
+putenv('ZFSM_TEST_SNAP_FAIL=tank/data');
+$m = $name($t + 6000);
+same(array(array('tank'), array("$long@$m (with its dataset and @ a name may be up to 255 long)", "tank/data@$m (cannot create snapshot 'tank/data@$m': out of space)")),
+	zfsmScheduleSnapshotTake(array('tank', 'tank/data', $long), $m), 'one at a time after a failed command, it is still said');
+putenv('ZFSM_TEST_SNAP_FAIL');
+foreach ($kept as $file => $text) file_put_contents($work.'/pool/'.$file, $text);
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 7200), 'the next run works');
 same(array('normal: Scheduled snapshots of 5 of 5 dataset(s) taken. It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says so');

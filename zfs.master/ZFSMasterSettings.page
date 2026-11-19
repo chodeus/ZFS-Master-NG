@@ -160,7 +160,7 @@ _(Snapshots Pattern)_:
 
 :zc_settings_snapshots_pattern_plug:
 > Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab, those **Replicate** takes, and each scheduled run's.
-> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`, and with its dataset and @ be up to 255 long. Typing a pattern or prefix that gives another character, or a name too long for any dataset, now or in half a year, names it in red beside this field, and then Apply is refused. One saved all the same is named there too, and a new or changed schedule is not saved; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
+> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`, and with its dataset and @ be up to 255 long. Typing a pattern or prefix that gives another character, or a name too long even after a one-letter pool, now or in half a year, names it in red beside this field, and then Apply is refused. One saved all the same is named there too, and a new or changed schedule is not saved. A name too long only after a longer dataset is not named here but in diagnostics; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
 :end
 
 _(Snapshot Time)_:

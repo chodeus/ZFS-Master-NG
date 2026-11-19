@@ -313,12 +313,17 @@ function zfsmScheduleSnapshotSaid($job, $remove, $jobs, $listed) {
 }
 
 // Takes $name of each of $datasets (one pool's) with the snapshots tag in one command, all at one moment; when that fails (one name
-// already taken fails all), one at a time. The datasets taken, and each snapshot not taken with why.
+// already taken fails all), one at a time. One that $name is too long after (zfsmValidSnapshotPart) is left out of both. The datasets
+// taken, and each snapshot not taken with why.
 function zfsmScheduleSnapshotTake($datasets, $name) {
+	$long = array_values(array_filter($datasets, function($zdataset) use ($name) { return !zfsmValidSnapshotPart($name, $zdataset); }));
+	$failed = array_map(function($zdataset) use ($name) { return $zdataset.'@'.$name.' (with its dataset and @ a name may be up to 255 long)'; }, $long);
+	$datasets = array_values(array_diff($datasets, $long));
+	if (!$datasets) return array(array(), $failed);
 	$take = function($snapshots) { return runProcess('zfs', array_merge(array('snapshot', '-o', ZFSM_KEEP_TAG.'='.ZFSM_KEEP_SNAPSHOTS), $snapshots)); };
 	$all = $take(array_map(function($zdataset) use ($name) { return $zdataset.'@'.$name; }, $datasets));
-	if (($all['code'] ?? 1) === 0) return array($datasets, array());
-	$taken = $failed = array();
+	if (($all['code'] ?? 1) === 0) return array($datasets, $failed);
+	$taken = array();
 	foreach ($datasets as $zdataset) {
 		$one = $take(array($zdataset.'@'.$name));
 		if (($one['code'] ?? 1) === 0) $taken[] = $zdataset;
