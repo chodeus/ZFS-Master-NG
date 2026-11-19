@@ -98,8 +98,11 @@ function zfsmDiagSettingProblems($ctx) {
 // The settings that name datasets, against the datasets there are.
 function zfsmDiagDatasetSettingProblems($cfg) {
 	$names = zfsmDiagDatasetNames();
-	if ($names === null) return array('the datasets could not be listed, so the exclusion pattern and Directory Listing were not checked against them');
+	if ($names === null) return array('the datasets could not be listed, so the exclusion pattern, Directory Listing and snapshot name lengths were not checked against them');
 	$problems = array();
+	// One refused after any dataset is said by zfsmDiagSettingProblems.
+	$long = zfsmNewSnapshotNameRefused($cfg, time()) !== null ? array() : array_filter(array_map(function($name) use ($cfg) { return zfsmNewSnapshotNameRefused($cfg, time(), $name); }, $names), 'is_string');
+	if ($long) $problems[] = 'the snapshot prefix and pattern give a name too long after '.count($long).' of '.count($names).' datasets: '.zfsmDiagToken(reset($long));
 	$hidden = count(array_filter($names, function($name) use ($cfg) { return zfsmDatasetExcluded($name, $cfg['dataset_exclusion']); }));
 	if ($hidden > 0) $problems[] = 'the exclusion pattern hides '.$hidden.' of '.count($names).' datasets';
 	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.zfsmDiagNamed($missing);

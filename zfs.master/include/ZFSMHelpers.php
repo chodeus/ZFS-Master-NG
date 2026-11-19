@@ -404,11 +404,12 @@ function zfsmNewSnapshotName($cfg, $now) {
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
 }
 
-// A name zfsmNewSnapshotName gives that ZFS refuses, now or half a year on (T and P change with summer time); null when it takes both.
-function zfsmNewSnapshotNameRefused($cfg, $now) {
+// A name zfsmNewSnapshotName gives that ZFS refuses after $zdataset's @ (as zfsmValidSnapshotPart), now or half a year on (T and P
+// change with summer time); null when it takes both.
+function zfsmNewSnapshotNameRefused($cfg, $now, $zdataset = 'p') {
 	foreach (array($now, $now + 182 * 86400) as $at) {
 		$name = zfsmNewSnapshotName($cfg, $at);
-		if (!zfsmValidSnapshotPart($name)) return $name;
+		if (!zfsmValidSnapshotPart($name, $zdataset)) return $name;
 	}
 	return null;
 }
