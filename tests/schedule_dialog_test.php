@@ -256,7 +256,8 @@ putenv('ZFSM_TEST_LOCK_PROBE');
 same(array('held', 'held', 'held'), $read('pool/probe.log'), 'its replication lock is held while it and its copies are renamed');
 same($probe, zfsmJobLockFile('tank/new', 'replicate'), 'and a run under its new name takes that same lock');
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/data\tfilesystem")));
-same(true, zfsmJobLockFile('tank/data', 'replicate') !== $probe, 'one made since under its old name has a lock of its own');
+$own = zfsmJobLockFile('tank/data', 'replicate');
+same(array(true, true), array(is_string($own) && $own !== '', $own !== $probe), 'one made since under its old name has a lock of its own');
 $pool('datasets', array_values(array_diff($read('pool/datasets'), array("tank/data\tfilesystem"))));
 same(array(array('backup/tank/new', 'backup/tank/new/sub'), array('usb/tank/new', 'usb/tank/new/u')), array(array_values(preg_grep('~^backup/tank/(data|new)~', $datasets())),
 	array_values(preg_grep('~^usb/tank/(data|new)~', $datasets()))), 'its copy and the one below follow it, each under its Copy Under');
@@ -641,8 +642,9 @@ foreach (array('holds' => array("tank/s1@s\tkeep", 'dataset is busy'), 'props' =
 }
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/s1/c\tfilesystem")));
 $pool('props', array_merge($read('pool/props'), array("tank/s1\treceive_resume_token\ttok:tank/s1@s", "tank/s1@s\tzfs.master:schedule\tx", "tank/s1@s\tclones\ttank/s1/c")));
-same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), array(), false), array(destroyDataset('tank/s1', 1), preg_grep('~^tank/s1[\t@/]~', $read('pool/props')),
-	in_array('tank/s1/c', $datasets(), true)), 'with -r and neither (a clone below it is no dependent outside), it goes, with its properties, its snapshots\' and the clone');
+same(array(array('succeeded' => array('tank/s1' => 0), 'failed' => array()), array(), array()), array(destroyDataset('tank/s1', 1), preg_grep('~^tank/s1[\t@/]~', $read('pool/props')),
+	preg_grep('~^tank/s1[\t@#/]~', array_merge($read('pool/datasets'), $read('pool/marks')))),
+	'with -r and neither (a clone below it is no dependent outside), it goes with its snapshot, its bookmark, the clone below it and their properties');
 
 // Destroy removes what it and below had under Schedules and leaves its copies.
 $under = function($root) use ($stored) { return array_values(preg_grep('~^'.preg_quote($root, '~').'(/|$)~', array_column($stored() ?? array(), 'dataset'))); };
