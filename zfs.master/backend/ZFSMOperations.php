@@ -36,7 +36,7 @@ function zfsmFailure($subject, $message) {
 function zfsmValidSnapshotName($name) {
 	if (!is_string($name) || substr_count($name, '@') !== 1) return false;
 	list($dataset, $snapshot) = explode('@', $name, 2);
-	return zfsmValidDatasetName($dataset) && strlen($snapshot) <= 255 && zfsmValidNameComponent($snapshot);
+	return zfsmValidDatasetName($dataset) && zfsmValidSnapshotPart($snapshot, $dataset);
 }
 
 function zfsmDatasetExists($name, $types = 'filesystem,volume') {
@@ -895,7 +895,9 @@ function convertDirectory($directory, $pool, $clone = true) {
 // A new snapshot's name: the prefix, then the date in local time or, when set, UTC.
 // $props: properties the snapshot is made with (zfs snapshot -o).
 function createDatasetSnapshot($zdataset, $snapshot_name, $recursive, $props = array()) {
-	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
+	if (!zfsmDatasetExists($zdataset)) return zfsmFailure($zdataset, 'No dataset by that name could be read');
+	$untaken = zfsmNewSnapshotNameWhy($snapshot_name, false, $zdataset);
+	if ($untaken !== '') return zfsmFailure($zdataset, $untaken);
 	$args = array('snapshot');
 	if ((string)$recursive === '1') $args[] = '-r';
 	foreach ($props as $property => $value) array_push($args, '-o', $property.'='.$value);
@@ -913,8 +915,9 @@ function rollbackDatasetSnapshot($snapshot, $destroy_newer = 0) {
 }
 
 function renameDatasetSnapshot($zpool, $snapshot, $new_name) {
-	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot) || !zfsmValidNameComponent($new_name)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
+	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
 	$destination = explode('@', $snapshot, 2)[0].'@'.$new_name;
+	if (!zfsmValidSnapshotName($destination)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
 	return commandAnswer($destination, runProcess('zfs', array('rename', $snapshot, $destination)));
 }
 

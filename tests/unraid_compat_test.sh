@@ -129,6 +129,8 @@ printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
 printf '[general]\nreplica_keep="7d 7d"\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_unread "$version" || fail 'Keep Replicas saved as no Keep'
+printf '[general]\nsnap_prefix="a/"\n' > "$flash/zfs.master.cfg"
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" snap_name_refused "$version" || fail 'Snapshot Prefix ZFS refuses names with'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
 rm -f /usr/sbin/zpool

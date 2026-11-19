@@ -120,6 +120,8 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$snap = $from === null ? array('name' => null, 'guid' => '', 'txg' => PHP_INT_MAX) : null;
 	foreach ($marks as $mark) if ($from !== null && $mark['name'] === $from) $snap = $mark;
 	if ($snap === null) return $refuse('The snapshot '.$from.' no longer exists');
+	$untaken = $from === null ? zfsmNewSnapshotNameWhy($with['new_name'] ?? '') : '';
+	if ($untaken !== '') return $refuse($untaken);
 	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return $refuse(ZFSM_REPLICA_TOO_LONG);
 	if (!$missing) $plan = zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap);
 	if (is_string($plan)) return $refuse($plan);

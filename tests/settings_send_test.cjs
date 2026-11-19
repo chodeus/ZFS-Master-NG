@@ -1,4 +1,4 @@
-// The Settings page's replication script (Snapshot Every Dataset, Replicate To, and the Accept Replicas Into and Keep Replicas checks) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
+// The Settings page's replication script (Snapshot Every Dataset, Replicate To, and the Accept Replicas Into, Keep Replicas and Snapshots Pattern checks) on this Unraid version's jQuery: what it does with each answer ZFSMAdmin.php can give;
 // and what Keep Replicas' field lets Apply send.
 // Usage: settings_send_test.cjs <webgui-tree>
 const assert = require('node:assert/strict');
@@ -20,6 +20,7 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
   + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><input name="replica_keep"><span id="zfsm-replica-keep-warning"></span>'
+  + '<input name="snap_prefix" value="auto-"><input name="snap_pattern"><span id="zfsm-snap-name-warning"></span><select name="snap_utc"><option value="0">Local</option><option value="1" selected>UTC</option></select>'
   + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option></select></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
   + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd>'
@@ -164,6 +165,34 @@ assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], [''
 keepAsk('3x').done({warning: unread});
 $(keepIn).val(' ').trigger('input');
 assert.deepEqual([posts.length, text('zfsm-replica-keep-warning'), keepIn.validity.valid], [0, '', true], 'emptied, it asks nothing and refuses nothing');
+
+// Snapshots Pattern, Prefix and Time, asked as each changes: a name ZFS refuses is said, and refuses Apply on Pattern and Prefix; an answer that takes one, or a check that fails, lets Apply go.
+const patternIn = $('input[name="snap_pattern"]')[0];
+const prefixIn = $('input[name="snap_prefix"]')[0];
+const nameAsk = (field, value) => {
+  $(field).val(value).trigger(field.tagName === 'SELECT' ? 'change' : 'input');
+  return posts.pop();
+};
+const nameShown = () => [text('zfsm-snap-name-warning'), patternIn.validationMessage, prefixIn.validationMessage];
+const untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @auto-2026/11';
+const nameCheck = nameAsk(patternIn, 'Y/m');
+assert.deepEqual({...nameCheck.data}, {cmd: 'validatesnapname', pattern: 'Y/m', prefix: 'auto-', utc: '1'});
+const checking = 'Checking the names these give';
+assert.deepEqual(nameShown(), ['', checking, checking], 'Apply waits on both fields while it asks');
+nameCheck.done({warning: untaken});
+assert.deepEqual(nameShown(), [untaken, untaken, untaken], 'a name ZFS refuses is said, and refuses Apply on both fields');
+nameAsk(prefixIn, 'auto').done({warning: ''});
+assert.deepEqual(nameShown(), ['', '', ''], 'one it takes clears them');
+const utcCheck = nameAsk($('select[name="snap_utc"]')[0], '0');
+assert.ok(utcCheck, 'Snapshot Time asks too');
+assert.deepEqual({...utcCheck.data}, {cmd: 'validatesnapname', pattern: 'Y/m', prefix: 'auto', utc: '0'});
+nameAsk(patternIn, 'Y/m').done({warning: untaken});
+nameAsk(patternIn, 'Y/m/').done({succeeded: {}, failed: {request: 'Unknown or missing command'}});
+assert.deepEqual(nameShown(), ['This could not be checked: Unknown or missing command', '', ''], 'a failed check after a refusal says so, and Apply goes again');
+const nameOlder = nameAsk(patternIn, 'Y/m');
+nameAsk(prefixIn, 'x').done({warning: ''});
+nameOlder.done({warning: untaken});
+assert.deepEqual(nameShown(), ['', '', ''], 'an answer asked before another field changed does not replace the newer one');
 
 // Keep Replicas, its tag as the page writes it: the browser refuses Apply on what is no number or periods, at once; the server check above
 // catches the rest. Every value the server reads gets through (php on PATH runs zfsmKeepParse).

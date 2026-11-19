@@ -135,6 +135,20 @@ switch ($check) {
 		}
 		break;
 
+	case 'snap_name_refused':
+		// A prefix ZFS refuses names with, saved all the same: it stays as saved, and the warning beside Snapshots Pattern names a name it gives.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$saved = loadConfig(parse_plugin_cfg('zfs.master', true))['snap_prefix'];
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if ($saved !== 'a/' || strpos($html, 'name="snap_prefix" value="a/"') === false
+			|| strpos($html, 'placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828">Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @a/') === false) {
+			fwrite(STDERR, 'Snapshot Prefix "a/" read as '.json_encode($saved)." or shown without why\n");
+			exit(1);
+		}
+		break;
+
 	case 'main_page_stuck_zfs':
 		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
@@ -158,6 +172,7 @@ switch ($check) {
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
 		if (strpos($html, 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="24 7d 4w" placeholder="all">') === false) { fwrite(STDERR, "Keep Replicas saved as periods is not shown as Keep reads it\n"); exit(1); }
+		if (strpos($html, 'placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828"></span>') === false) { fwrite(STDERR, "a Snapshots Pattern ZFS takes the names of was warned of\n"); exit(1); }
 		break;
 
 	case 'menu_order':

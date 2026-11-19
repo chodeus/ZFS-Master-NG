@@ -132,6 +132,9 @@ function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SC
 // replications of a dataset share $wait, so the run waits that long at most in all.
 function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$under = substr($job['dest'], 0, -1);
+	$name = zfsmNewSnapshotName($cfg, $now);
+	$untaken = zfsmNewSnapshotNameWhy($name);
+	if ($untaken !== '') return array('Scheduled copies not made: '.$untaken, true);
 	$listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT);
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
 	$none = zfsmScheduleCopiesNone($under, $listed, $pools, $unread);
@@ -142,7 +145,6 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$rows = zfsmScheduleListed($listed)[0];
 	$here = array_fill_keys(array_keys($rows), true);
 	$coming = zfsmScheduleCopiesComing($job, $jobs, $listed);
-	$name = zfsmNewSnapshotName($cfg, $now);
 	$made = $left = 0;
 	$problems = $waiting = array();
 	foreach ($datasets as $zdataset) {

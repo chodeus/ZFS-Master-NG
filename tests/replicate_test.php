@@ -98,6 +98,11 @@ same('backup/empty already exists and holds no snapshot, so it can\'t be updated
 file_put_contents($work.'/pool/marks', "backup/data@stray\t999\t500\n", FILE_APPEND);
 same('backup/data@stray is not on this dataset, so backup/data can\'t be updated without destroying it', $refuse('d', 'backup/data'), 'a copy that went its own way');
 same("The copy can't be the dataset itself, go inside it, or replace one of its parents", $refuse('d', 'tank/data/copy'), 'inside the dataset');
+// A run that takes its snapshot first isn't planned or started with a name ZFS refuses; a picked snapshot's run is not named so.
+$taking = function($snapshot, $name) { $plan = zfsmReplicatePlan('tank/data', $snapshot, 'backup/fresh', array('new_name' => $name)); return $plan['can_proceed'] ? 'proceeds' : $plan['error']; };
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+same(array('proceeds', $untaken, 'proceeds', array('tank/data' => $untaken)), array($taking(null, 'repl-x'), $taking(null, 'repl/x'), $taking('d', 'repl/x'),
+	zfsmStartReplicate('tank/data', '', 'backup/fresh', array('snap_prefix' => 'repl/', 'snap_pattern' => 'YmdHis'))['failed']), 'a new snapshot whose name ZFS refuses');
 file_put_contents($work.'/pool/datasets', "tank/data/sub\tfilesystem\n", FILE_APPEND);
 file_put_contents($work.'/pool/marks', "tank/data/sub@s\t51\t600\n", FILE_APPEND);
 $parent = zfsmReplicatePlan('tank/data/sub', 's', 'tank/data');

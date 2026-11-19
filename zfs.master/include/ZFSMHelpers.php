@@ -369,6 +369,11 @@ function zfsmValidNameComponent($part) {
 	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
 }
 
+// Whether ZFS takes $name after $zdataset's @ (255 in all); with none, after the shortest a dataset can be (p).
+function zfsmValidSnapshotPart($name, $zdataset = 'p') {
+	return is_string($name) && strlen($zdataset.'@'.$name) <= 255 && zfsmValidNameComponent($name);
+}
+
 function zfsmValidDatasetName($name) {
 	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
 	$parts = explode('/', $name);
@@ -397,6 +402,30 @@ function zfsmCronText($what, $lines) {
 function zfsmNewSnapshotName($cfg, $now) {
 	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
+// A name zfsmNewSnapshotName gives that ZFS refuses after $zdataset's @ (as zfsmValidSnapshotPart), now or half a year on (T and P
+// change with summer time); null when it takes both.
+function zfsmNewSnapshotNameRefused($cfg, $now, $zdataset = 'p') {
+	foreach (array($now, $now + 182 * 86400) as $at) {
+		$name = zfsmNewSnapshotName($cfg, $at);
+		if (!zfsmValidSnapshotPart($name, $zdataset)) return $name;
+	}
+	return null;
+}
+
+// Why ZFS refuses $name, a new snapshot's from Snapshots Pattern and Prefix, after $zdataset's @ (as zfsmValidSnapshotPart); '' when it takes it.
+// $show names it: only Settings does, as a bare @name in a log line escapes the diagnostics' redaction.
+function zfsmNewSnapshotNameWhy($name, $show = false, $zdataset = 'p') {
+	if (zfsmValidSnapshotPart($name, $zdataset)) return '';
+	return 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses'.($show ? ', such as @'.$name : '')
+		.': a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+}
+
+// Why ZFS refuses a name Snapshots Pattern and Prefix in $cfg give now or half a year on; '' when it takes both.
+function zfsmNewSnapshotNamesWhy($cfg, $now, $show = false) {
+	$refused = zfsmNewSnapshotNameRefused($cfg, $now);
+	return $refused === null ? '' : zfsmNewSnapshotNameWhy($refused, $show);
 }
 
 // A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.

@@ -53,6 +53,7 @@ same(array('tank/data', 'tank/data/child', 'tank/data@daily'), $recursive['objec
 same(false, $preview['token'] === $recursive['token'], 'a different scope is a different token');
 
 same(true, zfsmValidDestroyTarget('tank/a b@x,y z'), 'a snapshot list with spaces is valid');
+same(array(true, false), array(zfsmValidDestroyTarget('tank/a@x,'.str_repeat('y', 248)), zfsmValidDestroyTarget('tank/a@x,'.str_repeat('y', 249))), 'a snapshot name in the list may be up to 255 long with its dataset');
 foreach (array('tank/a;b', 'tank@x@y', 'tank@x,,y', 'tank@', '../tank', '-r', '') as $bad) {
 	same(false, zfsmDestroyPreview($bad, 0)['can_proceed'], 'invalid target refused: '.$bad);
 }

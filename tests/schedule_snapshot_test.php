@@ -102,6 +102,11 @@ $wrong = array(
 same(array_column($wrong, 4), array_map(function($try) use ($cfg) { return zfsmScheduleSnapshotSave('', $try[0], $try[1], $try[2], $try[3], $cfg)['why']; }, $wrong), 'what is wrong is said');
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'and it stays as it was');
 same(1, preg_match('/^Nothing was saved: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+; add the time to Snapshots Pattern$/D', zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, array('snap_pattern' => 'Ymd') + $cfg)['why']), 'a pattern that names two runs alike');
+$slashed = array('snap_pattern' => 'Y/m/d-His') + $cfg;
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+same('Nothing was saved: '.$untaken, zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $slashed)['why'], 'and one ZFS refuses the names of');
+same(array(true, true), array(zfsmScheduleSnapshotSave('tank/data', 'none', '', '', 0, $slashed)['saved'], zfsmScheduleSnapshotSave('tank/data', 'default', '', '', 0, $slashed)['saved']),
+	'but a dataset\'s own None, and Default, save');
 // On days of the week: the days in order, its own time.
 same('Saved: a snapshot of each of 5 dataset(s) every Monday and Saturday at 04:00; it keeps the newest 3 scheduled snapshots of each dataset', zfsmScheduleSnapshotSave('', 'days', '04:00', '6,1', 3, $cfg)['said'], 'on days');
 same(array_replace($every, array('id' => $id, 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 6), 'keep' => 3)), zfsmScheduleRead()['valid'][$id], 'saved so');
@@ -130,6 +135,21 @@ $all = function() { return array_merge(...array_map(function($dataset) { return 
 same(array("tank@$n", "tank/docker@$n", "tank/vm@$n", "backup@$n"), array_values(preg_grep('/@'.preg_quote($n, '/').'$/', $all())), 'the rest are taken');
 same(array(array('warning: ZFS Snapshot'), array("warning: Scheduled snapshots of 4 of 5 dataset(s) taken. Could not take tank/data@$n (cannot create snapshot ?tank/data@$n?: out of space). Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.")),
 	array($read('notify.log'), $read('notify-detail.log')), 'notified, naming it and why');
+// A name too long after one dataset: that one is not sent, the rest go in one command; with none left, no command. The pool is put back.
+$reset();
+$kept = array_map(function($file) use ($work) { return file_get_contents($work.'/pool/'.$file); }, array('marks' => 'marks', 'props' => 'props'));
+$long = 'tank/'.str_repeat('d', 240);
+$m = $name($t + 5400);
+same(array(array(array('tank'), array("$long@$m (with its dataset and @ a name may be up to 255 long)")), array("snapshot -o zfs.master:schedule=snapshots tank@$m")),
+	array(zfsmScheduleSnapshotTake(array('tank', $long), $m), $takes()), 'a dataset the name is too long after is said, the rest taken at one moment');
+same(array(array(array(), array("$long@$m (with its dataset and @ a name may be up to 255 long)")), array("snapshot -o zfs.master:schedule=snapshots tank@$m")),
+	array(zfsmScheduleSnapshotTake(array($long), $m), $takes()), 'and alone, nothing is sent');
+putenv('ZFSM_TEST_SNAP_FAIL=tank/data');
+$m = $name($t + 6000);
+same(array(array('tank'), array("$long@$m (with its dataset and @ a name may be up to 255 long)", "tank/data@$m (cannot create snapshot 'tank/data@$m': out of space)")),
+	zfsmScheduleSnapshotTake(array('tank', 'tank/data', $long), $m), 'one at a time after a failed command, it is still said');
+putenv('ZFSM_TEST_SNAP_FAIL');
+foreach ($kept as $file => $text) file_put_contents($work.'/pool/'.$file, $text);
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 7200), 'the next run works');
 same(array('normal: Scheduled snapshots of 5 of 5 dataset(s) taken. It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says so');
@@ -214,6 +234,8 @@ $listed = file_get_contents($work.'/pool/datasets');
 $pool('datasets', array());
 same(array(0, 1, array(), 2), array(zfsmScheduleRun($id, $cfg, $t + 28800), $logged('Scheduled snapshots not taken: no pool has a dataset it takes'), $read('notify-detail.log'), zfsmScheduleFailures($id)), 'a run with nothing to take');
 file_put_contents($work.'/pool/datasets', $listed);
+$reset();
+same(array(1, 1, array()), array(zfsmScheduleRun($id, $slashed, $t + 32400), $logged('Scheduled snapshots not taken: '.$untaken), $takes()), 'a run whose names ZFS refuses takes none, and says why');
 
 // Off: the record and its count go, the cron line too; the snapshots stay.
 $reset();

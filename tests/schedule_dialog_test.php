@@ -126,6 +126,14 @@ $named[] = preg_match('/^Nothing was saved: Replication: Snapshots Pattern would
 $named[] = $save('tank/data', $part('hourly', '', '', 1), $part('hourly', '', '', 2, 'usb'))['saved'];
 $named[] = $daily($part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'];
 same(array(true, true, 1, true, true), $named, 'Snapshots None saves beside copies as saved, and Replication None beside snapshots; changed copies are refused');
+// Snapshots Pattern since gives names ZFS refuses: parts as saved, and None, save; a changed part is refused.
+$slashed = function($snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave('tank/data', $snapshots, $copies, array('snap_pattern' => 'Y/m/d-His') + $cfg); };
+$refused = array($slashed($part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'], $slashed($part('hourly', '', '', 2), $part('none', '', '', 0, 'usb'))['why']);
+$refused[] = $slashed($part('hourly', '', '', 1), $part('hourly', '', '', 2, 'usb'))['why'];
+$refused[] = $slashed($part('none'), $part('none', '', '', 0, 'usb'))['saved'];
+$refused[] = $save('tank/data', $part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'];
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+same(array(true, 'Nothing was saved: Snapshots: '.$untaken, 'Nothing was saved: Replication: '.$untaken, true, true), $refused, 'with names ZFS refuses, parts as saved and None save; a changed part is refused');
 // Copies at a time the hourly snapshots start in: the snapshots move to another minute. Snapshots set to the copies' time as saved
 // are checked against them.
 $minute = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] === ''; }))[0]['minute']; };
@@ -184,11 +192,13 @@ same(array(true, true, true, 1), array($clone('tank/gone'), $clone('usb2/apps'),
 zfsmScheduleChange(function($jobs) { return array_filter($jobs, function($job) { return !zfsmUnderAny($job['dataset'], array('tank/gone', 'usb2/apps')); }); });
 // Remove in Settings sets a dataset's own back to Default too: checked as that is.
 $own = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/apps/db' && zfsmScheduleSnapshotsOnly($job); }))[0]['id'];
+same(1, preg_match('/^Not removed: for .*, Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/', zfsmScheduleRemove($own, array('snap_pattern' => 'Y/m/d') + $cfg)['why']),
+	'a clash Default would make is told, though ZFS refuses the names too');
 $removed = array(zfsmScheduleRemove($own, array('snap_pattern' => 'Ymd') + $cfg));
 $removed[] = in_array($own, array_column($stored(), 'id'), true);
-$removed[] = zfsmScheduleRemove($own, $cfg)['saved'];
+$removed[] = zfsmScheduleRemove($own, array('snap_pattern' => 'Y/m/d-His') + $cfg)['saved'];
 same(array(array('why' => 1, 'saved' => false), true, true), array(array('why' => preg_match('/^Not removed: for (the copies of tank\/apps\/db and below|the snapshot schedule of tank\/apps), Snapshots Pattern would give the run at .* the same snapshot name as .*; add the time to Snapshots Pattern$/',
-	$removed[0]['why'])) + $removed[0], $removed[1], $removed[2]), 'Remove in Settings is refused where Default would clash, and allowed where not');
+	$removed[0]['why'])) + $removed[0], $removed[1], $removed[2]), 'Remove in Settings is refused where Default would clash, and allowed where not, though ZFS refuses the names');
 // Three repeats set in Replicate of one dataset on Mondays, a pattern of days naming them alike: Remove of one clashes nothing new.
 $repeats = array();
 foreach (array('03:00', '04:00', '05:00') as $i => $at) $repeats['5e0c1a0'.$i] = array('id' => '5e0c1a0'.$i, 'dataset' => 'tank/docker', 'dest' => 'backup/rx'.$i, 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', $at, '1') + array('keep' => 0);

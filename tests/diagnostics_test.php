@@ -222,12 +222,16 @@ same(array(), $problems(array()), 'good settings have no findings');
 same(1, preg_match('/^the settings file has a setting this version does not know: name-[0-9a-f]{8}$/D', implode('|', $problems(array('colour' => 'red')))), 'a setting this version does not know, by a token');
 same(array('size_units holds text that a save would refuse'), $problems(array('size_units' => '${units}')), 'a value a save would refuse');
 same(1, preg_match('/^the snapshot prefix and pattern give a name ZFS refuses: name-[0-9a-f]{8}$/D', implode('|', $problems(array('snap_prefix' => 'a@b')))), 'a snapshot name ZFS refuses, as a token: its owner wrote the prefix');
+// tank/data is the longest of tank, tank/data and tank/vol: a 246 long name (229 + Y-m-d-His) is too long after it alone.
+same(1, preg_match('/^the snapshot prefix and pattern give a name too long after 1 of 3 datasets: name-[0-9a-f]{8}$/D', implode('|', $problems(array('snap_prefix' => str_repeat('a', 229))))),
+	'a name too long after a dataset there, as a token');
+same(array(), $problems(array('snap_prefix' => str_repeat('a', 228))), 'one 255 long after the longest is no finding');
 same(array('the exclusion pattern is invalid, so it is ignored'), $problems(array('exclusion' => '(')), 'an invalid exclusion pattern');
 same(array('the exclusion pattern is a Lua pattern, the format older versions used'), $problems(array('exclussion' => '/docker%-old')), 'a Lua pattern, saved under the old name');
 same(array('the exclusion pattern hides 2 of 3 datasets'), $problems(array('exclusion' => '/(data|vol)')), 'what the pattern hides');
 same(1, preg_match('/^Directory Listing names a dataset that does not exist: tank\/name-[0-9a-f]{8}$/D', implode('|', $problems(array('directory_listing' => "tank/data\ntank/gone")))), 'a listed dataset that is not there, by its pool and a token');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
-same(array('the datasets could not be listed, so the exclusion pattern and Directory Listing were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
+same(array('the datasets could not be listed, so the exclusion pattern, Directory Listing and snapshot name lengths were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL');
 same(1, preg_match('/^exclusion\t"name-[0-9a-f]{8}"\t""\tsaved as exclussion$/m', $found('zfsmDiagSettingsEffective', null, array('exclussion' => '/docker%-old'))[1]), 'the old name is shown as the source, and the pattern, which its owner wrote, as a token');
 
