@@ -42,8 +42,9 @@ $routes = array(
 		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => 'x5', 'under' => 'backup'),
 	'previewschedules' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/data'),
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
+	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'previewschedules', 'previewschedulesbad');
+$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -69,12 +70,18 @@ if (in_array($route, $replication, true)) {
 
 // A schedule to remove, or a snapshot schedule saved (the default or a dataset's own), on the tmpfs the runner mounts on /boot/config. No update_cron here, so
 // Unraid's crontab is not rebuilt.
-if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset'), true)) {
+if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'replicaremove'), true)) {
 	zfsmTestScratch('/boot/config');
 	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
 	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
 	if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong'), true)) file_put_contents('/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('id' => '0a1b2c3d', 'dataset' => 'tank/data', 'dest' => 'backup/data', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0))));
 	register_shutdown_function(function() { @unlink('/boot/config/plugins/zfs.master/schedules.json'); });
+}
+if ($route === 'replicaremove') {
+	@mkdir('/boot/config/plugins/zfs.master/ssh', 0700);
+	$key = 'ssh-ed25519 '.base64_encode("\0\0\0\x0bssh-ed25519\0\0\0\x20".str_repeat("\x01", 32));
+	file_put_contents('/boot/config/plugins/zfs.master/ssh/remotes.json', json_encode(array_map(function($name) use ($key) { return array('name' => $name, 'host' => '10.0.20.11', 'port' => 22, 'key' => $key); }, array('nas', 'old'))));
+	register_shutdown_function(function() { @unlink('/boot/config/plugins/zfs.master/ssh/remotes.json'); });
 }
 
 // These need a token from the review the dialogs show first.
@@ -145,6 +152,9 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots', 'skipped' => '',
 			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'copy_keeps' => '', 'under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),
 		'previewschedulesbad' => ($answer['failed'] ?? null) === array('request' => 'Invalid dataset name'),
+		// A server removed while Server has it chosen stays there, chosen: Save says why not.
+		'replicaremove' => array_keys($answer) === array('servers_html', 'server_options') && $answer['server_options'] === '<option value="nas">nas</option><option value="old" selected>old</option>'
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/ssh/remotes.json'), true), 'name') === array('nas'),
 	)[$route];
 	if (!$ok) {
 		fwrite(STDERR, $route.' answered: '.$output."\n");

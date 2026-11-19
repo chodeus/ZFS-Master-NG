@@ -481,6 +481,13 @@ function zfsmSendKey() {
 		$('#zfsm-send-servers').html(answer.servers_html);
 	});
 }
+// After an Add or Remove: the list, and Server's options (all but This server), which keep what it has chosen.
+function zfsmSendServersShown(answer) {
+	$('#zfsm-send-servers').html(answer.servers_html);
+	var server = $('#zfsm-copysched-server');
+	server.children().slice(1).remove();
+	server.append(answer.server_options);
+}
 function zfsmSendScan() {
 	var asked = {host: $('#zfsm-send-host').val(), port: $('#zfsm-send-port').val()};
 	var found = $('#zfsm-send-found').css('color', '').text('Reading…');
@@ -505,8 +512,8 @@ function zfsmSendAdd() {
 	found.children('.zfsm-send-refused').remove();
 	// Off while it runs: a second click would answer "already a server here" for an Add that worked.
 	var controls = found.find('input').prop('disabled', true);
-	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val()}, zfsm_send_found), function(answer) {
-		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+	zfsmSendPost($.extend({cmd: 'replicaadd', name: $('#zfsm-send-name').val(), server: $('#zfsm-copysched-server').val()}, zfsm_send_found), function(answer) {
+		if (!answer.error) zfsmSendServersShown(answer);
 		// A host key read since keeps its fields and its Add.
 		if (ask !== zfsm_send_asked) return;
 		if (answer.error) {
@@ -520,9 +527,9 @@ function zfsmSendAdd() {
 	});
 }
 function zfsmSendRemove(name) {
-	zfsmSendPost({cmd: 'replicaremove', name: name}, function(answer) {
+	zfsmSendPost({cmd: 'replicaremove', name: name, server: $('#zfsm-copysched-server').val()}, function(answer) {
 		$('#zfsm-send-servers-status').text(answer.error || '');
-		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
+		if (!answer.error) zfsmSendServersShown(answer);
 	});
 }
 // Every Dataset's Saves, Remove and Change Keep, one at a time as each answer redraws the list: all their buttons are off until it lands.

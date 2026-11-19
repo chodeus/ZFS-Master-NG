@@ -286,8 +286,8 @@ function zfsmReplicaHello($remote) {
 	return isset($link['area']) ? array('area' => $link['area']) : $link;
 }
 
-// The trusted servers a Server select offers after This server, as options, $selected chosen: one no longer trusted is kept while a
-// schedule names it, so the page shows what is saved.
+// The trusted servers a Server select offers after This server, as options, $selected chosen: one no longer trusted is kept while
+// saved or chosen, so the page shows it, and Save says why not.
 function zfsmReplicaServerOptions($selected) {
 	$names = array_keys(zfsmReplicaRemotes() ?? array());
 	if ($selected !== '' && !in_array($selected, $names, true)) $names[] = $selected;

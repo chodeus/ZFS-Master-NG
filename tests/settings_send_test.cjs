@@ -76,7 +76,7 @@ add.trigger('click');
 assert.deepEqual([add.prop('disabled'), $('#zfsm-send-found input[type=checkbox]').prop('disabled')], [true, true], 'Add and its box are off while it runs');
 // Copied out of jsdom's realm: strict deepEqual compares prototypes too.
 const refused = posts.pop();
-assert.deepEqual({...refused.data}, {cmd: 'replicaadd', name: 'nas', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
+assert.deepEqual({...refused.data}, {cmd: 'replicaadd', name: 'nas', server: '', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
 
 // A refused Add says why beside the host key read and keeps its Add: a name put right goes without another read.
 refused.done({error: 'nas is already a server here; remove it first to change it'});
@@ -87,9 +87,11 @@ $('#zfsm-send-name').val('nas2');
 add.trigger('click');
 assert.equal(text('zfsm-send-found').includes('already a server'), false, 'the reason goes when Add runs again');
 const again = posts.pop();
-assert.deepEqual({...again.data}, {cmd: 'replicaadd', name: 'nas2', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'}, 'the same host key goes with the new name');
-again.done({servers_html: '<span>nas2</span>'});
+assert.deepEqual({...again.data}, {cmd: 'replicaadd', name: 'nas2', server: '', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'}, 'the same host key goes with the new name');
+again.done({servers_html: '<span>nas2</span>', server_options: '<option value="nas">nas</option><option value="nas2">nas2</option>'});
 assert.deepEqual([text('zfsm-send-found'), $('#zfsm-send-name').val(), $('#zfsm-send-host').val(), text('zfsm-send-servers')], ['', '', '', 'nas2'], 'an Add that worked lists the server and clears the read and its fields');
+const serverChoice = () => [[...$('#zfsm-copysched-server option').map((i, option) => option.value + ':' + option.textContent)], $('#zfsm-copysched-server').val()];
+assert.deepEqual(serverChoice(), [[':This server', 'nas:nas', 'nas2:nas2'], ''], 'and Server offers it, This server still chosen');
 
 // A scan's answer for an address changed since is dropped: nothing to add for the old one.
 window.zfsmSendScan();
@@ -115,8 +117,20 @@ const late = posts.pop();
 $('#zfsm-send-host').val('10.0.20.12').trigger('input');
 window.zfsmSendScan();
 posts.pop().done({key: 'ssh-ed25519 BBBB', fingerprint: 'SHA256:def'});
-late.done({servers_html: '<span>nas</span>'});
+late.done({servers_html: '<span>nas</span>', server_options: '<option value="nas">nas</option><option value="nas2">nas2</option>'});
 assert.deepEqual([$('#zfsm-send-found input[type=button]').length, $('#zfsm-send-host').val(), text('zfsm-send-servers')], [1, '10.0.20.12', 'nas'], 'the newer read keeps its Add and address');
+
+// A Remove sends what Server has chosen, and its answer redraws Server's options with that choice kept.
+$('#zfsm-copysched-server').val('nas2');
+window.zfsmSendRemove('nas');
+const removed = posts.pop();
+assert.deepEqual({...removed.data}, {cmd: 'replicaremove', name: 'nas', server: 'nas2'});
+removed.done({servers_html: '<span>nas2</span>', server_options: '<option value="nas2" selected>nas2</option>'});
+assert.deepEqual([text('zfsm-send-servers'), serverChoice()], ['nas2', [[':This server', 'nas2:nas2'], 'nas2']], 'the removed server goes from Server, and nas2 stays chosen');
+window.zfsmSendRemove('nas2');
+posts.pop().done({error: 'Could not save /boot/config/plugins/zfs.master/ssh/remotes.json'});
+assert.deepEqual([text('zfsm-send-servers-status'), serverChoice()], ['Could not save /boot/config/plugins/zfs.master/ssh/remotes.json', [[':This server', 'nas2:nas2'], 'nas2']], 'a refused Remove leaves Server as it was');
+$('#zfsm-copysched-server').html('<option value="" selected>This server</option><option value="nas">nas</option>');
 
 // Accept Replicas Into: empty asks nothing; each answer shows what is wrong with the dataset typed.
 assert.equal(posts.length, 0, 'an empty setting is not checked on load');
