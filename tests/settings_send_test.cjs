@@ -223,6 +223,19 @@ assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', '
 window.zfsmScheduleRemove('0a1b2c3d');
 posts.pop().done({error: 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', schedules_html: 'tank/a to backup/a'});
 assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', 'tank/a to backup/a'], 'one saved whose crontab was not rebuilt says so, and shows the list it saved');
+// Change Keep sends its row's Snapshots To Keep and Copy Keeps as typed; one with no Copy Keeps (a copy on a server) sends it empty.
+$('#zfsm-schedules').html('<span>tank/data to backup/data<input id="zfsm-keep-own-0a1b2c3d" value=" 7D "><input id="zfsm-keep-copy-0a1b2c3d" value="all"></span>'
+  + '<span>tank/data to nas<input id="zfsm-keep-own-0b0b0b0b" value="3"></span>');
+window.zfsmScheduleKeepSave('0a1b2c3d');
+const change = posts.pop();
+assert.deepEqual({...change.data}, {cmd: 'schedulekeepchange', id: '0a1b2c3d', keep: ' 7D ', copy_keeps: 'all'});
+change.done({error: 'Nothing was saved: under Copy Keeps, x'});
+assert.deepEqual([text('zfsm-schedules-status'), $('#zfsm-keep-own-0a1b2c3d').val()], ['Nothing was saved: under Copy Keeps, x', ' 7D '], 'a refusal says why and keeps what was typed');
+window.zfsmScheduleKeepSave('0b0b0b0b');
+const remote = posts.pop();
+assert.deepEqual({...remote.data}, {cmd: 'schedulekeepchange', id: '0b0b0b0b', keep: '3', copy_keeps: ''}, 'one on a server sends no Copy Keeps');
+remote.done({schedules_html: 'saved'});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', 'saved'], 'the list it answers replaces it, and the refusal clears');
 
 // Snapshot Every Dataset: Off shows only its own row, Every hour adds Keep, On days adds Days and Starts At too; each row with its name.
 const shown = () => ['zfsm-snapsched-days', 'zfsm-snapsched-time', 'zfsm-snapsched-keep'].map(id => {

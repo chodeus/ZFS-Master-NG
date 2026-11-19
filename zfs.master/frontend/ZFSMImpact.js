@@ -89,7 +89,7 @@ function zfsmReplicateHtml(options, zdataset) {
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
 		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
-		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules.')
+		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules; Change Keep there changes what one keeps.')
 		+say('Snapshots to keep: from the next run on, once a run lands, only those it keeps of the snapshots this copy\'s schedules took stay here, and in a copy on this server when Copy Keeps is empty. '+zfsmKeepHelp()+' With Mon, Wed and Fri ticked, 6 keeps two weeks.')
 		+say(zfsmCopyKeepsHelp('the copy'))
 		+say('Held or cloned snapshots always stay. A copy on another server keeps all, unless its Keep Replicas keeps fewer. A run removes up to 50; the next runs remove the rest.')

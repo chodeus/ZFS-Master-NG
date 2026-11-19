@@ -266,9 +266,10 @@ try {
 			break;
 
 		case 'scheduleremove':
+		case 'schedulekeepchange':
 			// Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$removed = zfsmScheduleRemove(zfsmPostString('id'), $zfsm_cfg);
-			echo zfsmJson(($removed['why'] !== '' ? array('error' => $removed['why']) : array()) + ($removed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
+			$changed = $command === 'scheduleremove' ? zfsmScheduleRemove(zfsmPostString('id'), $zfsm_cfg) : zfsmScheduleKeepChange(zfsmPostString('id'), zfsmPostKeep(), zfsmPostCopyKeeps());
+			echo zfsmJson(($changed['why'] !== '' ? array('error' => $changed['why']) : array()) + ($changed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 
 		case 'convertdirectory':

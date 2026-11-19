@@ -384,7 +384,7 @@ _(Schedules)_:
 > Snapshot Every Dataset and Replicate Every Dataset, set above, each dataset's own snapshot schedule and copies (set under **Actions**, **Schedules** in the Main tab; Remove here sets it back to Default, unless the schedule it then follows would clash with one as saved), and the replications that run on their own. To add one of those, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again every hour at a minute of its own, or at the time you set on the days you tick (all seven: every day), in this server's time zone. This list shows when.
 >
 > - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. If the run before it stopped part-way, it carries that on first.
-> - **Snapshots to keep** (set in Replicate; Remove the schedule and add it again to change it): from its second run on, once a run lands, only those it keeps of the snapshots this copy's schedules took stay, as **Snapshots To Keep** above reads it (such as `24 7d 4w 12m`), up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned, there or here, stays on both. With **Copy Keeps**, also set in Replicate, a copy on this server keeps its own instead, and one held or cloned there no longer keeps its source: `all` keeps every snapshot, and rules count every snapshot in it, one sent by hand too, the newest and the one just sent always staying. Snapshots made by hand, by Snapshot Every Dataset or by a schedule of another copy are never counted or removed, except in a copy by its **Copy Keeps**. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them, unless that server's **Keep Replicas** keeps fewer. Empty keeps all.
+> - **Snapshots to keep** (set in Replicate; **Change Keep** under its row changes it for the runs after): from its second run on, once a run lands, only those it keeps of the snapshots this copy's schedules took stay, as **Snapshots To Keep** above reads it (such as `24 7d 4w 12m`), up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned, there or here, stays on both. With **Copy Keeps**, also set in Replicate, a copy on this server keeps its own instead, and one held or cloned there no longer keeps its source: `all` keeps every snapshot, and rules count every snapshot in it, one sent by hand too, the newest and the one just sent always staying. Snapshots made by hand, by Snapshot Every Dataset or by a schedule of another copy are never counted or removed, except in a copy by its **Copy Keeps**. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them, unless that server's **Keep Replicas** keeps fewer. Empty keeps all.
 > - Each run holds its snapshot and the one it sends the changes since (`zfsm-resume-…`). One that stops part-way leaves them held, so nothing removes them before a run carries it on; a run to the copy that lands takes the hold off, and so does **Release** in Snapshots. When removing a snapshot fails, the run says which stays and why, and the next run tries again.
 > - A run that finds its copy gone doesn't send it in full again: replicate it once by hand to make a new copy. (Copies under a **Copy Under** are made again.)
 > - The first run with a problem sends a notification. Later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so.
@@ -519,11 +519,18 @@ function zfsmSendRemove(name) {
 		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
 	});
 }
+// The Schedules list's answer to Remove and Change Keep: why not, and the list as saved.
+function zfsmSchedulesAnswer(answer) {
+	$('#zfsm-schedules-status').text(answer.error || '');
+	if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
+}
 function zfsmScheduleRemove(id) {
-	zfsmSendPost({cmd: 'scheduleremove', id: id}, function(answer) {
-		$('#zfsm-schedules-status').text(answer.error || '');
-		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
-	});
+	zfsmSendPost({cmd: 'scheduleremove', id: id}, zfsmSchedulesAnswer);
+}
+// Change Keep of a repeat set in Replicate; one on another server has no Copy Keeps.
+function zfsmScheduleKeepSave(id) {
+	var copy = $(document.getElementById('zfsm-keep-copy-' + id));
+	zfsmSendPost({cmd: 'schedulekeepchange', id: id, keep: $(document.getElementById('zfsm-keep-own-' + id)).val(), copy_keeps: copy.length ? copy.val() : ''}, zfsmSchedulesAnswer);
 }
 // Snapshot and Replicate Every Dataset, by their rows' id prefix: Days and Starts At for days of the week, the rest for any repeat.
 function zfsmEverySync(prefix) {
