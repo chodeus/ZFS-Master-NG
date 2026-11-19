@@ -71,18 +71,20 @@ $naming = loadConfig(array('general' => array('snap_prefix' => 'auto-', 'snap_pa
 assertSameValue('auto-2026-11-03-180000', zfsmNewSnapshotName($naming, 1793700000), 'A local-time snapshot name used another clock');
 $naming = loadConfig(array('general' => array('snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d-His', 'snap_utc' => '1')));
 assertSameValue('auto-2026-11-03-100000', zfsmNewSnapshotName($naming, 1793700000), 'A UTC snapshot name used local time');
-// A name ZFS refuses, now or half a year on: Perth's zone name has a slash, UTC's none; a prefix past 255 in all; Azores' T is -01 in winter, +00 in summer.
+// A name ZFS refuses, now or half a year on: Perth's zone name has a slash, UTC's none; a name past 253, too long after any dataset; Azores' T is -01 in winter, +00 in summer.
 $refused = function($general, $now = 1793700000) { return zfsmNewSnapshotNameRefused(loadConfig(array('general' => $general)), $now); };
-assertSameValue(array(null, '2026/11/03', 'a@2026', 'Australia/Perth', null, null, 256), array($refused(array()), $refused(array('snap_pattern' => 'Y/m/d')),
+assertSameValue(array(null, '2026/11/03', 'a@2026', 'Australia/Perth', null, null, 254), array($refused(array()), $refused(array('snap_pattern' => 'Y/m/d')),
 	$refused(array('snap_prefix' => 'a@', 'snap_pattern' => 'Y')), $refused(array('snap_pattern' => 'e')), $refused(array('snap_pattern' => 'e', 'snap_utc' => '1')),
-	$refused(array('snap_prefix' => str_repeat('p', 238))), strlen((string)$refused(array('snap_prefix' => str_repeat('p', 239))))), 'A name ZFS refuses was taken, or one it takes refused');
+	$refused(array('snap_prefix' => str_repeat('p', 236))), strlen((string)$refused(array('snap_prefix' => str_repeat('p', 237))))), 'A name ZFS refuses was taken, or one it takes refused');
 date_default_timezone_set('Atlantic/Azores');
 assertSameValue(array('-01', '+00'), array(date('T', 1767268800), $refused(array('snap_pattern' => 'T'), 1767268800)), 'A pattern ZFS takes in winter but refuses in summer was taken');
 date_default_timezone_set($zone);
 $untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses';
-$allowed = ': a name may be up to 255 long and hold only letters, digits, spaces and _ . : -';
-assertSameValue(array('', '', $untaken.$allowed, $untaken.', such as @a/b'.$allowed), array(zfsmNewSnapshotNameWhy(null), zfsmNewSnapshotNameWhy('auto-1'), zfsmNewSnapshotNameWhy('a/b'), zfsmNewSnapshotNameWhy('a/b', true)),
+$allowed = ': a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+assertSameValue(array('', $untaken.$allowed, $untaken.$allowed, $untaken.', such as @a/b'.$allowed), array(zfsmNewSnapshotNameWhy('auto-1'), zfsmNewSnapshotNameWhy(null), zfsmNewSnapshotNameWhy('a/b'), zfsmNewSnapshotNameWhy('a/b', true)),
 	'Why a name is refused, naming it only where asked');
+assertSameValue(array('', $untaken.', such as @2026/11/03'.$allowed), array(zfsmNewSnapshotNamesWhy(loadConfig(array()), 1793700000), zfsmNewSnapshotNamesWhy(loadConfig(array('general' => array('snap_pattern' => 'Y/m/d'))), 1793700000, true)),
+	'Why the names a pattern gives are refused');
 assertSameValue('', loadConfig(array('general' => array('exclusion' => ' ')))['dataset_exclusion'], 'A blank exclusion was kept');
 assertSameValue('^new$', loadConfig(array('general' => array('exclussion' => '^old$', 'exclusion' => '^new$')))['dataset_exclusion'], 'The misspelt name overrode the current one');
 $replica_keep = function($saved) { return loadConfig(array('general' => array('replica_keep' => $saved)))['replica_keep']; };
@@ -192,8 +194,15 @@ if ($test_log) {
 	assertSameValue(true, !empty(setDatasetProperty('tank/data', 'compression', 'zstd')['succeeded']), 'Dataset property update failed');
 	assertSameValue(true, !empty(destroyDataset('tank/data', 1)['succeeded']), 'Recursive dataset destroy failed');
 	assertSameValue(true, !empty(createDatasetSnapshot('tank/data', 'manual', 1)['succeeded']), 'Recursive snapshot create failed');
-	assertSameValue(array('tank/data' => $untaken.$allowed), createDatasetSnapshot('tank/data', 'a/b', 0)['failed'], 'A snapshot name ZFS refuses was not said');
+	putenv('ZFSM_TEST_MISSING_DATASET=tank/nope');
+	assertSameValue(array(array('tank/data' => $untaken.$allowed), array('tank/data' => $untaken.$allowed), array('tank/nope' => 'No dataset by that name could be read')),
+		array(createDatasetSnapshot('tank/data', 'a/b', 0)['failed'], createDatasetSnapshot('tank/data', str_repeat('p', 246), 0)['failed'], createDatasetSnapshot('tank/nope', 'manual', 0)['failed']),
+		'A snapshot name ZFS refuses, one too long after its dataset, or a dataset not read, was not said as such');
+	assertSameValue(true, !empty(createDatasetSnapshot('tank/data', str_repeat('p', 245), 0)['succeeded']), 'A snapshot name 255 long with its dataset was refused');
+	putenv('ZFSM_TEST_MISSING_DATASET');
 	assertSameValue(false, strpos((string)file_get_contents($test_log), 'a/b'), 'A snapshot name ZFS refuses reached zfs');
+	assertSameValue(array(true, array('tank/data@daily' => 'Invalid snapshot rename request')), array(!empty(renameDatasetSnapshot('tank', 'tank/data@daily', 'renamed')['succeeded']),
+		renameDatasetSnapshot('tank', 'tank/data@daily', str_repeat('x', 246))['failed']), 'A snapshot renamed to one over 255 with its dataset was not refused');
 	assertSameValue(true, !empty(rollbackDatasetSnapshot('tank/data@daily', 0)['succeeded']), 'Safe snapshot rollback failed');
 	assertSameValue(true, !empty(rollbackDatasetSnapshot('tank/data@daily', 1)['succeeded']), 'Snapshot rollback with newer-snapshot removal failed');
 	assertSameValue(true, !empty(cloneDatasetSnapshot('tank/data@daily', 'tank/clone')['succeeded']), 'Snapshot clone failed');

@@ -76,7 +76,7 @@ if (isset($accept[$expected])) $passed = $answer === $accept[$expected];
 if ($expected === 'keep_read') $passed = $answer === array('warning' => '');
 if ($expected === 'keep_unread') $passed = $answer === array('warning' => '"7d 7d" is not read, so all stay: give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all');
 if ($expected === 'snapname_read') $passed = $answer === array('warning' => '');
-if ($expected === 'snapname_refused') $passed = $answer === array('warning' => 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @ax/: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -');
+if ($expected === 'snapname_refused') $passed = $answer === array('warning' => 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @ax/: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long');
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {

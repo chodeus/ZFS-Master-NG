@@ -177,6 +177,8 @@ const nameShown = () => [text('zfsm-snap-name-warning'), patternIn.validationMes
 const untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @auto-2026/11';
 const nameCheck = nameAsk(patternIn, 'Y/m');
 assert.deepEqual({...nameCheck.data}, {cmd: 'validatesnapname', pattern: 'Y/m', prefix: 'auto-', utc: '1'});
+const checking = 'Checking the names these give';
+assert.deepEqual(nameShown(), ['', checking, checking], 'Apply waits on both fields while it asks');
 nameCheck.done({warning: untaken});
 assert.deepEqual(nameShown(), [untaken, untaken, untaken], 'a name ZFS refuses is said, and refuses Apply on both fields');
 nameAsk(prefixIn, 'auto').done({warning: ''});

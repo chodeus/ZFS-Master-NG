@@ -270,7 +270,7 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 	$wrong = zfsmScheduleWrong($job);
 	if ($wrong !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$wrong);
 	if ($snapshot !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now');
-	$named = zfsmNewSnapshotNameWhy(zfsmNewSnapshotNameRefused($cfg, time()));
+	$named = zfsmNewSnapshotNamesWhy($cfg, time());
 	if ($named !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$named);
 	$read = zfsmScheduleRead();
 	if ($read === null) return zfsmFailure($zdataset, 'Nothing was scheduled: '.zfsmScheduleUnreadable());

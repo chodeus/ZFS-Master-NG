@@ -147,7 +147,7 @@ try {
 		case 'validatesnapname':
 			// Read as loadConfig reads them once saved: a blank pattern is the default.
 			$named = loadConfig(array('general' => array('snap_pattern' => zfsmPostString('pattern'), 'snap_prefix' => zfsmPostString('prefix'), 'snap_utc' => zfsmPostString('utc'))));
-			echo zfsmJson(array('warning' => zfsmNewSnapshotNameWhy(zfsmNewSnapshotNameRefused($named, time()), true)));
+			echo zfsmJson(array('warning' => zfsmNewSnapshotNamesWhy($named, time(), true)));
 			break;
 
 		case 'replicakey':

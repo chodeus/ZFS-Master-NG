@@ -449,8 +449,7 @@ $pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "tank/data/
 $then = zfsmScheduleRead(json_encode(array(array('keep' => 1) + $every, array('id' => 'dddd0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every, $under)))['valid'];
 file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => 1) + $every, $under)));
 $reset();
-$reset();
-same(array(array('Scheduled copies not made: '.'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -', true), array()), array(zfsmScheduleCopiesMade($then['cccc0000'], $then, array('snap_pattern' => 'Y/m/d-His') + $cfg, $t + 43200, ZFSM_SCHEDULE_WAIT),
+same(array(array('Scheduled copies not made: '.'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long', true), array()), array(zfsmScheduleCopiesMade($then['cccc0000'], $then, array('snap_pattern' => 'Y/m/d-His') + $cfg, $t + 43200, ZFSM_SCHEDULE_WAIT),
 	array_values(preg_grep('/^(snapshot|send|create) /', $read('calls.log')))), 'a run whose new snapshots ZFS refuses the names of copies nothing, and says why');
 $reset();
 zfsmScheduleCopiesMade($then['cccc0000'], $then, $cfg, $t + 43200, ZFSM_SCHEDULE_WAIT);

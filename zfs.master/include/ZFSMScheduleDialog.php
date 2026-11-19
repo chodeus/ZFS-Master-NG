@@ -52,8 +52,9 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 		// A part as saved isn't checked again, so what changed since (a Copy Under offline, Sanoid snapshots, Snapshots Pattern) doesn't
 		// stop the other's change.
 		$check = array(!$drop[0] && !zfsmScheduleAsSaved($snap, $all), !$drop[1] && !zfsmScheduleAsSaved($copy, $all));
-		$not = zfsmScheduleDialogWhy($repeats[0] && $check[0] ? zfsmScheduleSnapshotNot($snap['dataset'], $listed) : '',
-			$repeats[1] && $check[1] ? zfsmScheduleCopiesOwnNot($copy, $all, $listed) : '');
+		$named = zfsmNewSnapshotNamesWhy($cfg, time());
+		$not = zfsmScheduleDialogWhy($repeats[0] && $check[0] ? (zfsmScheduleSnapshotNot($snap['dataset'], $listed) ?: $named) : '',
+			$repeats[1] && $check[1] ? (zfsmScheduleCopiesOwnNot($copy, $all, $listed) ?: $named) : '');
 		if ($not !== '') return 'Nothing was saved: '.$not;
 		$was = $all;
 		// An hourly part goes in second, so its minute is picked clear of the other's time.

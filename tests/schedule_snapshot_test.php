@@ -103,8 +103,10 @@ same(array_column($wrong, 4), array_map(function($try) use ($cfg) { return zfsmS
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'and it stays as it was');
 same(1, preg_match('/^Nothing was saved: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+; add the time to Snapshots Pattern$/D', zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, array('snap_pattern' => 'Ymd') + $cfg)['why']), 'a pattern that names two runs alike');
 $slashed = array('snap_pattern' => 'Y/m/d-His') + $cfg;
-$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -';
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
 same('Nothing was saved: '.$untaken, zfsmScheduleSnapshotSave('', 'hourly', '', '', 2, $slashed)['why'], 'and one ZFS refuses the names of');
+same(array(true, true), array(zfsmScheduleSnapshotSave('tank/data', 'none', '', '', 0, $slashed)['saved'], zfsmScheduleSnapshotSave('tank/data', 'default', '', '', 0, $slashed)['saved']),
+	'but a dataset\'s own None, and Default, save');
 // On days of the week: the days in order, its own time.
 same('Saved: a snapshot of each of 5 dataset(s) every Monday and Saturday at 04:00; it keeps the newest 3 scheduled snapshots of each dataset', zfsmScheduleSnapshotSave('', 'days', '04:00', '6,1', 3, $cfg)['said'], 'on days');
 same(array_replace($every, array('id' => $id, 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 6), 'keep' => 3)), zfsmScheduleRead()['valid'][$id], 'saved so');

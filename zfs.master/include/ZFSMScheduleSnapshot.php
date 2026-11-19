@@ -259,6 +259,7 @@ function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
 function zfsmScheduleSnapshotPut($jobs, &$job, $remove, $cfg) {
 	$jobs = zfsmScheduleSnapshotPlace($jobs, $job, $remove);
 	$why = $remove ? '' : zfsmScheduleSnapshotCheck($jobs, $job, $cfg);
+	if ($why === '' && !$remove && zfsmScheduleRepeats($job['every'])) $why = zfsmNewSnapshotNamesWhy($cfg, time());
 	return $why === '' ? $jobs : 'Nothing was saved: '.$why;
 }
 
@@ -275,15 +276,14 @@ function zfsmScheduleSnapshotPlace($jobs, &$job, $remove) {
 }
 
 // Why $job, placed in $jobs, can't run beside the others there but $aside (still nearer, as zfsmScheduleShare reads them): one starts
-// in its minute, Snapshots Pattern names two runs alike, or ZFS refuses its names (last: zfsmScheduleNewClash tells a new clash). '' when it can.
+// in its minute, or Snapshots Pattern names two runs alike. '' when it can.
 function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
 	$others = array_diff_key($jobs, array($job['id'] => 0));
 	foreach (array_keys(array_intersect_key($others, $aside)) as $id) $others[$id]['every'] = 'none';
 	$same = zfsmScheduleSame($others, $job);
 	if ($same !== '') return $same;
 	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
-	if ($clash !== '') return $clash.'; add the time to Snapshots Pattern';
-	return zfsmScheduleRepeats($job['every']) ? zfsmNewSnapshotNameWhy(zfsmNewSnapshotNameRefused($cfg, time())) : '';
+	return $clash === '' ? '' : $clash.'; add the time to Snapshots Pattern';
 }
 
 // The first clash (zfsmScheduleSnapshotCheck) a schedule in $after has with one it did not clash with in $before (the same schedules by

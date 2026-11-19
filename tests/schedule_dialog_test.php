@@ -129,9 +129,11 @@ same(array(true, true, 1, true, true), $named, 'Snapshots None saves beside copi
 // Snapshots Pattern since gives names ZFS refuses: parts as saved, and None, save; a changed part is refused.
 $slashed = function($snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave('tank/data', $snapshots, $copies, array('snap_pattern' => 'Y/m/d-His') + $cfg); };
 $refused = array($slashed($part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'], $slashed($part('hourly', '', '', 2), $part('none', '', '', 0, 'usb'))['why']);
+$refused[] = $slashed($part('hourly', '', '', 1), $part('hourly', '', '', 2, 'usb'))['why'];
 $refused[] = $slashed($part('none'), $part('none', '', '', 0, 'usb'))['saved'];
 $refused[] = $save('tank/data', $part('hourly', '', '', 1), $part('none', '', '', 0, 'usb'))['saved'];
-same(array(true, 'Nothing was saved: Snapshots: '.'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -', true, true), $refused, 'with names ZFS refuses, parts as saved and None save; a changed part is refused');
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+same(array(true, 'Nothing was saved: Snapshots: '.$untaken, 'Nothing was saved: Replication: '.$untaken, true, true), $refused, 'with names ZFS refuses, parts as saved and None save; a changed part is refused');
 // Copies at a time the hourly snapshots start in: the snapshots move to another minute. Snapshots set to the copies' time as saved
 // are checked against them.
 $minute = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] === ''; }))[0]['minute']; };
