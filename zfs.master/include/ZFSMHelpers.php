@@ -237,12 +237,13 @@ function zfsmRunCommand($command, $args, $stdin, $max_lines, $keep_bytes) {
 	if ($code === null) proc_terminate($process, 9);
 	// proc_close can't report an exit that proc_get_status already collected.
 	if ($limit_code !== null) $code = $limit_code;
-	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
+	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output, "\r\n"), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
 	if ($code === null) throw new ZFSMTimeout(basename($command).' timed out');
 	// A command that ignored TERM is killed with KILL and comes back as 9, so any failure past the limit is the limit.
 	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new ZFSMTimeout(basename($command).' timed out');
 
-	$answer = array('code' => $code, 'output' => trim((string)$output));
+	// Line breaks only: a dataset's name may end in a space.
+	$answer = array('code' => $code, 'output' => trim((string)$output, "\r\n"));
 	if ($lines !== null) $answer['lines'] = $lines;
 	// Exited before the reader got past the limit: nothing more is coming, but the line after it may be the error.
 	if ($next_line !== null) $answer['next_line'] = rtrim($next_line, "\r\n");

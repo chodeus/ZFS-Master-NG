@@ -783,7 +783,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		let asked = 0;
 		let timer = null;
 		// Without trusted servers there is no Server select: the copy stays on this server.
-		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim(),
+		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value,
 			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, zfsmRepeatChoices(popup, 'zfsm-replicate'));
 		Swal2.fire({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',

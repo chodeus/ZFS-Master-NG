@@ -209,9 +209,9 @@ function zfsmScheduleSnapshotChange($change, &$after = array()) {
 	return $changed;
 }
 
-// $jobs once zfs renamed $from to $to, or destroyed it ($to ''): the own schedules of both kinds of it and below follow it, or go.
+// $jobs once zfs renamed $from to $to, or destroyed it ($to ''): the schedules of it and below, Replicate repeats too, follow it, or go.
 function zfsmScheduleOwnMoved($jobs, $from, $to) {
-	$under = function($root) use ($jobs) { return array_filter($jobs, function($job) use ($root) { return zfsmScheduleCovers($job) && zfsmUnderAny($job['dataset'], array($root)); }); };
+	$under = function($root) use ($jobs) { return array_filter($jobs, function($job) use ($root) { return zfsmUnderAny($job['dataset'], array($root)); }); };
 	$moved = $under($from);
 	// zfs made $to new: one at or under it is left by a dataset destroyed before, and gives way.
 	$jobs = array_diff_key($jobs, $moved, $to === '' ? array() : $under($to));

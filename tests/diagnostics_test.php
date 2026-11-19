@@ -180,7 +180,7 @@ has("== ZFS pools and disks Unraid lists\nname=cache type=Cache fsType=zfs fsSta
 has("== installed plugins\nother 2025.05.05\nzfs.master 2026.01.02\n", $read('unraid/context.txt'), 'the installed plugins');
 same(false, strpos($read('unraid/context.txt'), 'Tower'), 'not the server\'s name');
 has("== zfs version\nzfs-2.4.4-1\nzfs-kmod-2.4.4-1\n", $read('zfs/versions.txt'), 'the OpenZFS version');
-has("== zpool status -p tank\npool: tank\n", $read('zfs/zpool-status.txt'), 'each pool\'s status');
+has("== zpool status -p tank\n  pool: tank\n", $read('zfs/zpool-status.txt'), 'each pool\'s status');
 has("== zpool get -H -o property,value,source all tank\nsize\t1.00T\t-\n", $read('zfs/zpool-get-all.txt'), 'each pool\'s properties');
 has("volblocksize\tguid\tmounted\tcanmount\tvolmode\tencryptionroot\n", $read('zfs/datasets.txt'), 'the dataset columns');
 has("tank/vol\tvolume\t", $read('zfs/datasets.txt'), 'each dataset');
@@ -581,7 +581,7 @@ same(true, $took < 25, 'no read waits for the hung zfs to end, 30 seconds on: '.
 has('- a read timed out, so these files are incomplete: '.implode(', ', $slow)."\n", file_get_contents($work.'/hung/summary.txt'), 'the summary names the incomplete files');
 has("== zfs list -H -p -r -t filesystem,volume -o ", file_get_contents($work.'/hung/zfs/datasets.txt'), 'a skipped read keeps its title');
 has("TIMED OUT: skipped, because zfs list timed out on this pool\n", file_get_contents($work.'/hung/zfs/datasets.txt'), 'and says why it was skipped');
-has("== zpool status -p tank\npool: tank\n", file_get_contents($work.'/hung/zfs/zpool-status.txt'), 'zpool is still asked about a pool zfs hangs on');
+has("== zpool status -p tank\n  pool: tank\n", file_get_contents($work.'/hung/zfs/zpool-status.txt'), 'zpool is still asked about a pool zfs hangs on');
 has("\ttimed out\tzfs list -H -o name -t filesystem,volume -r tank\n", file_get_contents($work.'/hung/zfs/timings.txt'), 'the read that timed out is in the timings');
 same("skipped, because zfs list timed out on a pool\n", file_get_contents($work.'/hung/plugin/inventory.json.txt'), 'the Main tab\'s read asks about every pool, so it is skipped too');
 same('datasets: not read on every pool', explode("\n", strstr(file_get_contents($work.'/hung/summary.txt'), 'datasets: '))[0], 'a count that could not be read is not 0');

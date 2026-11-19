@@ -572,37 +572,32 @@ function zfsmCheckAccept() {
 }
 $('input[name="replica_accept"]').on('change', zfsmCheckAccept);
 zfsmCheckAccept();
-// Keep Replicas, checked as it is typed: once the server says it can't read the value (all stay), Apply is refused; one sent sooner saves it, and the reload names it.
-function zfsmCheckKeep() {
-	var input = $('input[name="replica_keep"]');
-	var value = input.val();
-	input[0].setCustomValidity('');
-	var warning = $('#zfsm-replica-keep-warning').text('');
-	if (value.trim() === '') return;
-	zfsmSendPost({cmd: 'validatekeep', keep: value}, function(answer) {
-		if (input.val() !== value) return;
-		if (answer.error) return warning.text('This could not be checked: '+answer.error);
-		warning.text(answer.warning);
-		input[0].setCustomValidity(answer.warning);
-	});
-}
-$('input[name="replica_keep"]').on('input', zfsmCheckKeep);
-// Snapshots Pattern, Prefix and Time, checked as they change: Apply waits for the answer (Enter straight after typing would save one
-// unchecked), and is refused while the server says ZFS refuses a name they give.
-function zfsmCheckSnapName() {
-	var fields = $('input[name="snap_pattern"], input[name="snap_prefix"]');
-	var asked = function() {
-		return {cmd: 'validatesnapname', pattern: $('input[name="snap_pattern"]').val(), prefix: $('input[name="snap_prefix"]').val(), utc: $('select[name="snap_utc"]').val()};
-	};
+// Asks the server what asked() gives now: Apply on fields waits for the answer (Enter straight after typing would save a value
+// unchecked), and is refused while the answer warns; an answer for values no longer shown is dropped.
+function zfsmCheckHeld(fields, warning, asked, checking) {
 	var sent = asked();
-	fields.each(function() { this.setCustomValidity('Checking the names these give'); });
-	var warning = $('#zfsm-snap-name-warning').text('');
+	fields.each(function() { this.setCustomValidity(checking); });
+	warning.text('');
 	zfsmSendPost(sent, function(answer) {
 		if (JSON.stringify(asked()) !== JSON.stringify(sent)) return;
 		var refused = answer.error ? '' : answer.warning;
 		warning.text(answer.error ? 'This could not be checked: '+answer.error : refused);
 		fields.each(function() { this.setCustomValidity(refused); });
 	});
+}
+// Keep Replicas, checked as it is typed: refused while the server can't read it (all stay); empty asks nothing.
+function zfsmCheckKeep() {
+	var input = $('input[name="replica_keep"]');
+	if (input.val().trim() !== '') return zfsmCheckHeld(input, $('#zfsm-replica-keep-warning'), function() { return {cmd: 'validatekeep', keep: input.val()}; }, 'Checking what this keeps');
+	input[0].setCustomValidity('');
+	$('#zfsm-replica-keep-warning').text('');
+}
+$('input[name="replica_keep"]').on('input', zfsmCheckKeep);
+// Snapshots Pattern, Prefix and Time, checked as they change: refused while the server says ZFS refuses a name they give.
+function zfsmCheckSnapName() {
+	zfsmCheckHeld($('input[name="snap_pattern"], input[name="snap_prefix"]'), $('#zfsm-snap-name-warning'), function() {
+		return {cmd: 'validatesnapname', pattern: $('input[name="snap_pattern"]').val(), prefix: $('input[name="snap_prefix"]').val(), utc: $('select[name="snap_utc"]').val()};
+	}, 'Checking the names these give');
 }
 $('input[name="snap_pattern"], input[name="snap_prefix"]').on('input', zfsmCheckSnapName);
 $('select[name="snap_utc"]').on('change', zfsmCheckSnapName);

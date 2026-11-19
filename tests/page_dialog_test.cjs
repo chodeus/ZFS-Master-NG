@@ -404,6 +404,16 @@ async function confirm() {
   await new Promise(resolve => window.setTimeout(resolve, 450));
   await settle();
   assert.deepEqual([/changes since b/.test(planText()), held()], [true, false], 'the plan for the destination on screen enables it');
+  // ZFS keeps a space a name ends in, so the destination goes as typed.
+  dest().value = 'backup/data ';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([posts.at(-1).destination, held()], ['backup/data ', true], 'a destination that ends in a space is planned as typed');
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
   snap().value = '';
   snap().dispatchEvent(new window.Event('change'));
   await settle();
