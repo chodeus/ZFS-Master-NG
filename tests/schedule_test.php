@@ -363,13 +363,14 @@ same(array('warning: Scheduled run not started: '.zfsmSafeText($unreadable).'. L
 file_put_contents(zfsmScheduleFile(), '[{"id":"zz"},'.substr($saved, 1));
 same(true, strpos(zfsmSchedulesHtml($cfg), '1 record(s) in '.zfsmHtml(zfsmScheduleFile()).' are not schedules the plugin can use') !== false, 'a record it can\'t use is counted in Settings');
 
-// Copy Keeps is read back only where it can apply, and said in Settings.
+// A record whose Copy Keeps can't apply is no schedule; Settings says what a copy keeps.
 $job = array_values(array_filter($stored(), function($job) use ($id) { return ($job['id'] ?? '') === $id; }))[0];
+same(false, array_key_exists('copy_keeps', $job), 'a schedule added with no Copy Keeps saves none');
 $kinds = zfsmScheduleRead(json_encode(array($job + array('copy_keeps' => '30d'), array('id' => '0badc0de', 'server' => 'nas', 'dest' => 'copy', 'copy_keeps' => 0) + $job,
 	array('id' => '0badc0df', 'dest' => 'backup/three', 'copy_keeps' => -1) + $job, array('id' => '0badc0e0', 'dataset' => '', 'dest' => '', 'copy_keeps' => 0) + $job,
 	array('id' => '0badc0e1', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none', 'copy_keeps' => 0) + $job, array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none') + $job)));
 same(array(array($id => $job + array('copy_keeps' => '30d'), '0badc0e2' => array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'server' => '', 'every' => 'none') + $job), 4), array($kinds['valid'], count($kinds['other'])),
-	'kept on a copy here; not on a server\'s, unread, with no copy, or on None, which copies nothing');
+	'kept on a copy here; a record with it on a server\'s copy, unread, with no copy, or on None is no schedule');
 same(array('keeps all its snapshots; its copy keeps 30 daily', 'keeps the newest 2 of the snapshots of each dataset it copies; each copy keeps all its snapshots', 'keeps all its snapshots'),
 	array(zfsmScheduleKeepText($job + array('copy_keeps' => '30d')), zfsmScheduleKeepText(array('dataset' => '', 'dest' => 'backup/', 'keep' => 2, 'copy_keeps' => 0) + $job), zfsmScheduleKeepText($job)),
 	'Settings says what a copy keeps, and nothing of one with no Copy Keeps');

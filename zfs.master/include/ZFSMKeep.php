@@ -132,12 +132,12 @@ function zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $twins) {
 	return zfsmKeepStayed('Keep', zfsmKeepRemove($removable, $copies, zfsmKeepWhy($keep, 'its schedule')), 'run');
 }
 
-// Copy Keeps ($copy_keeps; null: none, 0: all) of a copy here, as Keep Replicas keeps on a server that receives copies. '' or what
-// stayed and why.
+// Copy Keeps ($copy_keeps; null: none, 0: all) of a copy here, as Keep Replicas keeps on a server that receives copies but sparing
+// the one this run sent. '' or what stayed and why.
 function zfsmKeepCopyPrune($plan, $copy_keeps) {
 	// Never a copy on a server: a dataset here can have its name.
 	if ($copy_keeps === null || $plan['server'] !== '') return '';
-	// Not the one this run sent, whatever is newer there: the next run sends the changes since.
+	// The one this run sent stays even below a newer one: the source's next runs send from it.
 	return zfsmKeepEvery($plan['dest'], $copy_keeps, 'Copy Keeps', 'run', $plan['dest'].strstr($plan['snapshot'], '@'));
 }
 

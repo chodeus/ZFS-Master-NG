@@ -12,6 +12,12 @@ function zfsmScheduleCopyKeepsSet($job, $copy_keeps) {
 	return $copy_keeps === null ? $job : $job + array('copy_keeps' => $copy_keeps);
 }
 
+// What $job's copy keeps by its Copy Keeps, after what Settings says it keeps; '' with none.
+function zfsmScheduleCopyKeepsText($job) {
+	$kept = zfsmCopyKeepsWords($job['copy_keeps'] ?? null);
+	return $kept === '' ? '' : '; '.(zfsmScheduleCopiesUnder($job) ? 'each copy' : 'its copy').' keeps '.$kept;
+}
+
 // What the user fixes in $job's Copy Keeps, as zfsmScheduleWrong says it; '' when nothing.
 function zfsmScheduleCopyKeepsWrong($job) {
 	$copy_keeps = $job['copy_keeps'] ?? null;

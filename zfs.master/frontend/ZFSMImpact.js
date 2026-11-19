@@ -107,7 +107,7 @@ function zfsmCopyKeepsHelp(copy) {
 }
 
 // Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:
-// what they show first (zfsmScheduleDialogFields: every, time 'HH:MM', days 0-6, keep, copy_keeps), else the first choice at 00:00 daily.
+// what they show first (zfsmScheduleDialogFields, zfsmScheduleDialogCopies' copy_keeps too), else the first choice at 00:00 daily.
 function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false) {
 	const esc = zfsmEscape;
 	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];

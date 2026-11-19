@@ -243,10 +243,8 @@ function zfsmScheduleWhen($job) {
 function zfsmScheduleKeepText($job) {
 	$kept = zfsmKeepWords($job['keep']);
 	if (zfsmScheduleSnapshotsOnly($job)) return $kept !== '' ? 'keeps '.$kept.' scheduled snapshots of each dataset' : 'keeps all it takes';
-	$copy = zfsmCopyKeepsWords($job['copy_keeps'] ?? null);
-	$copy = $copy !== '' ? '; '.(zfsmScheduleCopiesUnder($job) ? 'each copy' : 'its copy').' keeps '.$copy : '';
-	if (zfsmScheduleCopiesUnder($job)) return ($kept !== '' ? 'keeps '.$kept.' of the snapshots of each dataset it copies' : 'keeps all its snapshots').$copy;
-	return ($kept !== '' ? 'keeps '.$kept.' of its snapshots' : 'keeps all its snapshots').$copy;
+	$of = zfsmScheduleCopiesUnder($job) ? ' of the snapshots of each dataset it copies' : ' of its snapshots';
+	return ($kept !== '' ? 'keeps '.$kept.$of : 'keeps all its snapshots').zfsmScheduleCopyKeepsText($job);
 }
 
 // The page's $time ('13:30') and $days ('1,3,5'; 0 is Sunday) as a schedule's minute, hour and days: -1 and none when unread.
