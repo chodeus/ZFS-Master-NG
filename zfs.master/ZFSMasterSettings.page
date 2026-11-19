@@ -171,6 +171,7 @@ _(Snapshot Time)_:
 
 :zc_settings_snapshots_utc_plug:
 > The clock used for the date in new snapshot names. UTC names sort the same on every server and across daylight-saving changes.
+> With Local time, where the clock goes back at the end of summer time, it shows the times before the change again, and cron starts a schedule due then at each. The second run leaves out each dataset that already has a snapshot of the name it would give: the first run's, when Snapshots Pattern has no seconds or the two start in the same second. Add `I` (1 in summer time) to **Snapshots Pattern** to keep both.
 :end
 
 _(Snapshots Prefix (Do not include the '@'))_:

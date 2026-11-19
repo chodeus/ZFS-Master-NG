@@ -122,6 +122,8 @@ $log_lines = array(
 	// Snapshot Every Dataset: the first few it could not take, each with why, and a pool whose snapshots its Keep could not read.
 	"Schedule 0a1b2c3f: Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/CanarySnapSched@CanaryPrefix_1 (cannot create snapshot 'tank/CanarySnapSched@CanaryPrefix_1': out of space); "
 		."tank/CanaryDs One@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryDs One@CanaryPrefix_1': dataset is busy). Keep could not remove the snapshots of tank (they could not be read: cannot open 'tank': Input/output error); the next run tries again",
+	// One cron starts again where the clock went back: the datasets it left out.
+	'Schedule 0a1b2c3f: Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/CanaryAgainA, tank/CanaryAgain B, and 2 more)',
 	// A dataset's own snapshot schedule: its dataset in running text, and why it takes none of one.
 	'Schedule 0a1b2c3e: Scheduled snapshots of 2 of 2 dataset(s) (tank/CanaryOwn Ds and below) taken',
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: tank/CanaryOwnRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
@@ -317,6 +319,8 @@ $cp = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryCpSrc');
 $hold = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryHold');
 has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryWaitA').', tank/'.$token('CanaryWait B').', tank/'.$token('CanaryWaitC').', and 2 more). '
 	."The dataset to hold the copies below $hold could not be made: cannot create ?$hold?: out of space\n", $log, 'a run of copies under a dataset: each name a token, the plugin\'s words in clear');
+has('Schedule '.zfsmDiagToken('0a1b2c3f').': Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/'.$token('CanaryAgainA').', tank/'.$token('CanaryAgain B').", and 2 more)\n",
+	$log, 'a run cron started again where the clock went back: each name a token, the pool in clear');
 has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');
 has('ZFS Dataset Rename: Schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules'."\n",
 	$log, 'a rename whose schedules were not moved');

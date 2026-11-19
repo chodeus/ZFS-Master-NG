@@ -191,6 +191,8 @@ function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 		foreach (zfsmScheduleRuns($other, $now, $until) as $at) $named[zfsmNewSnapshotName($cfg, $at)] = 'the run at '.date('D j M H:i', $at).' of '.zfsmScheduleWhat($other);
 	}
 	foreach (zfsmScheduleRuns($job, $now, $until) as $at) {
+		// Cron starts it again where the clock went back: that run leaves out what the first took (zfsmScheduleTakenBefore).
+		if (zfsmNewSnapshotNameRepeats($cfg, $at)) continue;
 		$name = zfsmNewSnapshotName($cfg, $at);
 		if (isset($named[$name])) return 'Snapshots Pattern would give the run at '.date('D j M H:i', $at).' the same snapshot name as '.$named[$name];
 		$named[$name] = 'the run at '.date('D j M H:i', $at);
@@ -359,6 +361,29 @@ function zfsmScheduleNotifier($id) {
 	};
 }
 
+// Of $datasets, each $listed (zfsmScheduleCoverRead) shows has the name of a run cron starts at $now again, as the clock went back.
+function zfsmScheduleTakenBefore($cfg, $now, $datasets, $listed) {
+	if (!zfsmNewSnapshotNameRepeats($cfg, $now)) return array();
+	$names = array_fill_keys(zfsmLines($listed['output']), true);
+	$snapshot = '@'.zfsmNewSnapshotName($cfg, $now);
+	return array_values(array_filter($datasets, function($zdataset) use ($names, $snapshot) { return isset($names[$zdataset.$snapshot]); }));
+}
+
+// Datasets in a run's line: in brackets and commas, where diagnostics end a name.
+function zfsmScheduleNamesSaid($datasets) {
+	return '('.zfsmKeepFirst($datasets, ', ').')';
+}
+
+// A run's $problem, but null (only logged: no run that works again) when it did nothing but leave out $again.
+function zfsmScheduleTakenBeforeProblem($again, $done, $problem) {
+	return $again && !$done && !$problem ? null : $problem;
+}
+
+// What a run's line says of $again (zfsmScheduleTakenBefore); '' for none.
+function zfsmScheduleTakenBeforeSaid($again) {
+	return $again ? '. Left out, as each has a snapshot of the name this run gives, from before the clock went back '.zfsmScheduleNamesSaid($again) : '';
+}
+
 // Cron's run of one schedule: the job read by its id; a copy's run takes its snapshot first, as Replicate's "Take one now" does.
 function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 	$notify = zfsmScheduleNotifier($id);
@@ -376,6 +401,11 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 	}
 	$copy = !zfsmScheduleSnapshotsOnly($job) && !zfsmScheduleCopiesUnder($job);
 	try {
+		// As zfsmScheduleTakenBefore, for the one dataset a copy's run takes.
+		if ($copy && zfsmNewSnapshotNameRepeats($cfg, $now) && zfsmSnapshotExists($job['dataset'].'@'.zfsmNewSnapshotName($cfg, $now))) {
+			zfsmLog('Schedule '.$id.' not started: its dataset has a snapshot of the name this run gives, from before the clock went back', LOG_NOTICE);
+			return 0;
+		}
 		if (zfsmScheduleCopiesUnder($job)) return zfsmScheduleCopiesRun($job, $read['valid'], $cfg, $now, $notify, $wait);
 		if (!$copy) return zfsmScheduleSnapshotRun($job, $read['valid'], $cfg, $now, $notify);
 		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings'), $job['keep']);

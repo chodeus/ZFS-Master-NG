@@ -378,7 +378,7 @@ function zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace) {
 	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 ? ', '.intdiv($age, 3600).' hour(s) after it started' : ''), true, $notify, $title);
 }
 
-// What a run took and kept, and whether it had a problem: null when zfs read every pool and the default had no dataset to take.
+// What a run took and kept, and its problem: null when zfs read every pool and the default had none to take, or it only left out.
 function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
 	$name = zfsmNewSnapshotName($cfg, $now);
 	$untaken = zfsmNewSnapshotNameWhy($name);
@@ -389,16 +389,17 @@ function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
 	$self = zfsmScheduleSnapshotSelf($job, $listed);
 	$taken = 0;
 	$failed = $stayed = array();
+	$again = zfsmScheduleTakenBefore($cfg, $now, array_merge(...array_values($pools)), $listed);
 	foreach ($pools as $pool => $datasets) {
-		list($took, $not) = zfsmScheduleSnapshotTake($datasets, $name);
+		list($took, $not) = zfsmScheduleSnapshotTake(array_values(array_diff($datasets, $again)), $name);
 		$taken += count($took);
 		$failed = array_merge($failed, $not);
 		$stayed = array_merge($stayed, zfsmScheduleSnapshotKeep($pool, $took, $job['keep']));
 	}
 	$of = $job['dataset'] === '' ? '' : ' ('.$job['dataset'].' and below)';
-	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.($self !== '' ? '. Not taken: '.$self : '')
+	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.zfsmScheduleTakenBeforeSaid($again).($self !== '' ? '. Not taken: '.$self : '')
 		.($unread !== '' ? '. Not every dataset could be read: '.$unread : '').($failed ? '. Could not take '.zfsmKeepFirst($failed) : '')
-		.($stayed ? '. '.zfsmKeepStayed('Keep', $stayed, 'run') : ''), $self !== '' || $unread !== '' || $failed || $stayed);
+		.($stayed ? '. '.zfsmKeepStayed('Keep', $stayed, 'run') : ''), zfsmScheduleTakenBeforeProblem($again, $taken, $self !== '' || $unread !== '' || $failed || $stayed));
 }
 
 // Why a dataset's own run, which took datasets below its dataset, did not take that one; '' when it did, was not read, or is the default.

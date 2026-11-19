@@ -124,6 +124,36 @@ same(array("snapshot -o zfs.master:schedule=snapshots tank@$n tank/data@$n tank/
 same(array('tank/data@a' => '-', 'tank/data@b' => '-', "tank/data@$n" => 'snapshots'), $snaps('tank/data'), 'tagged');
 same(array(array(), 1), array($read('notify-detail.log'), preg_match('/ Schedule '.$id.': Scheduled snapshots of 5 of 5 dataset\(s\) taken$/m', (string)file_get_contents(zfsmLogFile()))), 'logged, not notified');
 
+// Sydney's clock goes back at 16:00 UTC on 4 April 2026, so it shows 02:30:01 twice: before the change a taken name is a problem
+// as ever; after it, cron's run then leaves out each dataset with the name, and one a second later takes them all.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Australia/Sydney');
+$local = array('snap_utc' => 0) + $cfg;
+$reset();
+same(array(0, 1, array('warning: ZFS Snapshot')), array(zfsmScheduleRun($id, $local, 1775316601), zfsmScheduleRun($id, $local, 1775316601), $read('notify.log')),
+	'the run at 02:30:01, and one then again: its names taken, a problem as ever');
+$reset();
+same(array(0, array(), array(), 1), array(zfsmScheduleRun($id, $local, 1775320201), $takes(), $read('notify-detail.log'),
+	preg_match('/ Schedule '.$id.': Scheduled snapshots of 0 of 0 dataset\(s\) taken\. Left out, as each has a snapshot of the name this run gives, from before the clock went back \(tank, tank\/data, tank\/docker, and 2 more\)$/m', (string)file_get_contents(zfsmLogFile()))),
+	'the one cron starts at 02:30:01 after the change takes nothing, notifies nothing (not that it works again), and logs why');
+// One that left out the rest of what it read but could not read tank/vm warns as ever; one after it that takes backup, its snapshot
+// destroyed in between, works again.
+$again = zfsmNewSnapshotName($local, 1775316601);
+$reset();
+@unlink(zfsmScheduleStateFile($id));
+putenv('ZFSM_TEST_COVER_FAIL=tank/vm');
+same(array(1, array('warning: Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/data, tank/docker, and 1 more). Not every dataset could be read: cannot open ?tank/vm?: Input/output error. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array(zfsmScheduleRun($id, $local, 1775320201), $read('notify-detail.log')), 'one cron starts then with tank/vm unreadable warns');
+putenv('ZFSM_TEST_COVER_FAIL');
+$pool('marks', array_values(preg_grep('/^backup@'.$again.'\t/', $read('pool/marks'), PREG_GREP_INVERT)));
+$reset();
+same(array(0, array("snapshot -o zfs.master:schedule=snapshots backup@$again"), array('normal: Scheduled snapshots of 1 of 1 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/data, tank/docker, and 1 more). It works again after 1 run(s) with a problem.')),
+	array(zfsmScheduleRun($id, $local, 1775320201), $takes(), $read('notify-detail.log')),
+	'and one then that takes backup works again');
+$reset();
+same(array(0, 2), array(zfsmScheduleRun($id, $local, 1775320202), count($takes())), 'one cron starts a second later takes them');
+date_default_timezone_set($zone);
+
 // A pool whose command fails: one at a time, the rest taken, and the one that can't be named; notified once.
 $reset();
 putenv('ZFSM_TEST_SNAP_FAIL=tank/data');
