@@ -166,7 +166,7 @@ keepAsk('3x').done({warning: unread});
 $(keepIn).val(' ').trigger('input');
 assert.deepEqual([posts.length, text('zfsm-replica-keep-warning'), keepIn.validity.valid], [0, '', true], 'emptied, it asks nothing and refuses nothing');
 
-// Snapshots Pattern, Prefix and Time, asked as each changes: a name ZFS refuses is said, and refuses Apply on Pattern and Prefix, until the server takes one.
+// Snapshots Pattern, Prefix and Time, asked as each changes: a name ZFS refuses is said, and refuses Apply on Pattern and Prefix; an answer that takes one, or a check that fails, lets Apply go.
 const patternIn = $('input[name="snap_pattern"]')[0];
 const prefixIn = $('input[name="snap_prefix"]')[0];
 const nameAsk = (field, value) => {
