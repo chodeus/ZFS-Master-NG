@@ -393,22 +393,39 @@ same(array(true, true), array($save('tank/sealed/u2', $part('default'), $part('d
 same(array(array(), true), array(renameDataset('tank/sealed/d5', 'tank/sealed/u2/d5', 0, $cfg)['failed'], in_array('backup/tank/sealed/u2/d5', $datasets(), true)), 'under one copied elsewhere, it moves');
 foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/sealed/u2', 'tank/sealed/u2/d5'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 // A copy another schedule sends copies into stays where it is, so that one still finds them; a repeat set in Replicate of the renamed
-// dataset itself, which keeps its old name, doesn't hold it.
+// dataset itself follows it, and its copy too.
 $add(array('tank/nest', 'tank/nest/sub', 'backup/tank/nest', 'tank/nest3', 'backup/tank/nest3'));
 $copied('tank/nest', 76);
 $copied('tank/nest3', 77);
 same(array(true, true), array($save('tank/nest/sub', $part('default'), $part('days', '06:40', '1', 0, 'backup/tank/nest'))['saved'],
-	zfsmScheduleChange(function($jobs) { return $jobs + array('3e5a7c9b' => array('id' => '3e5a7c9b', 'dataset' => 'tank/nest3', 'dest' => 'backup/tank/nest3', 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', '03:30', '1') + array('keep' => 0)); })['saved']),
+	zfsmScheduleChange(function($jobs) use ($m) { return $jobs + array('3e5a7c9b' => array('id' => '3e5a7c9b', 'dataset' => 'tank/nest3', 'dest' => 'backup/tank/nest3', 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', sprintf('03:%02d', $m), '1') + array('keep' => 0)); })['saved']),
 	'copies of the one below under its copy, and a repeat set in Replicate of another to its copy');
 same(array(array($copy('tank/nest') => 'left where it is, as a schedule sends copies into it (the copies of tank/nest2/sub and below), so the next copy of the renamed dataset is a full one'), true, array(), true),
 	array(renameDataset('tank/nest', 'tank/nest2', 0, $cfg)['failed'], in_array('backup/tank/nest', $datasets(), true), renameDataset('tank/nest3', 'tank/nest4', 0, $cfg)['failed'], in_array('backup/tank/nest4', $datasets(), true)),
-	'a copy another Copy Under is in stays; one only its own stale repeat goes to moves');
+	'a copy another Copy Under is in stays; one only its own repeat goes to moves');
+same(array('tank/nest4', 'backup/tank/nest4'), array(array_column($stored(), 'dataset', 'id')['3e5a7c9b'], array_column($stored(), 'dest', 'id')['3e5a7c9b']), 'and that repeat sends to it there');
+// Only the renamed dataset's repeats that send into the copy follow it; one that could not follow says where it still sends.
+$repeat = function($id, $dataset, $dest) use ($m) { return array($id => array('id' => $id, 'dataset' => $dataset, 'dest' => $dest, 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', sprintf('04:%02d', $m), '2') + array('keep' => 0)); };
+zfsmScheduleChange(function($jobs) use ($repeat) { return $jobs + $repeat('3e5a7c9c', 'tank/nest3b', 'backup/tank/nest4/b') + $repeat('3e5a7c9d', 'tank/nest4', 'backup/nest4'); });
+$dests = function() use ($stored) { return array_intersect_key(array_column($stored(), 'dest', 'id'), array_flip(array('3e5a7c9b', '3e5a7c9c', '3e5a7c9d'))); };
+$held = zfsmScheduleRead()['valid'];
+same(array('', array('3e5a7c9b' => 'backup/tank/nest5', '3e5a7c9c' => 'backup/tank/nest4/b', '3e5a7c9d' => 'backup/nest4')),
+	array(zfsmScheduleCopiesRepeatsFollow('tank/nest4', 'backup/tank/nest4', 'backup/tank/nest5', $held), $dests()), 'one of another dataset, or sending elsewhere, stays');
+same(zfsmScheduleRead()['valid'], $held, 'and the schedules it was given are as saved');
+$lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
+same('the repeats set in Replicate that send into it still send to backup/tank/nest5 (Another change to the schedules is being saved; try again): set them again under Actions, Replicate',
+	zfsmScheduleCopiesRepeatsFollow('tank/nest4', 'backup/tank/nest5', 'backup/tank/nest6', $held), 'a repeat that could not follow its copy says where it still sends');
+zfsmJobUnlock($lock);
+// With no copy there yet, the repeat sends to the new name, as Replicate Every Dataset would, which then leaves it out.
+$add(array('tank/nest8'));
+zfsmScheduleChange(function($jobs) use ($repeat) { return $jobs + $repeat('3e5a7c9e', 'tank/nest8', 'backup/tank/nest8'); });
+same(array(array(), 'backup/tank/nest9'), array(renameDataset('tank/nest8', 'tank/nest9', 0, $cfg)['failed'], array_column($stored(), 'dest', 'id')['3e5a7c9e']), 'a repeat to a copy not made yet sends to the new name');
 // Where a dataset has its new name already, that is why it stays: the next copy may go there as changes alone.
 $add(array('tank/nest6', 'tank/nest6/sub', 'backup/tank/nest6', 'backup/tank/nest7'));
 $copied('tank/nest6', 79);
 same(true, $save('tank/nest6/sub', $part('default'), $part('days', '06:50', '1', 0, 'backup/tank/nest6'))['saved'], 'copies of the one below under its copy');
 same(array($copy('tank/nest6') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/nest6', 'tank/nest7', 0, $cfg)['failed'], 'its new name taken');
-foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3', 'tank/nest7/sub'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
+foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3b', 'tank/nest4', 'tank/nest9', 'tank/nest7/sub'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 // Its copy that moves but can't be mounted there, which zfs 2.0 and 2.1 fail, is renamed with it all the same: its bookmark too.
 $add(array('tank/uc', 'backup/tank/uc'));
 $copied('tank/uc', 78);

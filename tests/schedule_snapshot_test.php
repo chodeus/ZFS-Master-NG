@@ -418,7 +418,7 @@ same('backup/kid', array_column($stored(), 'dest', 'id')['c1c1c1c1'], 'the repea
 $inode = fileinode(zfsmScheduleFile());
 same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0, $cfg), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
+same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate')),
 	renameDataset('tank/new', 'tank/newer', 0, $cfg), 'one whose schedules could not be moved says so');
 zfsmJobUnlock($lock);
 // Destroy: they go, counts too.
@@ -427,12 +427,12 @@ touch(zfsmScheduleStateFile($ids['tank/data']));
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), destroyDataset('tank/new', 1), 'a destroy');
 same(array(array('tank/docker' => $ids['tank/docker']), false), array($own(), is_file(zfsmScheduleStateFile($ids['tank/data']))), 'its schedules and those below go, a Replicate repeat too');
 
-// A name may end in a space, which zfs keeps: the dataset, its snapshot and its mountpoint are found by it, and it renames.
+// A name may end in a space, which zfs keeps: such a dataset and snapshot are found by it, the mountpoint read, and it renames.
 $pool('datasets', array("tank\tfilesystem", "tank/share \tfilesystem"));
-$pool('marks', array("tank/share @a\t21\t30"));
+$pool('marks', array("tank/share @a \t21\t30"));
 $pool('props', array("tank/share \tmountpoint\t/mnt/tank/share "));
-same(array(true, true, '/mnt/tank/share '), array(zfsmDatasetExists('tank/share '), zfsmSnapshotExists('tank/share @a'), getDatasetProperty('tank', 'tank/share ', 'mountpoint')),
-	'a name that ends in a space is found, its mountpoint too');
+same(array(true, true, '/mnt/tank/share '), array(zfsmDatasetExists('tank/share '), zfsmSnapshotExists('tank/share @a '), getDatasetProperty('tank', 'tank/share ', 'mountpoint')),
+	'a dataset and snapshot whose names end in a space are found, the mountpoint too');
 same(array('succeeded' => array('tank/shared' => 0), 'failed' => array()), renameDataset('tank/share ', 'tank/shared', 0, $cfg), 'and renamed');
 
 // Sanoid's or Syncoid's snapshots leave a dataset to that tool: no run takes it, its own can't be saved, a run of one it has says so,

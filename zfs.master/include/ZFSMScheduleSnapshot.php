@@ -242,16 +242,19 @@ function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
 	if ($from === $to || ($answer['failed'] && !($to !== '' && zfsmRenameLanded($from, $to)))) return $answer;
 	$moved = zfsmScheduleOwnMove($from, $to);
 	$left = $to === '' ? 'not removed ('.$moved['why'].'): Remove them in Settings'
-		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules';
+		: 'not moved to '.$to.' ('.$moved['why'].'): Remove them in Settings and set them again under Actions, Schedules or Replicate';
 	if ($moved['why'] !== '') $answer['failed']['Schedules of '.$from] = $moved['saved'] ? $moved['why'] : $left;
 	if ($to === '') return $answer;
-	$clash = $moved['saved'] ? zfsmScheduleNewClash($moved['before'], $moved['after'], $cfg) : '';
-	if ($clash !== '') $answer['failed']['Schedules of '.$to] = 'moved with it, but '.$clash;
 	if ($moved['before'] === null) {
 		$answer['failed']['Copies of '.$from] = 'not renamed with it, as the schedules that say where they go could not be read';
 		return $answer;
 	}
-	foreach (zfsmScheduleCopiesMove($from, $to, $moved['before'], $moved['after'], $cfg) as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
+	// Read once the repeats followed their copies: until then a Copy Under no longer leaves $to out (zfsmScheduleCopiesOwnRepeat).
+	$after = $moved['after'];
+	$copies = zfsmScheduleCopiesMove($from, $to, $moved['before'], $after, $cfg);
+	$clash = $moved['saved'] ? zfsmScheduleNewClash($moved['before'], $after, $cfg) : '';
+	if ($clash !== '') $answer['failed']['Schedules of '.$to] = 'moved with it, but '.$clash;
+	foreach ($copies as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
 	return $answer;
 }
 
