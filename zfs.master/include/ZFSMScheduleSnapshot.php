@@ -63,7 +63,7 @@ function zfsmScheduleSnapshotText($job) {
 // What Settings' row of the default of $kind shows: it (an hourly one with Off's Starts At, which it doesn't use), or Off when there
 // is none or schedules.json can't be read (the list under it says so).
 function zfsmScheduleShown($kind = 'zfsmScheduleSnapshotsOnly') {
-	$off = array('every' => 'off', 'dest' => '', 'minute' => 0, 'hour' => 3, 'days' => range(0, 6), 'keep' => 0);
+	$off = array('every' => 'off', 'dest' => '', 'server' => '', 'minute' => 0, 'hour' => 3, 'days' => range(0, 6), 'keep' => 0);
 	$job = zfsmScheduleFollowed('', zfsmScheduleRead()['valid'] ?? array(), $kind);
 	if ($job === null) return $off;
 	return $job['every'] === 'hourly' ? array('minute' => $off['minute'], 'hour' => $off['hour']) + $job : $job;

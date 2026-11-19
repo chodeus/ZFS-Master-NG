@@ -33,6 +33,7 @@ same(array('list', '-H', '-o', 'name,type', 'backup/replicas/tower'), $check($re
 same(array('list', '-H', '-o', 'name,type', 'backup/replicas/tower/data'), $check($req('exists', 'backup/replicas/tower/data')), 'and about a copy inside it');
 same(array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', 'backup/replicas/tower/data'), $check($req('snapshots', 'backup/replicas/tower/data')), 'snapshots lists a copy\'s snapshots');
 same(array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', 'backup/replicas/tower/data'), $check($req('token', 'backup/replicas/tower/data')), 'token reads a copy\'s resume token');
+same(array('create', '-o', 'canmount=off', '-o', 'readonly=on', '-o', 'zfs.master:holder=on', 'backup/replicas/tower/backup'), $check($req('holder', 'backup/replicas/tower/backup')), 'holder makes one empty dataset, unmounted and read-only, to hold copies');
 same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'volmode', '-x', 'setuid', '-x', 'devices', '-x', 'exec', '-x', 'sharenfs', '-x', 'sharesmb', '-x', 'snapdev', 'backup/replicas/tower/my data'), $check($req('receive', 'backup/replicas/tower/my data')), 'receive takes a stream read-only, never -F, and the stream can\'t set what the area holds off');
 same(array('receive', '-s', '-u', '-o', 'readonly=on', '-x', 'mountpoint', '-x', 'volmode', '-x', 'setuid', '-x', 'devices', '-x', 'exec', '-x', 'sharenfs', '-x', 'sharesmb', '-x', 'snapdev', 'backup/replicas/tower/z'), $check($req('receive-zstd', 'backup/replicas/tower/z')), 'receive-zstd runs the same receive, behind zstd -d');
 
@@ -65,6 +66,9 @@ $refused = array(
 	'a newline in the name' => array($req('receive', "backup/replicas/tower/a\nb"), 'Not a dataset name'),
 	'a semicolon in the name' => array($req('receive', 'backup/replicas/tower/a;b'), 'Not a dataset name'),
 	'receive into the area itself' => array($req('receive', 'backup/replicas/tower'), 'backup/replicas/tower is not inside backup/replicas/tower'),
+	'holder with no name' => array('zfsm-replica 1 holder', 'Not a dataset name'),
+	'holder of the area itself' => array($req('holder', 'backup/replicas/tower'), 'backup/replicas/tower is not inside backup/replicas/tower'),
+	'holder in another sender\'s area' => array($req('holder', 'backup/replicas/other/backup'), 'backup/replicas/other/backup is not inside backup/replicas/tower'),
 	'snapshots of the area' => array($req('snapshots', 'backup/replicas/tower'), 'backup/replicas/tower is not inside backup/replicas/tower'),
 	'another sender\'s copy' => array($req('snapshots', 'backup/replicas/other/data'), 'backup/replicas/other/data is not inside backup/replicas/tower'),
 	'the accepting dataset' => array($req('exists', 'backup/replicas'), 'backup/replicas is not inside backup/replicas/tower'),
@@ -110,12 +114,20 @@ chmod($work.'/racebin2/zfs', 0755);
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/racebin2');
 same(array(0, "zfsm-replica 1\narea backup/replicas/raced2\n", ''), $serve('zfsm-replica 1 hello', '/dev/null', 'backup/replicas/raced2'), 'and one whose read misses an area made just after it');
 putenv('ZFSM_TEST_BIN_DIR='.dirname($fake_zfs));
-same(array(0, "backup/replicas/tower\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'exists answers with the name and type');
+same(array(0, "backup/replicas/tower\tfilesystem\nholder\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'exists of the area answers with its name and type, and that this server makes holders');
 same(1, $serve($req('exists', 'backup/replicas/tower/data'))[0], 'and fails for a copy not there yet');
 same(array(0, '', ''), $serve($req('receive', 'backup/replicas/tower/data'), $work.'/stream'), 'a stream is received');
 same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev backup/replicas/tower/data'), $calls('receive'), 'with the fixed receive');
 same(array(0, "backup/replicas/tower/data@a\t11\t101\n", ''), $serve($req('snapshots', 'backup/replicas/tower/data')), 'snapshots lists what the copy now holds');
 same(array(0, "-\n", ''), $serve($req('token', 'backup/replicas/tower/data')), 'token reads no stopped run');
+@unlink($work.'/calls.log');
+same(array(0, '', ''), $serve($req('holder', 'backup/replicas/tower/backup')), 'holder makes a dataset inside the area');
+same(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/backup'), $calls('create'), 'with the fixed create');
+same(array(0, "backup/replicas/tower/backup\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower/backup')), 'exists of it says nothing more');
+same(array(1, '', "cannot create 'backup/replicas/tower/backup': dataset already exists\n"), $serve($req('holder', 'backup/replicas/tower/backup')), 'one already there is not made again');
+same(array(1, '', "cannot create 'backup/replicas/tower/x/y': parent does not exist\n"), $serve($req('holder', 'backup/replicas/tower/x/y')), 'nor one whose parent is missing: one level at a time');
+same(array(0, '', ''), $serve($req('holder', 'backup/replicas/tower/backup/tank')), 'a holder goes inside a holder');
+same(array(0, '', ''), $serve($req('receive', 'backup/replicas/tower/backup/tank/data'), $work.'/stream'), 'and a stream is received inside it');
 @unlink($work.'/calls.log');
 same(array(1, '', "backup/replicas/other/data is not inside backup/replicas/tower\n"), $serve($req('receive', 'backup/replicas/other/data'), $work.'/stream'), 'a refused receive says why');
 same(array(), $calls('receive'), 'and runs no zfs receive');
@@ -168,10 +180,10 @@ foreach (array('stream', 'clone') as $name) exec(escapeshellarg($zstd).' -q -c <
 @unlink($work.'/calls.log');
 same(array(1, '', "This server needs zstd and prlimit to read a compressed stream\n"), $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.zst'), 'without zstd here, receive-zstd is refused');
 putenv('ZFSM_TEST_BIN_DIR='.$work.'/zbin');
-same(array(0, "backup/replicas/tower\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with zstd but no prlimit to cap it, exists of the area says nothing of zstd');
+same(array(0, "backup/replicas/tower\tfilesystem\nholder\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with zstd but no prlimit to cap it, exists of the area says nothing of zstd');
 same(array(1, '', "This server needs zstd and prlimit to read a compressed stream\n"), $serve($req('receive-zstd', 'backup/replicas/tower/z'), $work.'/stream.zst'), 'and receive-zstd is refused');
 symlink($prlimit, $work.'/zbin/prlimit');
-same(array(0, "backup/replicas/tower\tfilesystem\nzstd\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with it, exists of the area says so');
+same(array(0, "backup/replicas/tower\tfilesystem\nzstd\nholder\n", ''), $serve($req('exists', 'backup/replicas/tower')), 'with it, exists of the area says so');
 same(array(0, "backup/replicas/tower/data\tfilesystem\n", ''), $serve($req('exists', 'backup/replicas/tower/data')), 'and exists of a copy says nothing more');
 same(array(1, '', "A clone's stream is not accepted\n"), $serve($req('receive-zstd', 'backup/replicas/tower/evil'), $work.'/clone.zst'), 'a clone\'s stream is refused compressed too');
 $plain = $serve($req('receive-zstd', 'backup/replicas/tower/evil'), $work.'/stream');

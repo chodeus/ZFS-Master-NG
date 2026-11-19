@@ -173,7 +173,8 @@ try {
 			$why = $command === 'replicaadd'
 				? zfsmReplicaRemoteAdd(zfsmPostString('name'), zfsmPostString('host'), zfsmPostDigits('port', 5, 0), zfsmPostString('key'), zfsmPostString('fingerprint'))
 				: zfsmReplicaRemoteRemove(zfsmPostString('name'));
-			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
+			// Server's options keep what the page has chosen.
+			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'server_options' => zfsmReplicaServerOptions(zfsmPostString('server'))));
 			break;
 
 		case 'replicatest':
@@ -262,7 +263,8 @@ try {
 
 		case 'schedulecopies':
 			// Settings' Replicate Every Dataset.
-			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps()), $zfsm_cfg);
+			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps(),
+				zfsmPostString('server')), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':

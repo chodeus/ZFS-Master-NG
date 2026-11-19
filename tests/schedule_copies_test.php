@@ -65,14 +65,15 @@ $fresh = function() use ($pool) {
 $fresh();
 $covered = array('tank', 'tank/data', 'tank/docker', 'tank/san/kid', 'tank/vm', 'usb');
 
-// The record: Replicate Every Dataset, or a dataset's own, copies under a dataset here (dest ends in /); None (dest /) only a dataset's.
+// The record: Replicate Every Dataset, or a dataset's own, copies under a dataset here or on a server (dest ends in /); None (dest /,
+// no server) only a dataset's.
 $every = array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => 'backup/', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
 $records = array($every, array('dataset' => 'tank/data', 'every' => 'days') + $every, array('dataset' => 'tank/data', 'every' => 'none', 'dest' => '/') + $every,
-	array('every' => 'none', 'dest' => '/') + $every, array('dest' => '/') + $every, array('dest' => 'bad name!/') + $every, array('server' => 'nas') + $every,
-	array('dataset' => 'tank/data', 'every' => 'none') + $every);
-same(array(true, true, true, false, false, false, false, false), array_map('zfsmScheduleValid', $records), 'which records copy under a dataset');
+	array('server' => 'nas') + $every, array('every' => 'none', 'dest' => '/') + $every, array('dest' => '/') + $every, array('dest' => 'bad name!/') + $every,
+	array('dataset' => 'tank/data', 'every' => 'none') + $every, array('server' => 'bad name') + $every, array('dataset' => 'tank/data', 'every' => 'none', 'dest' => '/', 'server' => 'nas') + $every);
+same(array(true, true, true, true, false, false, false, false, false, false), array_map('zfsmScheduleValid', $records), 'which records copy under a dataset');
 // A version before this one reads any dest but '' as one copy's, whose dataset and name these never are: it runs none of them.
-same(array(false, false, false), array_map('zfsmScheduleCopyValid', array_slice($records, 0, 3)), 'an older version runs none of them');
+same(array(false, false, false, false), array_map('zfsmScheduleCopyValid', array_slice($records, 0, 4)), 'an older version runs none of them');
 same(array('zfsmScheduleCopiesUnder', 'zfsmScheduleSnapshotsOnly'), array(zfsmScheduleKindOf($every), zfsmScheduleKindOf(array('dest' => '') + $every)), 'each kind');
 
 // It shares datasets with a snapshot schedule or a copy's that it covers, never with another of its kind.
@@ -396,7 +397,7 @@ same(1, preg_match('/^warning: Scheduled copies not made: the snapshot names cou
 // One that timed out (zfsmReadWithin's null code) is not read either.
 $timed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return in_array('snapshot', $args, true) ? array('code' => null, 'output' => 'zfs did not answer in 5 seconds') : zfsmReadWithin($wait, $command, $args); });
 same(array(array(), null), array(zfsmScheduleCovered($timed, $every, array($every))[0], zfsmScheduleListed($timed)[0]['tank'][2]), 'none copied after a names read that timed out');
-same(array('Scheduled copies not made: the snapshot names could not be read: zfs did not answer in 5 seconds', true), zfsmScheduleCopiesNone('backup', $timed, array(), zfsmScheduleCovered($timed, $every, array($every))[1]), 'saying why, not that the datasets were unread');
+same(array('Scheduled copies not made: the snapshot names could not be read: zfs did not answer in 5 seconds', true), zfsmScheduleCopiesNone($every, $timed, array(), zfsmScheduleCovered($timed, $every, array($every))[1]), 'saying why, not that the datasets were unread');
 
 // Copy Under gone: none made; a later problem, so only logged.
 $pool('datasets', array_values(array_filter($read('pool/datasets'), function($line) { return strpos($line, 'backup') !== 0; })));

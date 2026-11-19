@@ -253,7 +253,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 		zfsmDiagKnowWord($job['server']);
 		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
 		$whose = $job['dataset'] === '' ? '(every dataset)' : zfsmDiagNamed($job['dataset']);
-		$under = $job['every'] === 'none' ? '(no copies)' : zfsmDiagNamed(rtrim($job['dest'], '/')).'/ (each dataset under it)';
+		$under = $job['every'] === 'none' ? '(no copies)' : zfsmDiagNamed(rtrim($job['dest'], '/')).'/ (each dataset under it)'.($job['server'] !== '' ? ' on server '.$job['server'] : '');
 		$what = zfsmScheduleCopiesUnder($job) ? array($whose, $under) : (zfsmScheduleSnapshotsOnly($job) ? array($whose, '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest));
 		$runs = zfsmScheduleRepeats($job['every']);
 		$failures = zfsmScheduleProblems($job);

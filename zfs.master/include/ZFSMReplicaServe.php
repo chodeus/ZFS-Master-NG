@@ -8,12 +8,13 @@ function zfsmReplicaAreaProps() {
 }
 
 // A request is "zfsm-replica 1 <verb> [<dataset as lowercase hex>]": hex, so a name never meets a shell or a split.
-// receive: -x keeps the stream from setting the area's properties or shares, whatever it holds.
+// receive: -x keeps the stream from setting the area's properties or shares; holder: no -p, so only where its parent exists.
 function zfsmReplicaVerbArgs($verb, $name) {
 	switch ($verb) {
 		case 'exists': return array('list', '-H', '-o', 'name,type', $name);
 		case 'snapshots': return array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', $name);
 		case 'token': return array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', $name);
+		case 'holder': return zfsmReplicaHolderArgs($name);
 		case 'receive':
 		case 'receive-zstd':
 			$args = array('receive', '-s', '-u', '-o', 'readonly=on');
@@ -63,7 +64,7 @@ function zfsmReplicaSenderName($sender) {
 // What a request may run: array('verb', 'name', 'args'), or array('error' => why it is refused).
 function zfsmReplicaServeCheck($request, $area) {
 	if ($area === null) return array('error' => 'This server does not accept replicas from this key');
-	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
+	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|holder|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
 		return array('error' => 'Not a replication request');
 	}
 	$verb = $match[1];
@@ -163,11 +164,12 @@ function zfsmReplicaUnzip($io) {
 	return is_resource($process) ? array($process, $pipes[1]) : 'Unable to start zstd';
 }
 
-// exists, snapshots or token. A sender with zstd asks exists of the area itself, as no earlier version does (zfsmReplicaTargetZstd):
-// the answer adds whether this one reads it.
+// exists, snapshots, token or holder. A sender asks exists of the area itself, as no version before zstd does (zfsmReplicaTargetCan):
+// the answer adds whether this one reads zstd, and that it makes holders.
 function zfsmReplicaServeAsk($checked, $area, $io) {
 	$code = zfsmReplicaRun($checked['args'], $io);
-	if ($code === 0 && $checked['verb'] === 'exists' && $checked['name'] === $area && zfsmReplicaUnzipCommand() !== null) fwrite($io[1], "zstd\n");
+	if ($code !== 0 || $checked['verb'] !== 'exists' || $checked['name'] !== $area) return $code;
+	fwrite($io[1], (zfsmReplicaUnzipCommand() !== null ? "zstd\n" : '')."holder\n");
 	return $code;
 }
 

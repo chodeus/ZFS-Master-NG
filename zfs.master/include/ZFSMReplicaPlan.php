@@ -88,7 +88,7 @@ function zfsmReplicaBookmarkFits($zdataset, $mark, $snapshot) {
 
 // What a run from $snapshot to $zdest would do, or why it can't: mode 'full', 'incremental' (from 'base') or 'resume' (from 'token'), with an estimated size.
 // A null $snapshot is one the run takes first, named $with['new_name']: newer than all the others, its size unknown until then.
-// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest).
+// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest), $with['under'] a copy under a dataset.
 function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$refuse = function($why) { return array('can_proceed' => false, 'error' => $why); };
 	$target = $with['target'] ?? array('server' => '');
@@ -96,7 +96,7 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	if (!isset($with['marks']) && !zfsmDatasetExists($zdataset)) return $refuse('Only an existing dataset can be replicated');
 	$from = $snapshot === null ? null : $zdataset.'@'.$snapshot;
 	if ($from !== null && !zfsmValidSnapshotName($from)) return $refuse('Pick one of the dataset\'s snapshots');
-	list($named, $why) = zfsmReplicaTargetDest($target, $zdataset, $zdest);
+	list($named, $why) = zfsmReplicaTargetDest($target, $zdataset, $zdest, $with['under'] ?? false);
 	if ($named === null) return $refuse($why);
 	$zdest = $named;
 	$marks = $with['marks'] ?? zfsmReplicaMarks($zdataset);
@@ -186,10 +186,11 @@ function zfsmReplicaUnread($where, $why) {
 	return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
 }
 
-// $plan into a copy that holds no snapshot: in full with -F when it is a holder, which keeps the copies below it; zfs
-// refuses a raw stream there, and any stream onto an encrypted holder. Else why not.
+// $plan into a copy that holds no snapshot: in full with -F when it is a holder here, which keeps the copies below it; zfs
+// refuses a raw stream there, and any stream onto an encrypted holder. Else (and on a server) why not.
 function zfsmReplicaPlanHolder($plan, $target) {
 	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	if ($target['server'] !== '') return $where.' already exists and holds no snapshot, such as an empty dataset made to hold the copies below it; nothing is received over a dataset on another server';
 	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
 	$held = $where.' only holds the copies of datasets below this one, and ';
 	$fix = ': copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)';

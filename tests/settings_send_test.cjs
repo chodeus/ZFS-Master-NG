@@ -27,6 +27,7 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<dt>Snapshots To Keep:</dt><dd><input id="zfsm-snapsched-keep" value="3"></dd>'
   + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-snapsched-save"> <span id="zfsm-snapsched-status"></span></dd>'
   + '<dt>Replicate Every Dataset:</dt><dd><select id="zfsm-copysched-every"><option value="off">Off</option><option value="hourly" selected>Every hour</option><option value="days">On days</option></select></dd>'
+  + '<dt>Server:</dt><dd><select id="zfsm-copysched-server"><option value="" selected>This server</option><option value="nas">nas</option></select></dd>'
   + '<dt>Copy Under:</dt><dd><input id="zfsm-copysched-under" value="backup"></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-copysched-days"><input type="checkbox" class="zfsm-copysched-day" value="3" checked><input type="checkbox" class="zfsm-copysched-day" value="5"></span></dd>'
   + '<dt>Starts At:</dt><dd><input id="zfsm-copysched-time" value="02:30"></dd><dt>Snapshots To Keep:</dt><dd><input id="zfsm-copysched-keep" value="7d"></dd>'
@@ -75,7 +76,7 @@ add.trigger('click');
 assert.deepEqual([add.prop('disabled'), $('#zfsm-send-found input[type=checkbox]').prop('disabled')], [true, true], 'Add and its box are off while it runs');
 // Copied out of jsdom's realm: strict deepEqual compares prototypes too.
 const refused = posts.pop();
-assert.deepEqual({...refused.data}, {cmd: 'replicaadd', name: 'nas', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
+assert.deepEqual({...refused.data}, {cmd: 'replicaadd', name: 'nas', server: '', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'});
 
 // A refused Add says why beside the host key read and keeps its Add: a name put right goes without another read.
 refused.done({error: 'nas is already a server here; remove it first to change it'});
@@ -86,9 +87,11 @@ $('#zfsm-send-name').val('nas2');
 add.trigger('click');
 assert.equal(text('zfsm-send-found').includes('already a server'), false, 'the reason goes when Add runs again');
 const again = posts.pop();
-assert.deepEqual({...again.data}, {cmd: 'replicaadd', name: 'nas2', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'}, 'the same host key goes with the new name');
-again.done({servers_html: '<span>nas2</span>'});
+assert.deepEqual({...again.data}, {cmd: 'replicaadd', name: 'nas2', server: '', host: '10.0.20.11', port: '2222', key: 'ssh-ed25519 AAAA', fingerprint: 'SHA256:abc'}, 'the same host key goes with the new name');
+again.done({servers_html: '<span>nas2</span>', server_options: '<option value="nas">nas</option><option value="nas2">nas2</option>'});
 assert.deepEqual([text('zfsm-send-found'), $('#zfsm-send-name').val(), $('#zfsm-send-host').val(), text('zfsm-send-servers')], ['', '', '', 'nas2'], 'an Add that worked lists the server and clears the read and its fields');
+const serverChoice = () => [[...$('#zfsm-copysched-server option').map((i, option) => option.value + ':' + option.textContent)], $('#zfsm-copysched-server').val()];
+assert.deepEqual(serverChoice(), [[':This server', 'nas:nas', 'nas2:nas2'], ''], 'and Server offers it, This server still chosen');
 
 // A scan's answer for an address changed since is dropped: nothing to add for the old one.
 window.zfsmSendScan();
@@ -114,8 +117,20 @@ const late = posts.pop();
 $('#zfsm-send-host').val('10.0.20.12').trigger('input');
 window.zfsmSendScan();
 posts.pop().done({key: 'ssh-ed25519 BBBB', fingerprint: 'SHA256:def'});
-late.done({servers_html: '<span>nas</span>'});
+late.done({servers_html: '<span>nas</span>', server_options: '<option value="nas">nas</option><option value="nas2">nas2</option>'});
 assert.deepEqual([$('#zfsm-send-found input[type=button]').length, $('#zfsm-send-host').val(), text('zfsm-send-servers')], [1, '10.0.20.12', 'nas'], 'the newer read keeps its Add and address');
+
+// A Remove sends what Server has chosen, and its answer redraws Server's options with that choice kept.
+$('#zfsm-copysched-server').val('nas2');
+window.zfsmSendRemove('nas');
+const removed = posts.pop();
+assert.deepEqual({...removed.data}, {cmd: 'replicaremove', name: 'nas', server: 'nas2'});
+removed.done({servers_html: '<span>nas2</span>', server_options: '<option value="nas2" selected>nas2</option>'});
+assert.deepEqual([text('zfsm-send-servers'), serverChoice()], ['nas2', [[':This server', 'nas2:nas2'], 'nas2']], 'the removed server goes from Server, and nas2 stays chosen');
+window.zfsmSendRemove('nas2');
+posts.pop().done({error: 'Could not save /boot/config/plugins/zfs.master/ssh/remotes.json'});
+assert.deepEqual([text('zfsm-send-servers-status'), serverChoice()], ['Could not save /boot/config/plugins/zfs.master/ssh/remotes.json', [[':This server', 'nas2:nas2'], 'nas2']], 'a refused Remove leaves Server as it was');
+$('#zfsm-copysched-server').html('<option value="" selected>This server</option><option value="nas">nas</option>');
 
 // Accept Replicas Into: empty asks nothing; each answer shows what is wrong with the dataset typed.
 assert.equal(posts.length, 0, 'an empty setting is not checked on load');
@@ -273,19 +288,26 @@ posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}
 assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), text('zfsm-schedules')], [false, 'Unknown or missing command', 'z'], 'as does a backend failure');
 
 // Replicate Every Dataset: its own rows by its prefix, Copy Under with Keep; on load as saved (Every hour), and Save sends Copy Under too.
-const copyShown = () => ['zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep', 'zfsm-copysched-copy-keeps'].map(id => window.document.getElementById(id).closest('dd').style.display);
-assert.deepEqual(copyShown(), ['', 'none', 'none', '', ''], 'Every hour on load shows Copy Under, Keep and Copy Keeps only');
+const copyShown = () => ['zfsm-copysched-server', 'zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep', 'zfsm-copysched-copy-keeps'].map(id => window.document.getElementById(id).closest('dd').style.display);
+assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', ''], 'Every hour on load shows Server, Copy Under, Keep and Copy Keeps only');
 $('#zfsm-copysched-every').val('off').trigger('change');
-assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
+assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
 assert.deepEqual(shown(), ['/', '/', '/'], 'and leaves Snapshot Every Dataset\'s rows as they were');
 $('#zfsm-copysched-every').val('days').trigger('change');
 $('#zfsm-schedules').html('<span>tank/a to backup/a<input type="button" id="zfsm-row-remove"></span>');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 const copies = posts.pop();
 assert.deepEqual([$('#zfsm-row-remove').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled')], [true, true], 'the list\'s buttons and the other Save are off while it saves: its answer redraws the list');
-assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', copy_keeps: ' 30D '});
+assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', server: '', copy_keeps: ' 30D '});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-snapsched-status')], [true, 'Saving…', 'Unknown or missing command'], 'its Save and answer are its own');
 copies.done({said: 'Saved: a copy of each of 4 dataset(s) under backup', schedules_html: 'w'});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
+// Another server: Copy Keeps is hidden, and none is sent, as its Keep Replicas decides; This server shows it again.
+$('#zfsm-copysched-server').val('nas').trigger('change');
+assert.deepEqual(copyShown(), ['', '', '', '', '', 'none'], 'a server hides Copy Keeps');
+window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
+assert.deepEqual({...posts.pop().data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', server: 'nas', copy_keeps: ''}, 'Save sends the server and no Copy Keeps');
+$('#zfsm-copysched-server').val('').trigger('change');
+assert.deepEqual(copyShown()[5], '', 'This server shows it again');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

@@ -286,6 +286,16 @@ function zfsmReplicaHello($remote) {
 	return isset($link['area']) ? array('area' => $link['area']) : $link;
 }
 
+// The trusted servers a Server select offers after This server, as options, $selected chosen: one no longer trusted is kept while
+// saved or chosen, so the page shows it, and Save says why not.
+function zfsmReplicaServerOptions($selected) {
+	$names = array_keys(zfsmReplicaRemotes() ?? array());
+	if ($selected !== '' && !in_array($selected, $names, true)) $names[] = $selected;
+	return implode('', array_map(function($name) use ($selected) {
+		return '<option value="'.zfsmHtml($name).'"'.($name === $selected ? ' selected' : '').'>'.zfsmHtml($name).'</option>';
+	}, $names));
+}
+
 function zfsmReplicaKeyHtml() {
 	$public = zfsmReplicaPublicKey();
 	if ($public === null) return '<input type="button" value="Make This Server\'s Key" onclick="zfsmSendKey()">';
