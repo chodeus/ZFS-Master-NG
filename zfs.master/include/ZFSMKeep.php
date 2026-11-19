@@ -1,6 +1,6 @@
 <?php
-// Keep: after a schedule's run lands, its snapshots that its Keep (zfsmKeepRules) doesn't keep go; a run holds what it sends until a
-// run to the copy lands or none is left to carry on.
+// Keep: after a schedule's run lands, its snapshots that its Keep (zfsmKeepRules) doesn't keep go, and a copy's here by its Copy Keeps;
+// a run holds what it sends until a run to the copy lands or none is left to carry on.
 // zfsmRunReplicate (ZFSMReplicate.php) prunes; zfsmReplicateSent holds and releases; zfsmServeReplica and zfsmScheduleSnapshotRun prune.
 require_once __DIR__.'/ZFSMKeepRules.php';
 
@@ -111,12 +111,18 @@ function zfsmKeepCopies($plan) {
 	return $listed === null ? null : array_column($listed, null, 'guid');
 }
 
-// After a run to $plan's copy landed: $zdataset's snapshots $tag marks that $keep doesn't keep go, a copy's here first (by guid). A
-// source stays while its copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
-function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
+// After a run to $plan's copy landed: Keep (zfsmKeepPruneSource), then Copy Keeps (zfsmKeepCopyPrune), each on its own. '' or what
+// stayed and why.
+function zfsmKeepPrune($zdataset, $plan, $keep, $tag, $copy_keeps = null) {
+	return implode('. ', array_filter(array(zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $copy_keeps === null), zfsmKeepCopyPrune($plan, $copy_keeps)), 'strlen'));
+}
+
+// $zdataset's snapshots $tag marks that $keep doesn't keep go; with $twins, a copy's here first (by guid). A source stays while its
+// copy's is held, cloned or fails to go: Keep finds those only through it. '' or what stayed and why.
+function zfsmKeepPruneSource($zdataset, $plan, $keep, $tag, $twins) {
 	$surplus = zfsmKeepSurplus($zdataset, $keep, $tag);
 	if ($surplus === null) return 'Keep could not read the snapshots of '.$zdataset;
-	$copies = $surplus ? zfsmKeepCopies($plan) : array();
+	$copies = $surplus && $twins ? zfsmKeepCopies($plan) : array();
 	if ($copies === null) return 'Keep could not read the snapshots of '.$plan['dest'];
 	// Not the one this run sent (the next one sends the changes since), nor one whose twin on the copy is held or cloned.
 	$removable = array_filter($surplus, function($snapshot) use ($plan, $copies) {
@@ -124,6 +130,16 @@ function zfsmKeepPrune($zdataset, $plan, $keep, $tag) {
 		return $snapshot['name'] !== $plan['snapshot'] && ($copy === null || (!$copy['held'] && !$copy['cloned']));
 	});
 	return zfsmKeepStayed('Keep', zfsmKeepRemove($removable, $copies, zfsmKeepWhy($keep, 'its schedule')), 'run');
+}
+
+// Copy Keeps ($copy_keeps; null: none, 0: all) of a copy here: its snapshots that it doesn't keep go, every one counting, as Keep
+// Replicas counts on a server that receives copies. '' or what stayed and why.
+function zfsmKeepCopyPrune($plan, $copy_keeps) {
+	// Never a copy on a server: a dataset here can have its name.
+	if ($copy_keeps === null || $plan['server'] !== '') return '';
+	$surplus = zfsmKeepSurplus($plan['dest'], $copy_keeps, null);
+	if ($surplus === null) return 'Copy Keeps could not read the snapshots of '.$plan['dest'];
+	return zfsmKeepStayed('Copy Keeps', zfsmKeepRemove($surplus, array(), zfsmKeepWhy($copy_keeps, 'Copy Keeps')), 'run');
 }
 
 // Destroys the first ZFSM_KEEP_PER_RUN of $removable, each one's twin in $copies (by guid) first: a source stays while its twin
@@ -225,10 +241,10 @@ function zfsmKeepStopped($zdataset, $tag, $token, $held) {
 	return $note === '' ? '' : ' '.$note.'.';
 }
 
-// After a run ends ($code 0: it landed), its Keep ($keep null: a run that is no schedule's), logged and added to its notification's
-// $text and $type.
-function zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type) {
-	$kept = $code !== 0 || $keep === null ? '' : zfsmKeepPrune($zdataset, $plan, $keep, $tag);
+// After a run ends ($code 0: it landed), its Keep ($keep null: a run that is no schedule's) and Copy Keeps, logged and added to its
+// notification's $text and $type.
+function zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $copy_keeps = null) {
+	$kept = $code !== 0 || $keep === null ? '' : zfsmKeepPrune($zdataset, $plan, $keep, $tag, $copy_keeps);
 	if ($kept === '') return array($text, $type);
 	zfsmLog('Replication of '.$zdataset.' to '.$to.': '.$kept);
 	return array(rtrim($text, '.').'. '.zfsmSafeText($kept).'.', 'warning');

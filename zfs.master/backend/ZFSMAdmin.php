@@ -30,6 +30,11 @@ function zfsmPostKeep($key = 'keep') {
 	return zfsmKeepParse(zfsmPostString($key)) ?? -1;
 }
 
+// Copy Keeps as zfsmCopyKeepsParse saves it.
+function zfsmPostCopyKeeps() {
+	return zfsmCopyKeepsParse(zfsmPostString('copy_keeps'));
+}
+
 // A schedule Save's answer for the page: what it said or why not, and Settings' list once saved, even if the crontab step failed.
 function zfsmScheduleSavedJson($saved, $cfg) {
 	return zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($cfg)) : array()));
@@ -235,7 +240,7 @@ try {
 			$every = zfsmPostString('every');
 			$keep = zfsmPostKeep();
 			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
-				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg);
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg, zfsmPostCopyKeeps());
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 
@@ -252,12 +257,12 @@ try {
 			// Main's Schedules dialog: a dataset's own snapshot schedule and its own copies (copy_*, under) at once.
 			echo zfsmScheduleSavedJson(zfsmScheduleDialogSave(zfsmPostString('zdataset'),
 				array('every' => zfsmPostString('every'), 'time' => zfsmPostString('time'), 'days' => zfsmPostString('days'), 'keep' => zfsmPostKeep()),
-				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'under' => zfsmPostString('under')), $zfsm_cfg), $zfsm_cfg);
+				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'copy_keeps' => zfsmPostCopyKeeps(), 'under' => zfsmPostString('under')), $zfsm_cfg), $zfsm_cfg);
 			break;
 
 		case 'schedulecopies':
 			// Settings' Replicate Every Dataset.
-			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg), $zfsm_cfg);
+			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps()), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':

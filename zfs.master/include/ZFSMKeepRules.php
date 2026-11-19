@@ -1,5 +1,5 @@
 <?php
-// Keep's rules (Snapshots to keep, Keep Replicas): as saved, shown and said. ZFSMKeep.php applies them; loadConfig reads Keep Replicas.
+// Keep's rules (Snapshots to keep, Copy Keeps, Keep Replicas): as saved, shown and said. ZFSMKeep.php applies them; loadConfig reads Keep Replicas.
 require_once __DIR__.'/ZFSMHelpers.php';
 
 define('ZFSM_KEEP_MAX', 9999);
@@ -44,9 +44,27 @@ function zfsmKeepField($keep) {
 	return implode(' ', $words);
 }
 
-// How to give a Keep it reads, for the end of a message that says what is wrong.
-function zfsmKeepFix() {
-	return 'give a number up to '.ZFSM_KEEP_MAX.', periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all';
+// How to give a Keep it reads, for the end of a message that says what is wrong; $empty: what nothing does.
+function zfsmKeepFix($empty = 'keep all') {
+	return 'give a number up to '.ZFSM_KEEP_MAX.', periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to '.$empty;
+}
+
+// What Copy Keeps holds, as saved: null for nothing (a copy here keeps what its source keeps), 0 for "all", else a Keep as
+// zfsmKeepParse reads it; -1, which no check accepts, when it is none of those.
+function zfsmCopyKeepsParse($text) {
+	$text = trim($text);
+	if ($text === '') return null;
+	return strtolower($text) === 'all' ? 0 : (zfsmKeepParse($text) ?? -1);
+}
+
+// $copy_keeps as Copy Keeps shows it: '' for none, "all" when every snapshot stays, else its rules.
+function zfsmCopyKeepsField($copy_keeps) {
+	return $copy_keeps === null ? '' : (zfsmKeepRules($copy_keeps) ? zfsmKeepField($copy_keeps) : 'all');
+}
+
+// What a copy with $copy_keeps keeps, in words; '' for none.
+function zfsmCopyKeepsWords($copy_keeps) {
+	return $copy_keeps === null ? '' : (zfsmKeepRules($copy_keeps) ? zfsmKeepWords($copy_keeps) : 'all its snapshots');
 }
 
 // What Keep Replicas' field says of $text: '' when Keep reads it, else that all stay and how to fix it.

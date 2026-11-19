@@ -52,7 +52,7 @@ $pool('marks', array());
 $pool('props', array("tank/docker/0a1b\tmountpoint\tlegacy"));
 $pool('holds', array());
 $copies = function($zdataset) use ($cfg) { return zfsmScheduleDialogPreview($zdataset, $cfg)['copies']; };
-$fields = function($every, $time = '00:00', $days = null, $keep = '') { return array('every' => $every, 'time' => $time, 'days' => $days ?? range(0, 6), 'keep' => $keep); };
+$fields = function($every, $time = '00:00', $days = null, $keep = '', $copy_keeps = '') { return array('every' => $every, 'time' => $time, 'days' => $days ?? range(0, 6), 'keep' => $keep, 'copy_keeps' => $copy_keeps); };
 
 // The dialog's start: Replication follows Replicate Every Dataset, off at first.
 same($fields('default') + array('under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => ''), $copies('tank/data'), 'nothing to follow');
@@ -69,7 +69,7 @@ same(array('backup is in pool backup, where its copy would go', ''), array($copi
 
 // Save: what is wrong in either part is said, by part, and nothing saved.
 $save = function($zdataset, $snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg); };
-$part = function($every, $time = '', $days = '', $keep = 0, $under = '') { return array('every' => $every, 'time' => $time, 'days' => $days, 'keep' => $keep, 'under' => $under); };
+$part = function($every, $time = '', $days = '', $keep = 0, $under = '', $copy_keeps = null) { return array('every' => $every, 'time' => $time, 'days' => $days, 'keep' => $keep, 'copy_keeps' => $copy_keeps, 'under' => $under); };
 $before = $stored();
 $refused = array(
 	array('tank/data', $part('days'), $part('hourly'), 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Copy Under, name a dataset on this server, such as backup'),
@@ -116,6 +116,12 @@ $late[] = $save('tank/data', $part('days', $free, '1', 2), $part('none', '', '',
 $pool('marks', $marks);
 same(array(true, true, array('none'), 'Nothing was saved: Snapshots: tank/data has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'), $late,
 	'with Sanoid snapshots on it since, Replication None saves; changed snapshots are refused');
+// Copy Keeps goes with the copies: saved, said and shown when the dialog opens again; None saves none.
+$own = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] !== ''; })); };
+$kept = $save('tank/data', $part('days', $free, '1', 1), $part('hourly', '', '', 2, 'usb', '30d'));
+same(array(true, 1, array('30d'), '30d'), array($kept['saved'], preg_match('/; it keeps the newest 2 of the snapshots of each dataset it copies; each copy keeps 30 daily(;|$)/', $kept['said']),
+	array_column($own(), 'copy_keeps'), $copies('tank/data')['copy_keeps']), 'saved, said and shown: '.$kept['said'].$kept['why']);
+same(array(true, array()), array($save('tank/data', $part('days', $free, '1', 1), $part('none', '', '', 0, 'usb', '30d'))['saved'], array_column($own(), 'copy_keeps')), 'None saves none');
 
 // Snapshots Pattern since names a day's runs alike: a part as saved isn't refused for it, either way round; a changed one is.
 $daily = function($snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave('tank/data', $snapshots, $copies, array('snap_pattern' => 'Ymd') + $cfg); };

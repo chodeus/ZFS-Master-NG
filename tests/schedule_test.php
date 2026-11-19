@@ -182,6 +182,13 @@ same(array(array('tank/data' => 'Nothing was scheduled: '.$no_repeat), array('ta
 same(array('tank/data' => 'Nothing was scheduled: give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', '', 'backup', '', 'days', '04:00', '1', 0, $cfg)['failed'], 'one here whose copy is no dataset in a pool');
 same(array('tank/data' => 'Nothing was scheduled: '.$no_day.'; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '04:00', '', -1, $cfg)['failed'],
 	'one with no day ticked and no number to keep says both');
+same(array(array(null, 0, 0, 0, '30d 12m', 5, -1), array('', 'all', 'all', '5', '30d 12m')),
+	array(array_map('zfsmCopyKeepsParse', array(' ', ' ALL ', 'all', '0', ' 12M 30d ', '5', 'x')), array_map('zfsmCopyKeepsField', array(null, 0, '0', 5, '30d 12m'))),
+	'Copy Keeps: nothing, all (0 too), rules, and what it can\'t read; shown back as given');
+same(array(array('tank/data' => 'Nothing was scheduled: leave Copy Keeps empty: what a copy on another server keeps, its Keep Replicas decides'),
+	array('tank/data' => 'Nothing was scheduled: under Copy Keeps, give all to keep every snapshot, or give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep what its source keeps')),
+	array(zfsmScheduleAdd('tank/data', '', 'copy', 'nas', 'hourly', '', '', 0, $cfg, 0)['failed'], zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, $cfg, -1)['failed']),
+	'Copy Keeps on a copy on another server, and one it can\'t read');
 $listed = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), json_encode(array(array('minute' => 0) + $jobs[0])));
 same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'hourly', '', '', 0, $cfg)['failed'],
@@ -355,6 +362,17 @@ same(array('warning: Scheduled run not started: '.zfsmSafeText($unreadable).'. L
 @unlink(zfsmScheduleStateFile($id));
 file_put_contents(zfsmScheduleFile(), '[{"id":"zz"},'.substr($saved, 1));
 same(true, strpos(zfsmSchedulesHtml($cfg), '1 record(s) in '.zfsmHtml(zfsmScheduleFile()).' are not schedules the plugin can use') !== false, 'a record it can\'t use is counted in Settings');
+
+// Copy Keeps is read back only where it can apply, and said in Settings.
+$job = array_values(array_filter($stored(), function($job) use ($id) { return ($job['id'] ?? '') === $id; }))[0];
+$kinds = zfsmScheduleRead(json_encode(array($job + array('copy_keeps' => '30d'), array('id' => '0badc0de', 'server' => 'nas', 'dest' => 'copy', 'copy_keeps' => 0) + $job,
+	array('id' => '0badc0df', 'dest' => 'backup/three', 'copy_keeps' => -1) + $job, array('id' => '0badc0e0', 'dataset' => '', 'dest' => '', 'copy_keeps' => 0) + $job,
+	array('id' => '0badc0e1', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none', 'copy_keeps' => 0) + $job, array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none') + $job)));
+same(array(array($id => $job + array('copy_keeps' => '30d'), '0badc0e2' => array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'server' => '', 'every' => 'none') + $job), 4), array($kinds['valid'], count($kinds['other'])),
+	'kept on a copy here; not on a server\'s, unread, with no copy, or on None, which copies nothing');
+same(array('keeps all its snapshots; its copy keeps 30 daily', 'keeps the newest 2 of the snapshots of each dataset it copies; each copy keeps all its snapshots', 'keeps all its snapshots'),
+	array(zfsmScheduleKeepText($job + array('copy_keeps' => '30d')), zfsmScheduleKeepText(array('dataset' => '', 'dest' => 'backup/', 'keep' => 2, 'copy_keeps' => 0) + $job), zfsmScheduleKeepText($job)),
+	'Settings says what a copy keeps, and nothing of one with no Copy Keeps');
 
 // Remove takes the schedule out of the list and the cron file, and Unraid rebuilds its crontab; Settings is refused while another change is saved.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);

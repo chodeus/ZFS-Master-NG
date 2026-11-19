@@ -30,6 +30,7 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<dt>Copy Under:</dt><dd><input id="zfsm-copysched-under" value="backup"></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-copysched-days"><input type="checkbox" class="zfsm-copysched-day" value="3" checked><input type="checkbox" class="zfsm-copysched-day" value="5"></span></dd>'
   + '<dt>Starts At:</dt><dd><input id="zfsm-copysched-time" value="02:30"></dd><dt>Snapshots To Keep:</dt><dd><input id="zfsm-copysched-keep" value="7d"></dd>'
+  + '<dt>Copy Keeps:</dt><dd><input id="zfsm-copysched-copy-keeps" value=" 30D "></dd>'
   + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-copysched-save"> <span id="zfsm-copysched-status"></span></dd></dl>'
   + '<span id="zfsm-schedules"><span>tank/data to backup/data</span></span><span id="zfsm-schedules-status"></span></body>',
   {url: 'http://localhost/', runScripts: 'outside-only'});
@@ -256,15 +257,15 @@ posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}
 assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), text('zfsm-schedules')], [false, 'Unknown or missing command', 'z'], 'as does a backend failure');
 
 // Replicate Every Dataset: its own rows by its prefix, Copy Under with Keep; on load as saved (Every hour), and Save sends Copy Under too.
-const copyShown = () => ['zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep'].map(id => window.document.getElementById(id).closest('dd').style.display);
-assert.deepEqual(copyShown(), ['', 'none', 'none', ''], 'Every hour on load shows Copy Under and Keep only');
+const copyShown = () => ['zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep', 'zfsm-copysched-copy-keeps'].map(id => window.document.getElementById(id).closest('dd').style.display);
+assert.deepEqual(copyShown(), ['', 'none', 'none', '', ''], 'Every hour on load shows Copy Under, Keep and Copy Keeps only');
 $('#zfsm-copysched-every').val('off').trigger('change');
-assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none'], 'Off shows none of its other rows');
+assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
 assert.deepEqual(shown(), ['/', '/', '/'], 'and leaves Snapshot Every Dataset\'s rows as they were');
 $('#zfsm-copysched-every').val('days').trigger('change');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 const copies = posts.pop();
-assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup'});
+assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', copy_keeps: ' 30D '});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-snapsched-status')], [true, 'Saving…', 'Unknown or missing command'], 'its Save and answer are its own');
 copies.done({said: 'Saved: a copy of each of 4 dataset(s) under backup', schedules_html: 'w'});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);

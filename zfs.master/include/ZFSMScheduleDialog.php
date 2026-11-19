@@ -21,7 +21,7 @@ function zfsmScheduleDialogPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_
 		'skipped' => zfsmScheduleSnapshotNot($zdataset, $listed), 'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
 }
 
-// The dialog's Replication: $zdataset's own copies, Copy Under (its own, else what Default follows), what Default follows, and why
+// The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under (its own, else what Default follows), what Default follows, and why
 // what it follows leaves it out besides the reasons Snapshots shows (zfsmScheduleCopiesNot); '' when it copies it or nothing does.
 function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$own = zfsmScheduleOwn($jobs, $zdataset, 'zfsmScheduleCopiesUnder');
@@ -31,16 +31,16 @@ function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$runs = $job ?? $followed;
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
 	$skipped = $runs !== null && $runs['every'] !== 'none' && $row !== null ? zfsmScheduleCopiesNot($runs, $jobs, $zdataset, $row, $listed['name']) : '';
-	return zfsmScheduleDialogFields($job) + array('under' => $under !== null && $under['every'] !== 'none' ? substr($under['dest'], 0, -1) : '',
+	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => $under !== null && $under['every'] !== 'none' ? substr($under['dest'], 0, -1) : '',
 		'inherited' => zfsmScheduleCopiesFollowedText($followed), 'skipped' => $skipped);
 }
 
-// Saves $zdataset's own snapshot schedule ($snapshots: every, time, days, keep) and its own copies ($copies: those and under) in one
+// Saves $zdataset's own snapshot schedule ($snapshots: every, time, days, keep) and its own copies ($copies: those, copy_keeps and under) in one
 // change, 'default' removing either. Nothing is taken or copied now. As zfsmScheduleChange answers, and 'said' of both.
 function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	if (!zfsmValidDatasetName($zdataset)) return array('saved' => false, 'why' => 'Nothing was saved: that is no dataset name', 'said' => '');
 	$snap = zfsmScheduleSnapshotRecord($zdataset, $snapshots['every'], $snapshots['time'], $snapshots['days'], $snapshots['keep']);
-	$copy = zfsmScheduleCopiesRecord($zdataset, $copies['every'], $copies['under'], $copies['time'], $copies['days'], $copies['keep']);
+	$copy = zfsmScheduleCopiesRecord($zdataset, $copies['every'], $copies['under'], $copies['time'], $copies['days'], $copies['keep'], $copies['copy_keeps']);
 	$drop = array($snapshots['every'] === 'default', $copies['every'] === 'default');
 	$wrong = zfsmScheduleDialogWhy(zfsmScheduleSnapshotWrong($snap, $drop[0]), zfsmScheduleCopiesWrong($copy, $drop[1]));
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');

@@ -817,6 +817,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					// A name typed in stays; one the dialog filled in follows the server.
 					if (dest.value === filled) dest.value = filled = zfsmReplicateName(options.last_destination, server.value, zdataset);
 					dest.placeholder = server.value === '' ? 'pool/dataset' : 'name';
+					zfsmReplicateRepeatSync(popup);
 					plan();
 				});
 				plan();

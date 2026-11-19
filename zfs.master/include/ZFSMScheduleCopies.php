@@ -43,11 +43,11 @@ function zfsmScheduleCopiesOwnRepeat($job, $other, $zdataset) {
 }
 
 // The record Save makes of copies under $under here: Settings' Replicate Every Dataset ($zdataset ''), or a dataset's own; None
-// has none.
-function zfsmScheduleCopiesRecord($zdataset, $every, $under, $time, $days, $keep) {
+// has none, nor Copy Keeps ($copy_keeps: zfsmCopyKeepsParse's).
+function zfsmScheduleCopiesRecord($zdataset, $every, $under, $time, $days, $keep, $copy_keeps = null) {
 	$job = zfsmScheduleSnapshotRecord($zdataset, $every, $time, $days, $keep);
 	$job['dest'] = ($every === 'none' ? '' : $under).'/';
-	return $job;
+	return zfsmScheduleCopyKeepsSet($job, $every === 'none' ? null : $copy_keeps);
 }
 
 // What the user fixes for Save to make $job, copies under a dataset (or $remove it), as zfsmScheduleSnapshotWrong says it.
@@ -80,9 +80,9 @@ function zfsmScheduleCopiesUnderNot($under, $listed) {
 
 // Saves Replicate Every Dataset in place (zfsmScheduleSnapshotPut), copying under $under here; 'off' removes it. Nothing is copied
 // now. As zfsmScheduleChange answers, and 'said'.
-function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
+function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	$remove = $every === 'off';
-	$job = zfsmScheduleCopiesRecord('', $every, $under, $time, $days, $keep);
+	$job = zfsmScheduleCopiesRecord('', $every, $under, $time, $days, $keep, $copy_keeps);
 	$wrong = zfsmScheduleCopiesWrong($job, $remove);
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');
 	// One zfsmScheduleCoverRead: Copy Under must be there, and the answer counts what a run copies.
@@ -219,7 +219,8 @@ function zfsmScheduleCopiesOne($job, $zdataset, $zdest, $name, &$wait) {
 	$tell = function($title, $text, $type) use (&$said) { $said = array(rtrim($text, '.'), $type); };
 	$waited = function($seconds) use (&$wait) { $wait = max(0, $wait - $seconds); };
 	try {
-		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, '', array('notify' => $tell, 'wait' => $wait, 'waited' => $waited, 'tag' => zfsmKeepTag('', $job['dest']), 'remake' => true), $job['keep']);
+		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, '', array('notify' => $tell, 'wait' => $wait, 'waited' => $waited, 'tag' => zfsmKeepTag('', $job['dest']), 'remake' => true,
+			'copy_keeps' => $job['copy_keeps'] ?? null), $job['keep']);
 	} catch (Throwable $error) {
 		zfsmLog('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()));
 		return array(1, array('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()), 'warning'));
