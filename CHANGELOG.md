@@ -2,59 +2,40 @@
 
 ## Unreleased
 
-- fix(settings): Snapshot Every Dataset rows on jQuery 2; compat check reads Schedules
-- feat(schedules): Snapshot Every Dataset in Settings
-- fix(diagnostics): keep the default's unread note when an own schedule follows it
-- feat(schedules): per-dataset snapshot schedules
-- feat(schedules): leave datasets with Sanoid or Syncoid snapshots to that tool
-- feat(replication): send records over 128K whole (-L)
-- feat(schedules): Snapshots to keep takes periods as well as a number
-- fix(settings): check Keep Replicas as it is typed; retention needs no Destructive Mode, now said
-- feat(replication): Keep Replicas takes periods as well as a number
-- feat(replication): copies to a server travel zstd-compressed when both ends have it
-- fix(schedules): a scheduled run holds snapshots by the copy, so carrying it on by hand takes the holds off
-- fix(schedules): a snapshot-names read that timed out stays unknown, so nothing is copied
-- fix(schedules): say when the snapshot names, not the datasets, could not be read
-- fix(schedules): Replicate Every Dataset skips a start quietly for a day and makes a gone copy again
-- fix(schedules): Replicate Every Dataset waits for a copy's own schedule and leaves out what it cannot copy
-- feat(schedules): Replicate Every Dataset copies each dataset under one dataset here
-- fix(schedules): each scheduled copy uses the Keep saved when it starts; a run stops where the schedules can't be read
-- fix(schedules): a clash is new only for a pair that did not clash before; a run rechecks each dataset against the schedules saved now
-- fix(schedules): no holder where a schedule saved mid-run copies; the fit check follows inherited readonly and mountpoint
-- fix(schedules): no holder above a copy whose names were not read; a rename's fit check follows the new parent
-- fix(schedules): a copy that moves but fails to mount is renamed with its dataset
-- fix(schedules): a rename that lands but fails to mount is followed; a copy another schedule sends into stays; no holder for a dataset gone mid-run
-- fix(schedules): no scheduled refill through a holder; Remove of a gone dataset's schedule; Keep help names the shared tag
-- fix(schedules): a rename needs Destructive Mode and waits for a copy of a legacy layer; Remove checks the clash Default makes; no copy is received over a mounted one
-- fix(schedules): a rename leaves Docker's legacy-mounted layers unlocked unless a repeat copies one; copy checks share one repeat list
-- fix(schedules): a part set to Default and a rename's moved schedules are checked for clashes; a rename holds its datasets' replication locks
-- fix(schedules): a dataset's own schedule, None too, takes it from the one above in clash checks; a rename tells a copy in a pool not imported
-- fix(schedules): Save checks only the parts it changes, and an hourly part takes a free minute
-- fix(schedules): either part as saved skips Save's checks; a rename moves bookmarks whose names end in a space
-- fix(schedules): Snapshots saves beside copies as saved while Copy Under is offline; texts say what None and a gone copy leave
-- fix(replication): a carried-on run tells the first step's warning; the fake destroy drops properties
-- fix(replication): a stopped run resumes after a rename, and the schedules dialog checks the pair as saved
-- fix(schedules): the fake destroy refuses as ZFS does and a dry run changes nothing; Settings says a destroy removes the schedules below it
-- refactor(keep): a run and a rename put holds on through one step, and a run that stops twice tests a hold already on
-- fix(schedules): a rename carries a stopped run's holds to the copy's new name
-- fix(schedules): copies wait for each other's holders, a rename moves only its own copy and its bookmarks
-- feat(schedules): Schedules sets a dataset's own copies under a dataset, and a rename takes its copies along
-- feat(replication): a dataset's first copy replaces the empty holder in its place and keeps the copies below it
-- fix(schedules): a run leaves out a dataset its snapshot name is too long after, and takes the rest at one moment
-- fix(diagnostics): a snapshot name too long after a dataset on the server is named, with how many it is too long after
-- fix(snapshots): a new snapshot name counts its dataset toward 255, Apply waits for the name check, and rename and destroy use the same rule
-- fix(settings): a Snapshots Pattern or Prefix that gives names ZFS refuses is refused at Apply, and nothing takes a snapshot by it
-- fix(schedules): a run cron starts again when the clock goes back leaves out what the first took, and Repeat no longer refuses it
-- fix(schedules): a copy left behind on rename says when a Replicate repeat still sends into it
-- fix(schedules): a Replicate repeat of a renamed dataset follows its copy under Copy Under
-- fix: Destructive Mode on Edit, schedules after renames, names ending in a space
-- refactor(schedules): Copy Keeps' text beside its rules; comments say what Copy Keeps spares
-- fix(keep): Copy Keeps never removes the snapshot just sent; one owner with Keep Replicas
-- feat(schedules): a copy in another pool keeps by its own Copy Keeps
-- fix(schedules): Every Dataset's Saves and the list's buttons wait for each other
-- refactor(schedules): Change Keep's builder decides which rows get it
-- fix(schedules): the list's buttons wait for the answer; Change Keep answers through zfsmScheduleSavedJson
-- feat(schedules): Change Keep sets a Replicate repeat's Keep and Copy Keeps in place
+**Snapshot schedules**
+
+- New Snapshot Every Dataset setting: snapshots your datasets hourly or on chosen days
+- A dataset can have its own schedule, or None, under Actions > Schedules
+- Read-only, legacy-mounted and Sanoid/Syncoid datasets are left out; the dialog says why
+- Snapshots to keep also takes periods, such as `24 7d 4w 12m`
+
+**Replication**
+
+- New Replicate Every Dataset setting: copies your datasets under one dataset here
+- A dataset can have its own scheduled copies, or None, under Actions > Schedules
+- A copy in another pool here can keep more or fewer snapshots (Copy Keeps)
+- Change Keep, under a Replicate repeat in Settings, changes what it keeps in place
+- Keep Replicas also takes periods, by when the sender took each snapshot
+- Unencrypted copies to another server travel zstd-compressed when both have it
+- Copies keep records larger than 128K whole
+
+**Renames and destroys**
+
+- Renaming a dataset moves its schedules, repeats and copies under Copy Under
+- Destroying a dataset removes its schedules and repeats; its copies stay
+
+**Fixes**
+
+- Settings refuses a Snapshots Pattern or Prefix that makes names ZFS rejects
+- Snapshot names too long for ZFS are refused up front, with the reason
+- When summer time ends, the hour's second run no longer reports a problem
+- Dataset names that end in a space now work in Replicate and renames
+
+**After going back to an older version**
+
+- New snapshot and copy schedules, and Keep periods, wait until you update again
+- A copy with records over 128K takes no new runs until you update
+- Copy Keeps is ignored, so copies lose what their source loses
 
 ## 2026.11.16.5 (beta)
 
