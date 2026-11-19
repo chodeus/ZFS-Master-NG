@@ -15,6 +15,7 @@ $zfsm_saved = parse_plugin_cfg($plugin, true);
 $zfsm_cfg = loadConfig($zfsm_saved);
 // Keep Replicas' field shows what applies (empty: all), so a saved value it can't read never holds up Apply; the warning names it.
 $zfsm_keep_warning = zfsmKeepReplicaWarning((string)($zfsm_saved['general']['replica_keep'] ?? ''));
+$zfsm_name_warning = zfsmNewSnapshotNameWhy(zfsmNewSnapshotNameRefused($zfsm_cfg, time()), true);
 $zfsm_snapsched = zfsmScheduleShown();
 $zfsm_copysched = zfsmScheduleShown('zfsmScheduleCopiesUnder');
 $zfsm_version = zfsmPluginVersion("/var/log/plugins/$plugin.plg");
@@ -155,11 +156,11 @@ _(Dataset Icon Alert Max Days)_:
 :end
 
 _(Snapshots Pattern)_:
-: <input type="text" name="snap_pattern" value="<?=zfsmHtml($zfsm_cfg['snap_pattern'])?>" placeholder="default Y-m-d-His">
+: <input type="text" name="snap_pattern" value="<?=zfsmHtml($zfsm_cfg['snap_pattern'])?>" placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828"><?=zfsmHtml($zfsm_name_warning)?></span>
 
 :zc_settings_snapshots_pattern_plug:
 > Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab, those **Replicate** takes, and each scheduled run's.
-> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`: one with any other character is refused.
+> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may be up to 255 long and hold only letters, digits, spaces and `_ . : -`. Typing a pattern or prefix that gives any other, now or in half a year, names it in red beside this field, and then Apply is refused. One saved all the same is named there too, and a new or changed schedule is not saved; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
 :end
 
 _(Snapshot Time)_:
@@ -585,4 +586,22 @@ function zfsmCheckKeep() {
 	});
 }
 $('input[name="replica_keep"]').on('input', zfsmCheckKeep);
+// Snapshots Pattern, Prefix and Time, checked as they change: once the server says ZFS refuses a name they give, Apply is refused; as Keep Replicas.
+function zfsmCheckSnapName() {
+	var fields = $('input[name="snap_pattern"], input[name="snap_prefix"]');
+	var asked = function() {
+		return {cmd: 'validatesnapname', pattern: $('input[name="snap_pattern"]').val(), prefix: $('input[name="snap_prefix"]').val(), utc: $('select[name="snap_utc"]').val()};
+	};
+	var sent = asked();
+	fields.each(function() { this.setCustomValidity(''); });
+	var warning = $('#zfsm-snap-name-warning').text('');
+	zfsmSendPost(sent, function(answer) {
+		if (JSON.stringify(asked()) !== JSON.stringify(sent)) return;
+		if (answer.error) return warning.text('This could not be checked: '+answer.error);
+		warning.text(answer.warning);
+		fields.each(function() { this.setCustomValidity(answer.warning); });
+	});
+}
+$('input[name="snap_pattern"], input[name="snap_prefix"]').on('input', zfsmCheckSnapName);
+$('select[name="snap_utc"]').on('change', zfsmCheckSnapName);
 </script>

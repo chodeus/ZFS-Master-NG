@@ -87,8 +87,8 @@ function zfsmDiagSettingProblems($ctx) {
 		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.zfsmDiagToken($name);
 		elseif (is_string($value) && zfsmConfigValueUnsafe($value)) $problems[] = $name.' holds text that a save would refuse';
 	}
-	$snapshot = zfsmNewSnapshotName($cfg, time());
-	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($snapshot);
+	$refused = zfsmNewSnapshotNameRefused($cfg, time());
+	if ($refused !== null) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($refused);
 	$pattern = $cfg['dataset_exclusion'];
 	if (!zfsmExclusionIsValid($pattern)) $problems[] = 'the exclusion pattern is invalid, so it is ignored';
 	elseif (strpos($pattern, '%') !== false) $problems[] = 'the exclusion pattern is a Lua pattern, the format older versions used';

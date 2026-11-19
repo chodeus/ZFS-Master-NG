@@ -369,6 +369,11 @@ function zfsmValidNameComponent($part) {
 	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
 }
 
+// Whether ZFS takes $name after a dataset's @.
+function zfsmValidSnapshotPart($name) {
+	return is_string($name) && strlen($name) <= 255 && zfsmValidNameComponent($name);
+}
+
 function zfsmValidDatasetName($name) {
 	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
 	$parts = explode('/', $name);
@@ -397,6 +402,23 @@ function zfsmCronText($what, $lines) {
 function zfsmNewSnapshotName($cfg, $now) {
 	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
+// A name zfsmNewSnapshotName gives that ZFS refuses, now or half a year on (T and P change with summer time); null when it takes both.
+function zfsmNewSnapshotNameRefused($cfg, $now) {
+	foreach (array($now, $now + 182 * 86400) as $at) {
+		$name = zfsmNewSnapshotName($cfg, $at);
+		if (!zfsmValidSnapshotPart($name)) return $name;
+	}
+	return null;
+}
+
+// Why ZFS refuses $name, a new snapshot's from Snapshots Pattern and Prefix; '' when it takes it, or for null (none refused).
+// $show names it: only Settings does, as a bare @name in a log line escapes the diagnostics' redaction.
+function zfsmNewSnapshotNameWhy($name, $show = false) {
+	if ($name === null || zfsmValidSnapshotPart($name)) return '';
+	return 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses'.($show ? ', such as @'.$name : '')
+		.': a name may be up to 255 long and hold only letters, digits, spaces and _ . : -';
 }
 
 // A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.

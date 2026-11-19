@@ -36,7 +36,7 @@ function zfsmFailure($subject, $message) {
 function zfsmValidSnapshotName($name) {
 	if (!is_string($name) || substr_count($name, '@') !== 1) return false;
 	list($dataset, $snapshot) = explode('@', $name, 2);
-	return zfsmValidDatasetName($dataset) && strlen($snapshot) <= 255 && zfsmValidNameComponent($snapshot);
+	return zfsmValidDatasetName($dataset) && zfsmValidSnapshotPart($snapshot);
 }
 
 function zfsmDatasetExists($name, $types = 'filesystem,volume') {
@@ -895,7 +895,9 @@ function convertDirectory($directory, $pool, $clone = true) {
 // A new snapshot's name: the prefix, then the date in local time or, when set, UTC.
 // $props: properties the snapshot is made with (zfs snapshot -o).
 function createDatasetSnapshot($zdataset, $snapshot_name, $recursive, $props = array()) {
-	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
+	if (!zfsmDatasetExists($zdataset)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
+	$untaken = zfsmNewSnapshotNameWhy($snapshot_name);
+	if ($untaken !== '') return zfsmFailure($zdataset, $untaken);
 	$args = array('snapshot');
 	if ((string)$recursive === '1') $args[] = '-r';
 	foreach ($props as $property => $value) array_push($args, '-o', $property.'='.$value);

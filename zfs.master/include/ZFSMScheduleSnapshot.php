@@ -275,14 +275,15 @@ function zfsmScheduleSnapshotPlace($jobs, &$job, $remove) {
 }
 
 // Why $job, placed in $jobs, can't run beside the others there but $aside (still nearer, as zfsmScheduleShare reads them): one starts
-// in its minute, or Snapshots Pattern names two runs alike. '' when it can.
+// in its minute, Snapshots Pattern names two runs alike, or ZFS refuses its names (last: zfsmScheduleNewClash tells a new clash). '' when it can.
 function zfsmScheduleSnapshotCheck($jobs, $job, $cfg, $aside = array()) {
 	$others = array_diff_key($jobs, array($job['id'] => 0));
 	foreach (array_keys(array_intersect_key($others, $aside)) as $id) $others[$id]['every'] = 'none';
 	$same = zfsmScheduleSame($others, $job);
 	if ($same !== '') return $same;
 	$clash = zfsmScheduleClash($job, $others, $cfg, time(), false);
-	return $clash === '' ? '' : $clash.'; add the time to Snapshots Pattern';
+	if ($clash !== '') return $clash.'; add the time to Snapshots Pattern';
+	return zfsmScheduleRepeats($job['every']) ? zfsmNewSnapshotNameWhy(zfsmNewSnapshotNameRefused($cfg, time())) : '';
 }
 
 // The first clash (zfsmScheduleSnapshotCheck) a schedule in $after has with one it did not clash with in $before (the same schedules by
@@ -374,11 +375,13 @@ function zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace) {
 
 // What a run took and kept, and whether it had a problem: null when zfs read every pool and the default had no dataset to take.
 function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
+	$name = zfsmNewSnapshotName($cfg, $now);
+	$untaken = zfsmNewSnapshotNameWhy($name);
+	if ($untaken !== '') return array('Scheduled snapshots not taken: '.$untaken, true);
 	$listed = zfsmScheduleCoverRead($cfg, $wait);
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
 	if (!$pools) return zfsmScheduleSnapshotNone($job, $listed, $unread);
 	$self = zfsmScheduleSnapshotSelf($job, $listed);
-	$name = zfsmNewSnapshotName($cfg, $now);
 	$taken = 0;
 	$failed = $stayed = array();
 	foreach ($pools as $pool => $datasets) {

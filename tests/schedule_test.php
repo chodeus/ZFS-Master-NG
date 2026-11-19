@@ -185,6 +185,15 @@ same(1, preg_match('/^Nothing was scheduled: Snapshots Pattern would give the ru
 // Twelve hours off: the hourly schedule's run in that hour is the only snapshot it could share a name with.
 same(1, preg_match('/^Nothing was scheduled: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+ of the copy to backup\/data; add the time to it in Settings$/D',
 	zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', sprintf('%02d:%02d', ((int)date('G') + 12) % 24, ($jobs[0]['minute'] + 30) % 60), $every, 0, $hours)['failed']['tank/data'] ?? ''), 'a daily one whose names an hourly one of the dataset takes too');
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -';
+same(array(array('tank/data' => 'Nothing was scheduled: '.$untaken), $listed), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, array('snap_pattern' => 'Y/m/d-His') + $cfg)['failed'],
+	file_get_contents(zfsmScheduleFile())), 'one whose new snapshots ZFS refuses the names of: none saved, no run started');
+// Azores' T is -01 in winter and +00 in summer, which ZFS refuses: refused in either season, from October to March by the half-year look only.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Atlantic/Azores');
+same(array('tank/data' => 'Nothing was scheduled: '.$untaken), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, array('snap_pattern' => 'Y-m-d-His-T', 'snap_utc' => 0) + $cfg)['failed'],
+	'and one whose names ZFS refuses in summer time only');
+date_default_timezone_set($zone);
 same(array('tank/data' => 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now'), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'days', '03:00', '1', 0, $cfg)['failed'], 'one with a snapshot picked');
 same(array('tank/data' => 'Nothing was scheduled: '.$no_repeat), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'often', '03:00', '1', 0, $cfg)['failed'], 'and one that repeats no way it knows, with a snapshot picked too');
 same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'days', sprintf('03:%02d', ($jobs[0]['minute'] + 30) % 60), '2', 0, $cfg)['failed'],

@@ -35,6 +35,9 @@ $cases = array(
 	'accept_unread' => array(array('cmd' => 'validateaccept', 'dataset' => 'tank/locked'), '0', '', 'accept_unread'),
 	'keep_read' => array(array('cmd' => 'validatekeep', 'keep' => ' 24 7D, 4w '), '0', '', 'keep_read'),
 	'keep_unread' => array(array('cmd' => 'validatekeep', 'keep' => ' 7d 7d '), '0', '', 'keep_unread'),
+	'snapname_refused' => array(array('cmd' => 'validatesnapname', 'pattern' => '\\x/', 'prefix' => 'a', 'utc' => '1'), '0', '', 'snapname_refused'),
+	'snapname_read' => array(array('cmd' => 'validatesnapname', 'pattern' => 'Y-m-d-His', 'prefix' => 'auto-', 'utc' => '0'), '0', '', 'snapname_read'),
+	'snapname_blank' => array(array('cmd' => 'validatesnapname', 'pattern' => '', 'prefix' => '', 'utc' => ''), '0', '', 'snapname_read'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -72,6 +75,8 @@ $accept = array('accept_valid' => array('valid' => true, 'missing' => false), 'a
 if (isset($accept[$expected])) $passed = $answer === $accept[$expected];
 if ($expected === 'keep_read') $passed = $answer === array('warning' => '');
 if ($expected === 'keep_unread') $passed = $answer === array('warning' => '"7d 7d" is not read, so all stay: give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all');
+if ($expected === 'snapname_read') $passed = $answer === array('warning' => '');
+if ($expected === 'snapname_refused') $passed = $answer === array('warning' => 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @ax/: a name may be up to 255 long and hold only letters, digits, spaces and _ . : -');
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {
