@@ -233,6 +233,11 @@ function zfsmDiagCronLine($lines, $command) {
 	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/'.$command.'(\s|$)~', $lines);
 }
 
+// A schedule's keep (0: all), and its Copy Keeps when it has one.
+function zfsmDiagKeepCell($job) {
+	return $job['keep'].(isset($job['copy_keeps']) ? ', copy '.$job['copy_keeps'] : '');
+}
+
 // Schedules of copies and of snapshots: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
 function zfsmDiagReplicaSchedules($ctx) {
 	$file = zfsmScheduleFile();
@@ -252,7 +257,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 		$what = zfsmScheduleCopiesUnder($job) ? array($whose, $under) : (zfsmScheduleSnapshotsOnly($job) ? array($whose, '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest));
 		$runs = zfsmScheduleRepeats($job['every']);
 		$failures = zfsmScheduleProblems($job);
-		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), $job['keep'], $failures)))."\n";
+		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), zfsmDiagKeepCell($job), $failures)))."\n";
 		$wrong = array(
 			'schedule '.$id.' has no line in the live crontab, so it does not run' => $runs && !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
 			'schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => $runs && !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
@@ -266,7 +271,7 @@ function zfsmDiagReplicaSchedules($ctx) {
 	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
 	$listed = $read === null ? ($unread ? zfsmDiagUnread('(schedules.json could not be read)') : '(schedules.json is not a list of schedules)') : ($rows !== '' ? $rows : '(none)');
 	return 'records in schedules.json the plugin does not use: '.$unused."\n".$covers."\n"
-		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)', $listed)
+		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all) and copy keeps if set, runs in a row with a problem)', $listed)
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))
 		.zfsmDiagSection('their lines in the live crontab', $live_unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
 }

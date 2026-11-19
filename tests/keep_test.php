@@ -264,6 +264,43 @@ $pruned = zfsmKeepPrune('tank/many', array('server' => '', 'dest' => 'backup/man
 $left = array('m1', 'm2', 'm3', 'm54', 'm55', 'm56', 'm57', 'm58', 'm59', 'm60');
 same(array('', 100, $left, $left), array($pruned, count($destroys()), $short('tank/many'), $short('backup/many')), 'at most 50 a run, oldest first, past the copy\'s held and cloned ones');
 $pool('holds', array());
+// Copy Keeps: the source keeps by its Keep alone and the copy here by its own rules, every snapshot in it counting, one made by
+// hand too; 0 (all) keeps every one in the copy.
+$pair = function($name, $guid) use ($append) {
+	$append('datasets', "tank/$name\tfilesystem");
+	$append('datasets', "backup/$name\tfilesystem");
+	$append('marks', "backup/$name@hand\t$guid\t$guid");
+	for ($k = 1; $k <= 5; $k++) {
+		$append('marks', "tank/$name@c$k\t".($guid + $k)."\t".($guid + $k));
+		$append('props', "tank/$name@c$k\tzfs.master:schedule\t".zfsmKeepTag('', "backup/$name"));
+		$append('marks', "backup/$name@c$k\t".($guid + $k)."\t".($guid + 10 + $k));
+	}
+	return array(zfsmKeepTag('', "backup/$name"), array('server' => '', 'dest' => "backup/$name", 'snapshot' => "tank/$name@c5"));
+};
+list($ck, $plan) = $pair('ck', 9300);
+$append('holds', "backup/ck@c1\tmine");
+$reset();
+same(array('', array('c4', 'c5'), array('c1', 'c3', 'c4', 'c5'), 5), array(zfsmKeepPrune('tank/ck', $plan, 2, $ck, 3), $short('tank/ck'), $short('backup/ck'), count($destroys())),
+	'the source keeps its newest 2 though the copy\'s c1 is held; the copy its newest 3 and the held one, the one made by hand counted');
+same(1, substr_count($log(), 'Removed backup/ck@hand (not among the newest 3 Copy Keeps keeps)'), 'each removal from the copy says why');
+$reset();
+same(array('', array()), array(zfsmKeepCopyPrune(array('server' => 'nas') + $plan, 1), $destroys()), 'never a copy on a server: a dataset here can have its name');
+list($ca, $plan) = $pair('ca', 9400);
+$reset();
+same(array('', array('c4', 'c5'), array('hand', 'c1', 'c2', 'c3', 'c4', 'c5')), array(zfsmKeepPrune('tank/ca', $plan, 2, $ca, 0), $short('tank/ca'), $short('backup/ca')), 'all keeps every one in the copy');
+list($cn, $plan) = $pair('cn', 9500);
+$reset();
+same(array('', array('c1', 'c2', 'c3', 'c4', 'c5'), array('c4', 'c5')), array(zfsmKeepPrune('tank/cn', $plan, 0, $cn, 2), $short('tank/cn'), $short('backup/cn')), 'with a source that keeps all, the copy keeps by its own');
+list($cu, $plan) = $pair('cu', 9600);
+putenv('ZFSM_TEST_KEEP_LIST_FAIL=backup/cu');
+$reset();
+same(array('Copy Keeps could not read the snapshots of backup/cu', array('c4', 'c5'), 3), array(zfsmKeepPrune('tank/cu', $plan, 2, $cu, 2), $short('tank/cu'), count($destroys())), 'a copy it can\'t read keeps all, and its source goes on');
+putenv('ZFSM_TEST_KEEP_LIST_FAIL');
+list($cs, $plan) = $pair('cs', 9700);
+$append('marks', "backup/cs@late\t9790\t9799");
+$reset();
+same(array('', array('c5', 'late')), array(zfsmKeepPrune('tank/cs', $plan, 2, $cs, 1), $short('backup/cs')), 'the one just sent stays in the copy, though Copy Keeps 1 keeps a newer one there');
+$pool('holds', array());
 // Keep Replicas too, and its held ones take no place either.
 $append('datasets', "tank/recv\tfilesystem");
 for ($k = 1; $k <= 60; $k++) $append('marks', "tank/recv@m$k\t".(9200 + $k)."\t".(9200 + $k));
@@ -343,6 +380,14 @@ same(array('1 1d', true, 2), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($c
 $reset();
 same(array(0, 4, 1, 4), array(zfsmScheduleRun($jobs[0]['id'], $cfg, (int)($t0 + 3600 * 22)), count($destroys()), $tagged(), substr_count($log(), ' (not among the newest 1 and 1 daily its schedule keeps)')),
 	'its next run keeps the newest, removing the other two here and in the copy, each said');
+// Copy Keeps all through the store and a run: the source keeps its newest, the copy all.
+same(true, zfsmScheduleRemove($jobs[0]['id'], $cfg)['saved'], 'that schedule is removed');
+$add('tank/data', '', 'backup/data', '', 'hourly', '', '', 1, $cfg, zfsmCopyKeepsParse('all'));
+$jobs = $stored();
+$copied = count($short('backup/data'));
+$reset();
+same(array(0, 0, 2, array(), 1, $copied + 1), array($jobs[0]['copy_keeps'], zfsmScheduleRun($jobs[0]['id'], $cfg, (int)($t0 + 3600 * 23)), count($destroys()), preg_grep('~backup/~', $destroys()),
+	$tagged(), count($short('backup/data'))), 'saved as 0; its next run removes the older two here (its first run took one), none in the copy');
 $reset();
 foreach (array('1x', '10000', '') as $keep) {
 	$said = array();

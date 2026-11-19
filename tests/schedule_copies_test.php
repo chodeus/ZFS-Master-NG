@@ -485,6 +485,17 @@ $pruned = function($keep) use ($then, $id, $cfg, $t, $reset, $pool, $read, $ever
 	return array_values(array_intersect($older, $read('pool/marks')));
 };
 same(array(array(), $older), array($pruned(1), $pruned(3)), 'a copy keeps as many as its Keep saved now: 1 removes both, 3 keeps both');
+// Its copy already holding them: they go there too, unless Copy Keeps, as saved now, keeps all.
+$copied = function($copy_keeps) use ($then, $id, $cfg, $t, $reset, $pool, $read, $every, $older) {
+	$pool('datasets', array("tank\tfilesystem", "backup\tfilesystem", "backup/tank\tfilesystem"));
+	$pool('marks', array_merge($older, array("backup/tank@a\t11\t300", "backup/tank@b\t12\t400")));
+	$pool('props', array_merge($read('pool/props'), array("tank@a\t".ZFSM_KEEP_TAG."\t".zfsmKeepTag('', 'backup/'), "tank@b\t".ZFSM_KEEP_TAG."\t".zfsmKeepTag('', 'backup/'))));
+	file_put_contents(zfsmScheduleFile(), json_encode(array(zfsmScheduleCopyKeepsSet(array('keep' => 1) + $every, $copy_keeps))));
+	$reset();
+	zfsmScheduleCopiesMade($then[$id], $then, $cfg, $t + 54000, ZFSM_SCHEDULE_WAIT);
+	return array(array_values(array_intersect($older, $read('pool/marks'))), count(preg_grep('~^backup/tank@[ab]\t~', $read('pool/marks'))), count(preg_grep('~^backup/tank@~', $read('pool/marks'))));
+};
+same(array(array(array(), 0, 1), array(array(), 2, 3)), array($copied(null), $copied(0)), 'its copy loses both with its source, or keeps them with Copy Keeps all, beside the one just sent');
 
 // Sydney's clock goes back at 16:00 UTC on 3 April 2027, so it shows 02:30:01 twice: before the change a taken name is a problem
 // as ever; after it, cron's run then leaves out each dataset with the name, and one a second later copies them.

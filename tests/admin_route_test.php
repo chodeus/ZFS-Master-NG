@@ -26,20 +26,21 @@ $routes = array(
 	'schedulekeep' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'days', 'time' => '03:00', 'days' => '0,1,2,3,4,5,6', 'keep' => 'x5'),
 	'scheduleremove' => array('cmd' => 'scheduleremove', 'id' => '../x'),
 	'scheduleremovesaved' => array('cmd' => 'scheduleremove', 'id' => '0a1b2c3d'),
+	'schedulecopykeeps' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'copy_keeps' => 'x5'),
 	'schedulesnapshots' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '3'),
 	'schedulesnapshotstiers' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => ' 24 7D, 4w '),
 	'schedulesnapshotswrong' => array('cmd' => 'schedulesnapshots', 'every' => 'days', 'time' => '', 'days' => '9', 'keep' => 'x5'),
 	'schedulesnapshotsown' => array('cmd' => 'schedulesnapshots', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => ''),
-	'schedulecopies' => array('cmd' => 'schedulecopies', 'under' => 'backup', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '3'),
+	'schedulecopies' => array('cmd' => 'schedulecopies', 'under' => 'backup', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '3', 'copy_keeps' => ' 30D '),
 	'schedulecopiesnowhere' => array('cmd' => 'schedulecopies', 'under' => 'nowhere', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => ''),
 	'scheduledataset' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => '',
-		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => ' 24 7D ', 'under' => 'backup'),
+		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => ' 24 7D ', 'copy_keeps' => 'all', 'under' => 'backup'),
 	'scheduledatasetwrong' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '', 'days' => '', 'keep' => '',
 		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => 'x5', 'under' => 'backup'),
 	'previewschedules' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/data'),
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 );
-$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'scheduledataset', 'scheduledatasetwrong', 'previewschedules', 'previewschedulesbad');
+$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'scheduledataset', 'scheduledatasetwrong', 'previewschedules', 'previewschedulesbad');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -108,6 +109,7 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'schedulenowhere' => $failed === 'Nothing was scheduled: The copy goes inside nowhere, which doesn\'t exist' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulekeep' => $failed === 'Nothing was scheduled: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremove' => $answer === array('error' => 'No such schedule'),
+		'schedulecopykeeps' => $failed === 'Nothing was scheduled: under Copy Keeps, give all to keep every snapshot, or give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep what its source keeps' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremovesaved' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && ($answer['schedules_html'] ?? null) === 'None yet'
 			&& file_get_contents('/boot/config/plugins/zfs.master/schedules.json') === "[]\n",
 		'schedulesnapshots' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps the newest 3 scheduled snapshots of each dataset$/D', $answer['said'] ?? '') === 1
@@ -120,17 +122,19 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'schedulesnapshotsown' => ($answer['said'] ?? '') === 'Saved: a snapshot of each of 1 dataset(s) (tank/data and below) every Monday at 04:00; it keeps all it takes'
 			&& strpos($answer['schedules_html'] ?? '', '>Snapshots of tank/data and below, every Monday at 04:00, keeps all it takes <input type="button" value="Remove"') !== false
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dataset') === array('tank/data'),
-		'schedulecopies' => preg_match('/^Saved: a copy of each of 1 dataset\(s\) under backup every hour at :[0-5][0-9]; it keeps the newest 3 of the snapshots of each dataset it copies$/D', $answer['said'] ?? '') === 1
+		'schedulecopies' => preg_match('/^Saved: a copy of each of 1 dataset\(s\) under backup every hour at :[0-5][0-9]; it keeps the newest 3 of the snapshots of each dataset it copies; each copy keeps 30 daily$/D', $answer['said'] ?? '') === 1
 			&& strpos($answer['schedules_html'] ?? '', '>Replicate Every Dataset under backup, every hour at :') !== false
-			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array('backup/'),
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array('backup/')
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array('30d'),
 		'schedulecopiesnowhere' => $answer === array('error' => 'Nothing was saved: nowhere does not exist on this server') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
-		'scheduledataset' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) \(tank\/data and below\) every Monday at 04:00; it keeps all it takes\. Saved: a copy of each of 1 dataset\(s\) \(tank\/data and below\) under backup every hour at :[0-5][0-9]; it keeps the newest 24 and 7 daily of the snapshots of each dataset it copies$/D', $answer['said'] ?? '') === 1
+		'scheduledataset' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) \(tank\/data and below\) every Monday at 04:00; it keeps all it takes\. Saved: a copy of each of 1 dataset\(s\) \(tank\/data and below\) under backup every hour at :[0-5][0-9]; it keeps the newest 24 and 7 daily of the snapshots of each dataset it copies; each copy keeps all its snapshots$/D', $answer['said'] ?? '') === 1
 			&& strpos($answer['schedules_html'] ?? '', '>Copies of tank/data and below under backup, every hour at :') !== false
-			&& array_map(null, ...array_map(function($key) { return array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), $key); }, array('dest', 'keep'))) === array(array('', 0), array('backup/', '24 7d')),
+			&& array_map(null, ...array_map(function($key) { return array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), $key); }, array('dest', 'keep'))) === array(array('', 0), array('backup/', '24 7d'))
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array(0),
 		'scheduledatasetwrong' => $answer === array('error' => 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
 			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots', 'skipped' => '',
-			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),
+			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'copy_keeps' => '', 'under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),
 		'previewschedulesbad' => ($answer['failed'] ?? null) === array('request' => 'Invalid dataset name'),
 	)[$route];
 	if (!$ok) {

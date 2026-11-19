@@ -284,7 +284,7 @@ switch ($check) {
 		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
 		// Markdown leaves Keep Replicas' pattern whole.
 		if (!$row_has('Keep Replicas', 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="" placeholder="all">')) { fwrite(STDERR, "settings page lost the Keep Replicas row or its pattern\n"); exit(1); }
-		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"', 'Replicate Every Dataset' => '<select id="zfsm-copysched-every">', 'Copy Under' => 'id="zfsm-copysched-under"') as $label => $control) {
+		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"', 'Replicate Every Dataset' => '<select id="zfsm-copysched-every">', 'Copy Under' => 'id="zfsm-copysched-under"', 'Copy Keeps' => 'id="zfsm-copysched-copy-keeps"') as $label => $control) {
 			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
 		// Each Every Dataset row's Days, all seven ticked while it is Off (zfsmScheduleShown).
@@ -314,6 +314,21 @@ switch ($check) {
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
 		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }
+		break;
+
+	case 'settings_copy_keeps':
+		// Replicate Every Dataset's Copy Keeps shows as saved, so its Save sends it back.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$schedules = '/boot/config/plugins/zfs.master/schedules.json';
+		file_put_contents($schedules, json_encode(array(array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => 'backup/', 'server' => '', 'every' => 'hourly', 'minute' => 5, 'hour' => 0,
+			'days' => range(0, 6), 'keep' => 0, 'copy_keeps' => '30d 12m'))));
+		try {
+			$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			unlink($schedules);
+		}
+		if (strpos($html, '<input type="text" id="zfsm-copysched-copy-keeps" maxlength="40" placeholder="same as source" value="30d 12m">') === false) { fwrite(STDERR, "settings page does not show Copy Keeps as saved\n"); exit(1); }
 		break;
 
 	case 'create_popup':

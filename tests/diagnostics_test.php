@@ -395,7 +395,7 @@ $scheduled = function($cron = true, $live = true, $list = null) use ($job) {
 		if ($live) file_put_contents($root.'/etc/cron.d/root', $line, FILE_APPEND);
 	};
 };
-has("== schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
+has("== schedules (id, dataset, copy, when, keep (0: all) and copy keeps if set, runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
 same(array(), $found('zfsmDiagReplicaSchedules', $scheduled())[0], 'a schedule with its lines in both has no findings');
 // Through a whole run: its pools are read first, so a dataset there is named by its pool.
 $build();
@@ -467,6 +467,9 @@ list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use 
 same(array(), $findings, 'Replicate Every Dataset and a None with their lines have no findings');
 has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 2, 0e0e0e0e 1\n", $text, 'each counts its own: the copies leave out the dataset with None');
 same(1, preg_match('~^0e0e0e0e\t\(every dataset\)\tname-[0-9a-f]{8}/ \(each dataset under it\)\tevery hour at :50\t0\t0\n0f0f0f0f\tname-[0-9a-f]{8}/name-[0-9a-f]{8}\t\(no copies\)\tnever\t0\t0$~m', $text), 'their rows, where the copies go a token');
+same(1, preg_match('~^0e0e0e0e\t.*\tevery hour at :50\t0, copy 30d\t0$~m', $found('zfsmDiagReplicaSchedules', function($root) use ($copies) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('copy_keeps' => '30d') + $copies)));
+})[1]), 'and copies with their own Copy Keeps say it after their keep');
 // A dataset only the default takes can't be read: a dataset's own after it, which never takes it, doesn't hide that.
 putenv('ZFSM_TEST_COVER_FAIL=backup/copy');
 $text = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own) {
