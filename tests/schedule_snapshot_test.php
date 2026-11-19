@@ -396,30 +396,44 @@ same(array(array('tank', 'tank/data', 'tank/docker'), 'off', 'Snapshot Every Dat
 	array($own, zfsmScheduleShown()['every'], $preview('backup')['inherited']), 'leaves the datasets\' own');
 same('Saved: tank follows Snapshot Every Dataset, which is off: no scheduled snapshots', zfsmScheduleSnapshotSave('tank', 'default', '', '', 0, $cfg)['said'], 'Default with nothing above');
 
-// Rename: the own schedules of it and below follow it, ids kept, and one left at the new name gives way, its count too.
+// Rename: the schedules of it and below, a Replicate repeat too, follow it, ids kept, and one left at the new name gives way, its count too.
 $pool('datasets', array_merge(explode("\n", trim($listed)), array("tank/data/sub\tfilesystem")));
 zfsmScheduleSnapshotSave('tank/data/sub', 'hourly', '', '', 0, $cfg);
 zfsmScheduleChange(function($jobs) use ($every) {
 	return $jobs + array('5a5a5a5a' => array('id' => '5a5a5a5a', 'dataset' => 'tank/new') + $every, '5b5b5b5b' => array('id' => '5b5b5b5b', 'dataset' => 'tank/new/sub', 'every' => 'none') + $every);
 });
+zfsmScheduleChange(function($jobs) use ($copy) {
+	return $jobs + array('c1c1c1c1' => array('id' => 'c1c1c1c1', 'dataset' => 'tank/data/kid', 'dest' => 'backup/kid') + $copy, 'c2c2c2c2' => array('id' => 'c2c2c2c2', 'dataset' => 'tank/new/old', 'dest' => 'backup/old') + $copy);
+});
+touch(zfsmScheduleStateFile('c2c2c2c2'));
 touch(zfsmScheduleStateFile('5a5a5a5a'));
 touch(zfsmScheduleStateFile('5b5b5b5b'));
 $ids = array_column($stored(), 'id', 'dataset');
 $own = function() use ($stored) { $by = array_column($stored(), 'id', 'dataset'); ksort($by); return $by; };
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), renameDataset('tank/data', 'tank/new', 0, $cfg), 'a rename');
-same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/data'], 'tank/new/sub' => $ids['tank/data/sub']), 3, false, false),
-	array($own(), count($stored()), is_file(zfsmScheduleStateFile('5a5a5a5a')), is_file(zfsmScheduleStateFile('5b5b5b5b'))), 'its own schedules and those below follow it');
+same(array(array('tank/docker' => $ids['tank/docker'], 'tank/new' => $ids['tank/data'], 'tank/new/kid' => 'c1c1c1c1', 'tank/new/sub' => $ids['tank/data/sub']), 4, false, false, false),
+	array($own(), count($stored()), is_file(zfsmScheduleStateFile('5a5a5a5a')), is_file(zfsmScheduleStateFile('5b5b5b5b')), is_file(zfsmScheduleStateFile('c2c2c2c2'))),
+	'its schedules and those below follow it, a Replicate repeat with its copy where it was');
+same('backup/kid', array_column($stored(), 'dest', 'id')['c1c1c1c1'], 'the repeat still copies to where it did');
 $inode = fileinode(zfsmScheduleFile());
 same(array(array('succeeded' => array('tank/vm2' => 0), 'failed' => array()), $inode), array(renameDataset('tank/vm', 'tank/vm2', 0, $cfg), fileinode(zfsmScheduleFile())), 'one with none writes nothing');
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules')),
+same(array('succeeded' => array('tank/newer' => 0), 'failed' => array('Schedules of tank/new' => 'not moved to tank/newer (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate')),
 	renameDataset('tank/new', 'tank/newer', 0, $cfg), 'one whose schedules could not be moved says so');
 zfsmJobUnlock($lock);
 // Destroy: they go, counts too.
 $pool('datasets', array("tank\tfilesystem", "tank/new\tfilesystem", "tank/new/sub\tfilesystem", "tank/docker\tfilesystem"));
 touch(zfsmScheduleStateFile($ids['tank/data']));
 same(array('succeeded' => array('tank/new' => 0), 'failed' => array()), destroyDataset('tank/new', 1), 'a destroy');
-same(array(array('tank/docker' => $ids['tank/docker']), false), array($own(), is_file(zfsmScheduleStateFile($ids['tank/data']))), 'its own schedules and those below go');
+same(array(array('tank/docker' => $ids['tank/docker']), false), array($own(), is_file(zfsmScheduleStateFile($ids['tank/data']))), 'its schedules and those below go, a Replicate repeat too');
+
+// A name may end in a space, which zfs keeps: such a dataset and snapshot are found by it, the mountpoint read, and it renames.
+$pool('datasets', array("tank\tfilesystem", "tank/share \tfilesystem"));
+$pool('marks', array("tank/share @a \t21\t30"));
+$pool('props', array("tank/share \tmountpoint\t/mnt/tank/share "));
+same(array(true, true, '/mnt/tank/share '), array(zfsmDatasetExists('tank/share '), zfsmSnapshotExists('tank/share @a '), getDatasetProperty('tank', 'tank/share ', 'mountpoint')),
+	'a dataset and snapshot whose names end in a space are found, the mountpoint too');
+same(array('succeeded' => array('tank/shared' => 0), 'failed' => array()), renameDataset('tank/share ', 'tank/shared', 0, $cfg), 'and renamed');
 
 // Sanoid's or Syncoid's snapshots leave a dataset to that tool: no run takes it, its own can't be saved, a run of one it has says so,
 // the dialog says why. One below it without them is still taken; a Snapshots Prefix that starts as theirs do names the plugin's own.

@@ -143,7 +143,7 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
 	$snapshot = ($info['code'] ?? 1) === 0 ? zfsmReplicaResumeSnapshot($info['output']) : null;
 	if ($snapshot === null) {
-		return $where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there');
+		return $where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A on that dataset discards it';
 	}
 	if (strncmp($snapshot, $zdataset.'@', strlen($zdataset) + 1) !== 0) return $where.' holds a part-received replication of '.$snapshot.', not of this dataset';
 	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($snapshot, strlen($zdataset) + 1))) return ZFSM_REPLICA_TOO_LONG;

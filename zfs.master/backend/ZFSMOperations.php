@@ -42,7 +42,7 @@ function zfsmValidSnapshotName($name) {
 function zfsmDatasetExists($name, $types = 'filesystem,volume') {
 	if (!zfsmValidDatasetName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', $types, $name));
-	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
+	return ($result['code'] ?? 1) === 0 && ($result['output'] ?? '') === $name;
 }
 
 // True when ZFS says it does not exist, false when it does, null when the read failed.
@@ -71,7 +71,7 @@ function zfsmDatasetMissingSaid($output) {
 function zfsmSnapshotExists($name) {
 	if (!zfsmValidSnapshotName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'snapshot', $name));
-	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
+	return ($result['code'] ?? 1) === 0 && ($result['output'] ?? '') === $name;
 }
 
 function zfsmDatasetColumns() {
@@ -494,7 +494,7 @@ function getDatasetDirectories($dataset_tree, $directory_listing, $zexc_pattern,
 function getDatasetProperty($zpool, $zdataset, $zproperty) {
 	if (!zfsmValidDatasetName($zdataset) || !preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $zproperty)) return null;
 	$result = runProcess('zfs', array('get', '-H', '-p', '-o', 'value', $zproperty, $zdataset));
-	return ($result['code'] ?? 1) === 0 ? zfsmNormalizeProperty($zproperty, trim($result['output'] ?? '')) : null;
+	return ($result['code'] ?? 1) === 0 ? zfsmNormalizeProperty($zproperty, $result['output'] ?? '') : null;
 }
 
 function getAllDatasetProperties($zdataset, $ext) {

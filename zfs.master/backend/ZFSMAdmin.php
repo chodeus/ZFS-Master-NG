@@ -91,7 +91,9 @@ try {
 			break;
 
 		case 'editdatasetproperty':
-			zfsmReturnAnswer(setDatasetProperty(zfsmPostString('zdataset'), zfsmPostString('property'), zfsmPostString('value')), 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset');
+			$dataset = zfsmPostString('zdataset');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
+			zfsmReturnAnswer($blocked ?? setDatasetProperty($dataset, zfsmPostString('property'), zfsmPostString('value')), 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset');
 			break;
 
 		case 'getdatasetproperties':

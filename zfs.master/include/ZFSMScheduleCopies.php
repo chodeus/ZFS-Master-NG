@@ -357,20 +357,46 @@ function zfsmScheduleCopiesHold($zdataset) {
 	return array($locks, $names);
 }
 
-// After zfs renamed $from to $to and its own schedules followed ($before, $after): its copy under each dataset that copies go under
-// takes $to's name there (zfsmScheduleCopiesMoveOne). Each with a problem, with what.
-function zfsmScheduleCopiesMove($from, $to, $before, $after, $cfg) {
+// After zfs renamed $from to $to and its own schedules followed ($before, $after, which repeats that follow a copy change): its copy
+// under each dataset that copies go under takes $to's name there (zfsmScheduleCopiesMoveOne). Each with a problem, with what.
+function zfsmScheduleCopiesMove($from, $to, $before, &$after, $cfg) {
 	$stayed = array();
 	foreach (array_column(array_filter($before, 'zfsmScheduleCopiesUnder'), null, 'dest') as $dest => $job) {
-		$why = $dest === '/' ? '' : zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg);
-		if ($why !== '') $stayed[zfsmScheduleCopiesDest($job, $from)] = $why;
+		$named = false;
+		$old = zfsmScheduleCopiesDest($job, $from);
+		$why = $dest === '/' ? '' : zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg, $named);
+		$still = $why !== '' && array_filter($after, function($other) use ($to, $old) { return zfsmScheduleCopiesFollows($other, $to, $old); });
+		$repeats = $named ? zfsmScheduleCopiesRepeatsFollow($to, $old, zfsmScheduleCopiesDest($job, $to), $after) : ($still ? 'the repeats set in Replicate that send into it still do' : '');
+		$why = implode('; ', array_filter(array($why, $repeats), 'strlen'));
+		if ($why !== '') $stayed[$old] = $why;
 	}
 	return $stayed;
 }
 
+// Whether $job, a repeat set in Replicate of $to or below, sends into the copy at $old or below (one to a server names no path here).
+function zfsmScheduleCopiesFollows($job, $to, $old) {
+	return !zfsmScheduleCovers($job) && zfsmUnderAny($job['dataset'], array($to)) && zfsmUnderAny($job['dest'], array($old));
+}
+
+// Once $to's copy is due at $new, not $old: each repeat that follows it (zfsmScheduleCopiesFollows) sends there, in $after too once
+// saved; what failed, '' for none.
+function zfsmScheduleCopiesRepeatsFollow($to, $old, $new, &$after) {
+	$follow = function($jobs) use ($to, $old, $new) {
+		foreach ($jobs as $id => $job) if (zfsmScheduleCopiesFollows($job, $to, $old)) $jobs[$id]['dest'] = $new.substr($job['dest'], strlen($old));
+		return $jobs;
+	};
+	$read = zfsmScheduleRead();
+	if ($read !== null && $follow($read['valid']) === $read['valid']) return '';
+	$changed = zfsmScheduleChange($follow);
+	if ($changed['saved']) $after = $follow($after);
+	if ($changed['why'] === '') return '';
+	return $changed['saved'] ? 'the repeats set in Replicate that send into it send to '.$new.' now, but '.$changed['why']
+		: 'the repeats set in Replicate that send into it still send to '.$old.' ('.$changed['why'].'): set them again under Actions, Replicate';
+}
+
 // The copy of $from under $job's dest, with its bookmarks, renamed to $to's when it is $to's or a holder and $after still copies there;
-// '' when it moved or is not there (or not read where none copies it), else what went wrong.
-function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
+// '' when it moved or is not there (or not read where none copies it), else what went wrong. $named: whether $to's copy is due there now.
+function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg, &$named) {
 	$old = zfsmScheduleCopiesDest($job, $from);
 	$new = zfsmScheduleCopiesDest($job, $to);
 	$missing = zfsmDatasetMissing($old);
@@ -378,26 +404,28 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg) {
 	// zfs says the same of a copy in a pool not imported now.
 	$pool = $missing === true ? zfsmDatasetMissing(strtok($old, '/')) : false;
 	if ($pool !== false) return 'not checked, as '.($pool ? 'its pool is not imported now' : 'whether its pool is imported could not be read').': if it is there, it keeps its old name, and the next copy of the renamed dataset is a full one';
-	if ($missing === true) return '';
+	$named = $missing === true;
+	if ($named) return '';
 	if ($missing === null) return 'not renamed with it, as whether it is there could not be read';
 	$whose = zfsmScheduleCopiesWhose($old, $to);
 	if ($whose !== '') return $whose;
 	$free = zfsmDatasetMissing($new);
 	if ($free !== true) return $free === null ? 'not renamed with it, as whether its new name is free could not be read' : 'left where it is, as a dataset already has its new name';
-	$into = zfsmScheduleCopiesInto($from, $old, $after);
+	$into = zfsmScheduleCopiesInto($to, $old, $after);
 	if ($into !== '') return 'left where it is, as a schedule sends copies into it ('.$into.'), so the next copy of the renamed dataset is a full one';
 	$why = zfsmScheduleCopiesRename($job['dest'], $old, $new, $after, $cfg);
 	if ($why !== '' && !zfsmRenameLanded($old, $new)) return 'not renamed with it: '.$why.'. It stays under its old name, so the next copy of the renamed dataset is a full one';
+	$named = true;
 	$left = implode('; ', array_filter(array($why, zfsmScheduleCopiesMarks($old, $new, $to), zfsmScheduleCopiesHolds($old, $new, $to)), 'strlen'));
 	return $left === '' ? '' : 'renamed with it, but '.$left;
 }
 
 // What of $jobs sends a copy here to $old or below it, which it would not find after a move; '' when none. A repeat set in Replicate
-// of $from or below, which kept that name, finds no dataset to send anyway.
-function zfsmScheduleCopiesInto($from, $old, $jobs) {
+// of $to or below follows the copy (zfsmScheduleCopiesFollows).
+function zfsmScheduleCopiesInto($to, $old, $jobs) {
 	foreach ($jobs as $job) {
 		$dest = zfsmScheduleCopiesUnder($job) ? substr($job['dest'], 0, -1) : $job['dest'];
-		if ($job['server'] === '' && $dest !== '' && zfsmUnderAny($dest, array($old)) && !zfsmUnderAny($job['dataset'], array($from))) return zfsmScheduleWhat($job);
+		if ($job['server'] === '' && $dest !== '' && zfsmUnderAny($dest, array($old)) && !zfsmScheduleCopiesFollows($job, $to, $old)) return zfsmScheduleWhat($job);
 	}
 	return '';
 }
@@ -417,7 +445,6 @@ function zfsmScheduleCopiesWhose($old, $to) {
 // The bookmarks on $to and below, named for their copies (zfsmReplicaTargetMark): those of $old and below take $new's. '' or what
 // went wrong.
 function zfsmScheduleCopiesMarks($old, $new, $to) {
-	// A second field keeps the last name's trailing spaces from runProcess's trim, as zfsmScheduleCopiesHolds does.
 	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid', '-t', 'bookmark', '-r', $to));
 	if (($listed['code'] ?? 1) !== 0) return 'its bookmarks could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	$failed = array();
