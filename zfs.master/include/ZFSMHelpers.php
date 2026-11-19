@@ -404,6 +404,18 @@ function zfsmNewSnapshotName($cfg, $now) {
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
 }
 
+// The moment before $at whose local time $at shows again, as the clock went back (by up to 2 hours); null when none.
+function zfsmClockShownBefore($at) {
+	$before = $at - ((int)date('Z', $at - 7200) - (int)date('Z', $at));
+	return $before < $at && date('Y-m-d H:i:s', $before) === date('Y-m-d H:i:s', $at) ? $before : null;
+}
+
+// Whether zfsmNewSnapshotName names $at as it named the moment the clock showed its time before (zfsmClockShownBefore).
+function zfsmNewSnapshotNameRepeats($cfg, $at) {
+	$before = zfsmClockShownBefore($at);
+	return $before !== null && zfsmNewSnapshotName($cfg, $before) === zfsmNewSnapshotName($cfg, $at);
+}
+
 // A name zfsmNewSnapshotName gives that ZFS refuses after $zdataset's @ (as zfsmValidSnapshotPart), now or half a year on (T and P
 // change with summer time); null when it takes both.
 function zfsmNewSnapshotNameRefused($cfg, $now, $zdataset = 'p') {

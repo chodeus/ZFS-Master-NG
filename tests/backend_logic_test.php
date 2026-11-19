@@ -78,6 +78,19 @@ assertSameValue(array(null, '2026/11/03', 'a@2026', 'Australia/Perth', null, nul
 	$refused(array('snap_prefix' => str_repeat('p', 236))), strlen((string)$refused(array('snap_prefix' => str_repeat('p', 237))))), 'A name ZFS refuses was taken, or one it takes refused');
 date_default_timezone_set('Atlantic/Azores');
 assertSameValue(array('-01', '+00'), array(date('T', 1767268800), $refused(array('snap_pattern' => 'T'), 1767268800)), 'A pattern ZFS takes in winter but refuses in summer was taken');
+// The clock goes back at 16:00 UTC on 4 April 2026 in Sydney (an hour), 15:00 on Lord Howe (half an hour), 06:00 on 1 November
+// in New York; Perth keeps its clock. Only a time it shows the second time repeats a name, and not in UTC or with I.
+$local = loadConfig(array('general' => array('snap_pattern' => 'Y-m-d-His')));
+$repeats = function($zone, $at, $cfg) { date_default_timezone_set($zone); return zfsmNewSnapshotNameRepeats($cfg, $at); };
+assertSameValue(array(false, true, false, false, false, true, false, true, false, false),
+	array($repeats('Australia/Sydney', 1775316600, $local), $repeats('Australia/Sydney', 1775320200, $local), $repeats('Australia/Sydney', 1775322000, $local),
+		$repeats('Australia/Sydney', 1775320200, array('snap_utc' => 1) + $local), $repeats('Australia/Sydney', 1775320200, array('snap_pattern' => 'Y-m-d-His-I') + $local),
+		$repeats('America/New_York', 1793514600, $local), $repeats('America/New_York', 1793511000, $local), $repeats('Australia/Lord_Howe', 1775315700, $local),
+		$repeats('Australia/Lord_Howe', 1775316600, $local), $repeats('Australia/Perth', 1775320200, $local)),
+	'A name repeated only where the clock shows a time the second time');
+date_default_timezone_set('Australia/Sydney');
+assertSameValue(array(1775316600, null, null), array(zfsmClockShownBefore(1775320200), zfsmClockShownBefore(1775316600), zfsmClockShownBefore(1775322000)),
+	'Not the moment Sydney showed 02:30 first, nor 03:00, which it shows once');
 date_default_timezone_set($zone);
 $untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses';
 $allowed = ': a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';

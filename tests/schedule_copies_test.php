@@ -486,4 +486,39 @@ $pruned = function($keep) use ($then, $id, $cfg, $t, $reset, $pool, $read, $ever
 };
 same(array(array(), $older), array($pruned(1), $pruned(3)), 'a copy keeps as many as its Keep saved now: 1 removes both, 3 keeps both');
 
+// Sydney's clock goes back at 16:00 UTC on 3 April 2027, so it shows 02:30:01 twice: before the change a taken name is a problem
+// as ever; after it, cron's run then leaves out each dataset with the name, and one a second later copies them.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Australia/Sydney');
+$local = array('snap_utc' => 0) + $cfg;
+$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array());
+file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => 1) + $every)));
+@unlink(zfsmScheduleStateFile($id));
+$reset();
+same(array(0, 1, array('warning: ZFS Replication')), array(zfsmScheduleRun($id, $local, 1806766201), zfsmScheduleRun($id, $local, 1806766201), $read('notify.log')),
+	'the run at 02:30:01, and one then again: its names taken, a problem as ever');
+$reset();
+same(array(0, 0, array(), 1), array(zfsmScheduleRun($id, $local, 1806769801), count(preg_grep('/^send -P -v -L /', $read('calls.log'))), $read('notify-detail.log'),
+	$logged('/ Schedule '.$id.': Scheduled copies under backup: 0 of 0 dataset\(s\) copied\. Left out, as each has a snapshot of the name this run gives, from before the clock went back \(tank, tank\/data\)$/')),
+	'the one cron starts at 02:30:01 after the change copies none, notifies nothing (not that it works again), and says why');
+// One that left out the rest of what it read but could not read tank/bad warns as ever; one after it that copies tank/new, made in
+// between, works again.
+$made = $read('pool/datasets');
+$pool('datasets', array_merge($made, array("tank/bad\tfilesystem")));
+$reset();
+@unlink(zfsmScheduleStateFile($id));
+putenv('ZFSM_TEST_COVER_FAIL=tank/bad');
+same(array(1, array('warning: Scheduled copies under backup: 0 of 0 dataset(s) copied. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/data). Not every dataset could be read: cannot open ?tank/bad?: Input/output error. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array(zfsmScheduleRun($id, $local, 1806769801), $read('notify-detail.log')), 'one cron starts then with tank/bad unreadable warns');
+putenv('ZFSM_TEST_COVER_FAIL');
+$pool('datasets', array_merge($made, array("tank/new\tfilesystem")));
+$reset();
+same(array(0, 1, array('normal: Scheduled copies under backup: 1 of 1 dataset(s) copied. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/data). It works again after 1 run(s) with a problem.')),
+	array(zfsmScheduleRun($id, $local, 1806769801), count(preg_grep('/^send -P -v -L /', $read('calls.log'))), $read('notify-detail.log')),
+	'and one then that copies tank/new works again');
+$reset();
+same(array(0, 3), array(zfsmScheduleRun($id, $local, 1806769802), count(preg_grep('/^send -P -v -L /', $read('calls.log')))), 'one a second later copies all three');
+date_default_timezone_set($zone);
+
 echo "schedule copies tests passed\n";

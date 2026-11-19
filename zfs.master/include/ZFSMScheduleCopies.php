@@ -128,8 +128,8 @@ function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SC
 	}, ZFSM_SCHEDULE_COPIES_GRACE);
 }
 
-// What a run copied, and whether it had a problem: null when zfs read every pool and none had a dataset to copy. Its waits for other
-// replications of a dataset share $wait, so the run waits that long at most in all.
+// What a run copied, and whether it had a problem: null when zfs read every pool and none had a dataset to copy, or it only left out
+// (zfsmScheduleTakenBeforeProblem). Its waits for other replications of a dataset share $wait, so it waits that long at most in all.
 function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$under = substr($job['dest'], 0, -1);
 	$name = zfsmNewSnapshotName($cfg, $now);
@@ -142,6 +142,8 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$datasets = array_merge(...array_values($pools));
 	// By name: a dataset's parents come before it.
 	sort($datasets, SORT_STRING);
+	$again = zfsmScheduleTakenBefore($cfg, $now, $datasets, $listed);
+	$datasets = array_values(array_diff($datasets, $again));
 	$rows = zfsmScheduleListed($listed)[0];
 	$here = array_fill_keys(array_keys($rows), true);
 	$coming = zfsmScheduleCopiesComing($job, $jobs, $listed);
@@ -171,7 +173,7 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 		}
 		if ($code !== 0 || $said[1] !== 'normal') $problems[] = $said[0];
 	}
-	return array(zfsmScheduleCopiesSaid($under, $made.' of '.(count($datasets) - $left), $waiting, $unread, $problems), $waiting || $unread !== '' || $problems);
+	return array(zfsmScheduleCopiesSaid($under, $made.' of '.(count($datasets) - $left), $again, $waiting, $unread, $problems), zfsmScheduleTakenBeforeProblem($again, $made, $waiting || $unread !== '' || $problems));
 }
 
 // What a run says when it copies none, as zfsmScheduleCopiesMade answers; null when it can copy.
@@ -225,11 +227,11 @@ function zfsmScheduleCopiesOne($job, $zdataset, $zdest, $name, &$wait) {
 	return array($code, $said);
 }
 
-// A run's line: how many it copied, those waiting for their parent's copy, the datasets not read, the first problems.
-function zfsmScheduleCopiesSaid($under, $made, $waiting, $unread, $problems) {
-	return 'Scheduled copies under '.$under.': '.$made.' dataset(s) copied'
-		// Before the problems, which the log's cut can drop (zfsmSafeText); in brackets and commas, where diagnostics end a name.
-		.($waiting ? '. Not copied, as the copy of a dataset above it is missing ('.zfsmKeepFirst($waiting, ', ').')' : '')
+// A run's line: how many it copied and left out, those waiting for their parent's copy, the datasets not read, the first problems.
+function zfsmScheduleCopiesSaid($under, $made, $again, $waiting, $unread, $problems) {
+	return 'Scheduled copies under '.$under.': '.$made.' dataset(s) copied'.zfsmScheduleTakenBeforeSaid($again)
+		// Before the problems, which the log's cut can drop (zfsmSafeText).
+		.($waiting ? '. Not copied, as the copy of a dataset above it is missing '.zfsmScheduleNamesSaid($waiting) : '')
 		.($unread !== '' ? '. Not every dataset could be read: '.$unread : '').($problems ? '. '.zfsmKeepFirst($problems) : '');
 }
 

@@ -144,6 +144,14 @@ same(array('Snapshots Pattern would give the run at Mon 16 Nov 03:07 the same sn
 	array(zfsmScheduleClash($daily, array($daily, $other), $days, $at('2026-11-15 10:05'), false), zfsmScheduleClash($daily, array($daily, array('dataset' => 'tank/other') + $other), $days, $at('2026-11-15 10:05'), false),
 		zfsmScheduleClash($daily, array($daily, $other), $hours, $at('2026-11-15 10:05'), false), zfsmScheduleClash($daily, array($daily), $days, $at('2026-11-15 10:05'), false)),
 	'two daily ones of one dataset on a day\'s name; not of two datasets, with the hour in it, or on its own');
+// Sydney's clock goes back at 16:00 UTC on 4 April 2026: the run cron starts again at 02:15 there leaves out what the first took
+// (zfsmScheduleTakenBefore), so an hourly one made a week before clashes only where its pattern repeats a name in any case.
+date_default_timezone_set('Australia/Sydney');
+$local = array('snap_utc' => 0) + $cfg;
+same(array('', 'Snapshots Pattern would give the run at Sun 29 Mar 12:15 the same snapshot name as the run at Sun 29 Mar 11:15'),
+	array(zfsmScheduleClash($hourly, array(), $local, $at('2026-03-29 00:05'), false), zfsmScheduleClash($hourly, array(), array('snap_pattern' => 'Ymd') + $local, $at('2026-03-29 00:05'), false)),
+	'an hourly one with the time in its names across the change, and one with the day only');
+date_default_timezone_set('UTC');
 
 // Repeat saves the schedule and runs it now: the first run is the dialog's own, so it may send in full.
 $reset();
@@ -205,6 +213,22 @@ $reset();
 same(0, zfsmScheduleRun($id, $cfg, time() + 3600), 'a scheduled run');
 same(1, preg_match('/^send -P -v -L -i tank\/data@repl-[0-9]{14} tank\/data@repl-[0-9]{14}$/D', implode("\n", $sends())), 'sends only the changes: '.implode(' | ', $sends()));
 same(array($taken + 1, 2, array()), array(count($names('tank/data', 'snapshot')), count($names('backup/data', 'snapshot')), $read('notify-detail.log')), 'each side keeps the new snapshot, and nothing is notified');
+// Sydney's clock goes back at 16:00 UTC on 4 April 2026, so it shows 02:30:01 twice: before the change a taken name is a problem
+// as ever; after it, cron's run then does nothing, its dataset holding the name, and one a second later sends.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Australia/Sydney');
+$reset();
+same(array(0, 1, array('warning: ZFS Replication')), array(zfsmScheduleRun($id, $local, 1775316601), zfsmScheduleRun($id, $local, 1775316601), $read('notify.log')),
+	'the run at 02:30:01, and one then again: its name taken, a problem as ever');
+$count = count($names('tank/data', 'snapshot'));
+$reset();
+same(array(0, $count, array(), array(), 1), array(zfsmScheduleRun($id, $local, 1775320201), count($names('tank/data', 'snapshot')), $sends(), $read('notify-detail.log'),
+	preg_match('/ Schedule '.$id.' not started: its dataset has a snapshot of the name this run gives, from before the clock went back$/m', (string)file_get_contents(zfsmLogFile()))), 'the one cron starts at 02:30:01 after the change takes no snapshot, sends nothing, notifies nothing, and logs why');
+$reset();
+same(array(0, 1), array(zfsmScheduleRun($id, $local, 1775320202), count($sends())), 'one cron starts a second later sends');
+date_default_timezone_set($zone);
+// tank/data keeps the two these took.
+$taken += 2;
 
 // With the copy gone, a run doesn't send it in full again: it notifies once, then logs, and Settings counts the runs.
 $reset();
