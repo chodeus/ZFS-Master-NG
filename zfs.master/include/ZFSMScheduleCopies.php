@@ -365,7 +365,9 @@ function zfsmScheduleCopiesMove($from, $to, $before, &$after, $cfg) {
 		$named = false;
 		$old = zfsmScheduleCopiesDest($job, $from);
 		$why = $dest === '/' ? '' : zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg, $named);
-		$why = implode('; ', array_filter(array($why, $named ? zfsmScheduleCopiesRepeatsFollow($to, $old, zfsmScheduleCopiesDest($job, $to), $after) : ''), 'strlen'));
+		$still = $why !== '' && array_filter($after, function($other) use ($to, $old) { return zfsmScheduleCopiesFollows($other, $to, $old); });
+		$repeats = $named ? zfsmScheduleCopiesRepeatsFollow($to, $old, zfsmScheduleCopiesDest($job, $to), $after) : ($still ? 'the repeats set in Replicate that send into it still do' : '');
+		$why = implode('; ', array_filter(array($why, $repeats), 'strlen'));
 		if ($why !== '') $stayed[$old] = $why;
 	}
 	return $stayed;
@@ -443,7 +445,6 @@ function zfsmScheduleCopiesWhose($old, $to) {
 // The bookmarks on $to and below, named for their copies (zfsmReplicaTargetMark): those of $old and below take $new's. '' or what
 // went wrong.
 function zfsmScheduleCopiesMarks($old, $new, $to) {
-	// A second field keeps the last name's trailing spaces from runProcess's trim, as zfsmScheduleCopiesHolds does.
 	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,guid', '-t', 'bookmark', '-r', $to));
 	if (($listed['code'] ?? 1) !== 0) return 'its bookmarks could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	$failed = array();

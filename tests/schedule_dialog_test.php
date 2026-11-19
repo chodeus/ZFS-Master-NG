@@ -425,7 +425,18 @@ $add(array('tank/nest6', 'tank/nest6/sub', 'backup/tank/nest6', 'backup/tank/nes
 $copied('tank/nest6', 79);
 same(true, $save('tank/nest6/sub', $part('default'), $part('days', '06:50', '1', 0, 'backup/tank/nest6'))['saved'], 'copies of the one below under its copy');
 same(array($copy('tank/nest6') => 'left where it is, as a dataset already has its new name'), renameDataset('tank/nest6', 'tank/nest7', 0, $cfg)['failed'], 'its new name taken');
-foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3b', 'tank/nest4', 'tank/nest9', 'tank/nest7/sub'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
+// One that stays says so when a repeat still sends into it.
+$add(array('tank/nest10', 'backup/tank/nest10', 'backup/tank/nest11'));
+$copied('tank/nest10', 779);
+zfsmScheduleChange(function($jobs) use ($m) { return $jobs + array('3e5a7c9f' => array('id' => '3e5a7c9f', 'dataset' => 'tank/nest10', 'dest' => 'backup/tank/nest10', 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', sprintf('04:%02d', ($m + 10) % 60), '2') + array('keep' => 0)); });
+same(array(array($copy('tank/nest10') => 'left where it is, as a dataset already has its new name; the repeats set in Replicate that send into it still do'), 'backup/tank/nest10'),
+	array(renameDataset('tank/nest10', 'tank/nest11', 0, $cfg)['failed'], array_column($stored(), 'dest', 'id')['3e5a7c9f']), 'and a repeat that still sends into it is named');
+// Nothing to say where none copies it under there, and no copy is there.
+$add(array('tank/nest12'));
+same(true, $save('tank/nest12', $part('default'), $part('none'))['saved'], 'no copies under a dataset');
+zfsmScheduleChange(function($jobs) use ($m) { return $jobs + array('3e5a7ca0' => array('id' => '3e5a7ca0', 'dataset' => 'tank/nest12', 'dest' => 'backup/tank/nest12', 'server' => '', 'every' => 'days') + zfsmScheduleAt('days', sprintf('04:%02d', ($m + 10) % 60), '3') + array('keep' => 0)); });
+same(array(array(), 'backup/tank/nest12'), array(renameDataset('tank/nest12', 'tank/nest13', 0, $cfg)['failed'], array_column($stored(), 'dest', 'id')['3e5a7ca0']), 'and its repeat to a copy not made yet stays');
+foreach (array_filter($stored(), function($job) { return in_array($job['dataset'], array('tank/nest2/sub', 'tank/nest3b', 'tank/nest4', 'tank/nest9', 'tank/nest7/sub', 'tank/nest11', 'tank/nest13'), true); }) as $job) zfsmScheduleRemove($job['id'], $cfg);
 // Its copy that moves but can't be mounted there, which zfs 2.0 and 2.1 fail, is renamed with it all the same: its bookmark too.
 $add(array('tank/uc', 'backup/tank/uc'));
 $copied('tank/uc', 78);
