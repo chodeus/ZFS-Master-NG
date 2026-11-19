@@ -456,7 +456,7 @@ $placed = array();
 same(null, zfsmScheduleCopiesPlace('backup/', 'backup/tank/data/sub', array(), $placed, $cfg), 'nor where the schedules saved could not be read');
 
 // One the schedules saved since the run read them no longer copy there is left out and not counted: tank/data set to None, the
-// schedule removed, its Copy Under moved; with the schedules not read, the run goes as it read them.
+// schedule removed, its Copy Under moved; with the schedules not read, the run stops there and says why.
 $then = zfsmScheduleRead(json_encode(array(array('keep' => 1) + $every)))['valid'];
 $midrun = function($saved) use ($then, $id, $cfg, $t, $reset, $pool, $datasets) {
 	$pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "backup\tfilesystem"));
@@ -466,8 +466,21 @@ $midrun = function($saved) use ($then, $id, $cfg, $t, $reset, $pool, $datasets) 
 	return array(zfsmScheduleCopiesMade($then[$id], $then, $cfg, $t + 46800, ZFSM_SCHEDULE_WAIT), array_values(preg_grep('~^backup/~', $datasets())));
 };
 $ran = function($made, $copies) { return array(array('Scheduled copies under backup: '.$made.' dataset(s) copied', false), $copies); };
-same(array($ran('1 of 1', array('backup/tank')), $ran('0 of 0', array()), $ran('0 of 0', array()), $ran('2 of 2', array('backup/tank', 'backup/tank/data'))),
+same(array($ran('1 of 1', array('backup/tank')), $ran('0 of 0', array()), $ran('0 of 0', array()),
+	array(array('Scheduled copies under backup: 0 of 2 dataset(s) copied. tank and the datasets after it were not copied: '.zfsmScheduleFile().' could not be read as a list of schedules; fix or remove it first', true), array())),
 	array($midrun(json_encode(array(array('keep' => 1) + $every, array('id' => 'dddd0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every))),
 	$midrun('[]'), $midrun(json_encode(array(array('keep' => 1, 'dest' => 'usb/') + $every))), $midrun('{')), 'a run leaves out one the schedules saved since no longer copy there');
+// Each copy keeps as many as its Keep saved when it starts, not when the run read it: tank's two older snapshots for these copies.
+$older = array("tank@a\t11\t100", "tank@b\t12\t200");
+$pruned = function($keep) use ($then, $id, $cfg, $t, $reset, $pool, $read, $every, $older) {
+	$pool('datasets', array("tank\tfilesystem", "backup\tfilesystem"));
+	$pool('marks', $older);
+	$pool('props', array_merge($read('pool/props'), array("tank@a\t".ZFSM_KEEP_TAG."\t".zfsmKeepTag('', 'backup/'), "tank@b\t".ZFSM_KEEP_TAG."\t".zfsmKeepTag('', 'backup/'))));
+	file_put_contents(zfsmScheduleFile(), json_encode(array(array('keep' => $keep) + $every)));
+	$reset();
+	zfsmScheduleCopiesMade($then[$id], $then, $cfg, $t + 50400, ZFSM_SCHEDULE_WAIT);
+	return array_values(array_intersect($older, $read('pool/marks')));
+};
+same(array(array(), $older), array($pruned(1), $pruned(3)), 'a copy keeps as many as its Keep saved now: 1 removes both, 3 keeps both');
 
 echo "schedule copies tests passed\n";

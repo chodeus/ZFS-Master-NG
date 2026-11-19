@@ -121,7 +121,7 @@ function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 }
 
 // Cron's run of copies under a dataset: each dataset it covers, parents first, sent to its copy as a copy's schedule sends it
-// (zfsmRunReplicate, with its Keep); one notification for the run. 0, or 1 after a problem.
+// (zfsmRunReplicate, with its Keep as saved when that copy starts); one notification for the run. 0, or 1 after a problem.
 function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SCHEDULE_WAIT) {
 	return zfsmScheduleLockedRun($job, 'ZFS Replication', 'Scheduled copies not made: ', $notify, function() use ($job, $jobs, $cfg, $now, $wait) {
 		return zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait);
@@ -146,7 +146,12 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 	$made = $left = 0;
 	$problems = $waiting = array();
 	foreach ($datasets as $zdataset) {
-		if (!zfsmScheduleCopiesStill($job, $zdataset, $rows[$zdataset], $listed['name'])) {
+		$saved = zfsmScheduleCopiesStill($job, $zdataset, $rows[$zdataset], $listed['name']);
+		if ($saved === null) {
+			$problems[] = $zdataset.' and the datasets after it were not copied: '.zfsmScheduleUnreadable();
+			break;
+		}
+		if ($saved === false) {
 			$left++;
 			continue;
 		}
@@ -157,7 +162,7 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 			if ($place !== null) $problems[] = $place;
 			continue;
 		}
-		list($code, $said) = zfsmScheduleCopiesOne($job, $zdataset, $zdest, $name, $wait);
+		list($code, $said) = zfsmScheduleCopiesOne($saved, $zdataset, $zdest, $name, $wait);
 		if ($code === 0) {
 			$made++;
 			$here[$zdest] = true;
@@ -175,13 +180,13 @@ function zfsmScheduleCopiesNone($under, $listed, $pools, $unread) {
 	return $not !== '' ? array('Scheduled copies not made: '.$not, true) : null;
 }
 
-// Whether the schedules saved now still have $job's run take $zdataset to the same Copy Under (zfsmScheduleTakes), as a run takes hours;
-// true when they can't be read, as the run read them. One set to None copies under none.
+// $job as saved now, while it still has $job's run take $zdataset to the same Copy Under (zfsmScheduleTakes), as a run takes hours;
+// else false, and null when the schedules can't be read. One set to None copies under none.
 function zfsmScheduleCopiesStill($job, $zdataset, $row, $name) {
 	$read = zfsmScheduleRead();
-	if ($read === null) return true;
+	if ($read === null) return null;
 	$now = $read['valid'][$job['id']] ?? null;
-	return ($now['dest'] ?? null) === $job['dest'] && zfsmScheduleTakes($now, $read['valid'], $zdataset, $row, $name);
+	return ($now['dest'] ?? null) === $job['dest'] && zfsmScheduleTakes($now, $read['valid'], $zdataset, $row, $name) ? $now : false;
 }
 
 // Where a copy is due here: each a schedule of copies under $job's dest makes, $job or another, and each a copy's own schedule
