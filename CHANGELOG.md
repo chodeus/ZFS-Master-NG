@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.19.1 (beta)
 
 **Snapshot schedules**
 
