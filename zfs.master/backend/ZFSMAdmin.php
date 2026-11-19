@@ -271,6 +271,10 @@ try {
 			echo zfsmJson(($removed['why'] !== '' ? array('error' => $removed['why']) : array()) + ($removed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
 			break;
 
+		case 'schedulekeepchange':
+			echo zfsmScheduleSavedJson(zfsmScheduleKeepChange(zfsmPostString('id'), zfsmPostKeep(), zfsmPostCopyKeeps()) + array('said' => ''), $zfsm_cfg);
+			break;
+
 		case 'convertdirectory':
 			$directory = zfsmPostString('directory');
 			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $directory);

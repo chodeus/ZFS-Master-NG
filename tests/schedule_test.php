@@ -375,6 +375,31 @@ same(array('keeps all its snapshots; its copy keeps 30 daily', 'keeps the newest
 	array(zfsmScheduleKeepText($job + array('copy_keeps' => '30d')), zfsmScheduleKeepText(array('dataset' => '', 'dest' => 'backup/', 'keep' => 2, 'copy_keeps' => 0) + $job), zfsmScheduleKeepText($job)),
 	'Settings says what a copy keeps, and nothing of one with no Copy Keeps');
 
+// Change Keep sets Keep and Copy Keeps in place: its id, time and cron line as they were.
+$mine = function() use ($stored, $id) { return array_values(array_filter($stored(), function($job) use ($id) { return ($job['id'] ?? '') === $id; }))[0] ?? null; };
+$cron_before = $cron();
+$reset();
+same(array('saved' => true, 'why' => ''), zfsmScheduleKeepChange($id, '7d', '30d 12m'), 'Change Keep saved');
+same(array(array_merge($job, array('keep' => '7d', 'copy_keeps' => '30d 12m')), true, $cron_before, array()),
+	array($mine(), in_array(array('id' => 'zz'), $stored(), true), $cron(), preg_grep('/^(snapshot|send) /', $read('calls.log'))),
+	'only Keep and Copy Keeps change: its id, time and cron line stay, the record it can\'t use too, and no run starts');
+same(true, strpos(zfsmSchedulesHtml($cfg), 'keeps 7 daily of its snapshots; its copy keeps 30 daily and 12 monthly') !== false, 'Settings says it');
+same(array(1, 0), array(preg_match('~<details[^>]*><summary>Change Keep</summary> <label[^>]*>Snapshots To Keep: <input type="text" id="zfsm-keep-own-'.$id.'" maxlength="40" placeholder="all" value="7d"></label> '
+	.'<label[^>]*>Copy Keeps: <input type="text" id="zfsm-keep-copy-'.$id.'" maxlength="40" placeholder="same as source" value="30d 12m"></label> <input type="button" value="Save" onclick="zfsmScheduleKeepSave\(\''.$id.'\'\)"></details>~', zfsmSchedulesHtml($cfg)),
+	substr_count(zfsmScheduleKeepHtml(array('server' => 'nas', 'dest' => 'copy') + $mine()), 'zfsm-keep-copy-')), 'its row has Change Keep as saved; one on a server has no Copy Keeps');
+same(array(array('saved' => true, 'why' => ''), $job), array(zfsmScheduleKeepChange($id, 0, null), $mine()), 'Copy Keeps emptied is saved as none');
+$unchanged = $stored();
+$snapshots = array('id' => '0badc0e1', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 5, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
+file_put_contents(zfsmScheduleFile(), json_encode(array_merge($unchanged, array($snapshots))));
+same(1, substr_count(zfsmSchedulesHtml($cfg), '<summary>Change Keep</summary>'), 'Snapshot Every Dataset, which Settings sets, has no Change Keep');
+same(array('No such repeat set in Replicate; it may have been removed', 'No such repeat set in Replicate; it may have been removed', 'No such schedule', 'Nothing was saved: under Snapshots to keep, '.zfsmKeepFix(),
+	'Nothing was saved: under Copy Keeps, give all to keep every snapshot, or '.zfsmKeepFix('keep what its source keeps')),
+	array(zfsmScheduleKeepChange('0badc0de', 1, null)['why'], zfsmScheduleKeepChange('0badc0e1', 1, null)['why'], zfsmScheduleKeepChange('../x', 1, null)['why'], zfsmScheduleKeepChange($id, -1, null)['why'],
+		zfsmScheduleKeepChange($id, 1, -1)['why']),
+	'Change Keep of no such schedule, of Snapshot Every Dataset (Settings sets it), of no id, and with what it can\'t read');
+same(array_merge($unchanged, array($snapshots)), $stored(), 'none saved');
+file_put_contents(zfsmScheduleFile(), json_encode($unchanged));
+
 // Remove takes the schedule out of the list and the cron file, and Unraid rebuilds its crontab; Settings is refused while another change is saved.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
 same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id, $cfg), 'a change while another is being saved');

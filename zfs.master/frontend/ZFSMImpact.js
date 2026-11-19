@@ -89,7 +89,7 @@ function zfsmReplicateHtml(options, zdataset) {
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
 		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
-		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules.')
+		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules; Change Keep there changes what one keeps.')
 		+say('Snapshots to keep: from the next run on, once a run lands, only those it keeps of the snapshots this copy\'s schedules took stay here, and in a copy on this server when Copy Keeps is empty. '+zfsmKeepHelp()+' With Mon, Wed and Fri ticked, 6 keeps two weeks.')
 		+say(zfsmCopyKeepsHelp('the copy'))
 		+say('Held or cloned snapshots always stay. A copy on another server keeps all, unless its Keep Replicas keeps fewer. A run removes up to 50; the next runs remove the rest.')
@@ -103,7 +103,7 @@ function zfsmKeepHelp() {
 
 // Copy Keeps, as the help of each repeat that makes a copy on this server says it; copy names that copy.
 function zfsmCopyKeepsHelp(copy) {
-	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here.';
+	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here. Emptied later, those in '+copy+' whose source is already gone stay.';
 }
 
 // Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:

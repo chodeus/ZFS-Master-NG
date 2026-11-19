@@ -223,6 +223,22 @@ assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', '
 window.zfsmScheduleRemove('0a1b2c3d');
 posts.pop().done({error: 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', schedules_html: 'tank/a to backup/a'});
 assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)', 'tank/a to backup/a'], 'one saved whose crontab was not rebuilt says so, and shows the list it saved');
+// Change Keep sends its row's Snapshots To Keep and Copy Keeps as typed; one with no Copy Keeps (a copy on a server) sends it empty.
+$('#zfsm-schedules').html('<span>tank/data to backup/data<input id="zfsm-keep-own-0a1b2c3d" value=" 7D "><input id="zfsm-keep-copy-0a1b2c3d" value="all"><input type="button" id="zfsm-keep-save"></span>'
+  + '<span>tank/data to nas<input id="zfsm-keep-own-0b0b0b0b" value="3"></span>');
+window.zfsmScheduleKeepSave('0a1b2c3d');
+const change = posts.pop();
+assert.deepEqual({...change.data}, {cmd: 'schedulekeepchange', id: '0a1b2c3d', keep: ' 7D ', copy_keeps: 'all'});
+const scheduleButtons = () => ['zfsm-keep-save', 'zfsm-snapsched-save', 'zfsm-copysched-save'].map(id => $('#' + id).prop('disabled'));
+assert.deepEqual(scheduleButtons(), [true, true, true], 'the list\'s buttons and Every Dataset\'s Saves are off until the answer: a second change would be refused under the first');
+change.done({error: 'Nothing was saved: under Copy Keeps, x'});
+assert.deepEqual([text('zfsm-schedules-status'), $('#zfsm-keep-own-0a1b2c3d').val(), scheduleButtons()], ['Nothing was saved: under Copy Keeps, x', ' 7D ', [false, false, false]],
+  'a refusal says why, keeps what was typed and turns the buttons back on');
+window.zfsmScheduleKeepSave('0b0b0b0b');
+const remote = posts.pop();
+assert.deepEqual({...remote.data}, {cmd: 'schedulekeepchange', id: '0b0b0b0b', keep: '3', copy_keeps: ''}, 'one on a server sends no Copy Keeps');
+remote.done({schedules_html: 'saved'});
+assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', 'saved'], 'the list it answers replaces it, and the refusal clears');
 
 // Snapshot Every Dataset: Off shows only its own row, Every hour adds Keep, On days adds Days and Starts At too; each row with its name.
 const shown = () => ['zfsm-snapsched-days', 'zfsm-snapsched-time', 'zfsm-snapsched-keep'].map(id => {
@@ -263,11 +279,13 @@ $('#zfsm-copysched-every').val('off').trigger('change');
 assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
 assert.deepEqual(shown(), ['/', '/', '/'], 'and leaves Snapshot Every Dataset\'s rows as they were');
 $('#zfsm-copysched-every').val('days').trigger('change');
+$('#zfsm-schedules').html('<span>tank/a to backup/a<input type="button" id="zfsm-row-remove"></span>');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 const copies = posts.pop();
+assert.deepEqual([$('#zfsm-row-remove').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled')], [true, true], 'the list\'s buttons and the other Save are off while it saves: its answer redraws the list');
 assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', copy_keeps: ' 30D '});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-snapsched-status')], [true, 'Saving…', 'Unknown or missing command'], 'its Save and answer are its own');
 copies.done({said: 'Saved: a copy of each of 4 dataset(s) under backup', schedules_html: 'w'});
-assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
+assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);
