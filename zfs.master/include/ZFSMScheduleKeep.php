@@ -44,8 +44,9 @@ function zfsmScheduleKeepChange($id, $keep, $copy_keeps) {
 	});
 }
 
-// Change Keep under a repeat set in Replicate in Settings' list: Snapshots To Keep, and Copy Keeps for a copy here.
+// Change Keep under a repeat set in Replicate in Settings' list: Snapshots To Keep, and Copy Keeps for a copy here; '' under the rest.
 function zfsmScheduleKeepHtml($job) {
+	if (zfsmScheduleCovers($job)) return '';
 	$id = $job['id'];
 	$field = function($name, $label, $value, $empty) use ($id) {
 		return ' <label style="white-space:nowrap">'.$label.' <input type="text" id="zfsm-keep-'.$name.'-'.$id.'" maxlength="40" placeholder="'.$empty.'" value="'.zfsmHtml($value).'"></label>';
