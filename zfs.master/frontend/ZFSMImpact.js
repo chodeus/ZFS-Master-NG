@@ -103,7 +103,7 @@ function zfsmKeepHelp() {
 
 // Copy Keeps, as the help of each repeat that makes a copy on this server says it; copy names that copy.
 function zfsmCopyKeepsHelp(copy) {
-	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here.';
+	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here. Emptied later, those in '+copy+' whose source is already gone stay.';
 }
 
 // Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:
