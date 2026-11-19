@@ -519,14 +519,18 @@ function zfsmSendRemove(name) {
 		if (!answer.error) $('#zfsm-send-servers').html(answer.servers_html);
 	});
 }
-// Remove and Change Keep: the list's buttons are off until the answer, which says why not and shows the list as saved.
-function zfsmSchedulesPost(data) {
-	var buttons = $('#zfsm-schedules input[type=button]').prop('disabled', true);
+// Every Dataset's Saves, Remove and Change Keep, one at a time as each answer redraws the list: all their buttons are off until it lands.
+function zfsmSchedulesSend(data, done) {
+	var buttons = $('#zfsm-snapsched-save, #zfsm-copysched-save, #zfsm-schedules input[type=button]').prop('disabled', true);
 	zfsmSendPost(data, function(answer) {
 		buttons.prop('disabled', false);
-		$('#zfsm-schedules-status').text(answer.error || '');
+		done(answer);
 		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
+}
+// Remove and Change Keep: why not, under the list.
+function zfsmSchedulesPost(data) {
+	zfsmSchedulesSend(data, function(answer) { $('#zfsm-schedules-status').text(answer.error || ''); });
 }
 function zfsmScheduleRemove(id) {
 	zfsmSchedulesPost({cmd: 'scheduleremove', id: id});
@@ -548,8 +552,6 @@ function zfsmEverySync(prefix) {
 	show('#' + prefix + '-under', every !== 'off');
 }
 function zfsmEverySave(prefix, cmd) {
-	// Off while it runs: a second click would save the same again.
-	var button = $('#' + prefix + '-save').prop('disabled', true);
 	var status = $('#' + prefix + '-status').css('color', '').text('Saving…');
 	var days = $('.' + prefix + '-day:checked').map(function() { return this.value; }).get().join(',');
 	var post = {cmd: cmd, every: $('#' + prefix + '-every').val(), time: $('#' + prefix + '-time').val(), days: days, keep: $('#' + prefix + '-keep').val()};
@@ -557,10 +559,8 @@ function zfsmEverySave(prefix, cmd) {
 	if (under.length) post.under = under.val();
 	var copy = $('#' + prefix + '-copy-keeps');
 	if (copy.length) post.copy_keeps = copy.val();
-	zfsmSendPost(post, function(answer) {
-		button.prop('disabled', false);
+	zfsmSchedulesSend(post, function(answer) {
 		status.css('color', answer.error ? '#e22828' : '').text([answer.said, answer.error].filter(Boolean).join('. '));
-		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
 }
 ['zfsm-snapsched', 'zfsm-copysched'].forEach(function(prefix) {

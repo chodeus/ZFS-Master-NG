@@ -229,9 +229,10 @@ $('#zfsm-schedules').html('<span>tank/data to backup/data<input id="zfsm-keep-ow
 window.zfsmScheduleKeepSave('0a1b2c3d');
 const change = posts.pop();
 assert.deepEqual({...change.data}, {cmd: 'schedulekeepchange', id: '0a1b2c3d', keep: ' 7D ', copy_keeps: 'all'});
-assert.equal($('#zfsm-keep-save').prop('disabled'), true, 'the list\'s buttons are off until the answer: a second change would be refused under the first');
+const scheduleButtons = () => ['zfsm-keep-save', 'zfsm-snapsched-save', 'zfsm-copysched-save'].map(id => $('#' + id).prop('disabled'));
+assert.deepEqual(scheduleButtons(), [true, true, true], 'the list\'s buttons and Every Dataset\'s Saves are off until the answer: a second change would be refused under the first');
 change.done({error: 'Nothing was saved: under Copy Keeps, x'});
-assert.deepEqual([text('zfsm-schedules-status'), $('#zfsm-keep-own-0a1b2c3d').val(), $('#zfsm-keep-save').prop('disabled')], ['Nothing was saved: under Copy Keeps, x', ' 7D ', false],
+assert.deepEqual([text('zfsm-schedules-status'), $('#zfsm-keep-own-0a1b2c3d').val(), scheduleButtons()], ['Nothing was saved: under Copy Keeps, x', ' 7D ', [false, false, false]],
   'a refusal says why, keeps what was typed and turns the buttons back on');
 window.zfsmScheduleKeepSave('0b0b0b0b');
 const remote = posts.pop();
@@ -278,11 +279,13 @@ $('#zfsm-copysched-every').val('off').trigger('change');
 assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
 assert.deepEqual(shown(), ['/', '/', '/'], 'and leaves Snapshot Every Dataset\'s rows as they were');
 $('#zfsm-copysched-every').val('days').trigger('change');
+$('#zfsm-schedules').html('<span>tank/a to backup/a<input type="button" id="zfsm-row-remove"></span>');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 const copies = posts.pop();
+assert.deepEqual([$('#zfsm-row-remove').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled')], [true, true], 'the list\'s buttons and the other Save are off while it saves: its answer redraws the list');
 assert.deepEqual({...copies.data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', copy_keeps: ' 30D '});
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-snapsched-status')], [true, 'Saving…', 'Unknown or missing command'], 'its Save and answer are its own');
 copies.done({said: 'Saved: a copy of each of 4 dataset(s) under backup', schedules_html: 'w'});
-assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
+assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);
