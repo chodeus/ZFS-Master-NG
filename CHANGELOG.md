@@ -33,7 +33,8 @@
 
 **After going back to an older version**
 
-- New snapshot and copy schedules, and Keep periods, wait until you update again
+- Snapshot schedules and Every Dataset or per-dataset copies wait until you update
+- A schedule whose Snapshots to keep uses periods waits too
 - A copy with records over 128K takes no new runs until you update
 - Copy Keeps is ignored, so copies lose what their source loses
 
