@@ -139,7 +139,7 @@ function zfsmReplicaMark($zdataset, $plan) {
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
 // $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
 // optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full,
-// 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune).
+// 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
 // them $keep keeps stay (0: all, zfsmKeepPrune).
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null) {
@@ -180,7 +180,8 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		$target['zstd'] = zfsmReplicaTargetZstd($target);
 		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
-			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false)));
+			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
+				'under' => $schedule['under'] ?? false));
 			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.

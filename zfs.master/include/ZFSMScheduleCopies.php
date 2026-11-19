@@ -1,6 +1,6 @@
 <?php
-// Copies under a dataset: records whose dest, a dataset here and '/', holds each covered dataset's copy (backup/ and cache/appdata:
-// backup/cache/appdata). Dataset '' is Settings' Replicate Every Dataset; None is dest '/'. Coverage: zfsmScheduleFollowed.
+// Copies under a dataset, here or in a trusted server's area: dest, a dataset and '/', holds each covered dataset's copy (backup/ and
+// cache/appdata: backup/cache/appdata). Dataset '' is Replicate Every Dataset; None is dest '/'. Coverage: zfsmScheduleFollowed.
 
 // A start while the run before still goes is only logged for a day (zfsmScheduleLockedSkip): a first run sends each dataset in full.
 define('ZFSM_SCHEDULE_COPIES_GRACE', 86400);
@@ -9,19 +9,37 @@ function zfsmScheduleCopiesUnder($job) {
 	return is_string($job['dest'] ?? null) && substr($job['dest'], -1) === '/';
 }
 
-// As a snapshot schedule's dataset, Repeat and server (zfsmScheduleSnapshotValid), with a dataset here to copy under; None has none.
+// As a snapshot schedule's dataset and Repeat (zfsmScheduleSnapshotValid, which takes no server), with a dataset to copy under, here
+// or on a server; None has neither.
 function zfsmScheduleCopiesValid($job) {
 	$under = substr($job['dest'], 0, -1);
-	return zfsmScheduleSnapshotValid($job) && ($job['every'] === 'none' ? $under === '' : zfsmValidDatasetName($under));
+	$server = $job['server'] ?? null;
+	if (!zfsmScheduleSnapshotValid(array('server' => '') + $job)) return false;
+	return $job['every'] === 'none' ? $under === '' && $server === '' : zfsmScheduleCopiesUnderValid($under, $server) && ($server === '' || zfsmReplicaSenderName($server));
+}
+
+// Whether $under names a dataset to copy under: here one in a pool; on $server a path inside its area, whose first part is no pool.
+function zfsmScheduleCopiesUnderValid($under, $server) {
+	return zfsmValidDatasetName($server === '' ? $under : 'p/'.$under);
 }
 
 function zfsmScheduleCopiesDest($job, $zdataset) {
 	return $job['dest'].$zdataset;
 }
 
-// Whether $zdataset is in the pool $job copies into, which a run of it leaves out (zfsmScheduleCopiesNot).
+// Whether $other (null: none) puts its copies where $job does: under the same Copy Under, on the same server.
+function zfsmScheduleCopiesSame($job, $other) {
+	return ($other['dest'] ?? null) === $job['dest'] && ($other['server'] ?? null) === $job['server'];
+}
+
+// Whether $zdataset is in the pool here $job copies into, which a run of it leaves out (zfsmScheduleCopiesNot).
 function zfsmScheduleCopiesInPool($job, $zdataset) {
-	return explode('/', $zdataset)[0] === explode('/', $job['dest'])[0];
+	return $job['server'] === '' && explode('/', $zdataset)[0] === explode('/', $job['dest'])[0];
+}
+
+// Where $job puts its copies, as its texts name it: Copy Under, and the server.
+function zfsmScheduleCopiesUnderText($job) {
+	return zfsmReplicaTargetWhere(array('server' => $job['server']), substr($job['dest'], 0, -1));
 }
 
 // Why $job never copies $zdataset, listed as $row (zfsmScheduleListed), besides zfsmScheduleSkipped's reasons; $name: a new
@@ -42,17 +60,19 @@ function zfsmScheduleCopiesOwnRepeat($job, $other, $zdataset) {
 	return zfsmScheduleCopiesUnder($job) && $other['dataset'] === $zdataset && $other['dest'] === zfsmScheduleCopiesDest($job, $zdataset) && $other['server'] === $job['server'];
 }
 
-// The record Save makes of copies under $under here: Settings' Replicate Every Dataset ($zdataset ''), or a dataset's own; None
-// has none, nor Copy Keeps ($copy_keeps: zfsmCopyKeepsParse's).
-function zfsmScheduleCopiesRecord($zdataset, $every, $under, $time, $days, $keep, $copy_keeps = null) {
+// The record Save makes of copies under $under, here or on $server: Settings' Replicate Every Dataset ($zdataset ''), or a dataset's
+// own; None has neither, nor Copy Keeps ($copy_keeps: zfsmCopyKeepsParse's).
+function zfsmScheduleCopiesRecord($zdataset, $every, $under, $time, $days, $keep, $copy_keeps = null, $server = '') {
 	$job = zfsmScheduleSnapshotRecord($zdataset, $every, $time, $days, $keep);
 	$job['dest'] = ($every === 'none' ? '' : $under).'/';
+	$job['server'] = $every === 'none' ? '' : $server;
 	return zfsmScheduleCopyKeepsSet($job, $every === 'none' ? null : $copy_keeps);
 }
 
 // What the user fixes for Save to make $job, copies under a dataset (or $remove it), as zfsmScheduleSnapshotWrong says it.
 function zfsmScheduleCopiesWrong($job, $remove) {
-	if (!$remove && zfsmScheduleRepeats($job['every']) && !zfsmValidDatasetName(substr($job['dest'], 0, -1))) return 'under Copy Under, name a dataset on this server, such as backup';
+	$where = $job['server'] === '' ? 'on this server' : 'to hold them inside the area '.$job['server'].' gives this server';
+	if (!$remove && zfsmScheduleRepeats($job['every']) && !zfsmScheduleCopiesUnderValid(substr($job['dest'], 0, -1), $job['server'])) return 'under Copy Under, name a dataset '.$where.', such as backup';
 	return zfsmScheduleSnapshotWrong($job, $remove);
 }
 
@@ -60,34 +80,38 @@ function zfsmScheduleCopiesWrong($job, $remove) {
 function zfsmScheduleCopiesFollowedText($job) {
 	if ($job === null) return 'Replicate Every Dataset, which is off: no scheduled copies';
 	$whose = zfsmScheduleWhat($job);
-	return $job['every'] === 'none' ? $whose.', None: no scheduled copies' : $whose.', under '.substr($job['dest'], 0, -1).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
+	return $job['every'] === 'none' ? $whose.', None: no scheduled copies' : $whose.', under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
 }
 
 // Settings' row of copies under a dataset.
 function zfsmScheduleCopiesText($job) {
 	if ($job['every'] === 'none') return 'No scheduled copies of '.$job['dataset'].' and below';
 	$whose = $job['dataset'] === '' ? 'Replicate Every Dataset' : 'Copies of '.$job['dataset'].' and below';
-	return $whose.' under '.substr($job['dest'], 0, -1).', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job);
+	return $whose.' under '.zfsmScheduleCopiesUnderText($job).', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job);
 }
 
-// Why the copies can't go under $under, from $listed (zfsmScheduleCoverRead): it is no dataset here or a volume, or wasn't read; ''
-// when they can.
-function zfsmScheduleCopiesUnderNot($under, $listed) {
+// Why $job's copies can't go under its Copy Under here, from $listed (zfsmScheduleCoverRead): it is no dataset or a volume, or wasn't
+// read; '' when they can, and on a server, where a run makes it.
+function zfsmScheduleCopiesUnderNot($job, $listed) {
+	if ($job['server'] !== '') return '';
+	$under = substr($job['dest'], 0, -1);
 	list($rows, $errors) = zfsmScheduleListed($listed);
 	if (!isset($rows[$under])) return ($listed['code'] ?? 1) === 0 ? $under.' does not exist on this server' : $under.' could not be read: '.zfsmScheduleUnreadWhy($errors, $listed);
 	return $rows[$under][1] === '-' ? $under.' is a volume, which holds no datasets' : '';
 }
 
-// Saves Replicate Every Dataset in place (zfsmScheduleSnapshotPut), copying under $under here; 'off' removes it. Nothing is copied
-// now. As zfsmScheduleChange answers, and 'said'.
-function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
+// Saves Replicate Every Dataset in place (zfsmScheduleSnapshotPut), copying under $under here or on $server, one in Replicate To
+// Other Servers, which is not asked now; 'off' removes it. Nothing is copied now. As zfsmScheduleChange answers, and 'said'.
+function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $server = '', $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	$remove = $every === 'off';
-	$job = zfsmScheduleCopiesRecord('', $every, $under, $time, $days, $keep, $copy_keeps);
+	$job = zfsmScheduleCopiesRecord('', $every, $under, $time, $days, $keep, $copy_keeps, $server);
+	$remote = $remove || $server === '' ? null : zfsmReplicaRemote($server);
+	if (is_string($remote)) return array('saved' => false, 'why' => 'Nothing was saved: '.$remote, 'said' => '');
 	$wrong = zfsmScheduleCopiesWrong($job, $remove);
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');
 	// One zfsmScheduleCoverRead: Copy Under must be there, and the answer counts what a run copies.
 	$listed = $remove ? null : zfsmScheduleCoverRead($cfg, $wait);
-	$not = $remove ? '' : zfsmScheduleCopiesUnderNot($under, $listed);
+	$not = $remove ? '' : zfsmScheduleCopiesUnderNot($job, $listed);
 	if ($not !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$not, 'said' => '');
 	$after = array();
 	$changed = zfsmScheduleSnapshotChange(function($all) use (&$job, $remove, $cfg) { return zfsmScheduleSnapshotPut($all, $job, $remove, $cfg); }, $after);
@@ -99,14 +123,14 @@ function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy
 function zfsmScheduleCopiesSaved($job, $listed, $after) {
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $after);
 	$count = $unread !== '' && !$pools ? 'each dataset' : 'each of '.array_sum(array_map('count', $pools)).' dataset(s)';
-	return 'Saved: a copy of '.$count.($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '').' under '.substr($job['dest'], 0, -1).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job)
+	return 'Saved: a copy of '.$count.($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '').' under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job)
 		.($unread !== '' ? '; not every dataset could be read: '.$unread : '');
 }
 
 // Why $job, a dataset's own copies under a dataset, can't copy its dataset, from $listed (zfsmScheduleCoverRead) and $jobs: Copy
 // Under or the dataset not there or not read, or one it leaves out (zfsmScheduleSkipped, zfsmScheduleCopiesNot); '' when it can.
 function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
-	$not = zfsmScheduleCopiesUnderNot(substr($job['dest'], 0, -1), $listed);
+	$not = zfsmScheduleCopiesUnderNot($job, $listed);
 	if ($not === '') $not = zfsmScheduleSnapshotNot($job['dataset'], $listed);
 	return $not !== '' ? $not : zfsmScheduleCopiesNot($job, $jobs, $job['dataset'], zfsmScheduleListed($listed)[0][$job['dataset']], $listed['name']);
 }
@@ -116,7 +140,7 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 	if ($remove) return 'Saved: the copies of '.$job['dataset'].' follow '.zfsmScheduleCopiesFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs, 'zfsmScheduleCopiesUnder'));
 	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own and repeats set in Replicate; the copies made stay';
-	$down = zfsmScheduleCopiesUnderNot(substr($job['dest'], 0, -1), $listed);
+	$down = zfsmScheduleCopiesUnderNot($job, $listed);
 	return zfsmScheduleCopiesSaved($job, $listed, $jobs).($down !== '' ? '; no run copies while '.$down : '');
 }
 
@@ -131,36 +155,63 @@ function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SC
 // What a run copied, and whether it had a problem: null when zfs read every pool and none had a dataset to copy, or it only left out
 // (zfsmScheduleTakenBeforeProblem). Its waits for other replications of a dataset share $wait, so it waits that long at most in all.
 function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
-	$under = substr($job['dest'], 0, -1);
+	// Its own connection, for the levels above each copy (zfsmScheduleCopiesPlace); each copy's run opens another.
+	$target = zfsmReplicaTargetOpen($job['server']);
+	try {
+		return zfsmScheduleCopiesMadeOn($target, $job, $jobs, $cfg, $now, $wait);
+	} finally {
+		zfsmReplicaDisconnect($target);
+	}
+}
+
+// zfsmScheduleCopiesMade with $target open.
+function zfsmScheduleCopiesMadeOn($target, $job, $jobs, $cfg, $now, $wait) {
 	$name = zfsmNewSnapshotName($cfg, $now);
 	$untaken = zfsmNewSnapshotNameWhy($name);
 	if ($untaken !== '') return array('Scheduled copies not made: '.$untaken, true);
 	$listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT);
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
-	$none = zfsmScheduleCopiesNone($under, $listed, $pools, $unread);
+	$none = zfsmScheduleCopiesNone($job, $listed, $pools, $unread);
 	if ($none !== null) return $none;
+	$cannot = zfsmReplicaTargetHolders($target);
+	if ($cannot !== '') return array('Scheduled copies not made: '.$cannot, true);
 	$datasets = array_merge(...array_values($pools));
 	// By name: a dataset's parents come before it.
 	sort($datasets, SORT_STRING);
 	$again = zfsmScheduleTakenBefore($cfg, $now, $datasets, $listed);
 	$datasets = array_values(array_diff($datasets, $again));
+	$long = zfsmScheduleCopiesTooLong($target, $job, $datasets, $name);
+	$datasets = array_values(array_diff($datasets, $long));
+	list($made, $due, $waiting, $problems) = zfsmScheduleCopiesEach($target, $job, $jobs, $cfg, $datasets, $listed, $name, $wait);
+	return array(zfsmScheduleCopiesSaid(zfsmScheduleCopiesUnderText($job), $made.' of '.$due, $again, $long, $waiting, $unread, $problems), zfsmScheduleTakenBeforeProblem($again, $made, $waiting || $unread !== '' || $problems));
+}
+
+// The copies of $datasets, parents first, for zfsmScheduleCopiesMadeOn: array(how many made, of how many still due, those waiting
+// for their parent's copy, the problems).
+function zfsmScheduleCopiesEach($target, $job, $jobs, $cfg, $datasets, $listed, $name, $wait) {
 	$rows = zfsmScheduleListed($listed)[0];
-	$here = array_fill_keys(array_keys($rows), true);
-	$coming = zfsmScheduleCopiesComing($job, $jobs, $listed);
+	list($here, $coming) = zfsmScheduleCopiesKnown($job, $jobs, $listed, $rows);
 	$made = $left = 0;
 	$problems = $waiting = array();
+	$stopped = function($zdataset, $why) use (&$problems) { $problems[] = $zdataset.' and the datasets after it were not copied: '.$why; };
 	foreach ($datasets as $zdataset) {
 		$saved = zfsmScheduleCopiesStill($job, $zdataset, $rows[$zdataset], $listed['name']);
 		if ($saved === null) {
-			$problems[] = $zdataset.' and the datasets after it were not copied: '.zfsmScheduleUnreadable();
+			$stopped($zdataset, zfsmScheduleUnreadable());
 			break;
 		}
 		if ($saved === false) {
 			$left++;
 			continue;
 		}
+		// Left alone since ssh to it failed, so asked nothing more; none here, as only zfsmReplicaAsk writes one.
+		$down = zfsmReplicaDown($job['server']);
+		if ($down !== null) {
+			$stopped($zdataset, $down);
+			break;
+		}
 		$zdest = zfsmScheduleCopiesDest($job, $zdataset);
-		$place = zfsmScheduleCopiesPlace($job['dest'], $zdest, $coming, $here, $cfg);
+		$place = zfsmScheduleCopiesPlace($job['dest'], $zdest, $coming, $here, $cfg, $target);
 		if ($place === null) $waiting[] = $zdataset;
 		if ($place !== '') {
 			if ($place !== null) $problems[] = $place;
@@ -173,24 +224,39 @@ function zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait) {
 		}
 		if ($code !== 0 || $said[1] !== 'normal') $problems[] = $said[0];
 	}
-	return array(zfsmScheduleCopiesSaid($under, $made.' of '.(count($datasets) - $left), $again, $waiting, $unread, $problems), zfsmScheduleTakenBeforeProblem($again, $made, $waiting || $unread !== '' || $problems));
+	return array($made, count($datasets) - $left, $waiting, $problems);
+}
+
+// What a run knows is there and coming before its first copy: here the datasets listed and the copies due (zfsmScheduleCopiesComing);
+// on a server neither, as zfsmScheduleCopiesPlace asks each level there and waits on one only while it is due.
+function zfsmScheduleCopiesKnown($job, $jobs, $listed, $rows) {
+	if ($job['server'] !== '') return array(array(), array());
+	return array(array_fill_keys(array_keys($rows), true), zfsmScheduleCopiesComing($job, $jobs, $listed));
+}
+
+// The datasets whose bookmark (zfsmReplicaBookmarkFits) has no room once the copy's name holds a server's area, which
+// zfsmScheduleCopiesNot can't know: a run leaves them out and says so.
+function zfsmScheduleCopiesTooLong($target, $job, $datasets, $name) {
+	return array_values(array_filter($datasets, function($zdataset) use ($target, $job, $name) {
+		return !zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark($target, zfsmReplicaTargetName($target, zfsmScheduleCopiesDest($job, $zdataset))), $name);
+	}));
 }
 
 // What a run says when it copies none, as zfsmScheduleCopiesMade answers; null when it can copy.
-function zfsmScheduleCopiesNone($under, $listed, $pools, $unread) {
+function zfsmScheduleCopiesNone($job, $listed, $pools, $unread) {
 	$what = zfsmScheduleNamesUnread($listed) ? 'the snapshot names' : 'the datasets';
 	if (!$pools) return array('Scheduled copies not made: '.($unread !== '' ? $what.' could not be read: '.$unread : 'no pool has a dataset it copies'), $unread !== '' ? true : null);
-	$not = zfsmScheduleCopiesUnderNot($under, $listed);
+	$not = zfsmScheduleCopiesUnderNot($job, $listed);
 	return $not !== '' ? array('Scheduled copies not made: '.$not, true) : null;
 }
 
-// $job as saved now, while it still has $job's run take $zdataset to the same Copy Under (zfsmScheduleTakes), as a run takes hours;
-// else false, and null when the schedules can't be read. One set to None copies under none.
+// $job as saved now, while it still has $job's run take $zdataset where it copied (zfsmScheduleTakes), as a run takes hours; else
+// false, and null when the schedules can't be read. One set to None copies under none.
 function zfsmScheduleCopiesStill($job, $zdataset, $row, $name) {
 	$read = zfsmScheduleRead();
 	if ($read === null) return null;
 	$now = $read['valid'][$job['id']] ?? null;
-	return ($now['dest'] ?? null) === $job['dest'] && zfsmScheduleTakes($now, $read['valid'], $zdataset, $row, $name) ? $now : false;
+	return zfsmScheduleCopiesSame($job, $now) && zfsmScheduleTakes($now, $read['valid'], $zdataset, $row, $name) ? $now : false;
 }
 
 // Where a copy is due here: each a schedule of copies under $job's dest makes, $job or another, and each a copy's own schedule
@@ -199,16 +265,16 @@ function zfsmScheduleCopiesComing($job, $jobs, $listed) {
 	$coming = array();
 	foreach (zfsmScheduleListed($listed)[0] as $zdataset => $row) {
 		$by = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-		if (($by['dest'] ?? '') === $job['dest'] && zfsmScheduleLeftOut($by, $jobs, $zdataset, $row, $listed['name']) === '') $coming[zfsmScheduleCopiesDest($by, $zdataset)] = true;
+		if (zfsmScheduleCopiesSame($job, $by) && zfsmScheduleLeftOut($by, $jobs, $zdataset, $row, $listed['name']) === '') $coming[zfsmScheduleCopiesDest($by, $zdataset)] = true;
 	}
 	foreach (zfsmScheduleCopiesRepeatsTo($jobs) as $zdest => $from) $coming[$zdest] = true;
 	return $coming;
 }
 
-// The datasets each repeat set in Replicate copies on this server, by the copy it makes.
-function zfsmScheduleCopiesRepeatsTo($jobs) {
+// The datasets each repeat set in Replicate copies here or on $server, by the copy it makes.
+function zfsmScheduleCopiesRepeatsTo($jobs, $server = '') {
 	$to = array();
-	foreach ($jobs as $job) if (!zfsmScheduleCovers($job) && $job['server'] === '') $to[$job['dest']][] = $job['dataset'];
+	foreach ($jobs as $job) if (!zfsmScheduleCovers($job) && $job['server'] === $server) $to[$job['dest']][] = $job['dataset'];
 	return $to;
 }
 
@@ -219,45 +285,51 @@ function zfsmScheduleCopiesOne($job, $zdataset, $zdest, $name, &$wait) {
 	$tell = function($title, $text, $type) use (&$said) { $said = array(rtrim($text, '.'), $type); };
 	$waited = function($seconds) use (&$wait) { $wait = max(0, $wait - $seconds); };
 	try {
-		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, '', array('notify' => $tell, 'wait' => $wait, 'waited' => $waited, 'tag' => zfsmKeepTag('', $job['dest']), 'remake' => true,
-			'copy_keeps' => $job['copy_keeps'] ?? null), $job['keep']);
+		$code = zfsmRunReplicate($zdataset, $name, $zdest, null, true, $job['server'], array('notify' => $tell, 'wait' => $wait, 'waited' => $waited,
+			'tag' => zfsmKeepTag($job['server'], $job['dest']), 'remake' => true, 'under' => true, 'copy_keeps' => $job['copy_keeps'] ?? null), $job['keep']);
 	} catch (Throwable $error) {
-		zfsmLog('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()));
-		return array(1, array('Replication of '.$zdataset.' to '.$zdest.' failed: '.zfsmOneLine($error->getMessage()), 'warning'));
+		$failed = 'Replication of '.$zdataset.' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $zdest).' failed: '.zfsmOneLine($error->getMessage());
+		zfsmLog($failed);
+		return array(1, array($failed, 'warning'));
 	}
 	return array($code, $said);
 }
 
 // A run's line: how many it copied and left out, those waiting for their parent's copy, the datasets not read, the first problems.
-function zfsmScheduleCopiesSaid($under, $made, $again, $waiting, $unread, $problems) {
+function zfsmScheduleCopiesSaid($under, $made, $again, $long, $waiting, $unread, $problems) {
 	return 'Scheduled copies under '.$under.': '.$made.' dataset(s) copied'.zfsmScheduleTakenBeforeSaid($again)
+		.($long ? '. Left out, as the names of each and its copy there are too long for the bookmark a copy keeps '.zfsmScheduleNamesSaid($long) : '')
 		// Before the problems, which the log's cut can drop (zfsmSafeText).
 		.($waiting ? '. Not copied, as the copy of a dataset above it is missing '.zfsmScheduleNamesSaid($waiting) : '')
 		.($unread !== '' ? '. Not every dataset could be read: '.$unread : '').($problems ? '. '.zfsmKeepFirst($problems) : '');
 }
 
-// The datasets above $zdest, a copy under $dest, below $dest's dataset; top first.
-function zfsmScheduleCopiesLevels($dest, $zdest) {
-	$level = substr($dest, 0, -1);
+// The datasets above $zdest, a copy under $dest, top first: those below $dest's dataset, or with $whole (on a server, where a run
+// makes Copy Under too) all of them.
+function zfsmScheduleCopiesLevels($dest, $zdest, $whole = false) {
+	$parts = explode('/', $zdest);
 	$levels = array();
-	foreach (array_slice(explode('/', substr($zdest, strlen($dest))), 0, -1) as $part) $levels[] = $level .= '/'.$part;
-	return $levels;
+	for ($i = 1; $i < count($parts); $i++) $levels[] = implode('/', array_slice($parts, 0, $i));
+	return $whole ? $levels : array_slice($levels, substr_count($dest, '/'));
 }
 
-// The datasets above $zdest, a copy under $dest: '' when each is there or made a holder, null to wait where a copy is $coming or (a
-// run's, given $cfg) due by the schedules saved now, else why a holder could not be made, as for a dataset gone since. $here gains each.
-function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here, $cfg = null) {
+// The levels above $zdest, a copy under $dest on $target: '' when each is there or made a holder, null to wait where a copy is $coming
+// or (given $cfg) due by the schedules saved now, else why not, such as a dataset gone since. $here gains each.
+function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here, $cfg = null, $target = array('server' => '')) {
 	$zdataset = substr($zdest, strlen($dest));
 	$missing = null;
-	foreach (zfsmScheduleCopiesLevels($dest, $zdest) as $level) {
+	foreach (zfsmScheduleCopiesLevels($dest, $zdest, $target['server'] !== '') as $level) {
 		if (isset($here[$level])) continue;
 		if (isset($coming[$level])) return null;
 		$missing = $missing ?? zfsmDatasetMissing($zdataset);
 		if ($missing !== false) return ($missing ? $zdataset.' is gone' : 'whether '.$zdataset.' is still there could not be read').', so no dataset was made to hold its copy';
 		// Read again, as a run takes hours: another may have made it since, or a schedule been saved to copy there.
-		if (!zfsmDatasetExists($level, 'filesystem')) {
-			if ($cfg !== null && zfsmScheduleCopiesDueNow($dest, $level, $cfg)) return null;
-			$why = zfsmReplicaHolderMake($level);
+		$there = zfsmReplicaTargetName($target, $level);
+		list($held, $unread) = zfsmReplicaTargetFilesystem($target, $there);
+		if ($held === null) return 'whether '.zfsmReplicaTargetWhere($target, $there).' is there could not be read: '.$unread;
+		if (!$held) {
+			if ($cfg !== null && zfsmScheduleCopiesDueNow($dest, $level, $cfg, $target['server'])) return null;
+			$why = zfsmReplicaHolderMake($target, $there);
 			if ($why !== '') return $why;
 		}
 		$here[$level] = true;
@@ -265,10 +337,10 @@ function zfsmScheduleCopiesPlace($dest, $zdest, $coming, &$here, $cfg = null) {
 	return '';
 }
 
-// Whether the schedules saved now copy a dataset to $level under $dest (zfsmScheduleCopiesTo), or that could not be read.
-function zfsmScheduleCopiesDueNow($dest, $level, $cfg) {
+// Whether the schedules saved now copy a dataset to $level under $dest here or on $server (zfsmScheduleCopiesTo), or that could not be read.
+function zfsmScheduleCopiesDueNow($dest, $level, $cfg, $server = '') {
 	$read = zfsmScheduleRead();
-	return $read === null || zfsmScheduleCopiesTo($dest, $level, $read['valid'], $cfg) !== array();
+	return $read === null || zfsmScheduleCopiesTo($dest, $level, $read['valid'], $cfg, $server) !== array();
 }
 
 // Why renaming $from to $to ($names: it and those below it) would leave a copy a schedule makes of one no room for the bookmark it
@@ -361,8 +433,9 @@ function zfsmScheduleCopiesHold($zdataset) {
 // After zfs renamed $from to $to and its own schedules followed ($before, $after, which repeats that follow a copy change): its copy
 // under each dataset that copies go under takes $to's name there (zfsmScheduleCopiesMoveOne). Each with a problem, with what.
 function zfsmScheduleCopiesMove($from, $to, $before, &$after, $cfg) {
-	$stayed = array();
-	foreach (array_column(array_filter($before, 'zfsmScheduleCopiesUnder'), null, 'dest') as $dest => $job) {
+	$stayed = zfsmScheduleCopiesServerStays($from, $to, $before);
+	$here = array_filter($before, function($job) { return zfsmScheduleCopiesUnder($job) && $job['server'] === ''; });
+	foreach (array_column($here, null, 'dest') as $dest => $job) {
 		$named = false;
 		$old = zfsmScheduleCopiesDest($job, $from);
 		$why = $dest === '/' ? '' : zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg, $named);
@@ -370,6 +443,22 @@ function zfsmScheduleCopiesMove($from, $to, $before, &$after, $cfg) {
 		$repeats = $named ? zfsmScheduleCopiesRepeatsFollow($to, $old, zfsmScheduleCopiesDest($job, $to), $after) : ($still ? 'the repeats set in Replicate that send into it still do' : '');
 		$why = implode('; ', array_filter(array($why, $repeats), 'strlen'));
 		if ($why !== '') $stayed[$old] = $why;
+	}
+	return $stayed;
+}
+
+// $from's copy on each server whose copies it or one below it follows ($before): no checker there renames one, so each keeps its name,
+// said as zfsmScheduleCopiesMove says each. A stopped run's holds move to the copies due now, whose run takes them off once it lands.
+function zfsmScheduleCopiesServerStays($from, $to, $before) {
+	$followed = zfsmScheduleFollowed($from, $before, 'zfsmScheduleCopiesUnder')['id'] ?? null;
+	$stayed = array();
+	foreach ($before as $job) {
+		$covers = $job['id'] === $followed || zfsmUnderAny($job['dataset'], array($from));
+		if (!zfsmScheduleCopiesUnder($job) || $job['server'] === '' || $job['every'] === 'none' || !$covers) continue;
+		$old = zfsmScheduleCopiesDest($job, $from);
+		$held = zfsmScheduleCopiesHolds($old, zfsmScheduleCopiesDest($job, $to), $to, $job['server']);
+		$stayed[zfsmReplicaTargetWhere(array('server' => $job['server']), $old)] = 'any copy there keeps its name, with those below it, as no copy on another server is renamed; a run that copies '
+			.$to.' there sends it in full'.($held !== '' ? ', and a stopped run\'s holds on its snapshots move to that copy, but '.$held : '');
 	}
 	return $stayed;
 }
@@ -401,7 +490,7 @@ function zfsmScheduleCopiesMoveOne($job, $from, $to, $after, $cfg, &$named) {
 	$old = zfsmScheduleCopiesDest($job, $from);
 	$new = zfsmScheduleCopiesDest($job, $to);
 	$missing = zfsmDatasetMissing($old);
-	if (!zfsmScheduleCopiesKept($to, $job['dest'], $after)) return $missing === false ? 'left where it is, as no schedule copies the renamed dataset or one below it there' : '';
+	if (!zfsmScheduleCopiesKept($to, $job, $after)) return $missing === false ? 'left where it is, as no schedule copies the renamed dataset or one below it there' : '';
 	// zfs says the same of a copy in a pool not imported now.
 	$pool = $missing === true ? zfsmDatasetMissing(strtok($old, '/')) : false;
 	if ($pool !== false) return 'not checked, as '.($pool ? 'its pool is not imported now' : 'whether its pool is imported could not be read').': if it is there, it keeps its old name, and the next copy of the renamed dataset is a full one';
@@ -469,9 +558,9 @@ function zfsmScheduleCopiesMarkMove($mark, $name) {
 	return ($gone['code'] ?? 1) === 0 ? '' : zfsmCommandError($gone, 'zfs destroy failed');
 }
 
-// The holds a stopped run put on $to's snapshots and below for the copies at $old and below (zfsmKeepHold) take $new's, so the
-// run that carries it on takes them off. '' or what went wrong.
-function zfsmScheduleCopiesHolds($old, $new, $to) {
+// The holds a stopped run put on $to's snapshots and below for the copies at $old and below, here or on $server (zfsmKeepHold), take
+// $new's, so the run that carries it on, or lands there, takes them off. '' or what went wrong.
+function zfsmScheduleCopiesHolds($old, $new, $to, $server = '') {
 	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,userrefs', '-t', 'snapshot', '-r', $to));
 	if (($listed['code'] ?? 1) !== 0) return 'its holds could not be read: '.zfsmCommandError($listed, 'zfs list failed');
 	$held = array();
@@ -484,8 +573,8 @@ function zfsmScheduleCopiesHolds($old, $new, $to) {
 	$failed = array();
 	foreach ($holds as list($snapshot, $tag)) {
 		$below = (string)substr(strstr($snapshot, '@', true), strlen($to));
-		if ($tag !== zfsmKeepHoldTag(zfsmKeepTag('', $old.$below))) continue;
-		$why = zfsmScheduleCopiesHoldMove($snapshot, $tag, zfsmKeepHoldTag(zfsmKeepTag('', $new.$below)));
+		if ($tag !== zfsmKeepHoldTag(zfsmKeepTag($server, $old.$below))) continue;
+		$why = zfsmScheduleCopiesHoldMove($snapshot, $tag, zfsmKeepHoldTag(zfsmKeepTag($server, $new.$below)));
 		if ($why !== '') $failed[] = $snapshot.' ('.$why.')';
 	}
 	return $failed ? 'not all its holds were: '.zfsmKeepFirst($failed) : '';
@@ -499,11 +588,11 @@ function zfsmScheduleCopiesHoldMove($snapshot, $from, $to) {
 	return ($released['code'] ?? 1) === 0 ? '' : zfsmCommandError($released, 'zfs release failed');
 }
 
-// Whether a schedule in $jobs copies $zdataset, or one below it, under $dest.
-function zfsmScheduleCopiesKept($zdataset, $dest, $jobs) {
-	if ((zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder')['dest'] ?? null) === $dest) return true;
-	foreach ($jobs as $job) {
-		if (zfsmScheduleCopiesUnder($job) && $job['dest'] === $dest && zfsmUnderAny($job['dataset'], array($zdataset))) return true;
+// Whether a schedule in $jobs copies $zdataset, or one below it, where $job does.
+function zfsmScheduleCopiesKept($zdataset, $job, $jobs) {
+	if (zfsmScheduleCopiesSame($job, zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder'))) return true;
+	foreach ($jobs as $other) {
+		if (zfsmScheduleCopiesUnder($other) && zfsmScheduleCopiesSame($job, $other) && zfsmUnderAny($other['dataset'], array($zdataset))) return true;
 	}
 	return false;
 }
@@ -546,13 +635,15 @@ function zfsmScheduleCopiesBlocked($dest, $zdest, $here, $jobs, $cfg) {
 	return '';
 }
 
-// The datasets $jobs copy to $level under $dest, as zfsmScheduleCopiesComing reads a run's: its own where a run takes it there, and
-// each a repeat set in Replicate sends there; null when whether a run takes it could not be read.
-function zfsmScheduleCopiesTo($dest, $level, $jobs, $cfg) {
+// The datasets $jobs copy to $level under $dest here or on $server, as zfsmScheduleCopiesComing reads a run's: its own where a run
+// takes it there, and each a repeat set in Replicate sends there; null when whether a run takes it could not be read.
+function zfsmScheduleCopiesTo($dest, $level, $jobs, $cfg, $server = '') {
+	$repeats = zfsmScheduleCopiesRepeatsTo($jobs, $server)[$level] ?? array();
+	// Copy Under and above, made on a server: no copy under it lands there.
+	if (strncmp($level, $dest, strlen($dest)) !== 0) return $repeats;
 	$zdataset = substr($level, strlen($dest));
-	$repeats = zfsmScheduleCopiesRepeatsTo($jobs)[$level] ?? array();
 	$job = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-	if (($job['dest'] ?? '') !== $dest) return $repeats;
+	if (!zfsmScheduleCopiesSame(array('dest' => $dest, 'server' => $server), $job)) return $repeats;
 	$listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-d', '1', $zdataset));
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
 	if ($row === null || $row[2] === null) return null;

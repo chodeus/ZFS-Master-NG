@@ -262,7 +262,8 @@ try {
 
 		case 'schedulecopies':
 			// Settings' Replicate Every Dataset.
-			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps()), $zfsm_cfg);
+			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps(),
+				zfsmPostString('server')), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':

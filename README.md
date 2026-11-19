@@ -16,7 +16,7 @@ See and manage your ZFS pools, datasets and snapshots from Unraid's **Main** tab
 - **Snapshots** — take, roll back, rename, clone, hold, release and delete; an icon warns when the newest gets old
 - **Snapshots Admin** — filter, sort, browse a snapshot's files, or see what changed since it
 - **Snapshot schedules** — snapshot every dataset hourly or on chosen days and keep the newest, plus the newest of each of the last days, weeks, months or years you choose; a dataset can have its own (not a read-only, legacy-mounted or Sanoid/Syncoid one), or none
-- **Replication** — copy datasets to another pool or ZFS Master NG server, once or on a schedule, or every dataset into one dataset here on a schedule (Replicate Every Dataset)
+- **Replication** — copy datasets to another pool or ZFS Master NG server, once or on a schedule, or every dataset into one dataset, here or on another ZFS Master NG server, on a schedule (Replicate Every Dataset)
 - **Reviews** — destroy, rollback and bulk delete show what they'll remove first
 - **Encryption** — create encrypted datasets, lock and unlock them
 - **Directories** — list, move or delete folders, or convert one to a dataset (cloned instead of copied where it can)

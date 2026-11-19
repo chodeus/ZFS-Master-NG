@@ -470,6 +470,9 @@ same(1, preg_match('~^0e0e0e0e\t\(every dataset\)\tname-[0-9a-f]{8}/ \(each data
 same(1, preg_match('~^0e0e0e0e\t.*\tevery hour at :50\t0, copy 30d\t0$~m', $found('zfsmDiagReplicaSchedules', function($root) use ($copies) {
 	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('copy_keeps' => '30d') + $copies)));
 })[1]), 'and copies with their own Copy Keeps say it after their keep');
+same(1, preg_match('~^0e0e0e0e\t\(every dataset\)\tname-[0-9a-f]{8}/ \(each dataset under it\) on server nas4\tevery hour at :50\t0\t0$~m', $found('zfsmDiagReplicaSchedules', function($root) use ($copies) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('server' => 'nas4') + $copies)));
+})[1]), 'and copies on a server name it, as a word the bundle replaces');
 // A dataset only the default takes can't be read: a dataset's own after it, which never takes it, doesn't hide that.
 putenv('ZFSM_TEST_COVER_FAIL=backup/copy');
 $text = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own) {

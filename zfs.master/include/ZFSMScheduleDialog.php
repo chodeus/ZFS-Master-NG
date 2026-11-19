@@ -21,8 +21,8 @@ function zfsmScheduleDialogPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_
 		'skipped' => zfsmScheduleSnapshotNot($zdataset, $listed), 'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
 }
 
-// The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under (its own, else what Default follows), what Default follows, and why
-// what it follows leaves it out besides the reasons Snapshots shows (zfsmScheduleCopiesNot); '' when it copies it or nothing does.
+// The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under (its own, else what Default follows; none on a server), what Default
+// follows, and why what it follows leaves it out besides the reasons Snapshots shows (zfsmScheduleCopiesNot); '' when it copies it or nothing does.
 function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$own = zfsmScheduleOwn($jobs, $zdataset, 'zfsmScheduleCopiesUnder');
 	$job = reset($own) ?: null;
@@ -31,7 +31,7 @@ function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$runs = $job ?? $followed;
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
 	$skipped = $runs !== null && $runs['every'] !== 'none' && $row !== null ? zfsmScheduleCopiesNot($runs, $jobs, $zdataset, $row, $listed['name']) : '';
-	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => $under !== null && $under['every'] !== 'none' ? substr($under['dest'], 0, -1) : '',
+	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => $under !== null && $under['every'] !== 'none' && $under['server'] === '' ? substr($under['dest'], 0, -1) : '',
 		'inherited' => zfsmScheduleCopiesFollowedText($followed), 'skipped' => $skipped);
 }
 
