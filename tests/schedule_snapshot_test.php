@@ -1,5 +1,5 @@
 <?php
-// Snapshot schedules (include/ZFSMScheduleSnapshot.php), Snapshot Every Dataset and a dataset's own, through the real store, cron
+// Snapshot schedules (include/ZFSMScheduleSnapshot.php, ZFSMScheduleCover.php), Snapshot Every Dataset and a dataset's own, through the real store, cron
 // file, runs and Keep, with the fake zfs's small pool (ZFSM_TEST_REPL_DIR) and Unraid's crontab rebuild faked under $GLOBALS['zfsm_root'].
 
 error_reporting(E_ALL);

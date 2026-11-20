@@ -40,7 +40,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 	source_of() { s=$(setter "$1" "$2"); if [ -z "$s" ]; then echo default; elif [ "$s" = "$1" ]; then echo local; else echo "inherited from $s"; fi; }
 	case "$1" in
 	list)
-		# A snapshot schedule's dataset read (include/ZFSMScheduleSnapshot.php): readonly, mountpoint set or inherited, else off, /mnt/<name> (a volume -);
+		# A snapshot schedule's dataset read (include/ZFSMScheduleCover.php): readonly, mountpoint set or inherited, else off, /mnt/<name> (a volume -);
 		# -d 1 <name>: it and its children. ZFSM_TEST_COVER_FAIL: 1 fails it, hang waits 30 s, a dataset's name fails that one, then exit 1.
 		if contains_arg 'name,readonly,mountpoint' "$@"; then
 			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
