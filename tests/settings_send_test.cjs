@@ -19,7 +19,7 @@ assert.equal(code.includes('<?'), false, 'no PHP in the Replicate To script');
 const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span><span id="zfsm-send-key-status"></span>'
   + '<span id="zfsm-send-servers"><span id="zfsm-send-6e6173"></span></span><span id="zfsm-send-servers-status"></span>'
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
-  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><input name="replica_keep"><span id="zfsm-replica-keep-warning"></span>'
+  + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><form><input name="replica_keep"><input type="hidden" name="replica_keep_rules" value="24 7d 4w"><span id="zfsm-replica-keep-warning"></span></form>'
   + '<input name="snap_prefix" value="auto-"><input name="snap_pattern"><span id="zfsm-snap-name-warning"></span><select name="snap_utc"><option value="0">Local</option><option value="1" selected>UTC</option></select>'
   + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option></select></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
@@ -182,6 +182,16 @@ assert.deepEqual([text('zfsm-replica-keep-warning'), keepIn.validity.valid], [''
 keepAsk('3x').done({warning: unread});
 $(keepIn).val(' ').trigger('input');
 assert.deepEqual([posts.length, text('zfsm-replica-keep-warning'), keepIn.validity.valid], [0, '', true], 'emptied, it asks nothing and refuses nothing');
+
+// Apply sends Keep Replicas twice, as it stands then: an older version's Apply posts only replica_keep, so replica_keep_rules stays as sent here.
+const keepRules = $('input[name="replica_keep_rules"]')[0];
+const apply = value => {
+  $(keepIn).val(value);
+  keepIn.form.dispatchEvent(new window.Event('submit', {cancelable: true}));
+  return keepRules.value;
+};
+assert.deepEqual([apply('7d 4w'), apply('10'), apply('')], ['7d 4w', '10', ''], 'each Apply sends the field as typed in both, emptied too');
+assert.equal(posts.length, 0, 'Apply asks nothing more');
 
 // Snapshots Pattern, Prefix and Time, asked as each changes: a name ZFS refuses is said, and refuses Apply on Pattern and Prefix; an answer that takes one, or a check that fails, lets Apply go.
 const patternIn = $('input[name="snap_pattern"]')[0];

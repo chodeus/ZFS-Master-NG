@@ -42,6 +42,13 @@ function zfsmDiagSavedName($key) {
 	return $key === 'dataset_exclusion' ? 'exclusion' : $key;
 }
 
+// Where the value of $name came from in the saved general section: its own name, another one this version reads, or the default.
+function zfsmDiagSettingSource($name, $saved) {
+	if ($name === 'replica_keep' && zfsmKeepReplicaText($saved) !== (string)($saved['replica_keep'] ?? '')) return 'saved as replica_keep_rules';
+	if (isset($saved[$name])) return 'saved';
+	return $name === 'exclusion' && isset($saved['exclussion']) ? 'saved as exclussion' : 'default';
+}
+
 // Each setting as the plugin uses it, its default, and whether the file set it; then what is wrong with them.
 function zfsmDiagSettingsEffective($ctx) {
 	$defaults = loadConfig(array());
@@ -60,7 +67,7 @@ function zfsmDiagSettingsEffective($ctx) {
 	}
 	foreach ($ctx['cfg'] as $key => $value) {
 		$name = zfsmDiagSavedName($key);
-		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
+		$source = zfsmDiagSettingSource($name, $ctx['saved']);
 		$differs = zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key]);
 		if ($differs) $changed[] = $name;
 		// The settings that name datasets keep each one's pool (zfsmDiagNamed); the others their owner wrote are a token whole.
@@ -73,9 +80,9 @@ function zfsmDiagSettingsEffective($ctx) {
 	return $text."\n".zfsmDiagSection('problems', $problems ? implode("\n", $problems) : '(none)');
 }
 
-// The names a setting is saved under that this version reads: loadConfig's, and the misspelt one it still reads.
+// The names a setting is saved under that this version reads: loadConfig's, the misspelt one it still reads, and Keep Replicas' second copy.
 function zfsmDiagKnownSettings($cfg) {
-	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion', 'replica_keep_rules'));
 }
 
 // What is wrong with the saved settings, a line each.

@@ -195,7 +195,8 @@ same(1, preg_match('/^\d+\.\d\d\texit 0\tzpool status -p tank$/m', $read('zfs/ti
 
 // Completeness: every setting loadConfig returns and every field of the Settings page is in settings-effective.txt.
 preg_match_all('/<(?:select|textarea|input)[^>]*\sname="([a-z_]+)"/', file_get_contents(__DIR__.'/../zfs.master/ZFSMasterSettings.page'), $fields);
-$fields = array_values(array_diff($fields[1], array('csrf_token')));
+// replica_keep_rules: Keep Replicas' second copy (zfsmKeepReplicaText), shown in replica_keep's row, and by name in settings-saved.
+$fields = array_values(array_diff($fields[1], array('csrf_token', 'replica_keep_rules')));
 same(true, count($fields) >= 14, 'the Settings page\'s fields were found: '.implode(', ', $fields));
 foreach (array_unique(array_merge($fields, array_map('zfsmDiagSavedName', array_keys(loadConfig(array()))))) as $name) {
 	same(1, preg_match('/^'.preg_quote($name, '/').'\t/m', $read('plugin/settings-effective.txt')), 'the setting '.$name.' is in settings-effective.txt');
@@ -234,6 +235,12 @@ putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
 same(array('the datasets could not be listed, so the exclusion pattern, Directory Listing and snapshot name lengths were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL');
 same(1, preg_match('/^exclusion\t"name-[0-9a-f]{8}"\t""\tsaved as exclussion$/m', $found('zfsmDiagSettingsEffective', null, array('exclussion' => '/docker%-old'))[1]), 'the old name is shown as the source, and the pattern, which its owner wrote, as a token');
+$second = array('replica_keep' => '', 'replica_keep_rules' => '24 7d 4w');
+$saved_second = function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nreplica_keep=\"\"\nreplica_keep_rules=\"24 7d 4w\"\n"); };
+same(array(1, 1, 1), array(preg_match('/^replica_keep\t"24 7d 4w"\t0\tsaved as replica_keep_rules$/m', $found('zfsmDiagSettingsEffective', null, $second)[1]),
+	preg_match('/^replica_keep_rules = name-[0-9a-f]{8}$/m', $found('zfsmDiagSettingsSaved', $saved_second, $second)[1]),
+	preg_match('/^replica_keep\t5\t0\tsaved$/m', $found('zfsmDiagSettingsEffective', null, array('replica_keep' => '5') + $second)[1])),
+	'Keep Replicas from its second copy shows as it is used and where it came from, that copy by its name in the file as saved; its own value as saved');
 
 // The install.
 $install = function($change) use ($found) { return $found('zfsmDiagInstall', $change)[0]; };
