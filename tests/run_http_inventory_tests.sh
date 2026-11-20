@@ -42,6 +42,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/size_format_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/plugin_log_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/install_lock_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_bundle_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_page_test.php"

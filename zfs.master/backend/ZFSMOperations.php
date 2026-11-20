@@ -18,6 +18,7 @@ require_once __ROOT__."/include/ZFSMReplicaRemote.php";
 require_once __ROOT__."/include/ZFSMReplicaTarget.php";
 require_once __ROOT__."/include/ZFSMSchedule.php";
 require_once __ROOT__."/include/ZFSMFeatures.php";
+require_once __ROOT__."/include/ZFSMInstallLock.php";
 $unraid_helpers = '/usr/local/emhttp/webGui/include/Helpers.php';
 $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;

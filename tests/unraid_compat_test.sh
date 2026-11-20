@@ -7,6 +7,7 @@ if [ -e /etc/unraid-version ] || [ -d /boot/config ]; then echo 'Refusing to run
 web=$(cd "$1" && pwd); version=$2; repo=$(pwd)
 fail() { echo "FAILED [$version]: $*"; exit 1; }
 command -v xz >/dev/null && command -v zip >/dev/null && command -v unzip >/dev/null || sh "$repo/tests/ci_apt.sh" xz-utils zip unzip || fail 'xz, zip or unzip unavailable'
+command -v flock >/dev/null || fail 'flock unavailable: the plg runs upgradepkg under it'
 
 docroot=/usr/local/emhttp
 flash=/boot/config/plugins/zfs.master
@@ -24,6 +25,9 @@ plugin="php $docroot/plugins/dynamix.plugin.manager/scripts/plugin"
 # Slackware's package tools; everything else is real.
 cat > /sbin/upgradepkg <<'STUB'
 #!/bin/bash
+# The plg's Run holds the install lock (include/ZFSMInstallLock.php) while this runs: flock exits 75 only when it finds it held.
+flock -n -s -E 75 /var/run/zfs.master.install.lock true; held=$?
+[ "$held" = 75 ] || { echo "upgradepkg ran without the install lock held (flock exit $held)" >&2; exit 1; }
 for pkg; do :; done
 tar -xJf "$pkg" -C / || exit 1
 touch "/var/log/packages/$(basename "$pkg" .txz)"
