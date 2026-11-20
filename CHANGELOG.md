@@ -2,13 +2,28 @@
 
 ## Unreleased
 
-- fix(settings): Server's options follow an Add or Remove
-- feat(schedules): Replicate Every Dataset copies to a trusted server
-- fix(schedules): updating again after going back to v2026.11.16 restores what its change dropped
-- fix(settings): Keep Replicas with periods survives an Apply on v2026.11.16
-- feat(dialogs): Schedules and Replicate open wider, with a hint per field and a Guide link
-- refactor(schedules): move a dataset rename's side of copies and Settings' schedule HTML into their own files
-- feat(schedules): a dataset's own Replication can copy to another server
+**Copies to another server**
+
+- Replicate Every Dataset can copy to another ZFS Master NG server: pick it under Server
+- A dataset can have its own copies to a server too, under Actions > Schedules > Replication
+- That server needs this version too; a run makes Copy Under there if it is missing
+- Renaming a dataset leaves its copies there under the old name, and the next copy is sent in full
+
+**Dialogs**
+
+- Schedules and Replicate open wider, with a short hint under each field and a Guide link to the new Schedules guide
+
+**Fixes**
+
+- Updating again after going back to v2026.11.16 restarts the schedules it stopped, and brings back Copy Keeps and Keep Replicas' periods
+
+**After going back to an older version**
+
+- Every Dataset or per-dataset copies to a server wait until you update; Settings counts them as records it can't use
+- On v2026.11.16, snapshot schedules, copies under Copy Under and schedules whose keep uses periods wait too
+- On v2026.11.16, a copy with records over 128K fails each run, and the first failure is notified
+- On v2026.11.16, Copy Keeps is ignored, so copies lose what their source loses, and Keep Replicas with periods keeps all
+- Keep Replicas with periods, cleared there, comes back when you update: clear it again after updating
 
 ## 2026.11.19.1 (beta)
 
