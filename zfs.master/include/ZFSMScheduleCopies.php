@@ -100,13 +100,19 @@ function zfsmScheduleCopiesUnderNot($job, $listed) {
 	return $rows[$under][1] === '-' ? $under.' is a volume, which holds no datasets' : '';
 }
 
+// Why no run copies $job to its server: one not in Replicate To Other Servers, or the list of them unread; '' here or for one there.
+function zfsmScheduleCopiesServerNot($job) {
+	$remote = $job['server'] === '' ? null : zfsmReplicaRemote($job['server']);
+	return is_string($remote) ? $remote : '';
+}
+
 // Saves Replicate Every Dataset in place (zfsmScheduleSnapshotPut), copying under $under here or on $server, one in Replicate To
 // Other Servers, which is not asked now; 'off' removes it. Nothing is copied now. As zfsmScheduleChange answers, and 'said'.
 function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $server = '', $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	$remove = $every === 'off';
 	$job = zfsmScheduleCopiesRecord('', $every, $under, $time, $days, $keep, $copy_keeps, $server);
-	$remote = $remove || $server === '' ? null : zfsmReplicaRemote($server);
-	if (is_string($remote)) return array('saved' => false, 'why' => 'Nothing was saved: '.$remote, 'said' => '');
+	$untrusted = $remove ? '' : zfsmScheduleCopiesServerNot($job);
+	if ($untrusted !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$untrusted, 'said' => '');
 	$wrong = zfsmScheduleCopiesWrong($job, $remove);
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');
 	// One zfsmScheduleCoverRead: Copy Under must be there, and the answer counts what a run copies.
@@ -127,10 +133,11 @@ function zfsmScheduleCopiesSaved($job, $listed, $after) {
 		.($unread !== '' ? '; not every dataset could be read: '.$unread : '');
 }
 
-// Why $job, a dataset's own copies under a dataset, can't copy its dataset, from $listed (zfsmScheduleCoverRead) and $jobs: Copy
-// Under or the dataset not there or not read, or one it leaves out (zfsmScheduleSkipped, zfsmScheduleCopiesNot); '' when it can.
+// Why $job, a dataset's own copies under a dataset, can't copy its dataset, from $listed (zfsmScheduleCoverRead) and $jobs: its server
+// (zfsmScheduleCopiesServerNot), Copy Under or the dataset not there or not read, or one it leaves out (zfsmScheduleSkipped, zfsmScheduleCopiesNot); '' when it can.
 function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
-	$not = zfsmScheduleCopiesUnderNot($job, $listed);
+	$not = zfsmScheduleCopiesServerNot($job);
+	if ($not === '') $not = zfsmScheduleCopiesUnderNot($job, $listed);
 	if ($not === '') $not = zfsmScheduleSnapshotNot($job['dataset'], $listed);
 	return $not !== '' ? $not : zfsmScheduleCopiesNot($job, $jobs, $job['dataset'], zfsmScheduleListed($listed)[0][$job['dataset']], $listed['name']);
 }
@@ -140,7 +147,9 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 	if ($remove) return 'Saved: the copies of '.$job['dataset'].' follow '.zfsmScheduleCopiesFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs, 'zfsmScheduleCopiesUnder'));
 	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own and repeats set in Replicate; the copies made stay';
-	$down = zfsmScheduleCopiesUnderNot($job, $listed);
+	// Copies as saved aren't checked again (zfsmScheduleDialogSave), so a server removed since is said here.
+	$server = zfsmScheduleCopiesServerNot($job);
+	$down = $server !== '' ? lcfirst($server) : zfsmScheduleCopiesUnderNot($job, $listed);
 	return zfsmScheduleCopiesSaved($job, $listed, $jobs).($down !== '' ? '; no run copies while '.$down : '');
 }
 

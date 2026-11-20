@@ -67,6 +67,13 @@ function zfsmRewriteSync(root) {
 	return keep;
 }
 
+// A Server select: This server, then each of servers (names), selected picked; error: the id of the line saying why the list is short.
+function zfsmServerSelect(id, servers, selected, error = '') {
+	const esc = zfsmEscape;
+	return '<select id="'+id+'"'+(error ? ' aria-describedby="'+error+'"' : '')+' style="width:100%"><option value="">This server</option>'
+		+servers.map(name => '<option value="'+esc(name)+'"'+(name === selected ? ' selected' : '')+'>'+esc(name)+'</option>').join('')+'</select>';
+}
+
 // The Replicate dialog, from zfsmReplicatePreview in include/ZFSMReplicaPlan.php; zfsmReplicatePlanHtml fills its plan as the choices change.
 function zfsmReplicateHtml(options, zdataset) {
 	const esc = zfsmEscape;
@@ -78,11 +85,8 @@ function zfsmReplicateHtml(options, zdataset) {
 	const last = options.last_destination || null;
 	// The last copy's server, while this one still trusts it.
 	const server = last && servers.includes(last.server) ? last.server : '';
-	if (servers.length) {
-		const choices = servers.map(name => '<option value="'+esc(name)+'"'+(name === server ? ' selected' : '')+'>'+esc(name)+'</option>').join('');
-		html += row('Server:', '<select id="zfsm-replicate-server" style="width:100%"><option value="">This server</option>'+choices+'</select>');
-	}
-	if (options.servers_error) html += '<p style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
+	if (servers.length) html += row('Server:', zfsmServerSelect('zfsm-replicate-server', servers, server, options.servers_error ? 'zfsm-replicate-server-error' : ''));
+	if (options.servers_error) html += '<p id="zfsm-replicate-server-error" style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
@@ -106,16 +110,16 @@ function zfsmFormDialog(options) {
 	return Swal2.fire(Object.assign({width: '44em'}, options));
 }
 
-// Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:
-// what they show first (zfsmScheduleDialogFields, zfsmScheduleDialogCopies' copy_keeps too), else the first choice at 00:00 daily.
-function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false) {
+// Repeat's select of choices ([value, text]), then after, then its rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps'
+// too; start: what they show first (zfsmScheduleDialogFields, zfsmScheduleDialogCopies' copy_keeps too), else the first choice at 00:00 daily.
+function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false, after = '') {
 	const esc = zfsmEscape;
 	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];
 	// Monday first; all seven ticked runs every day.
 	const days = [1, 2, 3, 4, 5, 6, 0].map(day => '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="'+prefix+'-day" value="'+day+'"'+(ticked.includes(day) ? ' checked' : '')+'> '
 		+['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day]+'</label>').join('');
 	const options = choices.map(([value, text]) => '<option value="'+value+'"'+(value === start.every ? ' selected' : '')+'>'+text+'</option>').join('');
-	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'
+	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'+after
 		+'<div id="'+prefix+'-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>'
 		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at (this server\'s time):<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
 		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'" aria-describedby="'+prefix+'-keep-hint"></label>'
@@ -159,7 +163,7 @@ function zfsmReplicateRepeatSync(root) {
 }
 
 // The Schedules dialog, from zfsmScheduleDialogPreview in include/ZFSMScheduleDialog.php: why no run takes the dataset, if so; for its
-// snapshots and its copies (preview.copies) Default (what it follows now), None, or its own; zfsmScheduleDialogSync shows the rows that fit.
+// snapshots and its copies (preview.copies, here or on a server) Default (what it follows now), None, or its own; zfsmScheduleDialogSync shows the rows that fit.
 function zfsmScheduleDialogHtml(preview) {
 	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
@@ -171,11 +175,18 @@ function zfsmScheduleDialogHtml(preview) {
 	const choice = (part, none, inherited) => '<p id="zfsm-'+part+'-none" style="margin:.5em 0;display:none">None: '+none+' A repeat set in Replicate still runs.</p>'
 		+'<p id="zfsm-'+part+'-default" style="margin:.5em 0;display:none">Default follows '+esc(inherited)+'.</p>';
 	const section = (name, html) => '<div role="group" aria-label="'+name+'" style="margin:0 0 1em">'+html+'</div>';
+	const error = copies.servers_error ? 'zfsm-copies-server-error' : '';
+	const server = (copies.servers.length ? '<label style="display:block">Server:'+zfsmServerSelect('zfsm-copies-server', copies.servers, copies.server, error)+'</label>' : '')
+		+(error ? '<span id="'+error+'" style="display:block;color:#e22828">'+esc(copies.servers_error)+'</span>' : '');
+	// Where, above when: a server picked hides Copy Keeps below it.
+	const where = (server ? '<p id="zfsm-copies-server-row" style="margin:.5em 0;display:none">'+server+'</p>' : '')
+		+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'" aria-describedby="zfsm-copies-under-hint"></label>'
+		// Sync shows the one hint for the server picked; only a shown one is read out.
+		+'<span id="zfsm-copies-under-hint">'+zfsmHint('zfsm-copies-under-here', 'A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data.', 'replication')
+		+zfsmHint('zfsm-copies-under-there', 'Inside the dataset that server keeps for this server\'s copies; a run makes it if it is missing.', 'copies-on-another-server')+'</span></p>';
 	return '<div style="text-align:left">'+skipped
 		+section('Snapshots', zfsmRepeatHtml('zfsm-schedules', '<b>Snapshots:</b>', choices, preview)+choice('schedules', 'no scheduled snapshots of this dataset, or of those below it that follow it.', preview.inherited))
-		+section('Replication', zfsmRepeatHtml('zfsm-copies', '<b>Replication:</b>', choices, copies, true)
-			+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'" aria-describedby="zfsm-copies-under-hint"></label>'
-			+zfsmHint('zfsm-copies-under-hint', 'A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data.', 'replication')+'</p>'
+		+section('Replication', zfsmRepeatHtml('zfsm-copies', '<b>Replication:</b>', choices, copies, true, where)
 			+choice('copies', 'no scheduled copies of this dataset, or of those below it that follow it.', copies.inherited)+unsent)
 		+say('Datasets below this one follow its choice, unless they have their own. Read-only datasets, those mounted legacy and those with Sanoid or Syncoid snapshots are left out. '+zfsmGuideLink('datasets-left-out'))+'</div>';
 }
@@ -186,18 +197,26 @@ function zfsmScheduleDialogSync(root) {
 	const every = zfsmRepeatSync(root, 'zfsm-schedules');
 	show('#zfsm-schedules-none', every === 'none');
 	show('#zfsm-schedules-default', every === 'default');
-	const copies = zfsmRepeatSync(root, 'zfsm-copies');
+	const server = root.querySelector('#zfsm-copies-server');
+	const here = !server || server.value === '';
+	const copies = zfsmRepeatSync(root, 'zfsm-copies', here);
+	const repeats = copies === 'hourly' || copies === 'days';
 	show('#zfsm-copies-none', copies === 'none');
 	show('#zfsm-copies-default', copies === 'default');
-	show('#zfsm-copies-under-row', copies === 'hourly' || copies === 'days');
+	show('#zfsm-copies-under-row', repeats);
+	show('#zfsm-copies-under-here', here);
+	show('#zfsm-copies-under-there', !here);
+	const row = root.querySelector('#zfsm-copies-server-row');
+	if (row) row.style.display = repeats ? '' : 'none';
 	return every;
 }
 
-// What the dialog holds, as the scheduledataset route reads it: Snapshots' rows, and Replication's as copy_* and under.
+// What the dialog holds, as the scheduledataset route reads it: Snapshots' rows, and Replication's as copy_*, under and server.
 function zfsmScheduleDialogChoices(root) {
 	const copies = zfsmRepeatChoices(root, 'zfsm-copies');
+	const server = root.querySelector('#zfsm-copies-server');
 	return Object.assign(zfsmRepeatChoices(root, 'zfsm-schedules'), {copy_every: copies.every, copy_time: copies.time, copy_days: copies.days, copy_keep: copies.keep,
-		copy_keeps: copies.copy_keeps, under: root.querySelector('#zfsm-copies-under').value});
+		copy_keeps: copies.copy_keeps, under: root.querySelector('#zfsm-copies-under').value, server: server ? server.value : ''});
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy

@@ -52,10 +52,10 @@ window.addEventListener('load', () => setTimeout(() => {
 
 let checked = 0;
 try {
-  // The Replicate and Schedules dialogs with a repeat on days, as on the Main tab of a 390 px phone.
+  // The Replicate and Schedules dialogs with a repeat on days, Schedules' copies to a server, as on the Main tab of a 390 px phone.
   const repeats = [['Replicate', "zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data')", 'zfsm-replicate', 'zfsmReplicateRepeatSync'],
-    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-schedules', 'zfsmScheduleDialogSync'],
-    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-copies', 'zfsmScheduleDialogSync']];
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', server: 'nas', servers: ['nas'], inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-schedules', 'zfsmScheduleDialogSync'],
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', server: 'nas', servers: ['nas'], inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-copies', 'zfsmScheduleDialogSync']];
   for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
     const where = `${dialog} dialog (${prefix}), ${theme} theme`;
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
@@ -91,7 +91,7 @@ window.addEventListener('load', () => {
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
 window.addEventListener('load', () => {
   zfsmFormDialog({title: 'Schedules', html: zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'the snapshot schedule of ${deep}, every hour at :30; it keeps all it takes', skipped: '',
-    copies: {every: 'default', time: '', days: [], keep: '', under: '', inherited: 'the copies of ${deep} and below, under backup every hour at :40; it keeps all its snapshots', skipped: ''}}), showCancelButton: true, confirmButtonText: 'Save'});
+    copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'the copies of ${deep} and below, under backup every hour at :40; it keeps all its snapshots', skipped: ''}}), showCancelButton: true, confirmButtonText: 'Save'});
   zfsmScheduleDialogSync(Swal2.getPopup());
 });
 </script>`, `() => {

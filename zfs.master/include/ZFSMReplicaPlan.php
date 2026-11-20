@@ -211,7 +211,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '') 
 	$snapshots = array();
 	foreach (array_reverse($marks) as $mark) if (strpos($mark['name'], '@') !== false) $snapshots[] = substr($mark['name'], strlen($zdataset) + 1);
 	$remotes = zfsmReplicaRemotes();
-	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => array_map('strval', array_keys($remotes ?? array())), 'server' => $server, 'area' => null);
+	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => zfsmReplicaServerNames('', $remotes), 'server' => $server, 'area' => null);
 	if ($remotes === null) $options['servers_error'] = zfsmReplicaRemotesUnreadable();
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file !== null && zfsmJobRunning($lock_file)) return array_merge($options, array('can_proceed' => false, 'error' => 'A replication of this dataset is already running'));

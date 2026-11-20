@@ -40,11 +40,13 @@ $routes = array(
 		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => ' 24 7D ', 'copy_keeps' => 'all', 'under' => 'backup'),
 	'scheduledatasetwrong' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '', 'days' => '', 'keep' => '',
 		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => 'x5', 'under' => 'backup'),
+	'scheduledatasetserver' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'default', 'time' => '', 'days' => '', 'keep' => '',
+		'copy_every' => 'hourly', 'copy_time' => '', 'copy_days' => '', 'copy_keep' => '', 'under' => 'copies', 'server' => 'gone'),
 	'previewschedules' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/data'),
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'previewschedules', 'previewschedulesbad', 'replicaremove');
+$replication = array('previewreplicate', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -70,7 +72,7 @@ if (in_array($route, $replication, true)) {
 
 // A schedule to remove, or a snapshot schedule saved (the default or a dataset's own), on the tmpfs the runner mounts on /boot/config. No update_cron here, so
 // Unraid's crontab is not rebuilt.
-if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'replicaremove'), true)) {
+if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'scheduledatasetserver', 'replicaremove'), true)) {
 	zfsmTestScratch('/boot/config');
 	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
 	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
@@ -149,8 +151,9 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array(0),
 		'scheduledatasetwrong' => $answer === array('error' => 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
 			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'scheduledatasetserver' => $answer === array('error' => 'Nothing was saved: Replication: No server here is named gone') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'previewschedules' => $answer === array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'inherited' => 'Snapshot Every Dataset, which is off: no scheduled snapshots', 'skipped' => '',
-			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'copy_keeps' => '', 'under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),
+			'copies' => array('every' => 'default', 'time' => '00:00', 'days' => range(0, 6), 'keep' => '', 'copy_keeps' => '', 'under' => '', 'server' => '', 'servers' => array(), 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => '')),
 		'previewschedulesbad' => ($answer['failed'] ?? null) === array('request' => 'Invalid dataset name'),
 		// A server removed while Server has it chosen stays there, chosen: Save says why not.
 		'replicaremove' => array_keys($answer) === array('servers_html', 'server_options') && $answer['server_options'] === '<option value="nas">nas</option><option value="old" selected>old</option>'

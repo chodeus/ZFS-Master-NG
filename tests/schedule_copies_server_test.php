@@ -1,5 +1,5 @@
 <?php
-// Copies under a dataset on a trusted server (include/ZFSMScheduleCopies.php): Save, runs through the fake ssh (fixtures/fake_ssh),
+// Copies under a dataset on a trusted server (include/ZFSMScheduleCopies.php): Settings' and the Schedules dialog's Save, runs through the fake ssh (fixtures/fake_ssh),
 // which runs the real checker on the same fake pool, as a server sending to itself does; an older or unreachable server; a rename.
 
 error_reporting(E_ALL);
@@ -79,6 +79,8 @@ $pool('holds', array());
 // Settings' Server offers This server and each trusted one; one no longer trusted stays while saved.
 same(array('<option value="nas" selected>nas</option>', '<option value="nas">nas</option><option value="gone" selected>gone</option>'),
 	array(zfsmReplicaServerOptions('nas'), zfsmReplicaServerOptions('gone')), 'the Server options');
+same(array(array('123', 'nas'), array('nas', 'gone'), array()), array(zfsmReplicaServerNames('123', array(123 => array(), 'nas' => array())),
+	zfsmReplicaServerNames('gone', array('nas' => array())), zfsmReplicaServerNames('', null)), 'the Server names: one of digits is still a name');
 
 // A copy's path inside the area that ZFS would not take is refused before nas is asked.
 $deep = 'copies/'.implode('/', array_fill(0, 120, 'abcdefgh'));
@@ -263,12 +265,14 @@ same(0, zfsmScheduleRun('5e6f7a8b', $cfg, $t + 21600), 'a run of copies here');
 same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on copies/tank'), 1, array()),
 	array(array_values(preg_grep('/holder=on/', $calls('create'))), count(preg_grep('~ copies/tank/again$~', $calls('receive'))), $read('ssh.log')), 'tank held here, tank/again copied, nas not asked');
 
-// A run whose record is saved since to copy here copies no more; the dialog takes no Copy Under from copies on a server, as it saves its own here.
+// A run whose record is saved since to copy here copies no more; the dialog starts at the Copy Under and Server Default follows, or its own.
 $listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT);
 $valid = zfsmScheduleRead()['valid'];
 $still = function($job) use ($listed) { return zfsmScheduleCopiesStill($job, 'tank', zfsmScheduleListed($listed)[0]['tank'], $listed['name']); };
 same(array('nas', false), array($still($valid[$id])['server'] ?? null, $still(array('server' => '') + $valid[$id])), 'a run whose server was changed since');
-same(array('', 'copies'), array(zfsmScheduleDialogCopies('tank', $valid, $listed)['under'], zfsmScheduleDialogCopies('tank/again', $valid, $listed)['under']), 'the dialog\'s Copy Under');
+same(array(array('default', 'copies', 'nas'), array('hourly', 'copies', '')), array_map(function($zdataset) use ($valid, $listed) {
+	return array_values(array_intersect_key(zfsmScheduleDialogCopies($zdataset, $valid, $listed), array('every' => 1, 'under' => 1, 'server' => 1)));
+}, array('tank', 'tank/again')), 'the dialog\'s Copy Under and Server');
 
 // A stale copy here of tank/zz2, whose copies go on nas: as no schedule copies it here, a rename leaves it.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/zz2\tfilesystem", "copies/tank/zz2\tfilesystem")));
@@ -291,5 +295,45 @@ $reset();
 same(1, zfsmScheduleRun($id, $cfg, $t + 25200), 'a run while it is due');
 same(array(array(), array()), array(preg_grep('~/fresh~', $area()), $calls('(create|receive)')), 'makes and copies nothing there');
 same(1, $logged('/ Schedule '.$id.': Scheduled copies under fresh on server nas: 0 of \d+ dataset\(s\) copied\. Not copied, as the copy of a dataset above it is missing /'), 'and says they wait');
+
+// The Schedules dialog: tank/solo's own copies on nas. What is wrong is said by part, and nothing saved; Save asks nas nothing.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/solo\tfilesystem")));
+$dialog = function($copies, $snapshots = 'default') use ($cfg) {
+	return zfsmScheduleDialogSave('tank/solo', array('every' => $snapshots, 'time' => '', 'days' => '', 'keep' => 0),
+		$copies + array('every' => 'hourly', 'time' => '', 'days' => '', 'keep' => 1, 'copy_keeps' => null, 'under' => 'mine', 'server' => 'nas'), $cfg);
+};
+$solo = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/solo' && zfsmScheduleCopiesUnder($job); })); };
+$before = $stored();
+$reset();
+same(array('Nothing was saved: Replication: No server here is named gone', 'Nothing was saved: Replication: leave Copy Keeps empty: what a copy on another server keeps, its Keep Replicas decides',
+	'Nothing was saved: Replication: under Copy Under, name a dataset to hold them inside the area nas gives this server, such as backup'),
+	array($dialog(array('server' => 'gone'))['why'], $dialog(array('copy_keeps' => 0))['why'], $dialog(array('under' => ''))['why']), 'what is wrong is said');
+same($before, $stored(), 'and nothing is saved');
+$saved = $dialog(array());
+same(array(array('dest' => 'mine/', 'server' => 'nas', 'every' => 'hourly', 'keep' => 1)),
+	array_map(function($job) { return array_intersect_key($job, array_flip(array('dest', 'server', 'every', 'keep', 'copy_keeps'))); }, $solo()), 'saved on nas, with no Copy Keeps: '.$saved['why']);
+same(1, preg_match('/^Saved: tank\/solo follows Snapshot Every Dataset, which is off: no scheduled snapshots\. Saved: a copy of each of 1 dataset\(s\) \(tank\/solo and below\) under mine on server nas every hour at :\d\d; it keeps the newest 1 of the snapshots of each dataset it copies$/D', $saved['said']), 'and said: '.$saved['said']);
+same(array(), $read('ssh.log'), 'Save asks nas nothing');
+$listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT);
+$shown = function() use ($listed) { return zfsmScheduleDialogCopies('tank/solo', zfsmScheduleRead()['valid'], $listed); };
+same(array('hourly', 'mine', 'nas', array('nas'), null, ''), array($shown()['every'], $shown()['under'], $shown()['server'], $shown()['servers'], $shown()['servers_error'] ?? null, $shown()['skipped']), 'the dialog shows it');
+$reset();
+same(0, zfsmScheduleRun($solo()[0]['id'], $cfg, $t + 28800), 'a run to nas');
+same(array('backup/replicas/tower/mine', 'backup/replicas/tower/mine/tank', 'backup/replicas/tower/mine/tank/solo'), array_values(preg_grep('~/mine~', $area())), 'copies tank/solo inside nas\'s area');
+same(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/mine', 'create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/mine/tank'),
+	array_values(preg_grep('/holder=on/', $calls('create'))), 'holders made for Copy Under and tank');
+
+// nas removed since: it stays picked, and Snapshots saves beside the copies as saved; changed copies are refused.
+same('', zfsmReplicaRemoteRemove('nas'), 'nas removed');
+same(array('nas', array('nas'), 'No server here is named nas'), array($shown()['server'], $shown()['servers'], $shown()['skipped']), 'nas stays picked, and the dialog says it is gone');
+same('No server here is named nas', zfsmScheduleDialogCopies('tank', zfsmScheduleRead()['valid'], $listed)['skipped'], 'as for Default, following Replicate Every Dataset on nas');
+$kept = $dialog(array(), 'none');
+same(array(true, array('nas'), 1), array($kept['saved'], array_column($solo(), 'server'), preg_match('/; no run copies while no server here is named nas$/', $kept['said'])),
+	'Snapshots None saves beside the copies as saved, and says no run copies them: '.$kept['said']);
+same('Nothing was saved: Replication: No server here is named nas', $dialog(array('keep' => 2), 'none')['why'], 'changed copies are refused');
+// The list of servers unreadable: said in the dialog, and changed copies refused.
+file_put_contents(zfsmReplicaSshDir().'/remotes.json', 'not a list');
+same(array(array('nas'), zfsmReplicaRemotesUnreadable(), zfsmReplicaRemotesUnreadable()), array($shown()['servers'], $shown()['servers_error'] ?? null, $shown()['skipped']), 'the dialog says the servers can\'t be read, and so the copies as saved stop');
+same('Nothing was saved: Replication: '.zfsmReplicaRemotesUnreadable(), $dialog(array('keep' => 2), 'none')['why'], 'and refuses changed copies');
 
 echo "schedule copies server tests passed\n";

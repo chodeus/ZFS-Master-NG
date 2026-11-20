@@ -844,7 +844,11 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			showCancelButton: true,
 			confirmButtonText: 'Save',
 			didOpen: (popup) => {
-				['#zfsm-schedules-every', '#zfsm-copies-every'].forEach(id => popup.querySelector(id).addEventListener('change', () => zfsmScheduleDialogSync(popup)));
+				// Only with a server to pick is there a Server select.
+				['#zfsm-schedules-every', '#zfsm-copies-every', '#zfsm-copies-server'].forEach(id => {
+					const field = popup.querySelector(id);
+					if (field) field.addEventListener('change', () => zfsmScheduleDialogSync(popup));
+				});
 				zfsmScheduleDialogSync(popup);
 			},
 			preConfirm: () => zfsmScheduleDialogChoices(Swal2.getPopup())
