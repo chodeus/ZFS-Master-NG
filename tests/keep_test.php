@@ -50,7 +50,8 @@ $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.lo
 $short = function($dataset) { return array_map(function($mark) { return substr($mark['name'], strpos($mark['name'], '@') + 1); }, zfsmReplicaMarks($dataset, 'snapshot') ?? array()); };
 $destroys = function() use ($read) { return array_values(array_filter($read('calls.log'), function($line) { return strpos($line, 'destroy ') === 0 && strpos($line, '#') === false; })); };
 $log = function() { return (string)@file_get_contents(zfsmLogFile()); };
-$stored = function() { return json_decode((string)@file_get_contents(zfsmScheduleFile()), true); };
+require_once __DIR__.'/fixtures/schedules_stored.php';
+$stored = 'zfsmTestStored';
 $add = function(...$args) use ($work) {
 	$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
 	$GLOBALS['zfsm_php'] = PHP_BINARY;

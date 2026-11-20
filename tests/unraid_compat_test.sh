@@ -105,9 +105,16 @@ cp "$work/upgradepkg" /sbin/upgradepkg
 grep -q '2026.09.25.112' /boot/config/plugins/zfs.master.plg || fail 'failed upgradepkg replaced the installed manifest'
 
 # Over a registered old version, then package to package, then what a reboot does.
+# Its schedules as v2026.11.16 left them after a change (tests/schedule_downgrade_test.php): the install puts back their cron lines.
 reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+cp "$repo/tests/fixtures/downgrade/copy-keeps/schedules.json" "$repo/tests/fixtures/downgrade/copy-keeps/schedules.cron" "$flash/"; rm -f /tmp/zfsm-crontab
 $plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/over-old.log" 2>&1 || { cat "$work/over-old.log"; fail 'upgrade over a registered old version refused'; }
 grep -q '"2026.11.01"' /boot/config/plugins/zfs.master.plg || fail 'manifest not updated on upgrade'
+grep -q 'Schedules and their cron file were saved again' "$work/over-old.log" || { cat "$work/over-old.log"; fail 'the install did not say it put the schedules back'; }
+for id in aaaa0001 5e1f0001 5e1f0002; do
+	grep -q " run $id " "$flash/schedules.cron" && grep -q " run $id " /tmp/zfsm-crontab || fail "schedule $id not back in cron after the install"
+done
+cp "$flash/schedules.json" "$work/healed.json"; cp /tmp/zfsm-crontab "$work/healed.crontab"
 cp "$work/v2026.11.02/dist/$second.txz" "$flash/"
 $plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { cat "$work/next.log"; fail 'package upgrade refused'; }
 [ ! -e "$flash/$first.txz" ] && [ ! -e "/var/log/packages/$first" ] || fail 'package upgrade left the previous version behind'
@@ -115,6 +122,8 @@ $plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { 
 rm -f /var/log/plugins/zfs.master.plg
 $plugin install /boot/config/plugins/zfs.master.plg > "$work/boot.log" 2>&1 || { cat "$work/boot.log"; fail 'reinstall at boot failed'; }
 [ -f "$flash/$second.txz" ] || fail 'reinstall at boot deleted its own archive'
+cmp -s "$flash/schedules.json" "$work/healed.json" && cmp -s /tmp/zfsm-crontab "$work/healed.crontab" || fail 'the next install or boot changed the healed schedules or crontab'
+grep -q 'Schedules' "$work/next.log" "$work/boot.log" && fail 'an install with nothing to heal said something of schedules'
 
 # The manifest's floor is enforced by the real installer.
 reset; set_version 6.8.3; cp "$work/dist/$package" "$flash/"

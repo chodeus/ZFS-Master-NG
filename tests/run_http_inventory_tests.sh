@@ -48,6 +48,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_downgrade_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_snapshot_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_server_test.php"

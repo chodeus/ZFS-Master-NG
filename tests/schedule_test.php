@@ -60,7 +60,8 @@ $drop = function($dataset) use ($work) {
 		file_put_contents($work.'/pool/'.$file, $kept ? implode("\n", $kept)."\n" : '');
 	}
 };
-$stored = function() { return json_decode((string)@file_get_contents(zfsmScheduleFile()), true); };
+require_once __DIR__.'/fixtures/schedules_stored.php';
+$stored = 'zfsmTestStored';
 $cron = function() { return is_file(zfsmScheduleCronFile()) ? file_get_contents(zfsmScheduleCronFile()) : null; };
 // An add starts its first run as Replicate does, from the plugin in ZFSM_TEST_DOCROOT; it answers once that run is done.
 $add = function(...$args) use ($work) {
@@ -348,7 +349,7 @@ $run = function($args) {
 $before = count($names('backup/data', 'snapshot'));
 same(array(0, ''), $run('run '.$id), 'cron\'s script runs it');
 same(array($before + 1, 1), array(count($names('backup/data', 'snapshot')), count($sends())), 'and the copy gets its new snapshot');
-same(array(2, 'Usage: schedule.php run <schedule id>'), $run('run ../x'), 'anything but an id is refused');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php heal'), $run('run ../x'), 'anything but an id is refused');
 
 // A list that can't be read is never written over; records the plugin can't use are kept as they are.
 $saved = file_get_contents(zfsmScheduleFile());
