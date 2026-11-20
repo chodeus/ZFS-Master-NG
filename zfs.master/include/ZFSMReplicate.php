@@ -1,6 +1,6 @@
 <?php
 // Replication: zfs send piped to zfs receive in the background, so a dataset keeps a copy on another pool that each run brings up to date.
-// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and never with -F: a run only adds to it, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
+// The copy is received read-only (a filesystem's unmounted, a volume's with no device), and with -F only onto a holder, which has no snapshot (zfsmReplicaPlanHolder): a run only adds to a copy, so nothing there is rolled back; only a schedule's Keep removes its old snapshots (ZFSMKeep.php).
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
@@ -29,36 +29,63 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $k
 	return array('succeeded' => array($zdataset => $said.'; a notification says when it is done'), 'failed' => array());
 }
 
-// Runs zfs send into the target's receive (zfsmReplicaTargetReceive), the stream passing straight between them; reports the bytes
-// sent, the first error that says why, and 'lost' when the connection there ended it (zfsmReplicaTargetLost).
+// Starts $steps in order, each reading the one before: array(the processes, the output to read from each), or the step that didn't start.
+function zfsmReplicateStart($steps) {
+	$processes = $streams = array();
+	$input = array('file', '/dev/null', 'r');
+	foreach ($steps as $side => $command) {
+		$last = $side === 'receive';
+		$pipes = array();
+		$process = @proc_open($command, array(0 => $input, 1 => array('pipe', 'w'), 2 => $last ? array('redirect', 1) : array('pipe', 'w')), $pipes, null, null, array('bypass_shell' => true));
+		// Only the two steps a pipe joins may hold it: with a copy here, a step whose reader stopped would wait, not fail.
+		if (is_resource($input)) fclose($input);
+		if (!is_resource($process)) {
+			foreach ($processes as $started) proc_terminate($started);
+			foreach ($streams as $stream) fclose($stream);
+			foreach ($processes as $started) proc_close($started);
+			return $side;
+		}
+		$processes[$side] = $process;
+		$streams[$side] = $last ? $pipes[1] : $pipes[2];
+		if (!$last) $input = $pipes[1];
+	}
+	return array($processes, $streams);
+}
+
+// Why a stream failed, its first line: ssh's own (zfsmReplicaTargetLost), else receive's unless only a short stream, else send's, else
+// zstd's, else receive's when it failed, else send's; send and zstd fail on a broken pipe once another step fails. array(it, whether ssh's).
+function zfsmReplicateReason($target, $codes, $errors) {
+	$receive_failed = $codes['receive'] !== 0 && trim($errors['receive']) !== '' && preg_match('/failed to read from stream|incomplete stream|^Not a send stream$/im', $errors['receive']) !== 1;
+	$failed = function($side) use ($codes, $errors) {
+		return ($codes[$side] ?? 0) !== 0 && trim($errors[$side]) !== '' && stripos($errors[$side], 'broken pipe') === false;
+	};
+	$lost = zfsmReplicaTargetLost($target, $codes['receive'], $errors['receive']);
+	$side = $receive_failed ? 'receive' : ($failed('send') ? 'send' : ($failed('zstd') ? 'zstd' : ($codes['receive'] !== 0 ? 'receive' : 'send')));
+	return array(trim(strtok(trim($lost ?? $errors[$side])."\n", "\n")), $lost !== null);
+}
+
+// Runs zfs send into the target's receive (zfsmReplicaTargetReceive), through any zstd step, the stream passing straight between them;
+// reports the bytes sent, the first error that says why, and 'lost' when the connection there ended it (zfsmReplicaTargetLost).
 function zfsmReplicateStream($plan, $zdataset, $target) {
 	$zfs = zfsmCommandPath('zfs');
 	if ($zfs === null) return array('code' => 127, 'bytes' => 0, 'errors' => 'zfs must come from ZFSM_TEST_BIN_DIR in a test');
-	$options = array('bypass_shell' => true);
-	$send_pipes = $receive_pipes = array();
-	$send = @proc_open(array_merge(array($zfs), zfsmReplicateSendArgs($plan)), array(0 => array('file', '/dev/null', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w')), $send_pipes, null, null, $options);
-	if (!is_resource($send)) return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start zfs send');
-	$receive = @proc_open(zfsmReplicaTargetReceive($target, $plan), array(0 => $send_pipes[1], 1 => array('pipe', 'w'), 2 => array('redirect', 1)), $receive_pipes, null, null, $options);
-	// Only send and receive may hold the stream: a copy left here would keep receive waiting after send ends.
-	fclose($send_pipes[1]);
-	if (!is_resource($receive)) {
-		proc_terminate($send);
-		fclose($send_pipes[2]);
-		proc_close($send);
-		return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start zfs receive');
-	}
-	$streams = array('send' => $send_pipes[2], 'receive' => $receive_pipes[1]);
+	$steps = array('send' => array_merge(array($zfs), zfsmReplicateSendArgs($plan)));
+	$zstd = zfsmReplicaTargetZstdStep($target, $plan);
+	if ($zstd !== null) $steps['zstd'] = $zstd;
+	$steps['receive'] = zfsmReplicaTargetReceive($target, $plan);
+	$started = zfsmReplicateStart($steps);
+	if (is_string($started)) return array('code' => -1, 'bytes' => 0, 'errors' => 'Unable to start '.array('send' => 'zfs send', 'zstd' => 'zstd', 'receive' => 'zfs receive')[$started]);
+	list($processes, $streams) = $started;
 	foreach ($streams as $stream) stream_set_blocking($stream, false);
 	$bytes = 0;
-	$errors = array('send' => '', 'receive' => '');
-	$partial = array('send' => '', 'receive' => '');
+	$errors = $partial = array_fill_keys(array_keys($streams), '');
 	$reported = microtime(true);
 	$select_failures = 0;
 	while (true) {
 		$open = array_values(array_filter($streams, function($stream) { return !feof($stream); }));
 		if (!$open) break;
 		$write = $except = null;
-		// A signal can interrupt the wait: the two zfs go on, and so does the reading, unless it keeps failing.
+		// A signal can interrupt the wait: the steps go on, and so does the reading, unless it keeps failing.
 		if (@stream_select($open, $write, $except, 1) === false) {
 			if (++$select_failures > 50) break;
 			usleep(100000);
@@ -66,7 +93,7 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 		}
 		$select_failures = 0;
 		foreach ($open as $stream) {
-			$side = $stream === $streams['send'] ? 'send' : 'receive';
+			$side = array_search($stream, $streams, true);
 			$lines = explode("\n", $partial[$side].(string)fread($stream, 65536));
 			$partial[$side] = array_pop($lines);
 			foreach ($lines as $line) {
@@ -85,15 +112,10 @@ function zfsmReplicateStream($plan, $zdataset, $target) {
 		if (trim($partial[$side]) !== '' && !preg_match('/^[0-9]{2}:[0-9]{2}:[0-9]{2}\t/', $partial[$side])) $errors[$side] .= $partial[$side];
 		fclose($stream);
 	}
-	$send_code = proc_close($send);
-	$receive_code = proc_close($receive);
-	// One side failing fails the other: send on a broken pipe or a signal, receive on a short stream ("Not a send stream" if empty).
-	// The reason: ssh's own failure (zfsmReplicaTargetLost), else receive's unless only that, else send's; its first line only.
-	$receive_failed = $receive_code !== 0 && trim($errors['receive']) !== '' && preg_match('/failed to read from stream|incomplete stream|^Not a send stream$/im', $errors['receive']) !== 1;
-	$send_failed = $send_code !== 0 && trim($errors['send']) !== '' && stripos($errors['send'], 'broken pipe') === false;
-	$lost = zfsmReplicaTargetLost($target, $receive_code, $errors['receive']);
-	$why = $lost ?? ($receive_failed || (!$send_failed && $receive_code !== 0) ? $errors['receive'] : $errors['send']);
-	return array('code' => $send_code !== 0 ? $send_code : $receive_code, 'bytes' => $bytes, 'errors' => trim(strtok(trim($why)."\n", "\n")), 'lost' => $lost !== null);
+	$codes = array();
+	foreach ($processes as $side => $process) $codes[$side] = proc_close($process);
+	list($why, $lost) = zfsmReplicateReason($target, $codes, $errors);
+	return array('code' => $codes['send'] !== 0 ? $codes['send'] : $codes['receive'], 'bytes' => $bytes, 'errors' => $why, 'lost' => $lost);
 }
 
 // After a run: this destination's bookmark at the snapshot it now holds, and its older ones removed. Returns what went wrong, or ''.
@@ -115,32 +137,35 @@ function zfsmReplicaMark($zdataset, $plan) {
 // The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
-// $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone.
-// $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands its newest $keep
-// of those stay (0: all, zfsmKeepPrune).
+// $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
+// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full,
+// 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
+// $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
+// them $keep keeps stay (0: all, zfsmKeepPrune).
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null) {
 	$title = 'ZFS Replication';
-	$tag = zfsmKeepTag($server, $zdest);
+	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
 	$notify = $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); };
 	$to = zfsmReplicaTargetWhere(array('server' => $server), $zdest);
-	$not_started = function($why) use ($zdataset, $to, $title, $started, $notify) {
+	// $first: a step this run carried on before, as zfsmReplicateTold takes it.
+	$not_started = function($why, $first = array('', 'normal')) use ($zdataset, $to, $title, $started, $notify) {
 		zfsmLog('Replication of '.$zdataset.' to '.$to.' not started: '.$why);
-		$notify($title, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning');
+		$notify($title, ...zfsmReplicateTold($first, 'Replication of '.$zdataset.' to '.$to.' not started: '.zfsmSafeText($why), 'warning'));
 		if ($started !== null) fwrite(STDOUT, zfsmOneLine($why)."\n");
 		return 1;
 	};
 	// Only the snapshot this run just took, which nothing has used.
-	$refused = function($why) use ($zdataset, $snapshot, $take, $not_started) {
+	$refused = function($why, $first) use ($zdataset, $snapshot, $take, $not_started) {
 		if ($take) runProcess('zfs', array('destroy', $zdataset.'@'.$snapshot));
-		return $not_started($why);
+		return $not_started($why, $first);
 	};
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
-	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.($schedule !== null ? '; remove its schedule in Settings' : '') : 'its guid could not be read');
-	$lock = zfsmJobLock($lock_file);
-	for ($until = time() + ($schedule['wait'] ?? 0); $lock === false && time() < $until; $lock = zfsmJobLock($lock_file)) sleep(max(1, min(10, $until - time())));
+	if ($lock_file === null) return $not_started(zfsmDatasetMissing($zdataset) === true ? 'it no longer exists'.(isset($schedule['gone']) ? '; '.$schedule['gone'] : '') : 'its guid could not be read');
+	$lock = zfsmReplicateLock($lock_file, $schedule);
 	if ($lock === null) return $not_started('its lock file could not be opened');
 	// No page starts a scheduled run again: one that waited in vain is a problem.
-	if ($lock === false && $schedule !== null) return $not_started('another replication of this dataset was still running after this run waited '.(int)ceil(($schedule['wait'] ?? 0) / 60).' minute(s) for it');
+	$waited = (int)ceil(($schedule['wait'] ?? 0) / 60);
+	if ($lock === false && $schedule !== null) return $not_started('another replication of this dataset was still running'.($waited > 0 ? ' after this run waited '.$waited.' minute(s) for it' : ', and the run had no time left to wait for it'));
 	// Another run holds it: two starts at once leave one replication, and that one sends the notification.
 	if ($lock === false) {
 		zfsmLog('Replication of '.$zdataset.' to '.$to.' not started: another replication of this dataset is running', LOG_NOTICE);
@@ -152,21 +177,45 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			if ($taken['failed']) return $not_started(implode('; ', $taken['failed']));
 		}
 		$target = zfsmReplicaTargetOpen($server);
+		$target['zstd'] = zfsmReplicaTargetZstd($target);
+		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
-			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null));
-			if (!$plan['can_proceed']) return $refused($plan['error']);
+			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
+				'under' => $schedule['under'] ?? false));
+			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
 			if ($started !== null) $started();
-			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag);
+			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
+			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
 			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
-			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) continue;
-			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type);
-			$notify($title, $text, $type);
+			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) {
+				$first = array($text, $type);
+				continue;
+			}
+			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $schedule['copy_keeps'] ?? null);
+			$notify($title, ...zfsmReplicateTold($first, $text, $type));
 			return $code;
 		}
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
 		zfsmJobUnlock($lock);
 	}
+}
+
+// A run's last step's $text and $type, with the first's when that one carried on a stopped run and warned ($first: its text, type);
+// a last step with a problem goes first, so a notification cut short still says it.
+function zfsmReplicateTold($first, $text, $type) {
+	if ($first[1] === 'normal') return array($text, $type);
+	if ($type === 'normal') return array(rtrim($first[0], '.').'. '.$text, 'warning');
+	return array(rtrim($text, '.').'. Before it: '.$first[0], $type);
+}
+
+// zfsmJobLock of $lock_file, waiting out another run up to $schedule's 'wait' seconds; its 'waited' is told how long.
+function zfsmReplicateLock($lock_file, $schedule) {
+	$lock = zfsmJobLock($lock_file);
+	$since = time();
+	for ($until = $since + ($schedule['wait'] ?? 0); $lock === false && time() < $until; $lock = zfsmJobLock($lock_file)) sleep(max(1, min(10, $until - time())));
+	if (isset($schedule['waited'])) $schedule['waited'](time() - $since);
+	return $lock;
 }
 
 // One plan of zfsmRunReplicate's sent, with its log lines and the row's progress: array(0 when it landed, its notification's text and type).
@@ -199,7 +248,7 @@ function zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, $tag) {
 	}
 	$marked = zfsmReplicaMark($zdataset, $plan);
 	$note = implode('. ', array_filter(array($marked === '' ? '' : 'The bookmark that keeps the next run incremental could not be made: '.$marked,
-		zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
+		$plan['holder'] ? zfsmReplicaHolderClear($plan['dest']) : '', zfsmKeepReleaseNote(zfsmKeepRelease($zdataset, $tag))), 'strlen'));
 	zfsmLog('Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.$note : ''), LOG_NOTICE);
 	return array(0, 'Replication of '.$what.' finished'.$how.'.'.($note !== '' ? ' '.zfsmSafeText($note) : ''), $note === '' ? 'normal' : 'warning');
 }

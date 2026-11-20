@@ -25,6 +25,21 @@ function zfsmPostDigits($key, $digits, $default) {
 	return zfsmDigits(zfsmPostString($key), $digits, $default);
 }
 
+// Snapshots to keep ($key) as zfsmKeepParse saves it; -1, which no check accepts, when it is no Keep.
+function zfsmPostKeep($key = 'keep') {
+	return zfsmKeepParse(zfsmPostString($key)) ?? -1;
+}
+
+// Copy Keeps as zfsmCopyKeepsParse saves it.
+function zfsmPostCopyKeeps() {
+	return zfsmCopyKeepsParse(zfsmPostString('copy_keeps'));
+}
+
+// A schedule Save's answer for the page: what it said or why not, and Settings' list once saved, even if the crontab step failed.
+function zfsmScheduleSavedJson($saved, $cfg) {
+	return zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($cfg)) : array()));
+}
+
 function zfsmResolveAnswerCodes($answer) {
 	if (!is_array($answer)) return zfsmFailure('request', 'The operation returned no usable result');
 	$answer['succeeded'] = is_array($answer['succeeded'] ?? null) ? $answer['succeeded'] : array();
@@ -81,7 +96,9 @@ try {
 			break;
 
 		case 'editdatasetproperty':
-			zfsmReturnAnswer(setDatasetProperty(zfsmPostString('zdataset'), zfsmPostString('property'), zfsmPostString('value')), 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset');
+			$dataset = zfsmPostString('zdataset');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
+			zfsmReturnAnswer($blocked ?? setDatasetProperty($dataset, zfsmPostString('property'), zfsmPostString('value')), 'ZFS Dataset Edit', 'Dataset edited successfully', 'Unable to edit dataset');
 			break;
 
 		case 'getdatasetproperties':
@@ -130,6 +147,16 @@ try {
 			echo zfsmJson(array('valid' => $valid, 'missing' => $missing));
 			break;
 
+		case 'validatekeep':
+			echo zfsmJson(array('warning' => zfsmKeepReplicaWarning(zfsmPostString('keep'))));
+			break;
+
+		case 'validatesnapname':
+			// Read as loadConfig reads them once saved: a blank pattern is the default.
+			$named = loadConfig(array('general' => array('snap_pattern' => zfsmPostString('pattern'), 'snap_prefix' => zfsmPostString('prefix'), 'snap_utc' => zfsmPostString('utc'))));
+			echo zfsmJson(array('warning' => zfsmNewSnapshotNamesWhy($named, time(), true)));
+			break;
+
 		case 'replicakey':
 			$made = zfsmReplicaKeyMake();
 			echo zfsmJson(isset($made['error']) ? $made : array('key_html' => zfsmReplicaKeyHtml(), 'servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
@@ -146,7 +173,8 @@ try {
 			$why = $command === 'replicaadd'
 				? zfsmReplicaRemoteAdd(zfsmPostString('name'), zfsmPostString('host'), zfsmPostDigits('port', 5, 0), zfsmPostString('key'), zfsmPostString('fingerprint'))
 				: zfsmReplicaRemoteRemove(zfsmPostString('name'));
-			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes())));
+			// Server's options keep what the page has chosen.
+			echo zfsmJson($why !== '' ? array('error' => $why) : array('servers_html' => zfsmReplicaRemotesHtml(zfsmReplicaRemotes()), 'server_options' => zfsmReplicaServerOptions(zfsmPostString('server'))));
 			break;
 
 		case 'replicatest':
@@ -163,7 +191,9 @@ try {
 			break;
 
 		case 'renamedataset':
-			zfsmReturnAnswer(renameDataset(zfsmPostString('zdataset'), zfsmPostString('newname'), zfsmPostString('force')), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
+			$dataset = zfsmPostString('zdataset');
+			$blocked = zfsmRequireDestructiveMode($zfsm_cfg, $dataset);
+			zfsmReturnAnswer($blocked ?? renameDataset($dataset, zfsmPostString('newname'), zfsmPostString('force'), $zfsm_cfg), 'ZFS Dataset Rename', 'Dataset renamed successfully', 'Unable to rename dataset');
 			break;
 
 		case 'destroydataset':
@@ -206,19 +236,45 @@ try {
 			break;
 
 		case 'replicatedataset':
-			// Repeat (every) is empty for Once; Keep empty keeps all.
+			// Repeat (every) is empty for Once.
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
-			$keep = zfsmPostString('keep') === '' ? 0 : zfsmPostDigits('keep', strlen((string)ZFSM_KEEP_MAX), -1);
+			$keep = zfsmPostKeep();
 			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
-				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg);
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg, zfsmPostCopyKeeps());
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
+			break;
+
+		case 'previewschedules':
+			echo zfsmJson(zfsmScheduleDialogPreview(zfsmPostString('zdataset'), $zfsm_cfg), JSON_UNESCAPED_SLASHES);
+			break;
+
+		case 'schedulesnapshots':
+			// zdataset: '' (Settings) for the default.
+			echo zfsmScheduleSavedJson(zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg), $zfsm_cfg);
+			break;
+
+		case 'scheduledataset':
+			// Main's Schedules dialog: a dataset's own snapshot schedule and its own copies (copy_*, under, server) at once.
+			echo zfsmScheduleSavedJson(zfsmScheduleDialogSave(zfsmPostString('zdataset'),
+				array('every' => zfsmPostString('every'), 'time' => zfsmPostString('time'), 'days' => zfsmPostString('days'), 'keep' => zfsmPostKeep()),
+				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'copy_keeps' => zfsmPostCopyKeeps(), 'under' => zfsmPostString('under'), 'server' => zfsmPostString('server')), $zfsm_cfg), $zfsm_cfg);
+			break;
+
+		case 'schedulecopies':
+			// Settings' Replicate Every Dataset.
+			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps(),
+				zfsmPostString('server')), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':
 			// Saved with only its cron step failed, the list changed all the same: the answer has both.
-			$removed = zfsmScheduleRemove(zfsmPostString('id'));
+			$removed = zfsmScheduleRemove(zfsmPostString('id'), $zfsm_cfg);
 			echo zfsmJson(($removed['why'] !== '' ? array('error' => $removed['why']) : array()) + ($removed['saved'] ? array('schedules_html' => zfsmSchedulesHtml($zfsm_cfg)) : array()));
+			break;
+
+		case 'schedulekeepchange':
+			echo zfsmScheduleSavedJson(zfsmScheduleKeepChange(zfsmPostString('id'), zfsmPostKeep(), zfsmPostCopyKeeps()) + array('said' => ''), $zfsm_cfg);
 			break;
 
 		case 'convertdirectory':

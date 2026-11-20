@@ -42,6 +42,13 @@ function zfsmDiagSavedName($key) {
 	return $key === 'dataset_exclusion' ? 'exclusion' : $key;
 }
 
+// Where the value of $name came from in the saved general section: its own name, another one this version reads, or the default.
+function zfsmDiagSettingSource($name, $saved) {
+	if ($name === 'replica_keep' && zfsmKeepReplicaText($saved) !== (string)($saved['replica_keep'] ?? '')) return 'saved as replica_keep_rules';
+	if (isset($saved[$name])) return 'saved';
+	return $name === 'exclusion' && isset($saved['exclussion']) ? 'saved as exclussion' : 'default';
+}
+
 // Each setting as the plugin uses it, its default, and whether the file set it; then what is wrong with them.
 function zfsmDiagSettingsEffective($ctx) {
 	$defaults = loadConfig(array());
@@ -60,7 +67,7 @@ function zfsmDiagSettingsEffective($ctx) {
 	}
 	foreach ($ctx['cfg'] as $key => $value) {
 		$name = zfsmDiagSavedName($key);
-		$source = isset($ctx['saved'][$name]) ? 'saved' : ($name === 'exclusion' && isset($ctx['saved']['exclussion']) ? 'saved as exclussion' : 'default');
+		$source = zfsmDiagSettingSource($name, $ctx['saved']);
 		$differs = zfsmJson($value) !== zfsmJson(is_int($value) ? (int)$defaults[$key] : $defaults[$key]);
 		if ($differs) $changed[] = $name;
 		// The settings that name datasets keep each one's pool (zfsmDiagNamed); the others their owner wrote are a token whole.
@@ -73,9 +80,9 @@ function zfsmDiagSettingsEffective($ctx) {
 	return $text."\n".zfsmDiagSection('problems', $problems ? implode("\n", $problems) : '(none)');
 }
 
-// The names a setting is saved under that this version reads: loadConfig's, and the misspelt one it still reads.
+// The names a setting is saved under that this version reads: loadConfig's, the misspelt one it still reads, and Keep Replicas' second copy.
 function zfsmDiagKnownSettings($cfg) {
-	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion'));
+	return array_merge(array_map('zfsmDiagSavedName', array_keys($cfg)), array('exclussion', 'replica_keep_rules'));
 }
 
 // What is wrong with the saved settings, a line each.
@@ -87,8 +94,8 @@ function zfsmDiagSettingProblems($ctx) {
 		if (!in_array($name, $known, true)) $problems[] = 'the settings file has a setting this version does not know: '.zfsmDiagToken($name);
 		elseif (is_string($value) && zfsmConfigValueUnsafe($value)) $problems[] = $name.' holds text that a save would refuse';
 	}
-	$snapshot = zfsmNewSnapshotName($cfg, time());
-	if (!zfsmValidSnapshotName('tank@'.$snapshot)) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($snapshot);
+	$refused = zfsmNewSnapshotNameRefused($cfg, time());
+	if ($refused !== null) $problems[] = 'the snapshot prefix and pattern give a name ZFS refuses: '.zfsmDiagToken($refused);
 	$pattern = $cfg['dataset_exclusion'];
 	if (!zfsmExclusionIsValid($pattern)) $problems[] = 'the exclusion pattern is invalid, so it is ignored';
 	elseif (strpos($pattern, '%') !== false) $problems[] = 'the exclusion pattern is a Lua pattern, the format older versions used';
@@ -98,8 +105,11 @@ function zfsmDiagSettingProblems($ctx) {
 // The settings that name datasets, against the datasets there are.
 function zfsmDiagDatasetSettingProblems($cfg) {
 	$names = zfsmDiagDatasetNames();
-	if ($names === null) return array('the datasets could not be listed, so the exclusion pattern and Directory Listing were not checked against them');
+	if ($names === null) return array('the datasets could not be listed, so the exclusion pattern, Directory Listing and snapshot name lengths were not checked against them');
 	$problems = array();
+	// One refused after any dataset is said by zfsmDiagSettingProblems.
+	$long = zfsmNewSnapshotNameRefused($cfg, time()) !== null ? array() : array_filter(array_map(function($name) use ($cfg) { return zfsmNewSnapshotNameRefused($cfg, time(), $name); }, $names), 'is_string');
+	if ($long) $problems[] = 'the snapshot prefix and pattern give a name too long after '.count($long).' of '.count($names).' datasets: '.zfsmDiagToken(reset($long));
 	$hidden = count(array_filter($names, function($name) use ($cfg) { return zfsmDatasetExcluded($name, $cfg['dataset_exclusion']); }));
 	if ($hidden > 0) $problems[] = 'the exclusion pattern hides '.$hidden.' of '.count($names).' datasets';
 	foreach (array_diff(array_filter($cfg['directory_listing'], 'strlen'), $names) as $missing) $problems[] = 'Directory Listing names a dataset that does not exist: '.zfsmDiagNamed($missing);
@@ -230,7 +240,12 @@ function zfsmDiagCronLine($lines, $command) {
 	return (bool)preg_grep('~^\s*[^#\s].*plugins/zfs\.master/scripts/'.$command.'(\s|$)~', $lines);
 }
 
-// Scheduled replication: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
+// A schedule's keep (0: all), and its Copy Keeps when it has one.
+function zfsmDiagKeepCell($job) {
+	return $job['keep'].(isset($job['copy_keeps']) ? ', copy '.$job['copy_keeps'] : '');
+}
+
+// Schedules of copies and of snapshots: Unraid builds the live crontab from schedules.cron, whose lines name only each schedule's id.
 function zfsmDiagReplicaSchedules($ctx) {
 	$file = zfsmScheduleFile();
 	$cron = zfsmScheduleCronFile();
@@ -244,21 +259,26 @@ function zfsmDiagReplicaSchedules($ctx) {
 	foreach ($read['valid'] ?? array() as $id => $job) {
 		zfsmDiagKnowWord($job['server']);
 		$dest = $job['server'] === '' ? zfsmDiagNamed($job['dest']) : zfsmDiagToken($job['dest']).' on server '.$job['server'];
-		$failures = zfsmScheduleFailures($id);
-		$rows .= implode("\t", array($id, zfsmDiagNamed($job['dataset']), $dest, zfsmScheduleWhen($job), $job['keep'], $failures))."\n";
+		$whose = $job['dataset'] === '' ? '(every dataset)' : zfsmDiagNamed($job['dataset']);
+		$under = $job['every'] === 'none' ? '(no copies)' : zfsmDiagNamed(rtrim($job['dest'], '/')).'/ (each dataset under it)'.($job['server'] !== '' ? ' on server '.$job['server'] : '');
+		$what = zfsmScheduleCopiesUnder($job) ? array($whose, $under) : (zfsmScheduleSnapshotsOnly($job) ? array($whose, '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest));
+		$runs = zfsmScheduleRepeats($job['every']);
+		$failures = zfsmScheduleProblems($job);
+		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), zfsmDiagKeepCell($job), $failures)))."\n";
 		$wrong = array(
-			'replication schedule '.$id.' has no line in the live crontab, so it does not run' => !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
-			'replication schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
-			'replication schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
+			'schedule '.$id.' has no line in the live crontab, so it does not run' => $runs && !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
+			'schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => $runs && !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
+			'schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
 		);
 		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));
 	}
+	$covers = zfsmDiagScheduleCovers($read['valid'] ?? array(), $ctx['cfg']);
 	$unused = count($read['other'] ?? array());
 	if ($read === null && !$unread) zfsmDiagFinding('schedules.json is not a list of schedules, so none run: '.$file);
 	if ($unused > 0) zfsmDiagFinding($unused.' record(s) in schedules.json are not schedules the plugin can use');
 	$listed = $read === null ? ($unread ? zfsmDiagUnread('(schedules.json could not be read)') : '(schedules.json is not a list of schedules)') : ($rows !== '' ? $rows : '(none)');
-	return 'records in schedules.json the plugin does not use: '.$unused."\n\n"
-		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)', $listed)
+	return 'records in schedules.json the plugin does not use: '.$unused."\n".$covers."\n"
+		.zfsmDiagSection('schedules (id, dataset, copy, when, keep (0: all) and copy keeps if set, runs in a row with a problem)', $listed)
 		.zfsmDiagSection($cron, zfsmDiagFile($cron))
 		.zfsmDiagSection('their lines in the live crontab', $live_unread ? '(unreadable)' : ($live ? implode("\n", $live) : '(none)'));
 }
@@ -401,6 +421,24 @@ function zfsmDiagPublicHalf($dir, $private, $public) {
 	if (!file_exists($dir.'/id_ed25519.pub')) return 'not there';
 	if (!$private) return 'there, without its private half';
 	return zfsmDiagWhole('file_get_contents', $dir.'/id_ed25519.pub') === false ? zfsmDiagUnread('unreadable') : 'there, but not a usable key';
+}
+
+// How many datasets each snapshot schedule and copies under a dataset that runs covers now, by id, from reads under a limit of their
+// own so a hung pool costs only this line; '' with none.
+function zfsmDiagScheduleCovers($jobs, $cfg) {
+	$runs = array_filter($jobs, function($job) { return zfsmScheduleCovers($job) && zfsmScheduleRepeats($job['every']); });
+	if (!$runs) return '';
+	$listed = zfsmScheduleCoverRead($cfg, 5, array(), function($wait, $command, $args) { return zfsmDiagRead($command, $args, $wait); });
+	$counts = array();
+	$unread = '';
+	foreach ($runs as $id => $job) {
+		list($pools, $one) = zfsmScheduleCovered($listed, $job, $jobs);
+		$counts[] = $id.' '.array_sum(array_map('count', $pools));
+		// Each minds only its own errors (zfsmScheduleCovered): a later one's '' must not hide an earlier one's.
+		if ($unread === '') $unread = $one;
+	}
+	if ($unread !== '' && !zfsmScheduleListed($listed)[0]) return 'datasets each schedule of snapshots or of copies under a dataset covers now: (could not be read: '.$unread.')'."\n";
+	return 'datasets each schedule of snapshots or of copies under a dataset covers now: '.implode(', ', $counts).($unread !== '' ? ' (not every dataset could be read: '.$unread.')' : '')."\n";
 }
 
 // What the Main tab's first read returns, logging a failure as that read does. It asks about every pool, so it is skipped once

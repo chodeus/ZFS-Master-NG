@@ -105,9 +105,16 @@ cp "$work/upgradepkg" /sbin/upgradepkg
 grep -q '2026.09.25.112' /boot/config/plugins/zfs.master.plg || fail 'failed upgradepkg replaced the installed manifest'
 
 # Over a registered old version, then package to package, then what a reboot does.
+# Its schedules as v2026.11.16 left them after a change (tests/schedule_downgrade_test.php): the install puts back their cron lines.
 reset; legacy; register_old; cp "$work/v2026.11.01/dist/$first.txz" "$flash/"
+cp "$repo/tests/fixtures/downgrade/copy-keeps/schedules.json" "$repo/tests/fixtures/downgrade/copy-keeps/schedules.cron" "$flash/"; rm -f /tmp/zfsm-crontab
 $plugin install "$work/v2026.11.01/zfs.master.plg" > "$work/over-old.log" 2>&1 || { cat "$work/over-old.log"; fail 'upgrade over a registered old version refused'; }
 grep -q '"2026.11.01"' /boot/config/plugins/zfs.master.plg || fail 'manifest not updated on upgrade'
+grep -q 'Schedules and their cron file were saved again' "$work/over-old.log" || { cat "$work/over-old.log"; fail 'the install did not say it put the schedules back'; }
+for id in aaaa0001 5e1f0001 5e1f0002; do
+	grep -q " run $id " "$flash/schedules.cron" && grep -q " run $id " /tmp/zfsm-crontab || fail "schedule $id not back in cron after the install"
+done
+cp "$flash/schedules.json" "$work/healed.json"; cp /tmp/zfsm-crontab "$work/healed.crontab"
 cp "$work/v2026.11.02/dist/$second.txz" "$flash/"
 $plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { cat "$work/next.log"; fail 'package upgrade refused'; }
 [ ! -e "$flash/$first.txz" ] && [ ! -e "/var/log/packages/$first" ] || fail 'package upgrade left the previous version behind'
@@ -115,6 +122,8 @@ $plugin install "$work/v2026.11.02/zfs.master.plg" > "$work/next.log" 2>&1 || { 
 rm -f /var/log/plugins/zfs.master.plg
 $plugin install /boot/config/plugins/zfs.master.plg > "$work/boot.log" 2>&1 || { cat "$work/boot.log"; fail 'reinstall at boot failed'; }
 [ -f "$flash/$second.txz" ] || fail 'reinstall at boot deleted its own archive'
+cmp -s "$flash/schedules.json" "$work/healed.json" && cmp -s /tmp/zfsm-crontab "$work/healed.crontab" || fail 'the next install or boot changed the healed schedules or crontab'
+grep -q 'Schedules' "$work/next.log" "$work/boot.log" && fail 'an install with nothing to heal said something of schedules'
 
 # The manifest's floor is enforced by the real installer.
 reset; set_version 6.8.3; cp "$work/dist/$package" "$flash/"
@@ -125,14 +134,23 @@ set_version "$version"
 # Real CSRF prepend, helpers, backend and pages, with fake zfs and zpool binaries.
 reset; cp "$work/dist/$package" "$flash/"
 $plugin install "$work/zfs.master.plg" > "$work/install2.log" 2>&1 || fail 'second install'
-printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\n' > "$flash/zfs.master.cfg"
+printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode="1"\r\nexclussion="/docker%%-old/.*"\r\ndirectory_listing="cache/appdata\r\ncache/My Share"\r\nsnap_max_days_alert="7"\r\nsnap_pattern="Y-m-d"\r\nsnap_utc="1"\r\nalert_interval="60"\r\nalert_stale="1"\r\nsnap_prefix="auto-"\r\nreplica_keep=" 24 7D, 4w "\r\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
+printf '[general]\nreplica_keep="7d 7d"\n' > "$flash/zfs.master.cfg"
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_unread "$version" || fail 'Keep Replicas saved as no Keep'
+# Unraid's update.php, which saves the Settings form, where this tree has it at the top (6.12 on).
+if [ -f "$web/emhttp/update.php" ]; then
+	cp "$web/emhttp/update.php" "$web/emhttp/update.htm" "$docroot/"
+	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_old_apply "$version" || fail "Keep Replicas after an older version's Apply"
+fi
+printf '[general]\nsnap_prefix="a/"\n' > "$flash/zfs.master.cfg"
+php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" snap_name_refused "$version" || fail 'Snapshot Prefix ZFS refuses names with'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"
 cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && chmod +x /usr/bin/zfs /usr/bin/zpool
 rm -f /usr/sbin/zpool
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" menu_order "$version" || fail 'menu without ZFS'
 mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
-for check in menu_order body_token no_token wrong_token main_page invalid_utf8_setting main_page_stuck_zfs settings_page create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool unraid_sizes time_format settings_roundtrip; do
+for check in menu_order body_token no_token wrong_token main_page invalid_utf8_setting main_page_stuck_zfs settings_page settings_copy_keeps create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool unraid_sizes time_format settings_roundtrip; do
 	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
 done
 # Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.

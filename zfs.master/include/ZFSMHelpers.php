@@ -1,12 +1,13 @@
 <?php
 require_once __DIR__.'/ZFSMLog.php';
+require_once __DIR__.'/ZFSMKeepRules.php';
 
 // A general setting as an integer, or $default when it isn't there.
 function zfsmSettingInt($general, $key, $default) {
 	return isset($general[$key]) ? intval($general[$key]) : $default;
 }
 
-// $value as a number of up to $digits digits, else $default: zfsmPostDigits (ZFSMAdmin.php) and Keep Replicas read counts so.
+// $value as a number of up to $digits digits, else $default: zfsmPostDigits (ZFSMAdmin.php) and zfsmKeepParse read counts so.
 function zfsmDigits($value, $digits, $default) {
 	return is_string($value) && preg_match('/^[0-9]{1,'.$digits.'}$/D', $value) === 1 ? (int)$value : $default;
 }
@@ -37,8 +38,8 @@ function loadConfig($config) {
 		'size_units' => ($general['size_units'] ?? '') === 'decimal' ? 'decimal' : 'binary',
 		'debug_log' => zfsmSettingInt($general, 'debug_log', 0),
 		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
-		// 4: the digits of ZFSM_KEEP_MAX (ZFSMKeep.php); empty or anything else keeps all.
-		'replica_keep' => zfsmDigits(trim((string)($general['replica_keep'] ?? '')), 4, 0),
+		// As Snapshots to keep reads it; anything else keeps all (0), as versions before rules read rules too.
+		'replica_keep' => zfsmKeepParse(zfsmKeepReplicaText($general)) ?? 0,
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }
@@ -113,6 +114,18 @@ function zfsmCommandPath($command) {
 	$candidate = rtrim($test_bin_dir, '/').'/'.basename($command);
 	if (is_file($candidate)) return $candidate;
 	return in_array(basename($command), array('zfs', 'zpool'), true) ? null : $command;
+}
+
+// $tool (zstd, prlimit) on this server, or null; in a test, only ZFSM_TEST_BIN_DIR's. A run started from a page has no PATH
+// (php-fpm's clear_env), so that falls back to execvp's own.
+function zfsmToolPath($tool) {
+	$test_bin_dir = (string)getenv('ZFSM_TEST_BIN_DIR');
+	$path = (string)getenv('PATH');
+	foreach (explode(':', $test_bin_dir !== '' ? $test_bin_dir : ($path !== '' ? $path : '/bin:/usr/bin')) as $dir) {
+		$found = rtrim($dir, '/').'/'.$tool;
+		if ($dir !== '' && is_file($found) && is_executable($found)) return $found;
+	}
+	return null;
 }
 
 // A read that ran out of its time limit: still a RuntimeException to every catch that knows it as one.
@@ -224,12 +237,13 @@ function zfsmRunCommand($command, $args, $stdin, $max_lines, $keep_bytes) {
 	if ($code === null) proc_terminate($process, 9);
 	// proc_close can't report an exit that proc_get_status already collected.
 	if ($limit_code !== null) $code = $limit_code;
-	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
+	if ($limit_code === 0) return array('code' => 0, 'output' => trim($output, "\r\n"), 'truncated' => true, 'next_line' => rtrim($next_line, "\r\n"));
 	if ($code === null) throw new ZFSMTimeout(basename($command).' timed out');
 	// A command that ignored TERM is killed with KILL and comes back as 9, so any failure past the limit is the limit.
 	if ($inventory_deadline !== null && $code !== 0 && (in_array($code, array(124, 137), true) || microtime(true) >= $inventory_deadline)) throw new ZFSMTimeout(basename($command).' timed out');
 
-	$answer = array('code' => $code, 'output' => trim((string)$output));
+	// Line breaks only: a dataset's name may end in a space.
+	$answer = array('code' => $code, 'output' => trim((string)$output, "\r\n"));
 	if ($lines !== null) $answer['lines'] = $lines;
 	// Exited before the reader got past the limit: nothing more is coming, but the line after it may be the error.
 	if ($next_line !== null) $answer['next_line'] = rtrim($next_line, "\r\n");
@@ -356,6 +370,11 @@ function zfsmValidNameComponent($part) {
 	return is_string($part) && $part !== '.' && $part !== '..' && preg_match('/^[A-Za-z0-9_.: -]+$/D', $part) === 1;
 }
 
+// Whether ZFS takes $name after $zdataset's @ (255 in all); with none, after the shortest a dataset can be (p).
+function zfsmValidSnapshotPart($name, $zdataset = 'p') {
+	return is_string($name) && strlen($zdataset.'@'.$name) <= 255 && zfsmValidNameComponent($name);
+}
+
 function zfsmValidDatasetName($name) {
 	if (!is_string($name) || strlen($name) === 0 || strlen($name) > 1024) return false;
 	$parts = explode('/', $name);
@@ -363,6 +382,17 @@ function zfsmValidDatasetName($name) {
 		if (!zfsmValidNameComponent($part)) return false;
 	}
 	return zfsmValidPoolName($parts[0]);
+}
+
+// Unraid before 6.12 runs PHP 7.4, which has no str_starts_with.
+function zfsmStartsWith($text, $prefix) {
+	return strncmp($text, $prefix, strlen($prefix)) === 0;
+}
+
+// Whether $name is one of $roots or under one, with / between levels.
+function zfsmUnderAny($name, $roots) {
+	foreach ($roots as $root) if ($name === $root || zfsmStartsWith($name, $root.'/')) return true;
+	return false;
 }
 
 // Unraid's cron file format (dynamix monitor.cron), each line's output dropped; '' with no lines.
@@ -373,6 +403,42 @@ function zfsmCronText($what, $lines) {
 function zfsmNewSnapshotName($cfg, $now) {
 	$pattern = $cfg['snap_pattern'] ?? 'Y-m-d-His';
 	return ($cfg['snap_prefix'] ?? '').((int)($cfg['snap_utc'] ?? 0) === 1 ? gmdate($pattern, $now) : date($pattern, $now));
+}
+
+// The moment before $at whose local time $at shows again, as the clock went back (by up to 2 hours); null when none.
+function zfsmClockShownBefore($at) {
+	$before = $at - ((int)date('Z', $at - 7200) - (int)date('Z', $at));
+	return $before < $at && date('Y-m-d H:i:s', $before) === date('Y-m-d H:i:s', $at) ? $before : null;
+}
+
+// Whether zfsmNewSnapshotName names $at as it named the moment the clock showed its time before (zfsmClockShownBefore).
+function zfsmNewSnapshotNameRepeats($cfg, $at) {
+	$before = zfsmClockShownBefore($at);
+	return $before !== null && zfsmNewSnapshotName($cfg, $before) === zfsmNewSnapshotName($cfg, $at);
+}
+
+// A name zfsmNewSnapshotName gives that ZFS refuses after $zdataset's @ (as zfsmValidSnapshotPart), now or half a year on (T and P
+// change with summer time); null when it takes both.
+function zfsmNewSnapshotNameRefused($cfg, $now, $zdataset = 'p') {
+	foreach (array($now, $now + 182 * 86400) as $at) {
+		$name = zfsmNewSnapshotName($cfg, $at);
+		if (!zfsmValidSnapshotPart($name, $zdataset)) return $name;
+	}
+	return null;
+}
+
+// Why ZFS refuses $name, a new snapshot's from Snapshots Pattern and Prefix, after $zdataset's @ (as zfsmValidSnapshotPart); '' when it takes it.
+// $show names it: only Settings does, as a bare @name in a log line escapes the diagnostics' redaction.
+function zfsmNewSnapshotNameWhy($name, $show = false, $zdataset = 'p') {
+	if (zfsmValidSnapshotPart($name, $zdataset)) return '';
+	return 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses'.($show ? ', such as @'.$name : '')
+		.': a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+}
+
+// Why ZFS refuses a name Snapshots Pattern and Prefix in $cfg give now or half a year on; '' when it takes both.
+function zfsmNewSnapshotNamesWhy($cfg, $now, $show = false) {
+	$refused = zfsmNewSnapshotNameRefused($cfg, $now);
+	return $refused === null ? '' : zfsmNewSnapshotNameWhy($refused, $show);
 }
 
 // A path outside the plugin's folder. A test that sets $GLOBALS['zfsm_root'] reads and writes it under that folder instead.

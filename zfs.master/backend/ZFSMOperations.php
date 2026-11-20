@@ -23,17 +23,6 @@ $unraid_publish = '/usr/local/emhttp/webGui/include/publish.php';
 if (is_file($unraid_helpers)) require_once $unraid_helpers;
 if (is_file($unraid_publish)) require_once $unraid_publish;
 
-// Unraid before 6.12 runs PHP 7.4, which has no str_starts_with.
-function zfsmStartsWith($text, $prefix) {
-	return strncmp($text, $prefix, strlen($prefix)) === 0;
-}
-
-// Whether $name is one of $roots or under one, with / between levels.
-function zfsmUnderAny($name, $roots) {
-	foreach ($roots as $root) if ($name === $root || zfsmStartsWith($name, $root.'/')) return true;
-	return false;
-}
-
 function buildArrayRet() {
 	return array('succeeded' => array(), 'failed' => array());
 }
@@ -47,13 +36,13 @@ function zfsmFailure($subject, $message) {
 function zfsmValidSnapshotName($name) {
 	if (!is_string($name) || substr_count($name, '@') !== 1) return false;
 	list($dataset, $snapshot) = explode('@', $name, 2);
-	return zfsmValidDatasetName($dataset) && strlen($snapshot) <= 255 && zfsmValidNameComponent($snapshot);
+	return zfsmValidDatasetName($dataset) && zfsmValidSnapshotPart($snapshot, $dataset);
 }
 
 function zfsmDatasetExists($name, $types = 'filesystem,volume') {
 	if (!zfsmValidDatasetName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', $types, $name));
-	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
+	return ($result['code'] ?? 1) === 0 && ($result['output'] ?? '') === $name;
 }
 
 // True when ZFS says it does not exist, false when it does, null when the read failed.
@@ -64,6 +53,16 @@ function zfsmDatasetMissing($name) {
 	return zfsmDatasetMissingSaid($result['output'] ?? '') ? true : null;
 }
 
+// True when ZFS says it does not exist in a pool imported now; one in a pool not imported, or not read, may be there.
+function zfsmDatasetGone($name) {
+	return zfsmDatasetMissing($name) === true && zfsmDatasetMissing(strtok($name, '/')) === false;
+}
+
+// After zfs rename failed: whether it moved $from to $to all the same, as 2.0 and 2.1 fail one they can't mount or share there.
+function zfsmRenameLanded($from, $to) {
+	return zfsmDatasetGone($from) && zfsmDatasetMissing($to) === false;
+}
+
 // Whether a failed zfs command's output says its dataset does not exist. Only the closing diagnostic counts: a name may itself contain the words.
 function zfsmDatasetMissingSaid($output) {
 	return preg_match('/: dataset does not exist\s*\z/', (string)$output) === 1;
@@ -72,7 +71,7 @@ function zfsmDatasetMissingSaid($output) {
 function zfsmSnapshotExists($name) {
 	if (!zfsmValidSnapshotName($name)) return false;
 	$result = runProcess('zfs', array('list', '-H', '-o', 'name', '-t', 'snapshot', $name));
-	return ($result['code'] ?? 1) === 0 && trim($result['output'] ?? '') === $name;
+	return ($result['code'] ?? 1) === 0 && ($result['output'] ?? '') === $name;
 }
 
 function zfsmDatasetColumns() {
@@ -495,7 +494,7 @@ function getDatasetDirectories($dataset_tree, $directory_listing, $zexc_pattern,
 function getDatasetProperty($zpool, $zdataset, $zproperty) {
 	if (!zfsmValidDatasetName($zdataset) || !preg_match('/^[A-Za-z][A-Za-z0-9_.:-]*$/D', $zproperty)) return null;
 	$result = runProcess('zfs', array('get', '-H', '-p', '-o', 'value', $zproperty, $zdataset));
-	return ($result['code'] ?? 1) === 0 ? zfsmNormalizeProperty($zproperty, trim($result['output'] ?? '')) : null;
+	return ($result['code'] ?? 1) === 0 ? zfsmNormalizeProperty($zproperty, $result['output'] ?? '') : null;
 }
 
 function getAllDatasetProperties($zdataset, $ext) {
@@ -635,13 +634,23 @@ function zfsmSetShareOwner($pool, $names) {
 	return $failed;
 }
 
-function renameDataset($zdataset, $new_name, $force) {
+function renameDataset($zdataset, $new_name, $force, $cfg) {
 	if (!zfsmDatasetExists($zdataset) || !zfsmValidDatasetName($new_name)) return zfsmFailure($new_name, 'Invalid source or destination dataset');
-	$args = array('rename');
-	if ((string)$force === '1') $args[] = '-f';
-	$args[] = $zdataset;
-	$args[] = $new_name;
-	return commandAnswer($new_name, runProcess('zfs', $args));
+	// Held until its copies follow it, so no run sends it under its new name first.
+	$held = zfsmScheduleCopiesHold($zdataset);
+	if (is_string($held)) return zfsmFailure($new_name, 'Nothing was renamed: '.$held);
+	list($locks, $names) = $held;
+	try {
+		$why = zfsmScheduleCopiesFit($names, $zdataset, $new_name, $cfg);
+		if ($why !== '') return zfsmFailure($new_name, 'Nothing was renamed: '.$why);
+		$args = array('rename');
+		if ((string)$force === '1') $args[] = '-f';
+		$args[] = $zdataset;
+		$args[] = $new_name;
+		return zfsmScheduleOwnFollow(commandAnswer($new_name, runProcess('zfs', $args)), $zdataset, $new_name, $cfg);
+	} finally {
+		array_map('zfsmJobUnlock', $locks);
+	}
 }
 
 function setDatasetProperty($zdataset, $property, $value) {
@@ -674,7 +683,7 @@ function destroyDataset($zdataset, $force) {
 	$args = array('destroy');
 	if ((string)$force === '1') array_push($args, '-r', '-f');
 	$args[] = $zdataset;
-	return commandAnswer($zdataset, runProcess('zfs', $args));
+	return zfsmScheduleOwnFollow(commandAnswer($zdataset, runProcess('zfs', $args)), $zdataset, '');
 }
 
 function zfsmFilesystemMounts() {
@@ -886,7 +895,9 @@ function convertDirectory($directory, $pool, $clone = true) {
 // A new snapshot's name: the prefix, then the date in local time or, when set, UTC.
 // $props: properties the snapshot is made with (zfs snapshot -o).
 function createDatasetSnapshot($zdataset, $snapshot_name, $recursive, $props = array()) {
-	if (!zfsmDatasetExists($zdataset) || !zfsmValidNameComponent($snapshot_name)) return zfsmFailure($zdataset, 'Invalid dataset or snapshot name');
+	if (!zfsmDatasetExists($zdataset)) return zfsmFailure($zdataset, 'No dataset by that name could be read');
+	$untaken = zfsmNewSnapshotNameWhy($snapshot_name, false, $zdataset);
+	if ($untaken !== '') return zfsmFailure($zdataset, $untaken);
 	$args = array('snapshot');
 	if ((string)$recursive === '1') $args[] = '-r';
 	foreach ($props as $property => $value) array_push($args, '-o', $property.'='.$value);
@@ -904,8 +915,9 @@ function rollbackDatasetSnapshot($snapshot, $destroy_newer = 0) {
 }
 
 function renameDatasetSnapshot($zpool, $snapshot, $new_name) {
-	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot) || !zfsmValidNameComponent($new_name)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
+	if (!zfsmValidPoolName($zpool) || !zfsmSnapshotExists($snapshot)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
 	$destination = explode('@', $snapshot, 2)[0].'@'.$new_name;
+	if (!zfsmValidSnapshotName($destination)) return zfsmFailure($snapshot, 'Invalid snapshot rename request');
 	return commandAnswer($destination, runProcess('zfs', array('rename', $snapshot, $destination)));
 }
 
