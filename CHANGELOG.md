@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- fix(settings): Server's options follow an Add or Remove
+- feat(schedules): Replicate Every Dataset copies to a trusted server
+- fix(schedules): updating again after going back to v2026.11.16 restores what its change dropped
+- fix(settings): Keep Replicas with periods survives an Apply on v2026.11.16
+- feat(dialogs): Schedules and Replicate open wider, with a hint per field and a Guide link
+- refactor(schedules): move a dataset rename's side of copies and Settings' schedule HTML into their own files
+- feat(schedules): a dataset's own Replication can copy to another server
+
 ## 2026.11.19.1 (beta)
 
 **Snapshot schedules**
