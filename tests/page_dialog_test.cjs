@@ -360,7 +360,8 @@ async function confirm() {
 
   // Replicate: the plan follows the choices, and Replicate waits for the plan of what is on screen.
   const options = {snapshots: ['b', 'a'], last_destination: {server: '', dest: 'backup/data'}, servers: []};
-  replicateAnswer = data => data.destination === '' ? {...options, can_proceed: false, error: ''}
+  const warning = {fact: 'tank/new is Read Only', impact: 'Scheduled snapshots and copies skip it', guide: 'read-only'};
+  replicateAnswer = data => data.destination === '' ? {...options, can_proceed: false, error: '', ...(data.opening === '1' ? {warning} : {})}
     : data.destination === 'backup/data' ? {...options, can_proceed: true, mode: 'incremental', since: data.snapshot || 'b', size: 2048, raw: false}
     : {...options, can_proceed: false, error: "The copy goes inside nowhere, which doesn't exist"};
   window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
@@ -372,7 +373,7 @@ async function confirm() {
   const held = () => window.Swal2.getConfirmButton().disabled;
   assert.deepEqual([snap().value, dest().value], ['b', 'backup/data'], 'the newest snapshot and the last destination are picked');
   assert.deepEqual([snap().labels.length && snap().labels[0].textContent.startsWith('Snapshot:'), dest().labels.length && dest().labels[0].textContent.startsWith('Copy goes to:'), window.document.getElementById('zfsm-replicate-plan').getAttribute('aria-live')], [true, true, 'polite'], 'each control is named by its label, and a new plan is announced');
-  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: ''}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: ''}], 'it asks for the choices, then the plan for them');
+  assert.deepEqual(posts.slice(-2), [{cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: '', opening: '1'}, {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: ''}], 'it asks for the choices, opening, then the plan for them');
   assert.match(planText(), /changes since b, about 2 KiB/, 'the plan says what it sends');
   assert.equal(held(), false, 'a plan that can go enables Replicate');
   dest().value = 'nowhere/copy';
@@ -381,6 +382,10 @@ async function confirm() {
   await new Promise(resolve => window.setTimeout(resolve, 450));
   await settle();
   assert.deepEqual([/which doesn't exist/.test(planText()), held()], [true, true], 'a refused plan says why and keeps Replicate off');
+  const warned = window.document.getElementById('zfsm-replicate-warning');
+  assert.deepEqual([warned?.querySelector('b')?.textContent, warned?.textContent, warned?.parentElement.firstElementChild === warned, warned?.querySelector('a')?.href],
+    [' tank/new is Read Only', ' tank/new is Read OnlyScheduled snapshots and copies skip it. Guide', true, 'https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#read-only'],
+    'the warning from opening stays first while the plan changes');
   // An older plan that answers after a newer one is dropped.
   holdReplicate = true;
   snap().value = 'a';
@@ -551,14 +556,15 @@ async function confirm() {
     await settle();
     assert.deepEqual(result(), ['Schedules Result', true, 'The request failed. Reload the page and open Schedules to see what was saved.'], 'a request that fails says so');
     schedulePreview = {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes',
-      skipped: 'tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
+      warning: {fact: 'tank/<i>data</i> has Sanoid or Syncoid snapshots', impact: 'Scheduled snapshots and copies skip it', guide: 'sanoid-or-syncoid-snapshots'}, skipped: '',
       copies: {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', under: 'backup', server: 'gone', servers: ['gone'], servers_error: 'remotes.json could not be read',
         inherited: 'Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots',
         skipped: 'tank/<i>data</i> is in pool backup, where its copy would go'}};
     await schedules();
     const line = field('skipped');
-    assert.deepEqual([line?.textContent, line?.querySelectorAll('i').length, line?.parentElement.firstElementChild === line],
-      ['tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool.', 0, true], 'one no run takes says why, first and as text');
+    assert.deepEqual([line?.querySelector('b')?.textContent, line?.textContent, line?.querySelectorAll('i:not(.fa)').length, line?.parentElement.firstElementChild === line,
+      line?.querySelector('a')?.href], [' tank/<i>data</i> has Sanoid or Syncoid snapshots', ' tank/<i>data</i> has Sanoid or Syncoid snapshotsScheduled snapshots and copies skip it. Guide', 0, true,
+      'https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#sanoid-or-syncoid-snapshots'], 'one no run takes is warned of first, as text, with its section of the Warnings page');
     const unsent = window.document.getElementById('zfsm-copies-skipped');
     assert.deepEqual([unsent?.textContent, unsent?.querySelectorAll('i').length, unsent?.previousElementSibling.id], ['Replication as saved: tank/<i>data</i> is in pool backup, where its copy would go.', 0, 'zfsm-copies-default'],
       'and one Replication leaves out says why under it, as text');

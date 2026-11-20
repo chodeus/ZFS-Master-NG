@@ -232,7 +232,8 @@ try {
 			$snapshot = zfsmPostString('snapshot');
 			$zdest = zfsmPostString('destination');
 			$server = zfsmPostString('server');
-			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg, $server) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg, $server); }), JSON_UNESCAPED_SLASHES);
+			$opening = zfsmPostString('opening') === '1';
+			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'replicatedataset':

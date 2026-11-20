@@ -80,7 +80,8 @@ function zfsmReplicateHtml(options, zdataset) {
 	// The control inside its label names it for screen readers.
 	const row = (label, field) => '<p style="margin:.5em 0"><label style="display:block">'+label+field+'</label></p>';
 	const snapshots = (options.snapshots || []).map(name => '<option value="'+esc(name)+'">'+esc(name)+'</option>').join('');
-	let html = row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
+	let html = (options.warning ? zfsmWarningHtml(options.warning, 'zfsm-replicate-warning') : '')
+		+row('Snapshot:', '<select id="zfsm-replicate-snapshot" style="width:100%">'+snapshots+'<option value="">Take one now</option></select>');
 	const servers = options.servers || [];
 	const last = options.last_destination || null;
 	// The last copy's server, while this one still trusts it.
@@ -95,9 +96,15 @@ function zfsmReplicateHtml(options, zdataset) {
 		+'<p id="zfsm-replicate-repeat-help" style="margin:.5em 0;display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it. On another server, that server\'s Keep Replicas decides what the copy keeps. '+zfsmGuideLink('replicate-repeats')+'</p></div>';
 }
 
-// A link to a section of the wiki's Schedules guide, opened in a new tab; frontend_impact_test lists the sections these link to.
-function zfsmGuideLink(section) {
-	return '<a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Schedules#'+section+'" target="_blank" rel="noopener noreferrer">Guide</a>';
+// A link to a section of a wiki page, opened in a new tab; frontend_impact_test lists Schedules' sections, schedule_snapshot_test Warnings'.
+function zfsmGuideLink(section, page = 'Schedules') {
+	return '<a href="https://github.com/chodeus/ZFS-Master-NG/wiki/'+page+'#'+section+'" target="_blank" rel="noopener noreferrer">Guide</a>';
+}
+
+// A state a dialog warns of, amber as only errors are red: what it is, what that does, and its section of the wiki's Warnings page.
+function zfsmWarningHtml(warning, id) {
+	return '<div id="'+id+'" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> '
+		+zfsmEscape(warning.fact)+'</b><br>'+zfsmEscape(warning.impact)+'. '+zfsmGuideLink(zfsmEscape(warning.guide), 'Warnings')+'</div>';
 }
 
 // A field's one-line hint, with the guide's section on it; the field names it in aria-describedby.
@@ -162,14 +169,15 @@ function zfsmReplicateRepeatSync(root) {
 	return every;
 }
 
-// The Schedules dialog, from zfsmScheduleDialogPreview in include/ZFSMScheduleDialog.php: why no run takes the dataset, if so; for its
-// snapshots and its copies (preview.copies, here or on a server) Default (what it follows now), None, or its own; zfsmScheduleDialogSync shows the rows that fit.
+// The Schedules dialog, from zfsmScheduleDialogPreview in include/ZFSMScheduleDialog.php: its warning or why no run takes it, if so; for its
+// snapshots and copies (preview.copies, here or on a server) Default (what it follows), None or its own; zfsmScheduleDialogSync shows those that fit.
 function zfsmScheduleDialogHtml(preview) {
 	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	const copies = preview.copies;
 	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']];
-	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
+	const skipped = preview.warning ? zfsmWarningHtml(preview.warning, 'zfsm-schedules-skipped')
+		: preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
 	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>Replication as saved: '+esc(copies.skipped)+'.</b></p>' : '';
 	// Each part's line for None, then for Default: what it follows now (zfsmScheduleDialogSync shows the one picked).
 	const choice = (part, none, inherited) => '<p id="zfsm-'+part+'-none" style="margin:.5em 0;display:none">None: '+none+' A repeat set in Replicate still runs.</p>'

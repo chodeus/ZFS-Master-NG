@@ -775,7 +775,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   // Each change asks for a new plan; Replicate waits for the plan of what is on screen, and the server plans again before it starts.
   function replicateDataset(zdataset) {
-	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: '', destination: ''}, function(options) {
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: '', destination: '', opening: '1'}, function(options) {
 		if (!Array.isArray(options.snapshots)) {
 			Swal2.fire({title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>', icon: 'error', html: zfsmReplicatePlanHtml(options)});
 			return;

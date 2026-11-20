@@ -303,6 +303,9 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 	if ($snapshot !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now');
 	$named = zfsmNewSnapshotNamesWhy($cfg, time());
 	if ($named !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$named);
+	$repeat = zfsmScheduleRepeatRead($zdataset, $cfg, ZFSM_SCHEDULE_COUNT_WAIT);
+	$not = zfsmScheduleSkippedText($repeat['warning']) ?: (string)$repeat['unread'];
+	if ($not !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$not);
 	$read = zfsmScheduleRead();
 	if ($read === null) return zfsmFailure($zdataset, 'Nothing was scheduled: '.zfsmScheduleUnreadable());
 	if ($every === 'hourly') $job['minute'] = zfsmScheduleFreeMinute($read['valid'], $job);
@@ -322,6 +325,18 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 	$said = $started['succeeded'][$zdataset];
 	if ($changed['why'] === '') return array('succeeded' => array($zdataset => $said.'. It runs again '.zfsmScheduleWhen($job)), 'failed' => array());
 	return array('succeeded' => array($zdataset => $said), 'failed' => array($zdataset => ($changed['saved'] ? '' : 'It was not scheduled: ').$changed['why']));
+}
+
+// What stops a repeat set in Replicate from taking $zdataset, from a read of it: 'warning' when it is left out (zfsmScheduleSkippedWarning),
+// else 'unread', what could not be read; both null when it can, or when it is gone, which the replication says.
+function zfsmScheduleRepeatRead($zdataset, $cfg, $wait) {
+	$listed = zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset));
+	list($rows, $errors) = zfsmScheduleListed($listed);
+	$row = $rows[$zdataset] ?? null;
+	$gone = ($listed['code'] ?? 1) === 0 || zfsmDatasetMissingSaid(implode("\n", $errors));
+	if ($row === null) return array('warning' => null, 'unread' => $gone ? null : zfsmScheduleSnapshotNot($zdataset, $listed));
+	$warning = zfsmScheduleSkippedWarning($zdataset, $row);
+	return array('warning' => $warning, 'unread' => $warning === null && $row[2] === null ? zfsmScheduleNamesUnreadText($zdataset) : null);
 }
 
 // Why $job can't be added beside $jobs: one for the same copy already runs it, or one sharing a dataset with it starts in the same
@@ -429,6 +444,7 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		return 0;
 	}
 	$copy = !zfsmScheduleSnapshotsOnly($job) && !zfsmScheduleCopiesUnder($job);
+	$what = $copy ? 'Replication of '.$job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']) : (zfsmScheduleSnapshotsOnly($job) ? 'Scheduled snapshots' : 'Scheduled copies');
 	try {
 		// As zfsmScheduleTakenBefore, for the one dataset a copy's run takes.
 		if ($copy && zfsmNewSnapshotNameRepeats($cfg, $now) && zfsmSnapshotExists($job['dataset'].'@'.zfsmNewSnapshotName($cfg, $now))) {
@@ -437,10 +453,12 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		}
 		if (zfsmScheduleCopiesUnder($job)) return zfsmScheduleCopiesRun($job, $read['valid'], $cfg, $now, $notify, $wait);
 		if (!$copy) return zfsmScheduleSnapshotRun($job, $read['valid'], $cfg, $now, $notify);
+		$repeat = zfsmScheduleRepeatRead($job['dataset'], $cfg, ZFSM_SCHEDULE_COVER_WAIT);
+		$not = $repeat['warning'] !== null ? zfsmScheduleSkippedText($repeat['warning']).'. Remove its schedule in Settings' : $repeat['unread'];
+		if ($not !== null) return zfsmScheduleSnapshotTell($job, $what.' not started: '.$not, true, $notify, 'ZFS Replication');
 		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings', 'copy_keeps' => $job['copy_keeps'] ?? null), $job['keep']);
 	} catch (Throwable $error) {
 		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
-		$what = $copy ? 'Replication of '.$job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']) : (zfsmScheduleSnapshotsOnly($job) ? 'Scheduled snapshots' : 'Scheduled copies');
 		zfsmLog($what.' failed: '.zfsmOneLine($error->getMessage()));
 		$notify(zfsmScheduleSnapshotsOnly($job) ? 'ZFS Snapshot' : 'ZFS Replication', $what.' failed: '.zfsmSafeText(zfsmOneLine($error->getMessage())), 'warning');
 		return 1;

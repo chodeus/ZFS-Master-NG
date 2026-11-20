@@ -75,10 +75,10 @@ $save = function($zdataset, $snapshots, $copies) use ($cfg) { return zfsmSchedul
 $part = function($every, $time = '', $days = '', $keep = 0, $under = '', $copy_keeps = null) { return array('every' => $every, 'time' => $time, 'days' => $days, 'keep' => $keep, 'copy_keeps' => $copy_keeps, 'under' => $under, 'server' => ''); };
 $before = $stored();
 $refused = array(
-	array('tank/data', $part('days'), $part('hourly'), 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Copy Under, name a dataset on this server, such as backup'),
+	array('tank/data', $part('days'), $part('hourly'), 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day. Replication: under Copy Under, name a dataset on this server, such as backup'),
 	array('tank/data', $part('default'), $part('hourly', '', '', 0, 'nowhere'), 'Nothing was saved: Replication: nowhere does not exist on this server'),
 	array('usb', $part('default'), $part('hourly', '', '', 0, 'usb'), 'Nothing was saved: Replication: usb is in pool usb, where its copy would go'),
-	array('tank/docker/0a1b', $part('hourly'), $part('hourly', '', '', 0, 'usb'), 'Nothing was saved: Snapshots: tank/docker/0a1b is mounted legacy, as Docker image layers are; Replication: tank/docker/0a1b is mounted legacy, as Docker image layers are'),
+	array('tank/docker/0a1b', $part('hourly'), $part('hourly', '', '', 0, 'usb'), 'Nothing was saved: tank/docker/0a1b is mounted legacy. Scheduled snapshots and copies skip it'),
 	array('tank/data', $part('days', $clash, '1'), $part('default'), 'Nothing was saved: Snapshots: Replicate Every Dataset (every hour at '.$minute.') starts then too; pick another time'),
 	array('tank/data', $part('days', $free, '1'), $part('days', $free, '1,2', 0, 'usb'), 'Nothing was saved: Replication: the snapshot schedule of tank/data (every Monday at '.$free.') starts then too; pick another time'),
 	array('tank/data', $part('off'), $part('default'), 'Nothing was saved: Snapshots: Repeat has no such choice now; reload the page and pick again'),
@@ -117,7 +117,7 @@ $late[] = $save('tank/data', $part('days', $free, '1', 1), $part('none', '', '',
 $late[] = array_column(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] !== ''; }), 'every');
 $late[] = $save('tank/data', $part('days', $free, '1', 2), $part('none', '', '', 0, 'usb'))['why'];
 $pool('marks', $marks);
-same(array(true, true, array('none'), 'Nothing was saved: Snapshots: tank/data has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool'), $late,
+same(array(true, true, array('none'), 'Nothing was saved: Snapshots: tank/data has Sanoid or Syncoid snapshots. Scheduled snapshots and copies skip it'), $late,
 	'with Sanoid snapshots on it since, Replication None saves; changed snapshots are refused');
 // Copy Keeps goes with the copies: saved, said and shown when the dialog opens again; None saves none.
 $own = function() use ($stored) { return array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data' && $job['dest'] !== ''; })); };
@@ -288,7 +288,7 @@ $reset();
 $pool('marks', array_values(preg_grep('~^tank/new(/sub)?@auto-20270115080000\t~', $read('pool/marks'), PREG_GREP_INVERT)));
 same(0, zfsmScheduleRun($id, $cfg, $t + 3600), 'the next run');
 $landed = zfsmScheduleListed(zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-d', '1', 'backup/tank')))[0]['backup/tank'] ?? null;
-same('backup/tank is read-only, as a copy received here is: a snapshot in it stops the next replication into it', zfsmScheduleSkipped('backup/tank', $landed),
+same('backup/tank is Read Only. Scheduled snapshots and copies skip it', zfsmScheduleSkipped('backup/tank', $landed),
 	'a copy lands read-only, so no snapshot schedule takes it');
 $from = function($zdataset) { return preg_quote($zdataset.'#'.zfsmReplicaBookmarkPrefix('backup/'.$zdataset).'auto-20270115080000 '.$zdataset.'@', '~'); };
 same(array(1, 1, 0), array($sends('~^send -P -v -L -i '.$from('tank/new').'~'), $sends('~^send -P -v -L -i '.$from('tank/new/sub').'~'), $sends('~^send -P -v -L tank/new@~')),

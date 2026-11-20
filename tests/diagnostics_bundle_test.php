@@ -124,14 +124,19 @@ $log_lines = array(
 		."tank/CanaryDs One@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryDs One@CanaryPrefix_1': dataset is busy). Keep could not remove the snapshots of tank (they could not be read: cannot open 'tank': Input/output error); the next run tries again",
 	// One cron starts again where the clock went back: the datasets it left out.
 	'Schedule 0a1b2c3f: Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/CanaryAgainA, tank/CanaryAgain B, and 2 more)',
-	// A dataset's own snapshot schedule: its dataset in running text, and why it takes none of one.
+	// A dataset's own snapshot schedule: its dataset in running text, and why it takes none of one, in zfsmScheduleSkipped's words.
 	'Schedule 0a1b2c3e: Scheduled snapshots of 2 of 2 dataset(s) (tank/CanaryOwn Ds and below) taken',
-	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: tank/CanaryOwnRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
-	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnGone not taken: tank/CanaryOwnGone is gone; remove its schedule in Settings',
-	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnLeg not taken: tank/CanaryOwnLeg is mounted legacy, as Docker image layers are; remove its schedule in Settings',
-	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnSan not taken: tank/CanaryOwnSan has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings',
-	'Schedule 0a1b2c3e: Scheduled snapshots of 1 of 1 dataset(s) (tank/CanaryOwnSelf and below) taken. Not taken: tank/CanaryOwnSelf has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: '.zfsmScheduleSkipped('tank/CanaryOwnRo', array('on', '/mnt/tank/CanaryOwnRo', false)).'. Remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnGone not taken: tank/CanaryOwnGone is gone. Remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnLeg not taken: '.zfsmScheduleSkipped('tank/CanaryOwnLeg', array('off', 'legacy', false)).'. Remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnSan not taken: '.zfsmScheduleSkipped('tank/CanaryOwnSan', array('off', '/mnt/tank/CanaryOwnSan', true)).'. Remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of 1 of 1 dataset(s) (tank/CanaryOwnSelf and below) taken. Not taken: '.zfsmScheduleSkipped('tank/CanaryOwnSelf', array('off', '/mnt/tank/CanaryOwnSelf', true)),
 	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnOff not taken: its pool is not imported',
+	// An older log says why in its old words; a repeat set in Replicate that leaves its dataset out.
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOldRo not taken: tank/CanaryOldRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
+	'Schedule 0a1b2c41: Replication of tank/CanaryRepRo to tank/CanaryRepTo not started: '.zfsmScheduleSkipped('tank/CanaryRepRo', array('on', '/mnt/tank/CanaryRepRo', null)).'. Remove its schedule in Settings',
+	'Schedule 0a1b2c42: Replication of tank/CanaryRepUn to tank/CanaryRepTo not started: '.zfsmScheduleSnapshotNot('tank/CanaryRepUn', array('code' => 1, 'output' => "cannot open 'tank/CanaryRepUn': Input/output error")),
+	'Schedule 0a1b2c43: Replication of tank/CanaryRepNm to tank/CanaryRepTo not started: '.zfsmScheduleNamesUnreadText('tank/CanaryRepNm'),
 	// Replicate Every Dataset: how many it copied, those waiting for the copy above them, a holder it could not make, one in a copy's place.
 	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/CanaryWaitA, tank/CanaryWait B, tank/CanaryWaitC, and 2 more). '
 		."The dataset to hold the copies below tank/CanaryUnder/tank/CanaryHold could not be made: cannot create 'tank/CanaryUnder/tank/CanaryHold': out of space",
@@ -306,14 +311,22 @@ has("\n0a1b2c3f\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", 
 // A dataset's own: its name a token, and the plugin's words after it in clear.
 $own = 'Schedule '.zfsmDiagToken('0a1b2c3e').': Scheduled snapshots ';
 has($own.'of 2 of 2 dataset(s) (tank/'.$token('CanaryOwn Ds')." and below) taken\n", $log, 'an own schedule\'s run says whose datasets it took');
-has($own.'of tank/'.$token('CanaryOwnRo').' not taken: tank/'.$token('CanaryOwnRo').' is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings'."\n",
+has($own.'of tank/'.$token('CanaryOwnRo').' not taken: tank/'.$token('CanaryOwnRo').' is Read Only. Scheduled snapshots and copies skip it. Remove its schedule in Settings'."\n",
 	$log, 'and why it took none');
-has($own.'of tank/'.$token('CanaryOwnGone').' not taken: tank/'.$token('CanaryOwnGone')." is gone; remove its schedule in Settings\n", $log, 'of one gone');
-has($own.'of tank/'.$token('CanaryOwnLeg').' not taken: tank/'.$token('CanaryOwnLeg')." is mounted legacy, as Docker image layers are; remove its schedule in Settings\n", $log, 'of one mounted legacy');
-has($own.'of tank/'.$token('CanaryOwnSan').' not taken: tank/'.$token('CanaryOwnSan')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings\n", $log, 'of one with Sanoid\'s snapshots');
-has($own.'of 1 of 1 dataset(s) (tank/'.$token('CanaryOwnSelf').' and below) taken. Not taken: tank/'.$token('CanaryOwnSelf')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool\n",
+has($own.'of tank/'.$token('CanaryOwnGone').' not taken: tank/'.$token('CanaryOwnGone')." is gone. Remove its schedule in Settings\n", $log, 'of one gone');
+has($own.'of tank/'.$token('CanaryOwnLeg').' not taken: tank/'.$token('CanaryOwnLeg')." is mounted legacy. Scheduled snapshots and copies skip it. Remove its schedule in Settings\n", $log, 'of one mounted legacy');
+has($own.'of tank/'.$token('CanaryOwnSan').' not taken: tank/'.$token('CanaryOwnSan')." has Sanoid or Syncoid snapshots. Scheduled snapshots and copies skip it. Remove its schedule in Settings\n", $log, 'of one with Sanoid\'s snapshots');
+has($own.'of 1 of 1 dataset(s) (tank/'.$token('CanaryOwnSelf').' and below) taken. Not taken: tank/'.$token('CanaryOwnSelf')." has Sanoid or Syncoid snapshots. Scheduled snapshots and copies skip it\n",
 	$log, 'and one that took those below but not its own');
 has($own.'of tank/'.$token('CanaryOwnOff')." not taken: its pool is not imported\n", $log, 'of one whose pool is not imported');
+has($own.'of tank/'.$token('CanaryOldRo').' not taken: tank/'.$token('CanaryOldRo').' is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings'."\n",
+	$log, 'and one in the old words');
+has('Schedule '.zfsmDiagToken('0a1b2c41').': Replication of tank/'.$token('CanaryRepRo').' to tank/'.$token('CanaryRepTo').' not started: tank/'.$token('CanaryRepRo')
+	." is Read Only. Scheduled snapshots and copies skip it. Remove its schedule in Settings\n", $log, 'a repeat that leaves its dataset out');
+has('Schedule '.zfsmDiagToken('0a1b2c42').': Replication of tank/'.$token('CanaryRepUn').' to tank/'.$token('CanaryRepTo').' not started: tank/'.$token('CanaryRepUn')
+	.' could not be read: cannot open ?tank/'.$token('CanaryRepUn')."?: Input/output error\n", $log, 'one whose dataset could not be read');
+has('Schedule '.zfsmDiagToken('0a1b2c43').': Replication of tank/'.$token('CanaryRepNm').' to tank/'.$token('CanaryRepTo').' not started: the snapshot names of tank/'
+	.$token('CanaryRepNm')." could not be read, so it may be left to Sanoid or Syncoid\n", $log, 'and one whose snapshot names could not be read');
 $under = 'tank/'.$token('CanaryUnder');
 // Below Copy Under a copy's path names its pool again, as a dataset there: a token too.
 $cp = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryCpSrc');

@@ -202,9 +202,9 @@ function zfsmReplicaPlanHolder($plan, $target) {
 	return $mounted === '' ? array_merge($plan, array('holder' => true)) : $held.$mounted;
 }
 
-// What the Replicate dialog shows: the snapshots to pick from, newest first, the last destination, the trusted servers, and the plan
-// when a destination is given; for a trusted server ($server) also its area, or why it can't be reached.
-function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '') {
+// What the Replicate dialog shows: snapshots newest first, the last destination, the trusted servers, on $opening the warning if a repeat
+// leaves it out, and the plan once a destination is given; for a trusted server ($server) also its area, or why it can't be reached.
+function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false) {
 	if (!zfsmDatasetExists($zdataset)) return array('can_proceed' => false, 'error' => 'Only an existing dataset can be replicated');
 	$marks = zfsmReplicaMarks($zdataset);
 	if ($marks === null) return array('can_proceed' => false, 'error' => 'The dataset\'s snapshots could not be read');
@@ -213,6 +213,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '') 
 	$remotes = zfsmReplicaRemotes();
 	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => zfsmReplicaServerNames('', $remotes), 'server' => $server, 'area' => null);
 	if ($remotes === null) $options['servers_error'] = zfsmReplicaRemotesUnreadable();
+	if ($opening) $options['warning'] = zfsmScheduleRepeatRead($zdataset, $cfg, ZFSM_SCHEDULE_COUNT_WAIT)['warning'];
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file !== null && zfsmJobRunning($lock_file)) return array_merge($options, array('can_proceed' => false, 'error' => 'A replication of this dataset is already running'));
 	if ($zdest === '' && $server === '') return array_merge($options, array('can_proceed' => false, 'error' => ''));
