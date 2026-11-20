@@ -6,13 +6,37 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.19.1">
-<!ENTITY md5 "c07639527cdc57e2d5bba106578590a0">
+<!ENTITY version "2026.11.20.1">
+<!ENTITY md5 "101af24c568e1a95812e332b0fb0d576">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.20.1
+**Copies to another server**
+
+- Replicate Every Dataset can copy to another ZFS Master NG server: pick it under Server
+- A dataset can have its own copies to a server too, under Actions &gt; Schedules &gt; Replication
+- That server needs this version too; a run makes Copy Under there if it is missing
+- Renaming a dataset leaves its copies there under the old name, and the next copy is sent in full
+
+**Dialogs**
+
+- Schedules and Replicate open wider, with a short hint under each field and a Guide link to the new Schedules guide
+
+**Fixes**
+
+- Updating again after going back to v2026.11.16 restarts the schedules it stopped, and brings back Copy Keeps and Keep Replicas' periods
+
+**After going back to an older version**
+
+- Every Dataset or per-dataset copies to a server wait until you update; Settings counts them as records it can't use
+- On v2026.11.16, snapshot schedules, copies under Copy Under and schedules whose keep uses periods wait too
+- On v2026.11.16, a copy with records over 128K fails each run, and the first failure is notified
+- On v2026.11.16, Copy Keeps is ignored, so copies lose what their source loses, and Keep Replicas with periods keeps all
+- Keep Replicas with periods, cleared there, comes back when you update: clear it again after updating
 
 ###2026.11.19.1
 **Snapshot schedules**
