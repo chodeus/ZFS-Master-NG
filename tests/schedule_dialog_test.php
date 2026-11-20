@@ -43,7 +43,8 @@ file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> 
 $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$file, $lines ? implode("\n", $lines)."\n" : ''); };
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'cron.log') as $name) @unlink($work.'/'.$name); };
-$stored = function() { return json_decode((string)@file_get_contents(zfsmScheduleFile()), true); };
+require_once __DIR__.'/fixtures/schedules_stored.php';
+$stored = 'zfsmTestStored';
 $datasets = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/datasets')); };
 $cfg = array('snap_prefix' => 'auto-', 'snap_pattern' => 'YmdHis', 'snap_utc' => 1);
 $pool('datasets', array("tank\tfilesystem", "tank/data\tfilesystem", "tank/data/sub\tfilesystem", "tank/docker\tfilesystem", "tank/docker/0a1b\tfilesystem",

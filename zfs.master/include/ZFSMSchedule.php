@@ -90,15 +90,20 @@ function zfsmScheduleRead($text = null) {
 	if ($text === null) $text = (string)@file_get_contents($file);
 	// Read as objects first: as arrays, {} is an empty list and one schedule's record a list of its fields.
 	if (!is_array(json_decode($text))) return null;
+	$records = json_decode($text, true);
+	$kept = zfsmScheduleCopyKeepsKept($records);
 	$read = array('valid' => array(), 'other' => array());
-	foreach (json_decode($text, true) as $record) {
-		$job = zfsmScheduleUpgrade($record);
+	foreach ($records as $record) {
+		if (zfsmScheduleCopyKeepsShadowOf($record) !== null) continue;
+		$job = zfsmScheduleCopyKeepsBack(zfsmScheduleUpgrade($record), $kept);
 		if (!zfsmScheduleValid($job) || isset($read['valid'][$job['id']])) {
 			$read['other'][] = $record;
 			continue;
 		}
+		// Fields this version doesn't know stay, for the later version that wrote them: the install's heal writes every schedule.
 		$read['valid'][$job['id']] = zfsmScheduleCopyKeepsSet(array('id' => $job['id'], 'dataset' => $job['dataset'], 'dest' => $job['dest'], 'server' => $job['server'],
-			'every' => $job['every'], 'minute' => $job['minute'], 'hour' => $job['hour'], 'days' => $job['days'], 'keep' => $job['keep'] ?? 0), $job['copy_keeps'] ?? null);
+			'every' => $job['every'], 'minute' => $job['minute'], 'hour' => $job['hour'], 'days' => $job['days'], 'keep' => $job['keep'] ?? 0), $job['copy_keeps'] ?? null)
+			+ array_diff_key($job, array('copy_keeps' => 0));
 	}
 	return $read;
 }
@@ -118,11 +123,28 @@ function zfsmScheduleChange($change) {
 		$jobs = $change($read['valid']);
 		if (is_string($jobs)) return $unsaved($jobs);
 		$file = zfsmScheduleFile();
-		if (!zfsmWriteFileAtomic($file, zfsmJson(array_merge(array_values($jobs), $read['other']), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n")) return $unsaved('Could not save '.$file);
+		if (!zfsmWriteFileAtomic($file, zfsmScheduleText($jobs, $read['other']))) return $unsaved('Could not save '.$file);
 		return array('saved' => true, 'why' => zfsmScheduleCron($jobs));
 	} finally {
 		zfsmJobUnlock($lock);
 	}
+}
+
+// schedules.json as written: the schedules, a shadow of each Copy Keeps they hold (zfsmScheduleCopyKeepsShadows), then $other as read.
+function zfsmScheduleText($jobs, $other) {
+	return zfsmJson(array_merge(array_values($jobs), zfsmScheduleCopyKeepsShadows($jobs), $other), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n";
+}
+
+// At each install and boot (zfs.master.plg): both files again as this version writes them, after an older version's change left out what
+// it can't read. As zfsmScheduleChange answers; null with no schedules.json, or when both already are as written.
+function zfsmScheduleHeal() {
+	$file = zfsmScheduleFile();
+	if (!file_exists($file)) return null;
+	$read = zfsmScheduleRead();
+	if ($read === null) return array('saved' => false, 'why' => zfsmScheduleUnreadable());
+	if ((string)@file_get_contents($file) === zfsmScheduleText($read['valid'], $read['other'])
+		&& (string)@file_get_contents(zfsmScheduleCronFile()) === zfsmScheduleCronText($read['valid'])) return null;
+	return zfsmScheduleChange(function($jobs) { return $jobs; });
 }
 
 function zfsmScheduleNewId($jobs) {

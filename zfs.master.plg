@@ -423,6 +423,8 @@ rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -vF '&pkg
 rm -f &plugdir;/nchan/zfs_master &plugdir;/scripts/zfs_*.lua
 rmdir &plugdir;/nchan 2>/dev/null || true
 rm -f /tmp/zfsm_reload
+# An older version's schedule change drops what it can't read from the cron file and the schedules: put back as this one reads them
+/usr/bin/php &plugdir;/scripts/schedule.php heal
 echo ""
 echo "-----------------------------------------------------------"
 echo " ZFS Master NG has been installed."

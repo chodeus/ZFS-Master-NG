@@ -14,6 +14,47 @@ function zfsmScheduleCopyKeepsSet($job, $copy_keeps) {
 	return $copy_keeps === null ? $job : $job + array('copy_keeps' => $copy_keeps);
 }
 
+// v2026.11.16 rebuilds each repeat it can read from the fields it knows, so its next change drops Copy Keeps; a record it can't read it
+// saves as it was. So each Copy Keeps is saved twice: in its schedule, and in a shadow a read takes it from after that (zfsmScheduleCopyKeepsBack).
+function zfsmScheduleCopyKeepsShadows($jobs) {
+	$shadows = array();
+	foreach ($jobs as $job) {
+		if (isset($job['copy_keeps'])) $shadows[] = array('copy_keeps_of' => $job['id'], 'value' => $job['copy_keeps']);
+	}
+	return $shadows;
+}
+
+// The schedule id $record is the shadow of; null when it is no shadow.
+function zfsmScheduleCopyKeepsShadowOf($record) {
+	return is_array($record) && count($record) === 2 && array_key_exists('value', $record) && zfsmScheduleId($record['copy_keeps_of'] ?? null) ? $record['copy_keeps_of'] : null;
+}
+
+// The shadows' Copy Keeps in $records, by schedule id.
+function zfsmScheduleCopyKeepsKept($records) {
+	$kept = array();
+	foreach ($records as $record) {
+		$id = zfsmScheduleCopyKeepsShadowOf($record);
+		if ($id !== null) $kept[$id] = $record['value'];
+	}
+	return $kept;
+}
+
+// v2026.11.16 to .5 head their cron file "replication schedules", or remove it when they run none; from v2026.11.19.1 a schedule
+// without Copy Keeps is one the user cleared. A cron file gone or unread counts as theirs.
+function zfsmScheduleCopyKeepsDropped() {
+	$cron = @file_get_contents(zfsmScheduleCronFile());
+	return $cron === false || strpos($cron, "# Generated ZFS Master NG replication schedules:\n") === 0;
+}
+
+// $job with its shadow's Copy Keeps from $kept when it has none of its own, v2026.11.16 saved last, and it is a schedule with it; else as it was.
+// The cron file is read last: zfsmScheduleRead runs on every page and scheduled run.
+function zfsmScheduleCopyKeepsBack($job, $kept) {
+	if (!is_array($job) || !zfsmScheduleId($job['id'] ?? null) || !array_key_exists($job['id'], $kept) || array_key_exists('copy_keeps', $job)
+		|| !zfsmScheduleCopyKeepsDropped()) return $job;
+	$back = $job + array('copy_keeps' => $kept[$job['id']]);
+	return zfsmScheduleValid($back) ? $back : $job;
+}
+
 // What $job's copy keeps by its Copy Keeps, after what Settings says it keeps; '' with none.
 function zfsmScheduleCopyKeepsText($job) {
 	$kept = zfsmCopyKeepsWords($job['copy_keeps'] ?? null);
