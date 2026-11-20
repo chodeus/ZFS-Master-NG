@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- feat(schedules): warn of datasets schedules leave out, and leave them out of Replicate repeats
+- refactor(schedules): move what a schedule covers and cron's run into their own files
+- refactor(frontend): move the Schedules and Replicate dialogs out of ZFSMImpact.js
+
 ## 2026.11.20.1 (beta)
 
 **Copies to another server**
