@@ -785,7 +785,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		// Without trusted servers there is no Server select: the copy stays on this server.
 		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value,
 			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, zfsmRepeatChoices(popup, 'zfsm-replicate'));
-		Swal2.fire({
+		zfsmFormDialog({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options, zdataset),
 			showCancelButton: true,
@@ -838,7 +838,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 	const title = '<strong>Schedules<br>'+escapeHtml(zdataset)+'</strong>';
 	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewschedules', zdataset: zdataset}, function(preview) {
 		if (preview.error) return Swal2.fire({title: title, icon: 'error', html: zfsmEscape(preview.error)});
-		Swal2.fire({
+		zfsmFormDialog({
 			title: title,
 			html: zfsmScheduleDialogHtml(preview),
 			showCancelButton: true,

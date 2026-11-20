@@ -435,10 +435,11 @@ async function confirm() {
     const copyKeeps = () => window.document.getElementById('zfsm-replicate-copy-keeps');
     const time = () => window.document.getElementById('zfsm-replicate-time');
     const days = () => Array.from(window.document.querySelectorAll('.zfsm-replicate-day'));
+    assert.equal(window.Swal2.getPopup().style.width, '44em', 'Replicate opens as a form, wider than a message');
     assert.deepEqual([every().value, rows(), every().labels[0].textContent.startsWith('Repeat:')], ['', [false, false, false, false, 'b', false], true], 'Once, with no days, time, Keep or its help, and the newest snapshot picked');
     await repeat('days');
     assert.deepEqual([rows(), posts.at(-1), held()], [[true, true, true, true, '', true], {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, false], 'On days of the week: its days, time, Keep and help show, and Snapshot is Take one now, planned');
-    assert.deepEqual([days().map(box => box.labels[0].textContent.trim()), days().every(box => box.checked), time().labels[0].textContent.startsWith('Starts at:'), time().value],
+    assert.deepEqual([days().map(box => box.labels[0].textContent.trim()), days().every(box => box.checked), time().labels[0].textContent.startsWith('Starts at (this server\'s time):'), time().value],
       [['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], true, true, '00:00'], 'its days Monday first, all ticked, and a start time');
     const planned = posts.length;
     await repeat('hourly');
@@ -470,36 +471,37 @@ async function confirm() {
     const every = () => window.document.getElementById('zfsm-schedules-every');
     const pick = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
     const visible = id => window.document.getElementById(id).style.display !== 'none';
-    const rows = () => ['days', 'time', 'keep'].map(row => visible('zfsm-schedules-'+row+'-row')).concat(visible('zfsm-schedules-default'));
+    const rows = () => ['days', 'time', 'keep'].map(row => visible('zfsm-schedules-'+row+'-row')).concat(visible('zfsm-schedules-default'), visible('zfsm-schedules-none'));
     const days = () => Array.from(window.document.querySelectorAll('.zfsm-schedules-day'));
     const field = id => window.document.getElementById('zfsm-schedules-'+id);
     assert.deepEqual(posts.at(-1), {cmd: 'previewschedules', zdataset: 'tank/data'}, 'it asks what the dataset has');
+    assert.equal(window.Swal2.getPopup().style.width, '44em', 'Schedules opens as a form, wider than a message');
     assert.deepEqual([Array.from(every().options, option => option.textContent), every().value, every().labels[0].textContent.startsWith('Snapshots:'), rows()],
-      [['Default', 'None', 'Every hour', 'On days of the week'], 'days', true, [true, true, true, false]], 'its own schedule is picked, with its rows');
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'days', true, [true, true, true, false, false]], 'its own schedule is picked, with its rows');
     assert.deepEqual([days().filter(box => box.checked).map(box => box.value), field('time').value, field('keep').value], [['1'], '05:00', '1'], 'and its days, time and Keep');
     assert.equal(field('skipped'), null, 'one a run can take says nothing of it');
     await pick('default');
-    assert.deepEqual([rows(), field('default').textContent], [[false, false, false, true], 'Default follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes.'], 'Default says what it follows');
+    assert.deepEqual([rows(), field('default').textContent], [[false, false, false, true, false], 'Default follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes.'], 'Default says what it follows');
     await pick('none');
-    assert.deepEqual(rows(), [false, false, false, false], 'None has no rows');
+    assert.deepEqual([rows(), field('none').textContent], [[false, false, false, false, true], 'None: no scheduled snapshots of this dataset, or of those below it that follow it. A repeat set in Replicate still runs.'], 'None has no rows, and says what it stops');
     await pick('hourly');
-    assert.deepEqual(rows(), [false, false, true, false], 'Every hour has Keep');
+    assert.deepEqual(rows(), [false, false, true, false, false], 'Every hour has Keep');
     await pick('days');
     days().forEach(box => { box.checked = ['1', '3'].includes(box.value); });
     field('time').value = '13:30';
     field('keep').value = ' 2 ';
     // Replication: its own copies, with Copy Under for a repeat and what Default follows.
     const copy = id => window.document.getElementById('zfsm-copies-'+id);
-    const copyRows = () => ['days', 'time', 'keep', 'under'].map(row => visible('zfsm-copies-'+row+'-row')).concat(visible('zfsm-copies-default'));
+    const copyRows = () => ['days', 'time', 'keep', 'under'].map(row => visible('zfsm-copies-'+row+'-row')).concat(visible('zfsm-copies-default'), visible('zfsm-copies-none'));
     const pickCopies = async value => { copy('every').value = value; copy('every').dispatchEvent(new window.Event('change')); await settle(); };
     assert.deepEqual([Array.from(copy('every').options, option => option.textContent), copy('every').value, copy('every').labels[0].textContent.startsWith('Replication:'), copyRows(), copy('under').value, copy('keep').value],
-      [['Default', 'None', 'Every hour', 'On days of the week'], 'hourly', true, [false, false, true, true, false], 'usb', '3'], 'its own copies are picked, with Copy Under and Keep');
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'hourly', true, [false, false, true, true, false, false], 'usb', '3'], 'its own copies are picked, with Copy Under and Keep');
     assert.deepEqual([visible('zfsm-copies-copy-keeps-row'), copy('copy-keeps').value, field('copy-keeps')], [true, '30d', null], 'and their Copy Keeps; Snapshots has none');
-    assert.deepEqual([rows(), copy('skipped')], [[true, true, true, false], null], 'Snapshots\' rows stay as they were, and one it copies says nothing of it');
+    assert.deepEqual([rows(), copy('skipped')], [[true, true, true, false, false], null], 'Snapshots\' rows stay as they were, and one it copies says nothing of it');
     await pickCopies('default');
-    assert.deepEqual([copyRows(), copy('default').textContent], [[false, false, false, false, true], 'Default follows Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots.'], 'Default says what it follows');
+    assert.deepEqual([copyRows(), copy('default').textContent], [[false, false, false, false, true, false], 'Default follows Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots.'], 'Default says what it follows');
     await pickCopies('none');
-    assert.deepEqual(copyRows(), [false, false, false, false, false], 'None has no rows');
+    assert.deepEqual([copyRows(), copy('none').textContent], [[false, false, false, false, false, true], 'None: no scheduled copies of this dataset, or of those below it that follow it. A repeat set in Replicate still runs.'], 'None has no rows, and says what it stops');
     await pickCopies('days');
     window.document.querySelectorAll('.zfsm-copies-day').forEach(box => { box.checked = box.value === '6'; });
     copy('time').value = '02:15';

@@ -103,4 +103,27 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', siz
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'an incremental says a device the copy has now goes');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'so does a resumed run');
 
+// The Schedules and Replicate forms: a hint in each row it explains, linked to that section of the wiki's guide, in place of help paragraphs.
+const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', inherited: 'y', skipped: ''}});
+const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+assert.ok(words(schedules) < 250 && words(replicate) < 150, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(replicate)} words`);
+// A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
+const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats'];
+const guides = (schedules + replicate).match(/<a [^>]*>Guide<\/a>/g);
+for (const guide of guides) {
+  const [, section] = guide.match(/^<a href="https:\/\/github\.com\/chodeus\/ZFS-Master-NG\/wiki\/Schedules#([a-z-]+)" target="_blank" rel="noopener noreferrer">Guide<\/a>$/) || [];
+  assert.ok(sections.includes(section), `${guide}: opens a section of the guide in a new tab, which can't reach back to this page`);
+}
+assert.equal(guides.length, 8, 'Snapshots to keep three times, Copy Keeps twice, Copy Under, and the footer; Replicate\'s repeat line');
+const hinted = (html, prefix, row, label, text, section) => assert.match(html, new RegExp('<p id="' + prefix + '-' + row + '-row"[^>]*><label[^>]*>' + label + ':<input [^>]*aria-describedby="' + prefix + '-' + row
+  + '-hint"></label><span id="' + prefix + '-' + row + '-hint"[^>]*>' + text.replace(/[.()]/g, '\\$&') + ' <a [^>]*#' + section + '"[^>]*>Guide</a></span></p>'), `${prefix}: ${label}'s hint shows and hides with its row, and its box names it`);
+for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'keep', 'Snapshots to keep', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep');
+for (const [html, prefix] of [[schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'copy-keeps', 'Copy Keeps', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps');
+hinted(schedules, 'zfsm-copies', 'under', 'Copy Under', 'A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data.', 'replication');
+assert.match(schedules, /^<div style="text-align:left"><div role="group" aria-label="Snapshots"[^>]*><p[^>]*><label[^>]*><b>Snapshots:<\/b><select id="zfsm-schedules-every"[\s\S]*<\/div><div role="group" aria-label="Replication"[^>]*><p[^>]*><label[^>]*><b>Replication:<\/b><select id="zfsm-copies-every"/,
+  'Snapshots and Replication each have their own labelled part');
+assert.match(replicate, /<p id="zfsm-replicate-repeat-help" style="[^"]*display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it\. On another server, that server's Keep Replicas decides what the copy keeps\. <a [^>]*#replicate-repeats"[^>]*>Guide<\/a><\/p><\/div>$/,
+  'Replicate says what a repeat does in one line, hidden until one is picked');
+
 console.log('destroy and rollback dialog tests passed');
