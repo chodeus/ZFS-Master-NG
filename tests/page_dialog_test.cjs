@@ -27,10 +27,10 @@ const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localho
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
-window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMSize.js'), 'utf8'));
-window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMFrontEnd.js'), 'utf8'));
-window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMDiagRecord.js'), 'utf8'));
-window.eval(fs.readFileSync(path.join(root, 'frontend/ZFSMImpact.js'), 'utf8'));
+const pageFiles = ['ZFSMSize.js', 'ZFSMFrontEnd.js', 'ZFSMDiagRecord.js', ...require('./dialog_files.cjs')];
+const loaded = [...page.matchAll(/autov\('\/plugins\/zfs\.master\/frontend\/(ZFSM\w+\.js)'\)/g)].map(match => match[1]);
+assert.deepEqual(loaded.filter(file => pageFiles.includes(file)), pageFiles, 'ZFSMaster.page loads each file in pageFiles, in this order');
+for (const file of pageFiles) window.eval(fs.readFileSync(path.join(root, 'frontend', file), 'utf8'));
 window.eval(handlers('function getPropertyEditHTML(', 'function adminDatasetSnaps('));
 window.eval(handlers('function renameDataset(', 'function addDirectoryListing('));
 window.eval(handlers('function moveDirectory(', 'function convertDirectory('));
