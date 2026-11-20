@@ -93,7 +93,7 @@ $log_lines = array(
 	'Convert: cloning /mnt/tank/CanaryDs One/Canary Mix | Live (in full) failed, so rsync copies it: cp failed',
 	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received',
 	// Keep Replicas on what was received: what it removed, what stayed and why, and a read that failed.
-	'Removed tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvOld (past the newest 2 Keep Replicas keeps)',
+	'Removed tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvOld (not among the newest 2 Keep Replicas keeps)',
 	"Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received: Keep Replicas could not remove tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed (cannot destroy 'tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed': Input/output error); the next receive tries again",
 	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryRecvUnread received: Keep Replicas could not read the snapshots of tank/CanaryDs One/canarysender/CanaryRecvUnread',
 	$action('ZFS Replication', 'tank/CanaryDs One', 'ssh: connect to host canarynas port 22: Connection refused, as root@canaryhost:backup/CanaryRemote'),
@@ -101,10 +101,10 @@ $log_lines = array(
 	'ZFS Master NG dataset inventory failed for otherpool: zfs timed out',
 	$action('ZFS Snapshot Destroy', 'tank/CanaryDs One@CanaryA,CanaryB,CanaryC'),
 	$action('ZFS Dataset Destroy', 'tank/Canary Gone finished movies'),
-	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
+	'Replication of exportedpool/CanaryVol@CanaryA to exportedpool/CanaryCopy (in full) started: zfs send -P -v -L exportedpool/CanaryVol@CanaryA | zfs receive -s -u -o volmode=none exportedpool/CanaryCopy',
 	'Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy (carried on from where it stopped) started: zfs send -P -v -t '.$resume.' | zfs receive -s tank/CanaryCopy',
 	// To a server since removed from remotes.json: only "on server" names it, and the word net alone would keep its "backup".
-	'Replication of tank/CanaryDs One@CanarySnapA to remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy on server canary.backup (in full) started: zfs send -P -v tank/CanaryDs One@CanarySnapA | ssh 10.0.20.99 zfsm-replica 1 receive '.bin2hex('remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy'),
+	'Replication of tank/CanaryDs One@CanarySnapA to remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy on server canary.backup (in full) started: zfs send -P -v -L tank/CanaryDs One@CanarySnapA | ssh 10.0.20.99 zfsm-replica 1 receive '.bin2hex('remotepool/CanaryArea/CanaryTower/CanaryRemoteCopy'),
 	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryTyped/Name on server canary.backup not started: On canary.backup the copy goes inside remotepool/CanaryArea/CanaryTower, so give it one name with no slash, such as Canary Name'),
 	// Names the word net alone keeps, as each is one of its words: a server removed since, and this server's name before a rename.
 	$action('ZFS Replication', 'tank/CanaryDs One', 'Replication to CanaryGone on server media not started: media does not accept this server\'s key: copy the line shown under media here into its root user\'s SSH authorized keys, and Apply there'),
@@ -119,10 +119,30 @@ $log_lines = array(
 	'Replication of tank/CanarySrc to canarytyped/CanaryDest not started: The copy goes inside canarytyped/CanaryDest, which doesn\'t exist',
 	$action('ZFS Dataset Creation', "tank/Canary's CanaryFiles (CanarySmith 2024)", 'Invalid dataset name'),
 	'ZFS Master NG backend exception: '.$private_key,
+	// Snapshot Every Dataset: the first few it could not take, each with why, and a pool whose snapshots its Keep could not read.
+	"Schedule 0a1b2c3f: Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/CanarySnapSched@CanaryPrefix_1 (cannot create snapshot 'tank/CanarySnapSched@CanaryPrefix_1': out of space); "
+		."tank/CanaryDs One@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryDs One@CanaryPrefix_1': dataset is busy). Keep could not remove the snapshots of tank (they could not be read: cannot open 'tank': Input/output error); the next run tries again",
+	// One cron starts again where the clock went back: the datasets it left out.
+	'Schedule 0a1b2c3f: Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/CanaryAgainA, tank/CanaryAgain B, and 2 more)',
+	// A dataset's own snapshot schedule: its dataset in running text, and why it takes none of one.
+	'Schedule 0a1b2c3e: Scheduled snapshots of 2 of 2 dataset(s) (tank/CanaryOwn Ds and below) taken',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnRo not taken: tank/CanaryOwnRo is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnGone not taken: tank/CanaryOwnGone is gone; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnLeg not taken: tank/CanaryOwnLeg is mounted legacy, as Docker image layers are; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnSan not taken: tank/CanaryOwnSan has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings',
+	'Schedule 0a1b2c3e: Scheduled snapshots of 1 of 1 dataset(s) (tank/CanaryOwnSelf and below) taken. Not taken: tank/CanaryOwnSelf has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
+	'Schedule 0a1b2c3e: Scheduled snapshots of tank/CanaryOwnOff not taken: its pool is not imported',
+	// Replicate Every Dataset: how many it copied, those waiting for the copy above them, a holder it could not make, one in a copy's place.
+	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/CanaryWaitA, tank/CanaryWait B, tank/CanaryWaitC, and 2 more). '
+		."The dataset to hold the copies below tank/CanaryUnder/tank/CanaryHold could not be made: cannot create 'tank/CanaryUnder/tank/CanaryHold': out of space",
+	'Replication of tank/CanaryCpSrc to tank/CanaryUnder/tank/CanaryCpSrc not started: tank/CanaryUnder/tank/CanaryCpSrc only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them',
+	'ZFS Dataset Rename: Schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate',
+	"ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvCopy failed: not renamed with it: cannot rename 'tank/CanaryUnder/tank/CanaryMvCopy': dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one",
+	'ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvRep failed: the repeats set in Replicate that send into it still send to tank/CanaryUnder/tank/CanaryMvRep (Another change to the schedules is being saved; try again): set them again under Actions, Replicate',
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
-	'Removed tank/CanaryDs One@CanaryKeepOld (past the newest 3 its schedule keeps)',
+	'Removed tank/CanaryDs One@CanaryKeepOld (not among the newest 3, 7 daily and 4 weekly its schedule keeps)',
 	// Snapshots Prefix can put any words in a snapshot's name, Keep's own among them.
-	'Removed tank/CanaryDs One@CanaryPfx: cannot destroy private 1 stays too (past the newest 3 its schedule keeps)',
+	'Removed tank/CanaryDs One@CanaryPfx: cannot destroy private 1 stays too (not among the newest 3, 7 daily and 4 weekly its schedule keeps)',
 	'Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not read the snapshots of tank/CanaryCopy',
 	"Replication of tank/CanaryDs One@CanarySnapA to tank/CanaryCopy finished (changes since CanaryBase). A hold for this copy may still be on its snapshots, so they stay until a run that lands takes it off: tank/CanaryDs One@CanaryKeepHeld (cannot release hold from snapshot 'tank/CanaryDs One@CanaryKeepHeld': permission denied); tank/CanaryDs One@CanaryPfx: cannot destroy private 2 (cannot release hold from snapshot 'tank/CanaryDs One@CanaryPfx: cannot destroy private 2': permission denied)",
 	"Replication of tank/CanaryDs One to tank/CanaryCopy: Keep could not remove tank/CanaryCopy@CanaryKeepCopy (cannot destroy 'tank/CanaryCopy@CanaryKeepCopy': Input/output error), so its source stays too: tank/CanaryDs One@CanaryKeepCopy; the next run tries again",
@@ -138,7 +158,8 @@ $build = function() use ($work, $root, $put, $private_key, $public_key, $send_ke
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519', "CanaryPrivateKey\n");
 	// Schedules here and to a server not in remotes.json, and a record the plugin can't use: only their collector names them.
 	$put('/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('id' => '0a1b2c3d', 'dataset' => 'tank/CanaryDs One', 'dest' => 'backup/CanarySchedCopy', 'server' => '', 'every' => 'daily', 'hour' => 3, 'day' => 0),
-		array('id' => '0a1b2c3e', 'dataset' => 'tank/CanarySchedSrc', 'dest' => 'CanarySchedRemote', 'server' => 'canaryschedserver', 'every' => 'hourly', 'hour' => 0, 'day' => 0), array('id' => 'zz', 'dataset' => 'tank/CanaryOdd'))));
+		array('id' => '0a1b2c3e', 'dataset' => 'tank/CanarySchedSrc', 'dest' => 'CanarySchedRemote', 'server' => 'canaryschedserver', 'every' => 'hourly', 'hour' => 0, 'day' => 0), array('id' => 'zz', 'dataset' => 'tank/CanaryOdd'),
+		array('id' => '0a1b2c3f', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 2))));
 	$put('/boot/config/plugins/zfs.master/ssh/id_ed25519.pub', $send_key." zfs.master@CanaryNas\n");
 	$put('/boot/config/ident.cfg', "NAME=\"CanaryNas\"\n");
 	$put('/var/log/syslog', "Jan  2 10:00:00 CanaryTower zfs.master[41]: ".$log_lines[0]."\n");
@@ -243,10 +264,10 @@ has("ZFS Master NG dataset inventory failed for otherpool: zfs timed out\n", $lo
 has('ssh: connect to host '.$token('canarynas').' port 22: Connection refused, as '.$token('root@canaryhost:backup/CanaryRemote')."\n", $log, 'this server\'s name as Unraid has it is a token; another server, its user and its dataset are one token, the one they have as a property\'s value');
 has("ZFS Snapshot Destroy: tank/$ds@".$token('CanaryA').','.$token('CanaryB').','.$token('CanaryC')." succeeded\n", $log, 'each snapshot of a list is a token');
 $exported = 'exportedpool/'.$token('CanaryVol').'@'.zfsmDiagToken('CanaryA');
-has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
+has("Replication of $exported to exportedpool/".$token('CanaryCopy')." (in full) started: zfs send -P -v -L $exported | zfs receive -s -u -o volmode=none exportedpool/".zfsmDiagToken('CanaryCopy')."\n", $log, 'a pool nothing lists is known once a log line names its dataset, in the command the line repeats too');
 has(' started: zfs send -P -v -t (a resume token, left out) | zfs receive -s tank/'.zfsmDiagToken('CanaryCopy')."\n", $log, 'a resume token is left out');
 $remote = 'remotepool/'.$token('CanaryArea').'/'.$token('CanaryTower').'/'.$token('CanaryRemoteCopy');
-same(1, preg_match('~ to '.preg_quote($remote.' on server '.$token('canary.backup').' (in full) started: zfs send -P -v tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' | ssh ', '~').'ip-[0-9a-f]{8} '
+same(1, preg_match('~ to '.preg_quote($remote.' on server '.$token('canary.backup').' (in full) started: zfs send -P -v -L tank/'.$ds.'@'.zfsmDiagToken('CanarySnapA').' | ssh ', '~').'ip-[0-9a-f]{8} '
 	.preg_quote('zfsm-replica 1 receive (as hex) '.$remote, '~').'\n~', $log), 'a copy on another server: its pool stays as a pool here does, its server is a token though no longer in remotes.json, and its request is read from hex: '.$log);
 has('ZFS Replication: tank/'.$ds.' failed: Replication to '.$token('CanaryTyped').'/'.$token('Name').' on server '.zfsmDiagToken('canary.backup').' not started: On '.zfsmDiagToken('canary.backup').' the copy goes inside remotepool/'.$token('CanaryArea').'/'.zfsmDiagToken('CanaryTower').', so give it one name with no slash, such as '.$token('Canary Name')."\n", $log,
 	'a refusal to send there: its area is its pool and tokens, and the name it gives as its example is one token');
@@ -267,8 +288,8 @@ has("ZFS Directory Delete: /mnt/tank/$ds/$folder failed: Another filesystem is m
 has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Mix | Live (in full)')." failed, so rsync copies it: cp failed\n", $log, 'a folder\'s name keeps the words that would end a dataset\'s');
 // Keep's words after a name stay: what it removed and why, what stayed and why; a name holding Keep's own words stays one token.
 $copy = 'tank/'.zfsmDiagToken('CanaryCopy');
-has("Removed tank/$ds@".zfsmDiagToken('CanaryKeepOld')." (past the newest 3 its schedule keeps)\n", $log, 'a removal keeps its why');
-has("Removed tank/$ds@".zfsmDiagToken('CanaryPfx: cannot destroy private 1 stays too')." (past the newest 3 its schedule keeps)\n", $log, 'and a snapshot named with Keep\'s words stays one name');
+has("Removed tank/$ds@".zfsmDiagToken('CanaryKeepOld')." (not among the newest 3, 7 daily and 4 weekly its schedule keeps)\n", $log, 'a removal keeps its why');
+has("Removed tank/$ds@".zfsmDiagToken('CanaryPfx: cannot destroy private 1 stays too')." (not among the newest 3, 7 daily and 4 weekly its schedule keeps)\n", $log, 'and a snapshot named with Keep\'s words stays one name');
 has("Replication of tank/$ds to $copy: Keep could not read the snapshots of $copy\n", $log, 'a read that failed keeps what failed');
 has("Replication of tank/$ds to $copy: Keep could not remove $copy@".zfsmDiagToken('CanaryKeepCopy')." (cannot destroy ?$copy@".zfsmDiagToken('CanaryKeepCopy')."?: Input/output error), so its source stays too: tank/$ds@".zfsmDiagToken('CanaryKeepCopy')."; the next run tries again\n", $log,
 	'a removal that failed keeps what stayed and why');
@@ -276,9 +297,42 @@ $pfx = "tank/$ds@".zfsmDiagToken('CanaryPfx: cannot destroy private 2');
 has("takes it off: tank/$ds@".zfsmDiagToken('CanaryKeepHeld')." (cannot release hold from snapshot ?tank/$ds@".zfsmDiagToken('CanaryKeepHeld')."?: permission denied); $pfx (cannot release hold from snapshot ?$pfx?: permission denied)\n", $log,
 	'a hold left on keeps zfs\'s why, a name with Keep\'s words too');
 has("can take it first: tank/$ds@".zfsmDiagToken('CanarySnapA')." (cannot hold snapshot ?tank/$ds@".zfsmDiagToken('CanarySnapA')."?: permission denied).\n", $log, 'and one not put on');
+// Snapshot Every Dataset's run: each snapshot it could not take is its dataset's token and the snapshot's, and every why stays;
+// in running text its id is a word the plugin doesn't use, so a token too.
+$snap = zfsmDiagToken('CanaryPrefix_1');
+has("Schedule ".zfsmDiagToken('0a1b2c3f').": Scheduled snapshots of 3 of 5 dataset(s) taken. Could not take tank/".$token('CanarySnapSched')."@$snap (cannot create snapshot ?tank/".$token('CanarySnapSched')."@$snap?: out of space); tank/$ds@$snap (cannot create snapshot ?tank/$ds@$snap?: dataset is busy). "
+	."Keep could not remove the snapshots of tank (they could not be read: cannot open ?tank?: Input/output error); the next run tries again\n", $log, 'a snapshot run\'s line');
+has("\n0a1b2c3f\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $files['plugin/replication-schedules.txt'], 'its row');
+// A dataset's own: its name a token, and the plugin's words after it in clear.
+$own = 'Schedule '.zfsmDiagToken('0a1b2c3e').': Scheduled snapshots ';
+has($own.'of 2 of 2 dataset(s) (tank/'.$token('CanaryOwn Ds')." and below) taken\n", $log, 'an own schedule\'s run says whose datasets it took');
+has($own.'of tank/'.$token('CanaryOwnRo').' not taken: tank/'.$token('CanaryOwnRo').' is read-only, as a copy received here is: a snapshot in it stops the next replication into it; remove its schedule in Settings'."\n",
+	$log, 'and why it took none');
+has($own.'of tank/'.$token('CanaryOwnGone').' not taken: tank/'.$token('CanaryOwnGone')." is gone; remove its schedule in Settings\n", $log, 'of one gone');
+has($own.'of tank/'.$token('CanaryOwnLeg').' not taken: tank/'.$token('CanaryOwnLeg')." is mounted legacy, as Docker image layers are; remove its schedule in Settings\n", $log, 'of one mounted legacy');
+has($own.'of tank/'.$token('CanaryOwnSan').' not taken: tank/'.$token('CanaryOwnSan')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool; remove its schedule in Settings\n", $log, 'of one with Sanoid\'s snapshots');
+has($own.'of 1 of 1 dataset(s) (tank/'.$token('CanaryOwnSelf').' and below) taken. Not taken: tank/'.$token('CanaryOwnSelf')." has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool\n",
+	$log, 'and one that took those below but not its own');
+has($own.'of tank/'.$token('CanaryOwnOff')." not taken: its pool is not imported\n", $log, 'of one whose pool is not imported');
+$under = 'tank/'.$token('CanaryUnder');
+// Below Copy Under a copy's path names its pool again, as a dataset there: a token too.
+$cp = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryCpSrc');
+$hold = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryHold');
+has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryWaitA').', tank/'.$token('CanaryWait B').', tank/'.$token('CanaryWaitC').', and 2 more). '
+	."The dataset to hold the copies below $hold could not be made: cannot create ?$hold?: out of space\n", $log, 'a run of copies under a dataset: each name a token, the plugin\'s words in clear');
+has('Schedule '.zfsmDiagToken('0a1b2c3f').': Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/'.$token('CanaryAgainA').', tank/'.$token('CanaryAgain B').", and 2 more)\n",
+	$log, 'a run cron started again where the clock went back: each name a token, the pool in clear');
+has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');
+has('ZFS Dataset Rename: Schedules of tank/'.$token('CanaryMvFrom').' failed: not moved to tank/'.$token('CanaryMvTo').' (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate'."\n",
+	$log, 'a rename whose schedules were not moved');
+$mv = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryMvCopy');
+has("ZFS Dataset Rename: Copy $mv failed: not renamed with it: cannot rename ?$mv?: dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one\n", $log, 'and a copy left behind');
+$rep = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryMvRep');
+has("ZFS Dataset Rename: Copy $rep failed: the repeats set in Replicate that send into it still send to $rep (Another change to the schedules is being saved; try again): set them again under Actions, Replicate\n",
+	$log, 'and repeats that could not follow it');
 // Keep Replicas on a copy received here, which the next receive tries again.
 $in = 'tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/';
-has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (past the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');
+has('Removed '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvOld')." (not among the newest 2 Keep Replicas keeps)\n", $log, 'a removal here keeps its why');
 same(array(1, 1), array(preg_match('~ into '.$in.$token('CanaryIn').' received: Keep Replicas could not remove '.$in.$token('CanaryIn').'@'.zfsmDiagToken('CanaryRecvStayed').' \(cannot destroy ~', $log),
 	preg_match('~ into '.$in.$token('CanaryRecvUnread').' received: Keep Replicas could not read the snapshots of '.$in.$token('CanaryRecvUnread').'\n~', $log)), 'and what stayed or could not be read');
 same(array(1, 1), array(preg_match('/Replication request from ip-[0-9a-f]{8} refused: /', $log), preg_match('~Replication from ip-[0-9a-f]{8} into tank/'.$ds.'/'.zfsmDiagToken('canarysender').'/'.$token('CanaryIn').' received\n~', $log)), 'an address is a token: '.$log);
@@ -406,7 +460,7 @@ same(array('/boot'.$tokens('/config/plugins/ClientA/notes'), '/var'.$tokens('/lo
 $plugins_own = '/boot/config/plugins/ /boot/config/plugins/zfs.master/zfs.master-2026.11.11.3-x86_64-1.txz /var/log/syslog.2 /var/run/zfs.master.rewrite/123.lock /tmp/zfs.master-diag.0123456789abcdef/plugin/log.txt /boot/logs'
 	.' /var/log/packages/zfs.master-2026.11.11.3-x86_64-1 /var/run/zfs.master.alerts.json.lock /var/run/zfs.master.diagnostics/pack.lock'
 	.' /boot/config/plugins/zfs.master/ssh/remotes.json /boot/config/plugins/zfs.master/ssh/new-0123abcd.pub /var/run/zfs.master.replica-send/settings.lock /var/run/zfs.master.replica-send/ssh-0123456789ab/known_hosts'
-	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm /boot/config/plugins/zfs.master/schedules.json /boot/config/plugins/zfs.master/schedules.cron /var/run/zfs.master.schedule/0a1b2c3d.json /var/run/zfs.master.schedule/settings.lock';
+	.' /var/run/zfs.master.replica-send/ssh-0123456789ab/cm /boot/config/plugins/zfs.master/schedules.json /boot/config/plugins/zfs.master/schedules.cron /var/run/zfs.master.schedule/0a1b2c3d.json /var/run/zfs.master.schedule/0a1b2c3d.lock /var/run/zfs.master.schedule/settings.lock';
 same(explode(' ', $plugins_own), array_map('zfsmDiagAnonText', explode(' ', $plugins_own)), 'the plugin\'s own paths stay, each a field of its own');
 // In a row a field is the whole path: one of the plugin's names with a space and more after it is a folder's, not the plugin's.
 same('/var/'.zfsmDiagToken('run').'/'.zfsmDiagToken('zfs.master.rewrite ClientA')."\tlocal", zfsmDiagAnonText("/var/run/zfs.master.rewrite ClientA\tlocal"), 'a field that only starts with one of the plugin\'s names is a folder\'s');
@@ -491,6 +545,8 @@ unlink($work.'/unlisted/names.txt');
 chmod($work.'/unlisted/plugin', 0000);
 same(array(0, 'false', false), $rewrite(), 'a work folder that can\'t be listed to its end is not rewritten, and no names.txt is written');
 same('(zfsm-replica 1 exists (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')', zfsmDiagAnonText('(zfsm-replica 1 exists '.bin2hex('gonepool/Secret Share/x').')'), 'a request for a dataset of a pool nothing knows is not written out as text');
+foreach (array('receive-zstd', 'send-xz') as $verb) same('(zfsm-replica 1 '.$verb.' (as hex) gonepool/'.zfsmDiagToken('Secret Share').'/'.zfsmDiagToken('x').')',
+	zfsmDiagAnonText('(zfsm-replica 1 '.$verb.' '.bin2hex('gonepool/Secret Share/x').')'), 'nor one whose verb has a hyphen: '.$verb.', known or not');
 same(array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', zfsmDiagToken('my media'), zfsmDiagToken('123Bob'), zfsmDiagToken('2024Tax')), array_map('zfsmDiagFreeValue', array('on', '1d=>1h,1w=>1d', '5', '-', '10G', '1.5x', 'my media', '123Bob', '2024Tax')),
 	'of the values an owner can write, a switch, a plan and a number with a unit stay; a word that starts with digits is no number');
 // A setting or a finding that names a dataset with nothing around it: its pool stays, and one word alone only when it is a pool.

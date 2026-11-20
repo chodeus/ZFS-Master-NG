@@ -13,7 +13,7 @@ function zfsmValidDestroyTarget($target) {
 	if (strpos($target, '@') === false) return zfsmValidDatasetName($target);
 	list($dataset, $names) = explode('@', $target, 2);
 	if (!zfsmValidDatasetName($dataset)) return false;
-	foreach (explode(',', $names) as $name) if (!zfsmValidNameComponent($name) || strlen($name) > 255) return false;
+	foreach (explode(',', $names) as $name) if (!zfsmValidSnapshotPart($name, $dataset)) return false;
 	return true;
 }
 

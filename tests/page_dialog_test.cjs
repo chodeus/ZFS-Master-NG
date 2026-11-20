@@ -3,7 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {JSDOM} = require('jsdom');
+const {JSDOM, VirtualConsole} = require('jsdom');
 const tree = path.resolve(process.argv[2]);
 const jquery = [path.join(tree, 'emhttp/plugins/dynamix/javascript/dynamix.js'), path.join(tree, 'plugins/dynamix/javascript/dynamix.js')].find(fs.existsSync);
 assert.ok(jquery, 'no dynamix.js (Unraid jQuery) under ' + tree);
@@ -19,7 +19,11 @@ function handlers(from, to) {
   return code;
 }
 
-const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true});
+// jsdom only prints an error a handler throws; a step checks those since it began, and the end all of them.
+const thrown = [];
+const virtualConsole = new VirtualConsole().forwardTo(console);
+virtualConsole.on('jsdomError', error => { if (error.type === 'unhandled-exception') thrown.push(error.message); });
+const {window} = new JSDOM('<!doctype html><body></body>', {url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole});
 window.matchMedia = () => ({matches: false, addEventListener() {}, removeEventListener() {}});
 window.eval(fs.readFileSync(jquery, 'utf8'));
 window.eval(fs.readFileSync(path.join(root, 'assets/sweetalert2.all.min.js'), 'utf8'));
@@ -36,6 +40,8 @@ let properties = {};
 let convertPreview = {can_proceed: true, clones: true, blocker: '', turns_on: ''};
 let rewritePreview = {};
 let replicateAnswer = () => ({});
+let schedulePreview = {};
+let scheduleAnswer = null;
 // Answers held back to arrive late, as a slow plan would.
 const lateAnswers = [];
 let holdReplicate = false;
@@ -45,6 +51,8 @@ window.$.post = (url, data, done) => {
   if (data.cmd === 'previewrewrite') done(JSON.stringify(rewritePreview));
   if (data.cmd === 'previewreplicate') { const answer = () => done(JSON.stringify(replicateAnswer(data))); if (holdReplicate) lateAnswers.push(answer); else answer(); }
   if (data.cmd === 'previewconvert') done(JSON.stringify(convertPreview));
+  if (data.cmd === 'previewschedules') done(JSON.stringify(schedulePreview));
+  if (data.cmd === 'scheduledataset' && scheduleAnswer !== null) done(scheduleAnswer);
   const reply = window.$.Deferred();
   replies.push(reply);
   return reply.promise();
@@ -400,13 +408,23 @@ async function confirm() {
   await new Promise(resolve => window.setTimeout(resolve, 450));
   await settle();
   assert.deepEqual([/changes since b/.test(planText()), held()], [true, false], 'the plan for the destination on screen enables it');
+  // ZFS keeps a space a name ends in, so the destination goes as typed.
+  dest().value = 'backup/data ';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
+  assert.deepEqual([posts.at(-1).destination, held()], ['backup/data ', true], 'a destination that ends in a space is planned as typed');
+  dest().value = 'backup/data';
+  dest().dispatchEvent(new window.Event('input'));
+  await new Promise(resolve => window.setTimeout(resolve, 450));
+  await settle();
   snap().value = '';
   snap().dispatchEvent(new window.Event('change'));
   await settle();
   assert.deepEqual(posts.at(-1), {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, 'Take one now is planned too');
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: ''}, 'Replicate starts with what is on screen');
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''}, 'Replicate starts with what is on screen');
   window.Swal2.close();
   // Repeat: on days of the week shows the days and a start time, takes its own snapshot each run, and starts with its schedule.
   {
@@ -418,23 +436,152 @@ async function confirm() {
     const shown = id => window.document.getElementById(id).style.display !== 'none';
     const rows = () => [shown('zfsm-replicate-days-row'), shown('zfsm-replicate-time-row'), shown('zfsm-replicate-keep-row'), shown('zfsm-replicate-repeat-help'), snap().value, snap().disabled];
     const keep = () => window.document.getElementById('zfsm-replicate-keep');
+    const copyKeeps = () => window.document.getElementById('zfsm-replicate-copy-keeps');
     const time = () => window.document.getElementById('zfsm-replicate-time');
     const days = () => Array.from(window.document.querySelectorAll('.zfsm-replicate-day'));
+    assert.equal(window.Swal2.getPopup().style.width, '44em', 'Replicate opens as a form, wider than a message');
     assert.deepEqual([every().value, rows(), every().labels[0].textContent.startsWith('Repeat:')], ['', [false, false, false, false, 'b', false], true], 'Once, with no days, time, Keep or its help, and the newest snapshot picked');
     await repeat('days');
     assert.deepEqual([rows(), posts.at(-1), held()], [[true, true, true, true, '', true], {cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: ''}, false], 'On days of the week: its days, time, Keep and help show, and Snapshot is Take one now, planned');
-    assert.deepEqual([days().map(box => box.labels[0].textContent.trim()), days().every(box => box.checked), time().labels[0].textContent.startsWith('Starts at:'), time().value],
+    assert.deepEqual([days().map(box => box.labels[0].textContent.trim()), days().every(box => box.checked), time().labels[0].textContent.startsWith('Starts at (this server\'s time):'), time().value],
       [['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], true, true, '00:00'], 'its days Monday first, all ticked, and a start time');
     const planned = posts.length;
     await repeat('hourly');
     assert.deepEqual([rows(), posts.length, keep().labels[0].textContent.startsWith('Snapshots to keep:'), keep().placeholder], [[false, false, true, true, '', true], planned, true, 'all'], 'Every hour: Keep, empty for all, with no days or time, and no new plan, as Snapshot did not change');
+    assert.deepEqual([shown('zfsm-replicate-copy-keeps-row'), copyKeeps().labels[0].textContent.startsWith('Copy Keeps:'), copyKeeps().placeholder], [true, true, 'same as source'], 'and Copy Keeps, empty for the same as its source');
+    await repeat('');
+    assert.deepEqual([rows(), shown('zfsm-replicate-copy-keeps-row')], [[false, false, false, false, '', false], false], 'back to Once: the rows and help go, and Snapshot can be picked again');
     await repeat('days');
     days().forEach(box => { box.checked = ['1', '3', '5'].includes(box.value); });
     time().value = '13:30';
     keep().value = ' 30 ';
+    copyKeeps().value = ' 30d 12M ';
     window.Swal2.clickConfirm();
     await settle();
-    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30'}, 'Replicate starts it with its days, time and Keep');
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30', copy_keeps: '30d 12M'},
+      'Replicate starts it with its days, time, Keep and Copy Keeps');
+    window.Swal2.close();
+  }
+  // Schedules: starts at the dataset's own, shows the rows that fit its choice, and Save sends what is on screen and says the answer.
+  {
+    schedulePreview = {every: 'days', time: '05:00', days: [1], keep: '1', inherited: 'the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes',
+      copies: {every: 'hourly', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '3', copy_keeps: '30d', under: 'usb', server: '', servers: ['nas'],
+        inherited: 'Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots', skipped: ''}};
+    const schedules = async () => {
+      window.addDatasetContext('tank', 'tank/data', 0, 'menu', 0, 'none', '', 'filesystem');
+      menu.find(option => option.text === 'Schedules').action({preventDefault() {}});
+      await settle();
+    };
+    await schedules();
+    const every = () => window.document.getElementById('zfsm-schedules-every');
+    const pick = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
+    const visible = id => window.document.getElementById(id).style.display !== 'none';
+    const rows = () => ['days', 'time', 'keep'].map(row => visible('zfsm-schedules-'+row+'-row')).concat(visible('zfsm-schedules-default'), visible('zfsm-schedules-none'));
+    const days = () => Array.from(window.document.querySelectorAll('.zfsm-schedules-day'));
+    const field = id => window.document.getElementById('zfsm-schedules-'+id);
+    assert.deepEqual(posts.at(-1), {cmd: 'previewschedules', zdataset: 'tank/data'}, 'it asks what the dataset has');
+    assert.equal(window.Swal2.getPopup().style.width, '44em', 'Schedules opens as a form, wider than a message');
+    assert.deepEqual([Array.from(every().options, option => option.textContent), every().value, every().labels[0].textContent.startsWith('Snapshots:'), rows()],
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'days', true, [true, true, true, false, false]], 'its own schedule is picked, with its rows');
+    assert.deepEqual([days().filter(box => box.checked).map(box => box.value), field('time').value, field('keep').value], [['1'], '05:00', '1'], 'and its days, time and Keep');
+    assert.equal(field('skipped'), null, 'one a run can take says nothing of it');
+    await pick('default');
+    assert.deepEqual([rows(), field('default').textContent], [[false, false, false, true, false], 'Default follows the snapshot schedule of tank, every Tuesday at 06:00; it keeps all it takes.'], 'Default says what it follows');
+    await pick('none');
+    assert.deepEqual([rows(), field('none').textContent], [[false, false, false, false, true], 'None: no scheduled snapshots of this dataset, or of those below it that follow it. A repeat set in Replicate still runs.'], 'None has no rows, and says what it stops');
+    await pick('hourly');
+    assert.deepEqual(rows(), [false, false, true, false, false], 'Every hour has Keep');
+    await pick('days');
+    days().forEach(box => { box.checked = ['1', '3'].includes(box.value); });
+    field('time').value = '13:30';
+    field('keep').value = ' 2 ';
+    // Replication: its own copies, with Server and Copy Under for a repeat and what Default follows.
+    const copy = id => window.document.getElementById('zfsm-copies-'+id);
+    const copyRows = () => ['days', 'time', 'keep', 'server', 'under'].map(row => visible('zfsm-copies-'+row+'-row')).concat(visible('zfsm-copies-default'), visible('zfsm-copies-none'));
+    const pickCopies = async value => { copy('every').value = value; copy('every').dispatchEvent(new window.Event('change')); await settle(); };
+    assert.deepEqual([Array.from(copy('every').options, option => option.textContent), copy('every').value, copy('every').labels[0].textContent.startsWith('Replication:'), copyRows(), copy('under').value, copy('keep').value],
+      [['Default', 'None', 'Every hour', 'On days of the week'], 'hourly', true, [false, false, true, true, true, false, false], 'usb', '3'], 'its own copies are picked, with Server, Copy Under and Keep');
+    const hints = () => [visible('zfsm-copies-under-here'), visible('zfsm-copies-under-there')];
+    const server = async value => { copy('server').value = value; copy('server').dispatchEvent(new window.Event('change')); await settle(); };
+    assert.deepEqual([Array.from(copy('server').options, option => option.textContent), copy('server').value, copy('server').labels[0].textContent, hints()],
+      [['This server', 'nas'], '', 'Server:This servernas', [true, false]], 'Server offers This server and each trusted one, This server picked, with its Copy Under hint');
+    await server('nas');
+    assert.deepEqual([visible('zfsm-copies-copy-keeps-row'), hints(), copy('under-there').textContent],
+      [false, [false, true], 'Inside the dataset that server keeps for this server\'s copies; a run makes it if it is missing. Guide'],
+      'a server hides Copy Keeps, which its Keep Replicas decides, and shows its own hint');
+    await server('');
+    assert.deepEqual([visible('zfsm-copies-copy-keeps-row'), hints()], [true, [true, false]], 'This server again shows them');
+    assert.deepEqual([visible('zfsm-copies-copy-keeps-row'), copy('copy-keeps').value, field('copy-keeps')], [true, '30d', null], 'and their Copy Keeps; Snapshots has none');
+    assert.deepEqual([rows(), copy('skipped')], [[true, true, true, false, false], null], 'Snapshots\' rows stay as they were, and one it copies says nothing of it');
+    await pickCopies('default');
+    assert.deepEqual([copyRows(), copy('default').textContent], [[false, false, false, false, false, true, false], 'Default follows Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots.'], 'Default says what it follows');
+    await pickCopies('none');
+    assert.deepEqual([copyRows(), copy('none').textContent], [[false, false, false, false, false, false, true], 'None: no scheduled copies of this dataset, or of those below it that follow it. A repeat set in Replicate still runs.'], 'None has no rows, and says what it stops');
+    await pickCopies('days');
+    window.document.querySelectorAll('.zfsm-copies-day').forEach(box => { box.checked = box.value === '6'; });
+    copy('time').value = '02:15';
+    copy('keep').value = ' 7d ';
+    copy('copy-keeps').value = ' all ';
+    copy('under').value = 'backup/Cold Storage ';
+    scheduleAnswer = JSON.stringify({said: 'Saved: <b>tank/data</b>', schedules_html: '<span>x</span>'});
+    await confirm();
+    assert.deepEqual(posts.at(-1), {cmd: 'scheduledataset', zdataset: 'tank/data', every: 'days', time: '13:30', days: '1,3', keep: '2', copy_every: 'days', copy_time: '02:15', copy_days: '6', copy_keep: '7d', copy_keeps: 'all', under: 'backup/Cold Storage ', server: ''},
+      'Save sends both parts as on screen, Copy Under as typed: a name may end in a space');
+    const text = () => window.Swal2.getHtmlContainer().textContent;
+    const result = () => [window.Swal2.getTitle().textContent, window.Swal2.getIcon().classList.contains('swal2-error'), text()];
+    assert.deepEqual(result(), ['Schedules Result', false, 'Saved: <b>tank/data</b>'], 'and shows what was saved, as text');
+    await schedules();
+    await server('nas');
+    await confirm();
+    assert.deepEqual([posts.at(-1).copy_every, posts.at(-1).under, posts.at(-1).server, posts.at(-1).copy_keeps], ['hourly', 'usb', 'nas', ''], 'to a server, Save sends it, and no Copy Keeps');
+    const saved = async answer => {
+      scheduleAnswer = answer;
+      await schedules();
+      await confirm();
+      return result();
+    };
+    assert.deepEqual(await saved(JSON.stringify({said: '', error: 'Nothing was saved: tank/data is gone'})), ['Schedules Result', true, 'Nothing was saved: tank/data is gone'], 'a refusal says why');
+    assert.deepEqual(await saved('<br>'), ['Schedules Result', true, 'The answer could not be read. Reload the page and open Schedules to see what was saved.'], 'an answer that is no JSON says so');
+    assert.deepEqual(await saved(JSON.stringify({succeeded: [], failed: {request: 'Could not save: no entropy'}})), ['Schedules Result', true, 'Could not save: no entropy. Reload the page and open Schedules to see what was saved.'],
+      'a failure the backend names says it');
+    scheduleAnswer = null;
+    await schedules();
+    await confirm();
+    replies.at(-1).reject();
+    await settle();
+    assert.deepEqual(result(), ['Schedules Result', true, 'The request failed. Reload the page and open Schedules to see what was saved.'], 'a request that fails says so');
+    schedulePreview = {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes',
+      skipped: 'tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool',
+      copies: {every: 'default', time: '00:00', days: [0, 1, 2, 3, 4, 5, 6], keep: '', under: 'backup', server: 'gone', servers: ['gone'], servers_error: 'remotes.json could not be read',
+        inherited: 'Replicate Every Dataset, under backup every hour at :30; it keeps all its snapshots',
+        skipped: 'tank/<i>data</i> is in pool backup, where its copy would go'}};
+    await schedules();
+    const line = field('skipped');
+    assert.deepEqual([line?.textContent, line?.querySelectorAll('i').length, line?.parentElement.firstElementChild === line],
+      ['tank/<i>data</i> has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool.', 0, true], 'one no run takes says why, first and as text');
+    const unsent = window.document.getElementById('zfsm-copies-skipped');
+    assert.deepEqual([unsent?.textContent, unsent?.querySelectorAll('i').length, unsent?.previousElementSibling.id], ['Replication as saved: tank/<i>data</i> is in pool backup, where its copy would go.', 0, 'zfsm-copies-default'],
+      'and one Replication leaves out says why under it, as text');
+    copy('every').value = 'hourly';
+    copy('every').dispatchEvent(new window.Event('change'));
+    await settle();
+    assert.deepEqual([copy('server').value, copy('server-row').textContent, visible('zfsm-copies-copy-keeps-row'), hints()], ['gone', 'Server:This servergoneremotes.json could not be read', false, [false, true]],
+      'a repeat starts at the server Default follows, kept though the servers can\'t be read, and says so');
+    // No server to pick: no Server row, Copy Keeps stays, and Save sends This server.
+    window.Swal2.close();
+    schedulePreview = Object.assign({}, schedulePreview, {copies: Object.assign({}, schedulePreview.copies, {server: '', servers: [], servers_error: ''})});
+    const from = thrown.length;
+    await schedules();
+    assert.deepEqual([visible('zfsm-copies-default'), thrown.slice(from)], [true, []], 'no server to pick: the dialog opens with Default shown');
+    await pickCopies('hourly');
+    assert.deepEqual([copy('server'), copy('server-row'), visible('zfsm-copies-copy-keeps-row'), hints(), thrown.slice(from)], [null, null, true, [true, false], []], 'no server to pick: no Server row, and Copy Keeps stays');
+    scheduleAnswer = JSON.stringify({said: 'Saved'});
+    await confirm();
+    assert.deepEqual([posts.at(-1).cmd, posts.at(-1).server], ['scheduledataset', ''], 'and Save sends This server');
+    window.Swal2.close();
+    schedulePreview = {failed: {request: 'Invalid dataset name'}};
+    await schedules();
+    assert.deepEqual([window.Swal2.getIcon().classList.contains('swal2-error'), text(), posts.at(-1).cmd], [true, 'Invalid dataset name', 'previewschedules'], 'a dataset it can\'t read says why, with nothing to save');
     window.Swal2.close();
   }
   // With a trusted server: picking it fills in the dataset's name for its area, plans it there and starts it there; a name typed in stays.
@@ -462,8 +609,31 @@ async function confirm() {
   await pick('nas');
   window.Swal2.clickConfirm();
   await settle();
-  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: ''}, 'Replicate starts it there');
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''}, 'Replicate starts it there');
   window.Swal2.close();
+  // Copy Keeps: for a repeat to This server only, following the server picked; one to a server sends none.
+  window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  {
+    const every = window.document.getElementById('zfsm-replicate-every');
+    every.value = 'hourly';
+    every.dispatchEvent(new window.Event('change'));
+    await settle();
+    const copyRow = () => window.document.getElementById('zfsm-replicate-copy-keeps-row').style.display !== 'none';
+    const here = copyRow();
+    window.document.getElementById('zfsm-replicate-copy-keeps').value = '5';
+    await pick('nas');
+    const there = copyRow();
+    await pick('');
+    const back = copyRow();
+    await pick('nas');
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.deepEqual([here, there, back, posts.at(-1).cmd, posts.at(-1).server, posts.at(-1).every, posts.at(-1).copy_keeps], [true, false, true, 'replicatedataset', 'nas', 'hourly', ''],
+      'Copy Keeps shows for a repeat to This server, not to nas, and is sent only while it shows');
+    window.Swal2.close();
+  }
 
   // Rewrite Files: offered on a filesystem where zfs rewrite exists, reviewed, then started.
   const rewriteItem = (type, available) => {
@@ -596,6 +766,7 @@ async function confirm() {
   window.document.body.append(outside);
   assert.deepEqual([key(outside, 'Enter'), outsidePressed], [true, 0], 'a button outside the plugin is not ours to press');
 
+  assert.deepEqual(thrown, [], 'no handler threw');
   console.log('page dialog tests passed on jQuery ' + window.$.fn.jquery);
   window.close();
 })().catch(error => { console.error(error); process.exit(1); });

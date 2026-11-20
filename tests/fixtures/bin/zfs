@@ -15,11 +15,9 @@ for arg in "$@"; do last_arg="$arg"; done
 # Every call, for a test that counts how many reads a page makes.
 if [ -n "${ZFSM_TEST_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$ZFSM_TEST_CALL_LOG"; fi
 
-# Replication (include/ZFSMReplicate.php) against a small pool kept in ZFSM_TEST_REPL_DIR: datasets ("name<TAB>type"),
-# marks (snapshots and bookmarks, "name<TAB>guid<TAB>createtxg", oldest first), props ("name<TAB>property<TAB>value", a
-# snapshot's clones and user properties too) and holds ("snapshot<TAB>tag"). destroy refuses a held or cloned snapshot, as ZFS does.
-# send writes a stream naming its snapshot and base; receive checks it as ZFS does and keeps a token for a cut-off stream.
-if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
+# Replication (include/ZFSMReplicate.php) against the pool in ZFSM_TEST_REPL_DIR: datasets, marks (oldest first), props, holds and
+# tokens ("token<TAB>guid"), tab-separated. destroy refuses a held or cloned snapshot; receive makes only the checks below.
+if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n "$@"; }; then # a dry run: answered below, pool unchanged
 	R=$ZFSM_TEST_REPL_DIR
 	touch "$R/datasets" "$R/marks" "$R/props" "$R/holds"
 	next_txg() { t=$(( $(cat "$R/txg" 2>/dev/null || echo 100) + 1 )); echo "$t" > "$R/txg"; echo "$t"; }
@@ -27,32 +25,115 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 	set_prop() { awk -F'\t' -v n="$1" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new"; printf '%s\t%s\t%s\n' "$1" "$2" "$3" >> "$R/props.new"; mv "$R/props.new" "$R/props"; }
 	exists() { awk -F'\t' -v n="$1" '$1 == n { f = 1 } END { exit !f }' "$R/datasets"; }
 	mark() { awk -F'\t' -v n="$1" -v f="$2" '$1 == n { print $f }' "$R/marks"; }
+	# A dataset's guid: the one it kept through a rename, else one from its name that no other dataset keeps.
+	guid_of() { g=$(prop "$1" guid ''); [ -n "$g" ] && { echo "$g"; return; }; s=$1
+		while g=$(printf '%s' "$s" | cksum | cut -d' ' -f1); awk -F'\t' -v n="$1" -v g="$g" '$1 != n && $2 == "guid" && $3 == g { f = 1 } END { exit !f }' "$R/props"; do s="$s+"; done; echo "$g"; }
 	# A real stream's 312-byte first record (DRR_BEGIN, include/sys/zfs_ioctl.h): one filesystem, no flags; receive skips it.
 	begin() { printf '\000\000\000\000\000\000\000\000\254\313\272\365\002\000\000\000\001\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\002\000\000\000\000\000\000\000'; head -c 272 /dev/zero; }
 	newest() { awk -F'\t' -v d="$1@" 'index($1, d) == 1 { g = $2 } END { print g }' "$R/marks"; }
 	held() { awk -F'\t' -v n="$1" -v t="$2" '$1 == n && (t == "" || $2 == t) { f = 1 } END { exit !f }' "$R/holds"; }
+	# The nearest of $1 and those above it that sets property $2, or nothing.
+	setter() { s=$1; while :; do awk -F'\t' -v n="$s" -v p="$2" '$1 == n && $2 == p { f = 1 } END { exit !f }' "$R/props" && { echo "$s"; return; }; [ "${s%/*}" = "$s" ] && return; s=${s%/*}; done; }
+	# zfs list's $2 of $1: its setter's (a mountpoint path gains the rest of the name), else $3.
+	inherited() { s=$(setter "$1" "$2"); [ -n "$s" ] || { echo "$3"; return; }; v=$(prop "$s" "$2" ''); case "$2:$v" in mountpoint:/*) echo "$v${1#"$s"}" ;; *) echo "$v" ;; esac; }
+	# zfs get -o source of $1's $2.
+	source_of() { s=$(setter "$1" "$2"); if [ -z "$s" ]; then echo default; elif [ "$s" = "$1" ]; then echo local; else echo "inherited from $s"; fi; }
 	case "$1" in
 	list)
-		# Retention's read (include/ZFSMKeep.php); ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails.
-		if contains_arg 'name,guid,createtxg,userrefs,clones,zfs.master:schedule' "$@"; then
-			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
-			[ "${ZFSM_TEST_KEEP_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
-			awk -F'\t' -v d="$last_arg@" 'index($1, d) == 1' "$R/marks" | while IFS="$(printf '\t')" read -r n g t; do
-				printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
-			done
+		# A snapshot schedule's dataset read (include/ZFSMScheduleSnapshot.php): readonly, mountpoint set or inherited, else off, /mnt/<name> (a volume -);
+		# -d 1 <name>: it and its children. ZFSM_TEST_COVER_FAIL: 1 fails it, hang waits 30 s, a dataset's name fails that one, then exit 1.
+		if contains_arg 'name,readonly,mountpoint' "$@"; then
+			[ "${ZFSM_TEST_COVER_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
+			[ "${ZFSM_TEST_COVER_FAIL:-0}" = hang ] && { sleep 30; exit 1; }
+			code=0; under=''; deep=0
+			contains_arg '-d' "$@" && under=$last_arg
+			contains_arg '-r' "$@" && { under=$last_arg; deep=1; }
+			if [ -n "$under" ] && ! exists "$under"; then printf "cannot open '%s': dataset does not exist\n" "$under" >&2; exit 1; fi
+			while IFS="$(printf '\t')" read -r n ty; do
+				if [ -n "$under" ]; then case "$n" in "$under") ;; "$under"/*/*) [ "$deep" = 1 ] || continue ;; "$under"/*) ;; *) continue ;; esac; fi
+				[ "$n" = "${ZFSM_TEST_COVER_FAIL:-}" ] && { printf "cannot open '%s': Input/output error\n" "$n" >&2; code=1; continue; }
+				if [ "$ty" = volume ]; then mp=-; else mp=$(inherited "$n" mountpoint "/mnt/$n"); fi
+				printf '%s\t%s\t%s\n' "$n" "$(inherited "$n" readonly off)" "$mp"
+			done < "$R/datasets"
+			exit $code
+		fi
+		# And its read of snapshot names alone, sorted; with -d 1 <name> only that one's, with -r <name> its and below. ZFSM_TEST_NAMES_FAIL=1
+		# fails it, and ZFSM_TEST_COVER_FAIL's dataset fails here too, as zfs does.
+		if [ "$4" = name ] && [ "$5" = -s ] && [ "$8" = snapshot ]; then
+			[ "${ZFSM_TEST_NAMES_FAIL:-0}" = 1 ] && { printf 'cannot iterate filesystems: Input/output error\n' >&2; exit 1; }
+			under=''; deep=0; contains_arg '-d' "$@" && under=$last_arg
+			contains_arg '-r' "$@" && { under=$last_arg; deep=1; }
+			f=${ZFSM_TEST_COVER_FAIL:-}; case $f in 1|hang) f='' ;; esac
+			if [ -n "$under" ] && [ "$under" != "$f" ]; then case "$deep:$f" in 1:"$under"/*) ;; *) f='' ;; esac; fi
+			awk -F'\t' -v d="$under" -v r="$deep" -v f="$f" '((d == "" && index($1, "@")) || (d != "" && (index($1, d "@") == 1 || (r && index($1, d "/") == 1 && index($1, "@"))))) && index($1, f "@") != 1 { print $1 }' "$R/marks" | LC_ALL=C sort
+			[ -z "$f" ] || { printf "cannot open '%s': Input/output error\n" "$f" >&2; exit 1; }
 			exit 0
 		fi
+		# Retention's read (include/ZFSMKeep.php) of each dataset after the options, as zfs does: one that can't be read fails the
+		# command, the others still listed. ZFSM_TEST_KEEP_LIST_FAIL names a dataset whose read fails. creation: its prop, else its txg.
+		if contains_arg 'name,guid,createtxg,creation,userrefs,clones,zfs.master:schedule' "$@"; then
+			code=0; prev=''
+			for d in "$@"; do
+				case "$prev" in -o|-t|-s|-d) prev=$d; continue ;; esac
+				prev=$d
+				case "$d" in list|-*) continue ;; esac
+				exists "$d" || { printf "cannot open '%s': dataset does not exist\n" "$d" >&2; code=1; continue; }
+				[ "${ZFSM_TEST_KEEP_LIST_FAIL:-}" = "$d" ] && { printf "cannot open '%s': Input/output error\n" "$d" >&2; code=1; continue; }
+				awk -F'\t' -v d="$d@" 'index($1, d) == 1' "$R/marks" | while IFS="$(printf '\t')" read -r n g t; do
+					printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$n" "$g" "$t" "$(prop "$n" creation "$t")" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')" "$(prop "$n" clones -)" "$(prop "$n" zfs.master:schedule -)"
+				done
+			done
+			exit $code
+		fi
+		# ZFSM_TEST_MARKS_FAIL names a dataset whose read fails.
 		if contains_arg 'name,guid,createtxg' "$@"; then
 			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+			[ "${ZFSM_TEST_MARKS_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			types=$(for a in "$@"; do [ "${prev:-}" = -t ] && echo "$a"; prev=$a; done)
 			awk -F'\t' -v d="$last_arg" -v t="$types" '(index(t, "snapshot") && index($1, d "@") == 1) || (index(t, "bookmark") && index($1, d "#") == 1)' "$R/marks"
 			exit 0
 		fi
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name,type ]; then
+			[ "${ZFSM_TEST_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			exists "$last_arg" && { awk -F'\t' -v n="$last_arg" '$1 == n { print $1 "\t" $2 }' "$R/datasets"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
+		# A holder's filesystems and below it, mounted as props say, else no (a copy is received unmounted); ZFSM_TEST_MOUNTED_FAIL=1 fails it.
+		if [ "$4" = name,mounted ] && [ "$6" = filesystem ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_MOUNTED_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '($1 == d || index($1, d "/") == 1) && $2 == "filesystem" { print $1 }' "$R/datasets" | while IFS= read -r n; do
+				printf '%s\t%s\n' "$n" "$(prop "$n" mounted no)"
+			done
+			exit 0
+		fi
+		# The bookmarks of a dataset and below; ZFSM_TEST_BOOKMARKS_FAIL=1 fails the read.
+		if [ "$4" = name,guid ] && [ "$6" = bookmark ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_BOOKMARKS_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" 'index($1, d "#") == 1 || (index($1, d "/") == 1 && index($1, "#")) { print $1 "\t" $2 }' "$R/marks"
+			exit 0
+		fi
+		# The snapshots of a dataset and below with their hold counts; ZFSM_TEST_HELD_FAIL=1 fails the read.
+		if [ "$4" = name,userrefs ] && [ "$6" = snapshot ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_HELD_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" 'index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@")) { print $1 }' "$R/marks" | while IFS= read -r n; do
+				printf '%s\t%s\n' "$n" "$(awk -F'\t' -v n="$n" '$1 == n' "$R/holds" | wc -l | tr -d ' ')"
+			done
+			exit 0
+		fi
+		# A rename's read of a dataset and those below it: guid (as get reads it), mountpoint (as the schedule's dataset read);
+		# ZFSM_TEST_TREE_FAIL=1 fails it.
+		if [ "$4" = name,guid,mountpoint ] && [ "$6" = filesystem,volume ] && [ "$7" = -r ]; then
+			[ "${ZFSM_TEST_TREE_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '$1 == d || index($1, d "/") == 1' "$R/datasets" | while IFS="$(printf '\t')" read -r n ty; do
+				if [ "$ty" = volume ]; then mp=-; else mp=$(inherited "$n" mountpoint "/mnt/$n"); fi
+				printf '%s\t%s\t%s\n' "$n" "$(guid_of "$n")" "$mp"
+			done
+			exit 0
+		fi
+		# A name's read; ZFSM_TEST_LIST_FAIL names one whose read fails.
 		if [ "$2" = -H ] && [ "$3" = -o ] && [ "$4" = name ]; then
+			[ "${ZFSM_TEST_LIST_FAIL:-}" = "$last_arg" ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			{ exists "$last_arg" || [ -n "$(mark "$last_arg" 2)" ]; } && { echo "$last_arg"; exit 0; }
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi ;;
@@ -66,11 +147,32 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			exit 0 ;;
 		esac
 		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		# A rename's read of where readonly and mountpoint come from, at the dataset and below (a volume's mountpoint is -);
+		# ZFSM_TEST_SOURCE_FAIL=1 fails it.
+		if [ "$4" = name,property,source ]; then
+			[ "${ZFSM_TEST_SOURCE_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v d="$last_arg" '$1 == d || index($1, d "/") == 1' "$R/datasets" | while IFS="$(printf '\t')" read -r n ty; do
+				printf '%s\treadonly\t%s\n' "$n" "$(source_of "$n" readonly)"
+				if [ "$ty" = volume ]; then printf '%s\tmountpoint\t-\n' "$n"; else printf '%s\tmountpoint\t%s\n' "$n" "$(source_of "$n" mountpoint)"; fi
+			done
+			exit 0
+		fi
+		# -o source: local where it was set, else inherited from the nearest dataset above that set it, as a user property is.
+		if [ "$5" = source ]; then
+			d=$last_arg
+			while :; do
+				awk -F'\t' -v n="$d" -v p="$6" '$1 == n && $2 == p { f = 1 } END { exit !f }' "$R/props" && { if [ "$d" = "$last_arg" ]; then echo local; else echo "inherited from $d"; fi; exit 0; }
+				[ "${d%/*}" = "$d" ] && { echo -; exit 0; }
+				d=${d%/*}
+			done
+		fi
 		if [ "$5" = property,value ]; then for p in $(printf '%s' "$6" | tr , ' '); do printf '%s\t%s\n' "$p" "$(prop "$last_arg" "$p" -)"; done; exit 0; fi
 		case "$6" in
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
-		guid) prop "$last_arg" guid "$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)" ;;
-		encryption) prop "$last_arg" encryption off ;;
+		guid) guid_of "$last_arg" ;;
+		encryption)
+			[ "${ZFSM_TEST_CRYPT_FAIL:-}" = "$last_arg" ] && { printf "cannot get property for '%s': permission denied\n" "$last_arg" >&2; exit 1; }
+			prop "$last_arg" encryption off ;;
 		receive_resume_token)
 			[ "${ZFSM_TEST_TOKEN_FAIL:-0}" = 1 ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 			prop "$last_arg" receive_resume_token - ;;
@@ -86,10 +188,16 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 			prev=$a
 		done
 		snap=$last_arg
-		if [ -n "$token" ]; then snap=${token#tok:}; base=RESUME; fi
+		if [ -n "$token" ]; then
+			toname=${token#tok:}; snap=$toname; base=RESUME
+			# As zfs: by its guid, in its pool, under the name it has now (after a rename too); by name for a token a test wrote.
+			g=$(awk -F'\t' -v t="$token" '$1 == t { g = $2 } END { print g }' "$R/tokens" 2>/dev/null)
+			[ -z "$g" ] || snap=$(awk -F'\t' -v g="$g" -v n="$toname" -v p="${toname%%[/@]*}" '$2 == g && $1 == n { e = $1 } $2 == g && index($1, "@") && (index($1, p "/") == 1 || index($1, p "@") == 1) && f == "" { f = $1 } END { print e != "" ? e : f }' "$R/marks")
+			[ -n "$snap" ] || { printf "cannot resume send: '%s' used in the initial send no longer exists\n" "$toname" >&2; exit 255; }
+		fi
 		guid=$(mark "$snap" 2)
 		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$snap" >&2; exit 1; }
-		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$snap" >&2
+		[ -n "$token" ] && printf 'resume token contents:\nnvlist version: 0\n\tobject = 0x100\n\ttoname = %s\n' "$toname" >&2
 		if [ "$base" = - ]; then printf 'full\t%s\t1000\n' "$snap" >&2; else printf 'incremental\t%s\t%s\t1000\n' "$base" "$snap" >&2; fi
 		printf 'size\t1000\n' >&2
 		[ "$dry" = 1 ] && exit 0
@@ -98,11 +206,16 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "${ZFSM_TEST_SEND_FAIL_PART:-0}" = 1 ] && { begin; printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"; printf "warning: cannot send '%s': Input/output error\n" "$snap" >&2; exit 1; }
 		printf '00:00:01\t500\t%s\n' "$snap" >&2
 		begin
-		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw"
+		printf 'ZFSMSTREAM\t%s\t%s\t%s\t%s\t%s\n' "$snap" "$base" "$guid" "$raw" "$(prop "$snap" creation "$(mark "$snap" 3)")"
 		[ "${ZFSM_TEST_SEND_CUT:-0}" = 1 ] || printf 'ZFSMEND\n'
+		# ZFSM_TEST_SEND_PAD: that many bytes more, past a pipe's buffer; a pipe that never breaks costs 10 seconds, not the suite.
+		[ -z "${ZFSM_TEST_SEND_PAD:-}" ] || timeout 10 head -c "$ZFSM_TEST_SEND_PAD" /dev/zero || exit 1
 		exit 0 ;;
 	receive)
 		dest=$last_arg
+		force=0; contains_arg -F "$@" && force=1
+		# ZFSM_TEST_RECV_FAIL=early: fails before it reads, as a receive that stops part-way leaves the rest unread.
+		[ "${ZFSM_TEST_RECV_FAIL:-0}" = early ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		stream=$(tail -c +313)
 		header=$(printf '%s\n' "$stream" | head -1)
 		[ -n "$header" ] || { printf 'cannot receive: failed to read from stream\n' >&2; exit 1; }
@@ -110,21 +223,60 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = 1 ] && { printf 'cannot receive new filesystem stream: out of space\n' >&2; exit 1; }
 		snap=$(printf '%s' "$header" | cut -f2); base=$(printf '%s' "$header" | cut -f3); guid=$(printf '%s' "$header" | cut -f4)
 		[ "${ZFSM_TEST_RECV_FAIL:-0}" = changes ] && [ "$base" != - ] && [ "$base" != RESUME ] && { printf 'cannot receive incremental stream: out of space\n' >&2; exit 1; }
-		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		# A full stream onto one that is there needs -F; one cut off there carries on only with -F too.
+		if [ "$base" = - ] && exists "$dest" && [ "$(prop "$dest" receive_resume_token -)" = - ] && [ "$force" = 0 ]; then printf "cannot receive new filesystem stream: destination '%s' exists\n" "$dest" >&2; exit 1; fi
+		if [ "$base" = RESUME ] && [ "$(prop "$dest" zfsm_test_onto -)" = 1 ] && [ "$force" = 0 ]; then printf "cannot receive resume stream: Resuming recv on existing destination '%s'\nmust specify -F to overwrite it\n" "$dest" >&2; exit 1; fi
+		onto=0; [ "$base" = - ] && exists "$dest" && onto=1
+		# Nor onto an encrypted one.
+		if [ "$onto" = 1 ] && [ "$(prop "$dest" encryption off)" != off ]; then printf 'cannot receive new filesystem stream: zfs receive -F cannot be used to destroy an encrypted filesystem or overwrite an unencrypted one with an encrypted one\n' >&2; exit 1; fi
+		# zfs makes a new copy only inside a dataset that exists.
+		exists "$dest" || exists "${dest%/*}" || { printf "cannot receive new filesystem stream: parent of '%s' does not exist\n" "$dest" >&2; exit 1; }
 		if [ "$base" != - ] && [ "$base" != RESUME ] && [ "$(newest "$dest")" != "$(mark "$base" 2)" ]; then
 			printf 'cannot receive incremental stream: most recent snapshot of %s does not match incremental source\n' "$dest" >&2; exit 1
 		fi
 		exists "$dest" || printf '%s\t%s\n' "$dest" "$(awk -F'\t' -v n="${snap%@*}" '$1 == n { print $2 }' "$R/datasets")" >> "$R/datasets"
+		# Each -o prop=value lands on the copy, as readonly=on keeps a run from snapshotting it.
+		o=0; for a in "$@"; do [ "$o" = 1 ] && set_prop "$dest" "${a%%=*}" "${a#*=}"; o=0; [ "$a" = -o ] && o=1; done
 		if ! printf '%s\n' "$stream" | grep -q '^ZFSMEND$'; then
 			set_prop "$dest" receive_resume_token "tok:$snap"
+			printf 'tok:%s\t%s\n' "$snap" "$guid" >> "$R/tokens"
+			[ "$onto" = 1 ] && set_prop "$dest" zfsm_test_onto 1
 			printf 'cannot receive incremental stream: checksum mismatch or incomplete stream.\nPartially received snapshot is saved.\n' >&2; exit 1
 		fi
 		printf '%s@%s\t%s\t%s\n' "$dest" "${snap#*@}" "$guid" "$(next_txg)" >> "$R/marks"
+		# A received snapshot keeps when the sender took it, as the stream says.
+		creation=$(printf '%s' "$header" | cut -f6); [ -z "$creation" ] || set_prop "$dest@${snap#*@}" creation "$creation"
 		set_prop "$dest" receive_resume_token -
+		set_prop "$dest" zfsm_test_onto -
+		exit 0 ;;
+	inherit)
+		exists "$last_arg" || { printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1; }
+		[ "${ZFSM_TEST_INHERIT_FAIL:-0}" = 1 ] && { printf "cannot inherit %s for '%s': permission denied\n" "$2" "$last_arg" >&2; exit 1; }
+		awk -F'\t' -v n="$last_arg" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new" && mv "$R/props.new" "$R/props"
+		exit 0 ;;
+	rename)
+		# Moves it and all below it, with snapshots, bookmarks, properties and holds. ZFSM_TEST_RENAME_FAIL names one busy, ZFSM_TEST_RENAME_UNMOUNTED
+		# one that moves then fails to mount; ZFSM_TEST_LOCK_PROBE is a lock file whose state at each rename (held or free) goes to probe.log.
+		[ -z "${ZFSM_TEST_LOCK_PROBE:-}" ] || "$ZFSM_TEST_PHP" -r 'echo flock(fopen(getenv("ZFSM_TEST_LOCK_PROBE"), "c"), LOCK_EX | LOCK_NB) ? "free\n" : "held\n";' >> "$R/probe.log"
+		eval "from=\${$(($# - 1))}"
+		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
+		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
+		[ "$from" = "$last_arg" ] && exit 0
+		exists "$last_arg" && { printf "cannot rename '%s': dataset already exists\n" "$from" >&2; exit 1; }
+		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }
+		# Each keeps its guid, as in zfs: it is stored first, so it moves with the rest.
+		awk -F'\t' -v a="$from" '$1 == a || index($1, a "/") == 1 { print $1 }' "$R/datasets" | while IFS= read -r n; do
+			set_prop "$n" guid "$(guid_of "$n")"
+		done
+		for f in datasets marks props holds; do
+			awk -F'\t' -v OFS='\t' -v a="$from" -v b="$last_arg" '{ n = length(a); c = substr($1, n + 1, 1); if (substr($1, 1, n) == a && (c == "" || c == "/" || c == "@" || c == "#")) $1 = b substr($1, n + 1); print }' "$R/$f" > "$R/$f.new" && mv "$R/$f.new" "$R/$f"
+		done
+		[ "${ZFSM_TEST_RENAME_UNMOUNTED:-}" = "$from" ] && { printf "cannot mount '/mnt/%s': mountpoint is not a directory\n" "$last_arg" >&2; exit 1; }
 		exit 0 ;;
 	bookmark)
 		guid=$(mark "$2" 2); txg=$(mark "$2" 3)
 		[ -n "$guid" ] || { printf "cannot open '%s': dataset does not exist\n" "$2" >&2; exit 1; }
+		[ "${ZFSM_TEST_BOOKMARK_FAIL:-0}" = 1 ] && { printf "cannot create bookmark '%s': permission denied\n" "$3" >&2; exit 1; }
 		[ -n "$(mark "$3" 1)" ] && { printf "cannot create bookmark '%s': bookmark exists\n" "$3" >&2; exit 1; }
 		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
 		exit 0 ;;
@@ -135,9 +287,24 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
 		exit 0 ;;
 	snapshot)
-		[ -n "$(mark "$last_arg" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
-		t=$(next_txg); printf '%s\t%s\t%s\n' "$last_arg" "$((t * 7919))" "$t" >> "$R/marks"
-		prev=''; for a in "$@"; do [ "$prev" = -o ] && set_prop "$last_arg" "${a%%=*}" "${a#*=}"; prev=$a; done
+		# Every name in one txg, or none: one already there, or of ZFSM_TEST_SNAP_FAIL's dataset, fails them all.
+		prev=''
+		for a in "$@"; do
+			if [ "$prev" != -o ] && [ "${a#*@}" != "$a" ]; then
+				[ -n "$(mark "$a" 1)" ] && { printf "cannot create snapshot '%s': dataset already exists\n" "$a" >&2; exit 1; }
+				[ "${ZFSM_TEST_SNAP_FAIL:-}" = "${a%@*}" ] && { printf "cannot create snapshot '%s': out of space\n" "$a" >&2; exit 1; }
+			fi
+			prev=$a
+		done
+		t=$(next_txg); i=0; prev=''
+		for a in "$@"; do
+			if [ "$prev" != -o ] && [ "${a#*@}" != "$a" ]; then
+				printf '%s\t%s\t%s\n' "$a" "$((t * 7919 + i))" "$t" >> "$R/marks"
+				set_prop "$a" creation "$(date +%s)"
+				i=$((i + 1)); p=''; for o in "$@"; do [ "$p" = -o ] && set_prop "$a" "${o%%=*}" "${o#*=}"; p=$o; done
+			fi
+			prev=$a
+		done
 		exit 0 ;;
 	hold)
 		[ -n "$(mark "$3" 2)" ] || { printf "cannot hold snapshot '%s': dataset does not exist\n" "$3" >&2; exit 1; }
@@ -151,6 +318,7 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		awk -F'\t' -v n="$3" -v t="$2" '!($1 == n && $2 == t)' "$R/holds" > "$R/holds.new" && mv "$R/holds.new" "$R/holds"
 		exit 0 ;;
 	holds)
+		[ "${ZFSM_TEST_HOLDS_READ_FAIL:-0}" = 1 ] && { printf "cannot get holds for '%s': permission denied\n" "$3" >&2; exit 1; }
 		shift 2
 		for s in "$@"; do awk -F'\t' -v n="$s" '$1 == n { print $1 "\t" $2 "\tSun Nov 15 10:00 2026" }' "$R/holds"; done
 		exit 0 ;;
@@ -161,6 +329,18 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ]; then
 		[ "$c" != - ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "$last_arg" "$c" >&2; exit 1; }
 		[ "${ZFSM_TEST_DESTROY_FAIL:-}" = "$last_arg" ] && { printf "cannot destroy '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 		awk -F'\t' -v n="$last_arg" '$1 != n' "$R/marks" > "$R/marks.new" && mv "$R/marks.new" "$R/marks"
+		# A dataset goes with its snapshots, bookmarks and properties, and with -r the datasets below it; without -r, as ZFS does,
+		# a snapshot of it or a dataset below it refuses it.
+		case "$last_arg" in *@*|*#*) exit 0 ;; esac
+		gone() { awk -F'\t' -v d="$last_arg" '$1 != d && index($1, d "/") != 1 && index($1, d "@") != 1 && index($1, d "#") != 1' "$R/$1" > "$R/$1.new" && mv "$R/$1.new" "$R/$1"; }
+		if ! contains_arg -r "$@" && awk -F'\t' -v d="$last_arg" 'index($1, d "/") == 1 || index($1, d "@") == 1 { f = 1 } END { exit !f }' "$R/datasets" "$R/marks"; then printf "cannot destroy '%s': filesystem has children\n" "$last_arg" >&2; exit 1; fi
+		# Nor with -r, as ZFS does, while a snapshot of it or below is held or has a clone outside it.
+		below='index($1, d "@") == 1 || (index($1, d "/") == 1 && index($1, "@"))'
+		b=$(awk -F'\t' -v d="$last_arg" "($below) { print \$1; exit }" "$R/holds")
+		[ -n "$b" ] && { printf 'cannot destroy snapshot %s: dataset is busy\n' "$b" >&2; exit 1; }
+		b=$(awk -F'\t' -v d="$last_arg" "($below) && \$2 == \"clones\" { n = split(\$3, c, \",\"); for (i = 1; i <= n; i++) if (c[i] != \"-\" && index(c[i], d \"/\") != 1) { print \$1 \"\\t\" c[i]; exit } }" "$R/props")
+		[ -n "$b" ] && { printf "cannot destroy '%s': snapshot has dependent clones\nuse '-R' to destroy the following datasets:\n%s\n" "${b%%	*}" "${b#*	}" >&2; exit 1; }
+		gone datasets; gone marks; gone props
 		exit 0 ;;
 	esac
 fi
@@ -256,6 +436,12 @@ fi
 
 if [ "$1" = "list" ] && contains_arg 'name,mountpoint' "$@" && contains_arg 'filesystem' "$@"; then
 	printf 'tank\t%s\n' "${ZFSM_TEST_FILESYSTEM_MOUNT:-/tmp/zfsm-test-mount}"
+	exit 0
+fi
+
+# A rename's read of a dataset and those below it: the dataset alone, its guid as get gives it.
+if [ "$1" = "list" ] && [ "$4" = name,guid,mountpoint ] && [ "$6" = filesystem,volume ] && [ "$7" = -r ]; then
+	printf '%s\t%s\t/mnt/%s\n' "$last_arg" "${ZFSM_TEST_GUID:-$(printf '%s' "$last_arg" | cksum | cut -d' ' -f1)}" "$last_arg"
 	exit 0
 fi
 

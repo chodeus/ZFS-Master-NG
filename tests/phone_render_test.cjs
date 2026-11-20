@@ -1,4 +1,4 @@
-// Real browser at phone width and real Unraid themes: dialog text, the Starts at box, Snapshots Admin and Pool Info read and fit.
+// Real browser at phone width and real Unraid themes: dialog text, the Starts at boxes, Snapshots Admin and Pool Info read and fit; the forms widen on a desktop.
 // Usage: phone_render_test.cjs <webgui-tree>. Set CHROME to override the browser path. Each page runs in a frame as wide as on a 390 px phone.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -52,23 +52,27 @@ window.addEventListener('load', () => setTimeout(() => {
 
 let checked = 0;
 try {
-  // The Replicate dialog with a repeat on days, as on the Main tab of a 390 px phone.
-  for (const theme of ['black', 'white', 'azure', 'gray']) {
-    const where = `Replicate dialog, ${theme} theme`;
+  // The Replicate and Schedules dialogs with a repeat on days, Schedules' copies to a server, as on the Main tab of a 390 px phone.
+  const repeats = [['Replicate', "zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data')", 'zfsm-replicate', 'zfsmReplicateRepeatSync'],
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', server: 'nas', servers: ['nas'], inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-schedules', 'zfsmScheduleDialogSync'],
+    ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', skipped: 'tank/appdata has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool', copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', server: 'nas', servers: ['nas'], inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-copies', 'zfsmScheduleDialogSync']];
+  for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
+    const where = `${dialog} dialog (${prefix}), ${theme} theme`;
     const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
 window.addEventListener('load', () => {
-  Swal2.fire({title: 'Replicate', html: zfsmReplicateHtml({snapshots: ['tank/data@a']}, 'tank/data'), showCancelButton: true, confirmButtonText: 'Replicate'});
-  const popup = Swal2.getPopup(); popup.querySelector('#zfsm-replicate-every').value = 'days'; zfsmReplicateRepeatSync(popup);
+  zfsmFormDialog({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
+  const popup = Swal2.getPopup(); popup.querySelector('#${prefix}-every').value = 'days'; ${sync}(popup);
 });
 </script>`, `() => {
   const popup = Swal2.getPopup();
   const look = box => { const s = getComputedStyle(box); return {background: s.backgroundColor, color: s.color, font: s.fontFamily, size: s.fontSize,
     border: [s.borderTopWidth, s.borderRightWidth, s.borderLeftWidth, s.borderBottomWidth + ' ' + s.borderBottomStyle + ' ' + s.borderBottomColor, s.borderRadius], height: Math.round(box.getBoundingClientRect().height),
     focused: (box.focus(), getComputedStyle(box).backgroundColor)}; };
-  return {align: Array.from(popup.querySelectorAll('p'), p => getComputedStyle(p).textAlign), time: look(popup.querySelector('#zfsm-replicate-time')), text: look(popup.querySelector('#zfsm-replicate-keep')),
-    themed: getComputedStyle(popup).getPropertyValue('--focus-input-bg-color').trim() !== ''};
+  return {align: Array.from(popup.querySelectorAll('p, [role=group]'), p => getComputedStyle(p).textAlign), time: look(popup.querySelector('#${prefix}-time')), text: look(popup.querySelector('#${prefix}-keep')),
+    themed: getComputedStyle(popup).getPropertyValue('--focus-input-bg-color').trim() !== '', wide: [Swal2.getHtmlContainer().scrollWidth, Swal2.getHtmlContainer().clientWidth, document.documentElement.scrollWidth, innerWidth]};
 }`);
     assert.ok(shown.align.length >= 5, `${where}: its rows and help found`);
+    assert.ok(shown.wide[0] <= shown.wide[1] && shown.wide[2] <= shown.wide[3], `${where}: nothing may scroll sideways in the dialog or past the screen: ${JSON.stringify(shown.wide)}`);
     assert.deepEqual([...new Set(shown.align)], ['left'], `${where}: every line of text must read left-aligned, not justified`);
     const {time, text} = shown;
     for (const key of ['background', 'color', 'font', 'size']) assert.equal(time[key], text[key], `${where}: Starts at must have the text box's ${key}: ${JSON.stringify(shown)}`);
@@ -77,6 +81,38 @@ window.addEventListener('load', () => {
     // Where the theme names no focus colour, the text box shows none (Unraid 7 gray) or its own sheet's; Starts at still shows a focus.
     if (seven && shown.themed) assert.equal(time.focused, text.focused, `${where}: Starts at must have the text box's focus colour: ${JSON.stringify(shown)}`);
     else assert.notEqual(time.focused, time.background, `${where}: a focused Starts at must look focused: ${JSON.stringify(shown)}`);
+    checked++;
+  }
+
+  // The Schedules dialog with both parts on Default, each following a dataset deep in a pool, as on the Main tab of a 390 px phone.
+  const deep = 'tank/' + 'appdata/nextcloud_data/'.repeat(4) + 'files';
+  for (const theme of ['black', 'white', 'azure', 'gray']) {
+    const where = `Schedules dialog on Default, ${theme} theme`;
+    const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+window.addEventListener('load', () => {
+  zfsmFormDialog({title: 'Schedules', html: zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'the snapshot schedule of ${deep}, every hour at :30; it keeps all it takes', skipped: '',
+    copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'the copies of ${deep} and below, under backup every hour at :40; it keeps all its snapshots', skipped: ''}}), showCancelButton: true, confirmButtonText: 'Save'});
+  zfsmScheduleDialogSync(Swal2.getPopup());
+});
+</script>`, `() => {
+  const popup = Swal2.getPopup(), seen = id => { const p = popup.querySelector(id); return p.getBoundingClientRect().height > 0 && getComputedStyle(p).visibility === 'visible' && p.textContent.includes('${deep}'); };
+  return {seen: [seen('#zfsm-schedules-default'), seen('#zfsm-copies-default')], wide: [Swal2.getHtmlContainer().scrollWidth, Swal2.getHtmlContainer().clientWidth, document.documentElement.scrollWidth, innerWidth]};
+}`);
+    assert.deepEqual(shown.seen, [true, true], `${where}: both Default lines must show what they follow: ${JSON.stringify(shown)}`);
+    assert.ok(shown.wide[0] <= shown.wide[1] && shown.wide[2] <= shown.wide[3], `${where}: nothing may scroll sideways in the dialog or past the screen: ${JSON.stringify(shown.wide)}`);
+    checked++;
+  }
+
+  // The same forms on a desktop screen: wider than a plain message, which has room for one short line.
+  for (const [dialog, html] of repeats.slice(0, 2)) {
+    const where = `${dialog} dialog on a 1280 px screen`;
+    const shown = render(where, 1280, sheets('black', 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+window.addEventListener('load', () => {
+  Swal2.fire({title: 'Message'}); window.plain = Swal2.getPopup().getBoundingClientRect().width;
+  zfsmFormDialog({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
+});
+</script>`, `() => [window.plain, Swal2.getPopup().getBoundingClientRect().width, innerWidth]`);
+    assert.ok(shown[1] > shown[0] * 1.3 && shown[1] < shown[2], `${where}: the form must open wider than a message, and fit the screen: ${JSON.stringify(shown)}`);
     checked++;
   }
 
@@ -127,4 +163,4 @@ window.addEventListener('load', () => {
 } finally {
   fs.rmSync(work, {recursive: true, force: true});
 }
-console.log(`${checked} dialogs and pages read and fit at phone width${seven ? '' : " (Unraid 6: the time box's border, height and focus colour not compared)"}`);
+console.log(`${checked} dialogs and pages read and fit at phone width, the forms wider on a desktop${seven ? '' : " (Unraid 6: the time box's border, height and focus colour not compared)"}`);

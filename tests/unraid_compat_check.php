@@ -122,6 +122,66 @@ switch ($check) {
 		if (strpos($settings, 'name="snap_prefix" value="'.$shown.'"') === false) { fwrite(STDERR, "the Settings field lost the prefix\n"); exit(1); }
 		break;
 
+	case 'replica_keep_unread':
+		// Keep Replicas saved as no Keep: all stay, the field shows that (empty) so Apply still goes, and the warning names what was saved.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$saved = loadConfig(parse_plugin_cfg('zfs.master', true))['replica_keep'];
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if ($saved !== 0 || strpos($html, 'value="" placeholder="all"><input type="hidden" name="replica_keep_rules" value=""> <span id="zfsm-replica-keep-warning" style="color:#e22828">&quot;7d 7d&quot; is not read, so all stay: give a number') === false) {
+			fwrite(STDERR, 'Keep Replicas "7d 7d" read as '.json_encode($saved)." or shown without why\n");
+			exit(1);
+		}
+		break;
+
+	case 'replica_keep_old_apply':
+		// Unraid's update.php saves Keep Replicas as this version's Apply posts it, then as an older version's does: that field showed
+		// periods empty, so its Apply posts them empty; they stay. One that field showed (a number), or cleared here, is as posted.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$apply = function($posted) use ($docroot) {
+			$post = array('#file' => 'zfs.master/zfs.master.cfg', '#section' => 'general', 'refresh_interval' => '30') + $posted;
+			exec(escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg('chdir($argv[1]); $_SERVER["DOCUMENT_ROOT"] = $argv[1]; $_POST = json_decode($argv[2], true); include "update.php";')
+				.' '.escapeshellarg($docroot).' '.escapeshellarg(json_encode($post)).' 2>&1', $said, $code);
+			return $code;
+		};
+		$read = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['replica_keep']; };
+		$bad = array();
+		foreach (array(
+			array('24 7d 4w', '', '24 7d 4w', 'periods, then an older Apply'),
+			array('24 7d 4w', '5', 5, 'periods, then a number typed in an older version'),
+			array('10', '', 0, 'a number an older version showed, then cleared there'),
+			array('', '', 0, 'cleared here, then an older Apply'),
+		) as list($here, $older, $expected, $case)) {
+			@unlink($cfg);
+			$codes = array($apply(array('replica_keep' => $here, 'replica_keep_rules' => $here)), $apply(array('replica_keep' => $older)));
+			if ($codes !== array(0, 0) || $read() !== $expected) $bad[] = "$case: read as ".json_encode($read()).' (update.php '.json_encode($codes).') from '.json_encode((string)@file_get_contents($cfg));
+		}
+		$apply(array('replica_keep' => '24 7d 4w', 'replica_keep_rules' => '24 7d 4w'));
+		$apply(array('replica_keep' => ''));
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if (strpos($html, 'value="24 7d 4w" placeholder="all"><input type="hidden" name="replica_keep_rules" value="24 7d 4w"> <span id="zfsm-replica-keep-warning" style="color:#e22828"></span>') === false) $bad[] = 'the page does not show the periods kept, in both fields, with no warning';
+		@unlink($cfg);
+		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
+		break;
+
+	case 'snap_name_refused':
+		// A prefix ZFS refuses names with, saved all the same: it stays as saved, and the warning beside Snapshots Pattern names a name it gives.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$saved = loadConfig(parse_plugin_cfg('zfs.master', true))['snap_prefix'];
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if ($saved !== 'a/' || strpos($html, 'name="snap_prefix" value="a/"') === false
+			|| strpos($html, 'placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828">Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @a/') === false) {
+			fwrite(STDERR, 'Snapshot Prefix "a/" read as '.json_encode($saved)." or shown without why\n");
+			exit(1);
+		}
+		break;
+
 	case 'main_page_stuck_zfs':
 		// A zfs that never answers must not hold up the Main tab: the rewrite probe gives up and offers no Rewrite Files.
 		$_SERVER['REQUEST_METHOD'] = 'GET';
@@ -140,9 +200,12 @@ switch ($check) {
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true));
 		$expected = array('refresh_interval' => 300, 'lazy_load' => 0, 'destructive_mode' => 1, 'snap_max_days_alert' => 7, 'snap_prefix' => 'auto-', 'snap_pattern' => 'Y-m-d', 'snap_utc' => 1, 'alert_interval' => 60, 'alert_stale' => 1, 'size_units' => 'binary',
-			'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
+			'replica_keep' => '24 7d 4w', 'dataset_exclusion' => '/docker%-old/.*', 'directory_listing' => array('cache/appdata', 'cache/My Share'));
 		foreach ($expected as $key => $value) if ($saved[$key] !== $value) { fwrite(STDERR, "saved $key read as ".json_encode($saved[$key])."\n"); exit(1); }
 		if (!zfsmMatchesExclusion('cache/docker-old/abc', $saved['dataset_exclusion']) || zfsmMatchesExclusion('cache/data', $saved['dataset_exclusion'])) { fwrite(STDERR, "saved exclusion no longer matches\n"); exit(1); }
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if (strpos($html, 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="24 7d 4w" placeholder="all">') === false) { fwrite(STDERR, "Keep Replicas saved as periods is not shown as Keep reads it\n"); exit(1); }
+		if (strpos($html, 'placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828"></span>') === false) { fwrite(STDERR, "a Snapshots Pattern ZFS takes the names of was warned of\n"); exit(1); }
 		break;
 
 	case 'menu_order':
@@ -246,12 +309,23 @@ switch ($check) {
 			foreach ($rows as $row) if (preg_match('#<dt>[^\n]*'.preg_quote($label, '#').'#', $row) === 1 && strpos($row, $control) !== false) return true;
 			return false;
 		};
-		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Scheduled Replication' => 'Schedules', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
+		foreach (array('General Settings' => 'Refresh Interval', 'Datasets' => 'Directory Listing', 'Snapshots' => 'Snapshots Pattern', 'Alerts' => 'Pool Health Alerts', 'Schedules' => 'Snapshot Every Dataset', 'Diagnostics' => 'Diagnostics Zip') as $section => $field) {
 			$from = preg_match('#<details class="zfsm-section"[^>]*>\s*<summary>[^<]*'.$section.'[^<]*</summary>#', $rendered, $found, PREG_OFFSET_CAPTURE) === 1 ? $found[0][1] : false;
 			$to = $from === false ? false : strpos($rendered, '</details>', $from);
 			if ($to === false || preg_match('#<dt>[^\n]*'.$field.'#', substr($rendered, $from, $to - $from)) !== 1) { fwrite(STDERR, "settings section $section lost its form rows\n"); exit(1); }
 		}
 		if (!$row_has('Snapshot Time', '<select name="snap_utc">')) { fwrite(STDERR, "settings page lost the Snapshot Time row\n"); exit(1); }
+		// Markdown leaves Keep Replicas' pattern whole.
+		if (!$row_has('Keep Replicas', 'name="replica_keep" maxlength="40" pattern="[ \\t,]*([0-9]+[hdwmyHDWMY]?([ \\t,]+[0-9]+[hdwmyHDWMY]?)*[ \\t,]*)?" value="" placeholder="all">')) { fwrite(STDERR, "settings page lost the Keep Replicas row or its pattern\n"); exit(1); }
+		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"', 'Replicate Every Dataset' => '<select id="zfsm-copysched-every">', 'Copy Under' => 'id="zfsm-copysched-under"', 'Copy Keeps' => 'id="zfsm-copysched-copy-keeps"') as $label => $control) {
+			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
+		}
+		// Each Every Dataset row's Days, all seven ticked while it is Off (zfsmScheduleShown).
+		foreach (array('zfsm-snapsched', 'zfsm-copysched') as $prefix) {
+			if (!$row_has('Days', '<span id="'.$prefix.'-days" role="group" aria-label="Days">') || preg_match_all('#<input type="checkbox" class="'.$prefix.'-day" value="[0-6]" checked> (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)</label>#', $rendered) !== 7) {
+				fwrite(STDERR, "settings page lost the Days of $prefix, or a day is not ticked\n"); exit(1);
+			}
+		}
 		foreach (array('Pool Health Alerts' => 'alert_interval', 'Stale Snapshot Alerts' => 'alert_stale', 'Size Units' => 'size_units') as $label => $name) {
 			if (!$row_has($label, '<select name="'.$name.'">')) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
@@ -273,6 +347,21 @@ switch ($check) {
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
 		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }
+		break;
+
+	case 'settings_copy_keeps':
+		// Replicate Every Dataset's Copy Keeps shows as saved, so its Save sends it back.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$schedules = '/boot/config/plugins/zfs.master/schedules.json';
+		file_put_contents($schedules, json_encode(array(array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => 'backup/', 'server' => '', 'every' => 'hourly', 'minute' => 5, 'hour' => 0,
+			'days' => range(0, 6), 'keep' => 0, 'copy_keeps' => '30d 12m'))));
+		try {
+			$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			unlink($schedules);
+		}
+		if (strpos($html, '<input type="text" id="zfsm-copysched-copy-keeps" maxlength="40" placeholder="same as source" value="30d 12m">') === false) { fwrite(STDERR, "settings page does not show Copy Keeps as saved\n"); exit(1); }
 		break;
 
 	case 'create_popup':

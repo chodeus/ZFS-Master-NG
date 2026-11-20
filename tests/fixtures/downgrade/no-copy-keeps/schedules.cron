@@ -1,0 +1,3 @@
+# Generated ZFS Master NG replication schedules:
+10 * * * * /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run aaaa0001 &> /dev/null
+

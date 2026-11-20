@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026.11.20.1 (beta)
+
+**Copies to another server**
+
+- Replicate Every Dataset can copy to another ZFS Master NG server: pick it under Server
+- A dataset can have its own copies to a server too, under Actions > Schedules > Replication
+- That server needs this version too; a run makes Copy Under there if it is missing
+- Renaming a dataset leaves its copies there under the old name, and the next copy is sent in full
+
+**Dialogs**
+
+- Schedules and Replicate open wider, with a short hint under each field and a Guide link to the new Schedules guide
+
+**Fixes**
+
+- Updating again after going back to v2026.11.16 restarts the schedules it stopped, and brings back Copy Keeps and Keep Replicas' periods
+
+**After going back to an older version**
+
+- Every Dataset or per-dataset copies to a server wait until you update; Settings counts them as records it can't use
+- On v2026.11.16, snapshot schedules, copies under Copy Under and schedules whose keep uses periods wait too
+- On v2026.11.16, a copy with records over 128K fails each run, and the first failure is notified
+- On v2026.11.16, Copy Keeps is ignored, so copies lose what their source loses, and Keep Replicas with periods keeps all
+- Keep Replicas with periods, cleared there, comes back when you update: clear it again after updating
+
+## 2026.11.19.1 (beta)
+
+**Snapshot schedules**
+
+- New Snapshot Every Dataset setting: snapshots your datasets hourly or on chosen days
+- A dataset can have its own schedule, or None, under Actions > Schedules
+- Read-only, legacy-mounted and Sanoid/Syncoid datasets are left out; the dialog says why
+- Snapshots to keep also takes periods, such as `24 7d 4w 12m`
+
+**Replication**
+
+- New Replicate Every Dataset setting: copies your datasets under one dataset here
+- A dataset can have its own scheduled copies, or None, under Actions > Schedules
+- A copy in another pool here can keep more or fewer snapshots (Copy Keeps)
+- Change Keep, under a Replicate repeat in Settings, changes what it keeps in place
+- Keep Replicas also takes periods, by when the sender took each snapshot
+- Unencrypted copies to another server travel zstd-compressed when both have it
+- Copies keep records larger than 128K whole
+
+**Renames and destroys**
+
+- Renaming a dataset moves its schedules, repeats and copies under Copy Under
+- Destroying a dataset removes its schedules and repeats; its copies stay
+
+**Fixes**
+
+- Settings refuses a Snapshots Pattern or Prefix that makes names ZFS rejects
+- Snapshot names too long for ZFS are refused up front, with the reason
+- When summer time ends, the hour's second run no longer reports a problem
+- Dataset names that end in a space now work in Replicate and renames
+
+**After going back to an older version**
+
+- Snapshot schedules and Every Dataset or per-dataset copies wait until you update
+- A schedule whose Snapshots to keep uses periods waits too
+- A copy with records over 128K takes no new runs until you update
+- Copy Keeps is ignored, so copies lose what their source loses
+
 ## 2026.11.16
 
 - Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings
