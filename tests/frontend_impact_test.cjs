@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+// The review runs first on ZFSMSize.js and ZFSMImpact.js alone, as the Snapshots Admin popup loads them; the forms join before their tests.
 const context = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMSize.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMImpact.js'), 'utf8'), context);
@@ -32,7 +33,6 @@ assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroy
 context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: '.,', scale: -1};
 assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroys'), /frees about 2\.05 KB:/, 'in Unraid\'s units when Settings picks them');
-assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /about 2\.05 KB\./, 'and so is a replication\'s');
 delete context.zfsm_config;
 assert.doesNotMatch(context.zfsmImpactSummary({objects: ['a'], reclaim: null}, 'destroys'), /frees/, 'an unknown size is left out, not shown as 0');
 assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 0}, 'destroys'), /frees about 0 B/, 'a real zero is shown');
@@ -70,6 +70,11 @@ assert.ok([...bulk.matchAll(/destroysnapshot/g)].every(found => found.index > co
 assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': preview\.token/, 'bulk delete sends the reviewed list with its token, not one request per snapshot');
 const diff = popup.slice(popup.indexOf('function diffSnapshot('), popup.indexOf('function renameSnapshot('));
 assert.match(diff, /zfsmFetchReview\('[^']*', \{cmd: 'diffsnapshot'[\s\S]*\n\t\}, ''\);\n/, 'the changes dialog is read-only, so its failures do not say "Nothing was changed"');
+
+for (const file of require('./dialog_files.cjs')) vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend', file), 'utf8'), context);
+context.zfsm_config = {size_units: 'decimal'};
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /about 2\.05 KB\./, 'a replication\'s size follows Settings too');
+delete context.zfsm_config;
 
 // The Replicate dialog (include/ZFSMReplicaPlan.php's preview): names and plans are escaped; no destination yet shows no plan.
 const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_destination: {server: '', dest: 'backup/"data'}, servers: []}, 'tank/data');

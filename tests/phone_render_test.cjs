@@ -22,6 +22,7 @@ const seven = fs.existsSync(path.join(styles, 'default-base.css'));
 const sheets = (theme, context) => sheetFiles(styles, theme, context).map(file => `<link rel="stylesheet" href="file://${file}">`).join('\n');
 const link = (...files) => files.map(file => file.endsWith('.js') ? `<script src="file://${file}"></script>` : `<link rel="stylesheet" href="file://${file}">`).join('\n');
 const dialogs = link(path.join(plugin, 'assets/sweetalert2.all.min.js'), path.join(plugin, 'assets/sweetalert2.min.css'), path.join(frontend, 'ZFSMDialogs.js'), path.join(plugin, 'styles/zfsm-dialogs.css'));
+const forms = link(...require('./dialog_files.cjs').map(file => path.join(frontend, file)));
 
 // A page's own style block and body, without its PHP.
 function page(file) {
@@ -58,7 +59,7 @@ try {
     ['Schedules', "zfsmScheduleDialogHtml({every: 'days', time: '05:00', days: [1], keep: '', inherited: 'Snapshot Every Dataset, every hour at :30; it keeps all it takes', warning: {fact: 'tank/appdata has Sanoid or Syncoid snapshots', impact: 'Scheduled snapshots and copies skip it', guide: 'sanoid-or-syncoid-snapshots'}, copies: {every: 'days', time: '06:00', days: [1], keep: '', under: 'backup', server: 'nas', servers: ['nas'], inherited: 'Replicate Every Dataset, which is off: no scheduled copies', skipped: ''}})", 'zfsm-copies', 'zfsmScheduleDialogSync']];
   for (const [dialog, html, prefix, sync] of repeats) for (const theme of ['black', 'white', 'azure', 'gray']) {
     const where = `${dialog} dialog (${prefix}), ${theme} theme`;
-    const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+    const shown = render(where, 390, sheets(theme, 'main') + dialogs + forms, `<script>
 window.addEventListener('load', () => {
   zfsmFormDialog({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
   const popup = Swal2.getPopup(); popup.querySelector('#${prefix}-every').value = 'days'; ${sync}(popup);
@@ -88,7 +89,7 @@ window.addEventListener('load', () => {
   const deep = 'tank/' + 'appdata/nextcloud_data/'.repeat(4) + 'files';
   for (const theme of ['black', 'white', 'azure', 'gray']) {
     const where = `Schedules dialog on Default, ${theme} theme`;
-    const shown = render(where, 390, sheets(theme, 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+    const shown = render(where, 390, sheets(theme, 'main') + dialogs + forms, `<script>
 window.addEventListener('load', () => {
   zfsmFormDialog({title: 'Schedules', html: zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'the snapshot schedule of ${deep}, every hour at :30; it keeps all it takes', skipped: '',
     copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'the copies of ${deep} and below, under backup every hour at :40; it keeps all its snapshots', skipped: ''}}), showCancelButton: true, confirmButtonText: 'Save'});
@@ -106,7 +107,7 @@ window.addEventListener('load', () => {
   // The same forms on a desktop screen: wider than a plain message, which has room for one short line.
   for (const [dialog, html] of repeats.slice(0, 2)) {
     const where = `${dialog} dialog on a 1280 px screen`;
-    const shown = render(where, 1280, sheets('black', 'main') + dialogs + link(path.join(frontend, 'ZFSMImpact.js')), `<script>
+    const shown = render(where, 1280, sheets('black', 'main') + dialogs + forms, `<script>
 window.addEventListener('load', () => {
   Swal2.fire({title: 'Message'}); window.plain = Swal2.getPopup().getBoundingClientRect().width;
   zfsmFormDialog({title: '${dialog}', html: ${html}, showCancelButton: true, confirmButtonText: 'Save'});
