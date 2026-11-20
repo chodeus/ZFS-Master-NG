@@ -87,23 +87,23 @@ function zfsmReplicateHtml(options, zdataset) {
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
-	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes. A bookmark keeps the next one incremental, even after this snapshot is deleted.')
-		+'<div id="zfsm-replicate-repeat-help" style="display:none">'
-		+say('A repeat runs now, then at its time in this server\'s time zone, and takes a new snapshot each run. Every hour runs at a minute of its own: the answer and Settings show it. Settings lists the schedules; Change Keep there changes what one keeps.')
-		+say('Snapshots to keep: from the next run on, once a run lands, only those it keeps of the snapshots this copy\'s schedules took stay here, and in a copy on this server when Copy Keeps is empty. '+zfsmKeepHelp()+' With Mon, Wed and Fri ticked, 6 keeps two weeks.')
-		+say(zfsmCopyKeepsHelp('the copy'))
-		+say('Held or cloned snapshots always stay. A copy on another server keeps all, unless its Keep Replicas keeps fewer. A run removes up to 50; the next runs remove the rest.')
-		+say('After this run, a notification comes only for the first problem in a row, and for the run that works again after it.')+'</div></div>';
+	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes.')
+		+'<p id="zfsm-replicate-repeat-help" style="margin:.5em 0;display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it. On another server, that server\'s Keep Replicas decides what the copy keeps. '+zfsmGuideLink('replicate-repeats')+'</p></div>';
 }
 
-// Snapshots to keep's rules, as both repeats' help says them.
-function zfsmKeepHelp() {
-	return 'A number keeps the newest that many; 7d, 4w and 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one, in this server\'s time zone (h and y: hours and years). Give any together, such as 24 7d 4w 12m. Empty keeps all.';
+// A link to a section of the wiki's Schedules guide, opened in a new tab; frontend_impact_test lists the sections these link to.
+function zfsmGuideLink(section) {
+	return '<a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Schedules#'+section+'" target="_blank" rel="noopener noreferrer">Guide</a>';
 }
 
-// Copy Keeps, as the help of each repeat that makes a copy on this server says it; copy names that copy.
-function zfsmCopyKeepsHelp(copy) {
-	return 'Copy Keeps, for a copy on this server: empty, '+copy+' loses the snapshots Snapshots to keep removes here; all keeps every snapshot in it; rules such as 30d 12m count every snapshot in it, one made by hand too, the newest and the one just sent always staying, so it can keep more or fewer than here. Emptied later, those in '+copy+' whose source is already gone stay.';
+// A field's one-line hint, with the guide's section on it; the field names it in aria-describedby.
+function zfsmHint(id, text, section) {
+	return '<span id="'+id+'" style="display:block;font-size:.9em;opacity:.8;margin-top:.2em">'+text+' '+zfsmGuideLink(section)+'</span>';
+}
+
+// The Schedules and Replicate forms: wider than a message, for their fields and hints; a phone's screen still caps it.
+function zfsmFormDialog(options) {
+	return Swal2.fire(Object.assign({width: '44em'}, options));
 }
 
 // Repeat's select of choices ([value, text]) and rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps' too; start:
@@ -117,9 +117,11 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false) {
 	const options = choices.map(([value, text]) => '<option value="'+value+'"'+(value === start.every ? ' selected' : '')+'>'+text+'</option>').join('');
 	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'
 		+'<div id="'+prefix+'-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>'
-		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at:<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
-		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'"></label></p>'
-		+(copies ? '<p id="'+prefix+'-copy-keeps-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Keeps:<input id="'+prefix+'-copy-keeps" type="text" maxlength="40" style="width:100%" placeholder="same as source" value="'+esc(start.copy_keeps)+'"></label></p>' : '');
+		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at (this server\'s time):<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
+		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'" aria-describedby="'+prefix+'-keep-hint"></label>'
+		+zfsmHint(prefix+'-keep-hint', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep')+'</p>'
+		+(copies ? '<p id="'+prefix+'-copy-keeps-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Keeps:<input id="'+prefix+'-copy-keeps" type="text" maxlength="40" style="width:100%" placeholder="same as source" value="'+esc(start.copy_keeps)+'" aria-describedby="'+prefix+'-copy-keeps-hint"></label>'
+			+zfsmHint(prefix+'-copy-keeps-hint', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps')+'</p>' : '');
 }
 
 // Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Snapshots to keep for either repeat, and Copy Keeps
@@ -165,28 +167,29 @@ function zfsmScheduleDialogHtml(preview) {
 	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']];
 	const skipped = preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
 	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>Replication as saved: '+esc(copies.skipped)+'.</b></p>' : '';
-	return '<div style="text-align:left">'+skipped+zfsmRepeatHtml('zfsm-schedules', 'Snapshots:', choices, preview)
-		+'<p id="zfsm-schedules-default" style="margin:.5em 0;display:none">Default follows '+esc(preview.inherited)+'.</p>'
-		+zfsmRepeatHtml('zfsm-copies', 'Replication:', choices, copies, true)
-		+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'"></label></p>'
-		+'<p id="zfsm-copies-default" style="margin:.5em 0;display:none">Default follows '+esc(copies.inherited)+'.</p>'+unsent
-		+say('Default: the schedule of the nearest dataset above this one that has its own, else Snapshot Every Dataset or Replicate Every Dataset in Settings.')
-		+say('None: no scheduled snapshots, or copies under Copy Under; a repeat set in Replicate still runs. Every hour or On days of the week: its own schedule.')
-		+say('Datasets below this one follow its choice, unless they have their own.')
-		+say('Replication copies this dataset and those below into Copy Under, a dataset on this server in another pool, each by its full name: tank/data goes to backup/tank/data. Each copy is read-only and unmounted; a run sends only the changes since its newest snapshot, or the whole dataset when it has no copy there yet.')
-		+say('Read-only datasets, such as copies received here, those mounted legacy, such as Docker\'s image layers, and those with Sanoid or Syncoid snapshots (autosnap_, syncoid_; Settings says when Snapshots Prefix counts instead) are never taken or copied. Schedules saves no new or changed repeat of either part on such a dataset itself (one saved before stays, and its runs leave the dataset out), but a dataset below it that a run can take may have its own.')
-		+say('Snapshots to keep: for Snapshots, after each run only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them; for Replication, only those it keeps of the snapshots taken for copies under the same Copy Under stay, on each dataset, and in its copy when Copy Keeps is empty, whichever schedule took them, such as Replicate Every Dataset. A run removes up to 50 from each, and one held or cloned stays. '+zfsmKeepHelp()+' Snapshots made by hand are never removed, except from a copy by Copy Keeps.')
-		+say(zfsmCopyKeepsHelp('each copy'))
-		+say('Settings lists every schedule.')+'</div>';
+	// Each part's line for None, then for Default: what it follows now (zfsmScheduleDialogSync shows the one picked).
+	const choice = (part, none, inherited) => '<p id="zfsm-'+part+'-none" style="margin:.5em 0;display:none">None: '+none+' A repeat set in Replicate still runs.</p>'
+		+'<p id="zfsm-'+part+'-default" style="margin:.5em 0;display:none">Default follows '+esc(inherited)+'.</p>';
+	const section = (name, html) => '<div role="group" aria-label="'+name+'" style="margin:0 0 1em">'+html+'</div>';
+	return '<div style="text-align:left">'+skipped
+		+section('Snapshots', zfsmRepeatHtml('zfsm-schedules', '<b>Snapshots:</b>', choices, preview)+choice('schedules', 'no scheduled snapshots of this dataset, or of those below it that follow it.', preview.inherited))
+		+section('Replication', zfsmRepeatHtml('zfsm-copies', '<b>Replication:</b>', choices, copies, true)
+			+'<p id="zfsm-copies-under-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Under:<input id="zfsm-copies-under" type="text" maxlength="255" style="width:100%" placeholder="backup" value="'+esc(copies.under)+'" aria-describedby="zfsm-copies-under-hint"></label>'
+			+zfsmHint('zfsm-copies-under-hint', 'A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data.', 'replication')+'</p>'
+			+choice('copies', 'no scheduled copies of this dataset, or of those below it that follow it.', copies.inherited)+unsent)
+		+say('Datasets below this one follow its choice, unless they have their own. Read-only datasets, those mounted legacy and those with Sanoid or Syncoid snapshots are left out. '+zfsmGuideLink('datasets-left-out'))+'</div>';
 }
 
 // Shows the rows that fit each choice; Snapshots' value.
 function zfsmScheduleDialogSync(root) {
+	const show = (id, shown) => { root.querySelector(id).style.display = shown ? '' : 'none'; };
 	const every = zfsmRepeatSync(root, 'zfsm-schedules');
-	root.querySelector('#zfsm-schedules-default').style.display = every === 'default' ? '' : 'none';
+	show('#zfsm-schedules-none', every === 'none');
+	show('#zfsm-schedules-default', every === 'default');
 	const copies = zfsmRepeatSync(root, 'zfsm-copies');
-	root.querySelector('#zfsm-copies-default').style.display = copies === 'default' ? '' : 'none';
-	root.querySelector('#zfsm-copies-under-row').style.display = copies === 'hourly' || copies === 'days' ? '' : 'none';
+	show('#zfsm-copies-none', copies === 'none');
+	show('#zfsm-copies-default', copies === 'default');
+	show('#zfsm-copies-under-row', copies === 'hourly' || copies === 'days');
 	return every;
 }
 
