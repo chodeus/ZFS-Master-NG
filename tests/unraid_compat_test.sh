@@ -138,6 +138,11 @@ printf '[general]\r\nrefresh_interval="300"\r\nlazy_load="0"\r\ndestructive_mode
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" saved_settings "$version" || fail 'settings saved by older versions'
 printf '[general]\nreplica_keep="7d 7d"\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_unread "$version" || fail 'Keep Replicas saved as no Keep'
+# Unraid's update.php, which saves the Settings form, where this tree has it at the top (6.12 on).
+if [ -f "$web/emhttp/update.php" ]; then
+	cp "$web/emhttp/update.php" "$web/emhttp/update.htm" "$docroot/"
+	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" replica_keep_old_apply "$version" || fail "Keep Replicas after an older version's Apply"
+fi
 printf '[general]\nsnap_prefix="a/"\n' > "$flash/zfs.master.cfg"
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" snap_name_refused "$version" || fail 'Snapshot Prefix ZFS refuses names with'
 cp tests/fixtures/config/zfs.master.cfg "$flash/zfs.master.cfg"

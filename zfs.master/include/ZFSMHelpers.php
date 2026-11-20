@@ -39,7 +39,7 @@ function loadConfig($config) {
 		'debug_log' => zfsmSettingInt($general, 'debug_log', 0),
 		'replica_accept' => trim((string)zfsmSettingText($general, 'replica_accept', '')),
 		// As Snapshots to keep reads it; anything else keeps all (0), as versions before rules read rules too.
-		'replica_keep' => zfsmKeepParse((string)($general['replica_keep'] ?? '')) ?? 0,
+		'replica_keep' => zfsmKeepParse(zfsmKeepReplicaText($general)) ?? 0,
 		'directory_listing' => isset($general['directory_listing']) && $general['directory_listing'] != '' ? preg_split('/\r\n|\r|\n/', $general['directory_listing']) : array(),
 	);
 }

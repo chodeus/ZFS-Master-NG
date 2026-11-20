@@ -129,10 +129,43 @@ switch ($check) {
 		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
 		$saved = loadConfig(parse_plugin_cfg('zfs.master', true))['replica_keep'];
 		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
-		if ($saved !== 0 || strpos($html, 'value="" placeholder="all"> <span id="zfsm-replica-keep-warning" style="color:#e22828">&quot;7d 7d&quot; is not read, so all stay: give a number') === false) {
+		if ($saved !== 0 || strpos($html, 'value="" placeholder="all"><input type="hidden" name="replica_keep_rules" value=""> <span id="zfsm-replica-keep-warning" style="color:#e22828">&quot;7d 7d&quot; is not read, so all stay: give a number') === false) {
 			fwrite(STDERR, 'Keep Replicas "7d 7d" read as '.json_encode($saved)." or shown without why\n");
 			exit(1);
 		}
+		break;
+
+	case 'replica_keep_old_apply':
+		// Unraid's update.php saves Keep Replicas as this version's Apply posts it, then as an older version's does: that field showed
+		// periods empty, so its Apply posts them empty; they stay. One that field showed (a number), or cleared here, is as posted.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		require_once $docroot.'/plugins/zfs.master/backend/ZFSMOperations.php';
+		$cfg = '/boot/config/plugins/zfs.master/zfs.master.cfg';
+		$apply = function($posted) use ($docroot) {
+			$post = array('#file' => 'zfs.master/zfs.master.cfg', '#section' => 'general', 'refresh_interval' => '30') + $posted;
+			exec(escapeshellarg(PHP_BINARY).' -n -r '.escapeshellarg('chdir($argv[1]); $_SERVER["DOCUMENT_ROOT"] = $argv[1]; $_POST = json_decode($argv[2], true); include "update.php";')
+				.' '.escapeshellarg($docroot).' '.escapeshellarg(json_encode($post)).' 2>&1', $said, $code);
+			return $code;
+		};
+		$read = function() { return loadConfig(parse_plugin_cfg('zfs.master', true))['replica_keep']; };
+		$bad = array();
+		foreach (array(
+			array('24 7d 4w', '', '24 7d 4w', 'periods, then an older Apply'),
+			array('24 7d 4w', '5', 5, 'periods, then a number typed in an older version'),
+			array('10', '', 0, 'a number an older version showed, then cleared there'),
+			array('', '', 0, 'cleared here, then an older Apply'),
+		) as list($here, $older, $expected, $case)) {
+			@unlink($cfg);
+			$codes = array($apply(array('replica_keep' => $here, 'replica_keep_rules' => $here)), $apply(array('replica_keep' => $older)));
+			if ($codes !== array(0, 0) || $read() !== $expected) $bad[] = "$case: read as ".json_encode($read()).' (update.php '.json_encode($codes).') from '.json_encode((string)@file_get_contents($cfg));
+		}
+		$apply(array('replica_keep' => '24 7d 4w', 'replica_keep_rules' => '24 7d 4w'));
+		$apply(array('replica_keep' => ''));
+		$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		if (strpos($html, 'value="24 7d 4w" placeholder="all"><input type="hidden" name="replica_keep_rules" value="24 7d 4w"> <span id="zfsm-replica-keep-warning" style="color:#e22828"></span>') === false) $bad[] = 'the page does not show the periods kept, in both fields, with no warning';
+		@unlink($cfg);
+		if ($bad) { fwrite(STDERR, implode("\n", $bad)."\n"); exit(1); }
 		break;
 
 	case 'snap_name_refused':

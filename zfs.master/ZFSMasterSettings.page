@@ -160,7 +160,7 @@ _(Snapshots Pattern)_:
 
 :zc_settings_snapshots_pattern_plug:
 > Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab, those **Replicate** takes, and each scheduled run's.
-> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`, and with its dataset and @ be up to 255 long. Typing a pattern or prefix that gives another character, or a name too long even after a one-letter pool, now or in half a year, names it in red beside this field, and then Apply is refused. One saved all the same is named there too, and a new or changed schedule is not saved. A name too long only after a longer dataset is not named here but in diagnostics; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
+> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`, and with its dataset and @ be up to 255 long. Typing a pattern or prefix that gives another character, or a name too long even after a one-letter pool, now or in half a year, names it in red beside this field, and then Apply is refused. If the check itself fails, it says so there instead, and Apply is not refused. One saved all the same is named there too, and a new or changed schedule is not saved. A name too long only after a longer dataset is not named here but in diagnostics; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
 :end
 
 _(Snapshot Time)_:
@@ -239,7 +239,7 @@ _(Accept Replicas Into)_:
 :end
 
 _(Keep Replicas)_:
-: <input type="text" name="replica_keep" maxlength="40" pattern="[ \t,]*([0-9]+[hdwmyHDWMY]?([ \t,]+[0-9]+[hdwmyHDWMY]?)*[ \t,]*)?" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>" placeholder="all"> <span id="zfsm-replica-keep-warning" style="color:#e22828"><?=zfsmHtml($zfsm_keep_warning)?></span>
+: <input type="text" name="replica_keep" maxlength="40" pattern="[ \t,]*([0-9]+[hdwmyHDWMY]?([ \t,]+[0-9]+[hdwmyHDWMY]?)*[ \t,]*)?" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>" placeholder="all"><input type="hidden" name="replica_keep_rules" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>"> <span id="zfsm-replica-keep-warning" style="color:#e22828"><?=zfsmHtml($zfsm_keep_warning)?></span>
 
 :zc_settings_replica_keep_plug:
 > After each copy a server sends lands here, only the snapshots of that copy it keeps stay, up to 50 removed a time; the rest go with the next one. It reads as **Snapshots To Keep** under Schedules does: a number keeps the newest that many, and `7d`, `4w` and `12m` the newest of each of the last 7 days, 4 weeks and 12 months that have one (such as `24 7d 4w 12m`), by when the sender took each, in this server's time zone. Every snapshot of a copy counts, whichever run sent it, but one held or cloned here stays. The newest always stays: the sender's next run sends the changes since it. A copy that stops part-way loses nothing. When one can't be removed, this server's log and a notification say which and why. Empty keeps all.
@@ -628,6 +628,8 @@ function zfsmCheckKeep() {
 	$('#zfsm-replica-keep-warning').text('');
 }
 $('input[name="replica_keep"]').on('input', zfsmCheckKeep);
+// Apply saves Keep Replicas twice: an older version's Apply leaves replica_keep_rules as it was (zfsmKeepReplicaText).
+$('input[name="replica_keep"]').closest('form').on('submit', function() { $('input[name="replica_keep_rules"]').val($('input[name="replica_keep"]').val()); });
 // Snapshots Pattern, Prefix and Time, checked as they change: refused while the server says ZFS refuses a name they give.
 function zfsmCheckSnapName() {
 	zfsmCheckHeld($('input[name="snap_pattern"], input[name="snap_prefix"]'), $('#zfsm-snap-name-warning'), function() {

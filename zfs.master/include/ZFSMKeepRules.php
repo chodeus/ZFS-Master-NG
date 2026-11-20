@@ -67,6 +67,14 @@ function zfsmCopyKeepsWords($copy_keeps) {
 	return $copy_keeps === null ? '' : (zfsmKeepRules($copy_keeps) ? zfsmKeepWords($copy_keeps) : 'all its snapshots');
 }
 
+// Keep Replicas as saved in $general. v2026.11.16's field shows rules with periods empty, and its Apply saves that over them, so
+// Settings saves them twice; replica_keep_rules, which no older version writes, counts only when it has periods and replica_keep is empty.
+function zfsmKeepReplicaText($general) {
+	$text = (string)($general['replica_keep'] ?? '');
+	$rules = $general['replica_keep_rules'] ?? null;
+	return trim($text) === '' && is_string($rules) && is_string(zfsmKeepParse($rules)) ? $rules : $text;
+}
+
 // What Keep Replicas' field says of $text: '' when Keep reads it, else that all stay and how to fix it.
 function zfsmKeepReplicaWarning($text) {
 	return zfsmKeepParse($text) === null ? '"'.trim($text).'" is not read, so all stay: '.zfsmKeepFix() : '';

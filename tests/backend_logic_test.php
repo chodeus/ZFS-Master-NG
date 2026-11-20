@@ -104,6 +104,10 @@ $replica_keep = function($saved) { return loadConfig(array('general' => array('r
 assertSameValue(array(0, 3, 3, ZFSM_KEEP_MAX, 0, 0, 0, 0, 0, '24 7d 4w', 0, 0), array_map($replica_keep, array('', '3', ' 3 ', (string)ZFSM_KEEP_MAX, (string)(ZFSM_KEEP_MAX + 1), '-1', '2.5', '3x', '0', ' 24 7D, 4w ', '7d 7d', '0d')),
 	'Keep Replicas is a count up to Keep\'s most or periods, as Snapshots to keep reads them; anything else keeps all');
 assertSameValue(0, loadConfig(array())['replica_keep'], 'Keep Replicas unsaved keeps all');
+// An older version's Apply saves periods it showed empty as ''; replica_keep_rules, saved by this version's Apply, gives them back.
+$both = function($saved, $rules) { return loadConfig(array('general' => array('replica_keep' => $saved, 'replica_keep_rules' => $rules)))['replica_keep']; };
+assertSameValue(array('24 7d 4w', '7d', 0, 0, 0, 5, 0, 0), array($both('', '24 7d 4w'), $both(' ', ' 7D '), $both('', '10'), $both('', '7d 7d'), $both('', ''), $both('5', '7d'), $both('7d 7d', '7d'), $both('', array('7d'))),
+	'periods come back from replica_keep_rules only when Keep Replicas is empty; a number there, which older versions show, or anything unread, does not');
 assertSameValue(true, zfsmMatchesExclusion('cache/docker-old/abc', '/docker-old/.*'), 'Unescaped hyphen must stay literal');
 assertSameValue(true, zfsmMatchesExclusion('tank/layer7', 'layer%d$'), 'Lua digit class failed');
 assertSameValue(true, zfsmMatchesExclusion('tank/a_b', 'tank/[%w_]+$'), 'Lua class inside a set failed');
