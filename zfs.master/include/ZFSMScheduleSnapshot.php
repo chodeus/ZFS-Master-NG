@@ -117,12 +117,29 @@ function zfsmScheduleTheirs($line, $of, $own) {
 	return zfsmIsAutomaticSnapshot($line) && ($own === '' || strpos($line, $of.$own) !== 0);
 }
 
-// Why no run takes $zdataset, listed as $row (zfsmScheduleListed); '' when one can.
-function zfsmScheduleSkipped($zdataset, $row) {
-	if ($row[0] === 'on') return $zdataset.' is read-only, as a copy received here is: a snapshot in it stops the next replication into it';
+// The warning for $zdataset, listed as $row (zfsmScheduleListed), when no run takes it: what it is, what that does, and its section
+// of the wiki's Warnings page; null when one can.
+function zfsmScheduleSkippedWarning($zdataset, $row) {
+	$impact = 'Scheduled snapshots and copies skip it';
+	if ($row[0] === 'on') return array('fact' => $zdataset.' is Read Only', 'impact' => $impact, 'guide' => 'read-only');
 	// Syncoid sends every snapshot since its last by default (-I): ours would pile up in its copies, where Sanoid removes only its own.
-	if ($row[2]) return $zdataset.' has Sanoid or Syncoid snapshots (autosnap_, syncoid_), so it is left to that tool';
-	return $row[1] === 'legacy' ? $zdataset.' is mounted legacy, as Docker image layers are' : '';
+	if ($row[2]) return array('fact' => $zdataset.' has Sanoid or Syncoid snapshots', 'impact' => $impact, 'guide' => 'sanoid-or-syncoid-snapshots');
+	return $row[1] === 'legacy' ? array('fact' => $zdataset.' is mounted legacy', 'impact' => $impact, 'guide' => 'mounted-legacy') : null;
+}
+
+// A zfsmScheduleSkippedWarning as one line; '' for none.
+function zfsmScheduleSkippedText($warning) {
+	return $warning === null ? '' : $warning['fact'].'. '.$warning['impact'];
+}
+
+// Why a run leaves out $zdataset when its snapshot names could not be read (zfsmScheduleListed's null).
+function zfsmScheduleNamesUnreadText($zdataset) {
+	return 'the snapshot names of '.$zdataset.' could not be read, so it may be left to Sanoid or Syncoid';
+}
+
+// Why no run takes $zdataset, listed as $row, as one line; '' when one can.
+function zfsmScheduleSkipped($zdataset, $row) {
+	return zfsmScheduleSkippedText(zfsmScheduleSkippedWarning($zdataset, $row));
 }
 
 // Why no run of $job takes $zdataset, listed as $row: zfsmScheduleSkipped's reasons, and for copies under a dataset
@@ -418,7 +435,7 @@ function zfsmScheduleSnapshotNone($job, $listed, $unread) {
 	if ($job['dataset'] === '') return array('Scheduled snapshots not taken: no pool has a dataset it takes', null);
 	// A stopped array exports its pools: only logged, as for the default.
 	if (!isset(zfsmScheduleListed($listed)[0][explode('/', $job['dataset'])[0]])) return array('Scheduled snapshots of '.$job['dataset'].' not taken: its pool is not imported', null);
-	return array('Scheduled snapshots of '.$job['dataset'].' not taken: '.zfsmScheduleSnapshotNot($job['dataset'], $listed).'; remove its schedule in Settings', true);
+	return array('Scheduled snapshots of '.$job['dataset'].' not taken: '.zfsmScheduleSnapshotNot($job['dataset'], $listed).'. Remove its schedule in Settings', true);
 }
 
 // Logs a run's $text and has $notify tell it under $title; 1 for a problem. A null $problem (nothing to take) is only logged: no run

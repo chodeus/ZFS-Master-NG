@@ -119,6 +119,16 @@ for (const guide of guides) {
   assert.ok(sections.includes(section), `${guide}: opens a section of the guide in a new tab, which can't reach back to this page`);
 }
 assert.equal(guides.length, 9, 'Snapshots to keep three times, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line');
+// A warning opens each dialog: amber, its fact and what that does as text, and Guide to its section of the wiki's Warnings page.
+const warning = {fact: 'tank/<i>x</i> is Read Only', impact: 'Scheduled snapshots and copies skip it', guide: 'read-only'};
+const box = id => '<div id="' + id + '" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> tank/&lt;i&gt;x&lt;/i&gt; is Read Only</b>'
+  + '<br>Scheduled snapshots and copies skip it. <a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#read-only" target="_blank" rel="noopener noreferrer">Guide</a></div>';
+assert.ok(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '', warning,
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'y', skipped: ''}}).startsWith('<div style="text-align:left">' + box('zfsm-schedules-skipped')), 'the Schedules dialog');
+assert.ok(context.zfsmReplicateHtml({snapshots: [], servers: [], warning}, 'tank/x').startsWith('<div style="text-align:left">' + box('zfsm-replicate-warning')), 'and the Replicate dialog');
+assert.ok(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', warning: null, skipped: 'tank/<i>x</i> is gone',
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'y', skipped: ''}})
+  .startsWith('<div style="text-align:left"><p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>tank/&lt;i&gt;x&lt;/i&gt; is gone.</b></p>'), 'and why not, as text, of one gone or unread');
 const hinted = (html, prefix, row, label, text, section) => assert.match(html, new RegExp('<p id="' + prefix + '-' + row + '-row"[^>]*><label[^>]*>' + label + ':<input [^>]*aria-describedby="' + prefix + '-' + row
   + '-hint"></label><span id="' + prefix + '-' + row + '-hint"[^>]*>' + text.replace(/[.()]/g, '\\$&') + ' <a [^>]*#' + section + '"[^>]*>Guide</a></span></p>'), `${prefix}: ${label}'s hint shows and hides with its row, and its box names it`);
 for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'keep', 'Snapshots to keep', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep');

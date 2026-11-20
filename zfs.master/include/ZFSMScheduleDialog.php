@@ -9,16 +9,18 @@ function zfsmScheduleDialogFields($job) {
 		'days' => $job['days'], 'keep' => zfsmKeepField($job['keep']));
 }
 
-// The dialog's start: $zdataset's own snapshot schedule, what Default follows, why no run takes it ('' when one can), and its copies
-// (zfsmScheduleDialogCopies); from a read of the schedules, and of it, the datasets just below it and their snapshot names.
+// The dialog's start: $zdataset's own snapshot schedule, what Default follows, its warning (zfsmScheduleSkippedWarning) or why no run takes
+// it ('' when one can), and its copies (zfsmScheduleDialogCopies); from a read of the schedules, it, its children and their snapshot names.
 function zfsmScheduleDialogPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure('request', 'Invalid dataset name');
 	$read = zfsmScheduleRead();
 	if ($read === null) return zfsmFailure($zdataset, zfsmScheduleUnreadable());
 	$own = zfsmScheduleOwn($read['valid'], $zdataset);
 	$listed = zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset));
+	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
 	return zfsmScheduleDialogFields(reset($own)) + array('inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))),
-		'skipped' => zfsmScheduleSnapshotNot($zdataset, $listed), 'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
+		'warning' => $row === null ? null : zfsmScheduleSkippedWarning($zdataset, $row), 'skipped' => $row === null ? zfsmScheduleSnapshotNot($zdataset, $listed) : '',
+		'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
 }
 
 // The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under and Server (its own, else what Default follows), the servers
@@ -74,7 +76,8 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 	return $changed + array('said' => zfsmScheduleSnapshotSaid($snap, $drop[0], $after, $listed).'. '.zfsmScheduleCopiesOwnSaid($copy, $drop[1], $after, $listed));
 }
 
-// What stops Save, by part; '' when nothing does.
+// What stops Save, by part, a reason both give said once; '' when nothing does.
 function zfsmScheduleDialogWhy($snapshots, $copies) {
-	return implode('; ', array_filter(array($snapshots !== '' ? 'Snapshots: '.$snapshots : '', $copies !== '' ? 'Replication: '.$copies : ''), 'strlen'));
+	if ($snapshots !== '' && $snapshots === $copies) return $snapshots;
+	return implode('. ', array_filter(array($snapshots !== '' ? 'Snapshots: '.$snapshots : '', $copies !== '' ? 'Replication: '.$copies : ''), 'strlen'));
 }

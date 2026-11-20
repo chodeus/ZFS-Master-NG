@@ -223,6 +223,11 @@ flock($held, LOCK_EX);
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a second run steps aside');
 same(array(), $calls('send'), 'and sends nothing');
 same('A replication of this dataset is already running', zfsmReplicatePreview('tank/data', 'b', 'backup/data', $cfg)['error'], 'the dialog says one is running');
+$props = is_file($work.'/pool/props') ? file_get_contents($work.'/pool/props') : '';
+file_put_contents($work.'/pool/props', $props."tank/data\tmountpoint\tlegacy\n");
+$opened = zfsmReplicatePreview('tank/data', '', '', $cfg, '', true);
+file_put_contents($work.'/pool/props', $props);
+same(array('A replication of this dataset is already running', 'tank/data is mounted legacy'), array($opened['error'], $opened['warning']['fact'] ?? null), 'and opened then, it still warns');
 flock($held, LOCK_UN);
 fclose($held);
 
@@ -231,6 +236,15 @@ $preview = zfsmReplicatePreview('tank/data', '', '', $cfg);
 same(array(array('b', 'a'), null, array(), false), array($preview['snapshots'], $preview['last_destination'], $preview['servers'], $preview['can_proceed']), 'snapshots newest first, no servers to send to, and nothing to plan without a destination');
 $preview = zfsmReplicatePreview('tank/data', '', 'backup/data', $cfg);
 same(array(true, 'full', null), array($preview['can_proceed'], $preview['mode'], $preview['size']), 'a snapshot taken now: planned, size unknown');
+// Opening, it warns of a dataset repeats leave out, such as one made Read Only; a plan, with a destination or not yet, has none.
+$props = is_file($work.'/pool/props') ? file_get_contents($work.'/pool/props') : '';
+$opened = zfsmReplicatePreview('tank/data', '', '', $cfg, '', true)['warning'];
+file_put_contents($work.'/pool/props', $props."tank/data\treadonly\ton\n");
+same(array(null, array('fact' => 'tank/data is Read Only', 'impact' => 'Scheduled snapshots and copies skip it', 'guide' => 'read-only'), false, false),
+	array($opened, zfsmReplicatePreview('tank/data', '', '', $cfg, '', true)['warning'], array_key_exists('warning', zfsmReplicatePreview('tank/data', '', '', $cfg)),
+		array_key_exists('warning', zfsmReplicatePreview('tank/data', '', 'backup/data', $cfg))),
+	'none for a dataset a repeat copies; one when it is Read Only; none in a plan');
+file_put_contents($work.'/pool/props', $props);
 
 // The dialog reads the dataset's snapshots once per change, and a start plans without the size estimate, which the job makes.
 $reset();

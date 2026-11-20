@@ -46,7 +46,7 @@ function zfsmScheduleCopiesUnderText($job) {
 // snapshot's. '' when it copies it.
 function zfsmScheduleCopiesNot($job, $jobs, $zdataset, $row, $name) {
 	if (zfsmScheduleCopiesInPool($job, $zdataset)) return $zdataset.' is in pool '.explode('/', $job['dest'])[0].', where its copy would go';
-	if ($row[2] === null) return 'the snapshot names of '.$zdataset.' could not be read, so it may be left to Sanoid or Syncoid';
+	if ($row[2] === null) return zfsmScheduleNamesUnreadText($zdataset);
 	$dest = zfsmScheduleCopiesDest($job, $zdataset);
 	if (!zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark(array('server' => $job['server']), $dest), $name)) return 'the names of '.$zdataset.' and its copy are too long for the bookmark a copy keeps';
 	foreach ($jobs as $other) {

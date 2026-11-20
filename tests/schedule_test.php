@@ -292,6 +292,42 @@ same(1, zfsmScheduleRun($id, $cfg, time() + 15800), 'a run of a dataset that is 
 same(array('warning: Replication of tank/data to backup/data not started: it no longer exists; remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'says it is gone');
 foreach ($kept as $file => $text) file_put_contents($work.'/pool/'.$file, $text);
 @unlink(zfsmScheduleStateFile($id));
+// One made Read Only since its repeat was saved: a run takes no snapshot in it and says why; Save refuses another, as for one mounted legacy.
+$props = file_get_contents($work.'/pool/props');
+file_put_contents($work.'/pool/props', "tank/data\treadonly\ton\n", FILE_APPEND);
+$reset();
+same(1, zfsmScheduleRun($id, $cfg, time() + 15850), 'a run of a dataset made Read Only');
+same(array(array(), array('warning: Replication of tank/data to backup/data not started: tank/data is Read Only. Scheduled snapshots and copies skip it. Remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array(array_values(preg_grep('/^(snapshot|send) /', $read('calls.log'))), $read('notify-detail.log')), 'takes and sends nothing, and says why');
+$before = $stored();
+$refused = zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed'];
+file_put_contents($work.'/pool/props', $props."tank/data\tmountpoint\tlegacy\n");
+same(array(array('tank/data' => 'Nothing was scheduled: tank/data is Read Only. Scheduled snapshots and copies skip it'),
+	array('tank/data' => 'Nothing was scheduled: tank/data is mounted legacy. Scheduled snapshots and copies skip it'), $before),
+	array($refused, zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed'], $stored()), 'Save refuses both, and nothing is stored');
+file_put_contents($work.'/pool/props', $props);
+@unlink(zfsmScheduleStateFile($id));
+// One whose dataset, or its snapshot names, could not be read: a run sends nothing and says why, and Save refuses. The pool goes back after.
+$kept = array();
+foreach (glob($work.'/pool/*') as $file) $kept[$file] = file_get_contents($file);
+$before = $stored();
+$unread = array();
+foreach (array('ZFSM_TEST_COVER_FAIL', 'ZFSM_TEST_NAMES_FAIL') as $fail) {
+	$reset();
+	@unlink(zfsmScheduleStateFile($id));
+	putenv($fail.'=1');
+	$unread[] = array(zfsmScheduleRun($id, $cfg, time() + 15900), count($sends()), $read('notify-detail.log'), zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed']);
+	putenv($fail);
+}
+$later = '. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
+$names_unread = 'the snapshot names of tank/data could not be read, so it may be left to Sanoid or Syncoid';
+same(array(array(1, 0, array('warning: Replication of tank/data to backup/data not started: tank/data could not be read: cannot iterate filesystems: Input/output error'.$later),
+		array('tank/data' => 'Nothing was scheduled: tank/data could not be read: cannot iterate filesystems: Input/output error')),
+	array(1, 0, array('warning: Replication of tank/data to backup/data not started: '.$names_unread.$later), array('tank/data' => 'Nothing was scheduled: '.$names_unread)), $before),
+	array_merge($unread, array($stored())), 'a repeat whose dataset or snapshot names could not be read sends nothing and says why; Save refuses one');
+foreach (glob($work.'/pool/*') as $file) if (!isset($kept[$file])) unlink($file);
+foreach ($kept as $file => $text) file_put_contents($file, $text);
+@unlink(zfsmScheduleStateFile($id));
 // A run that finds the one before it stopped part-way carries that on, then sends its own snapshot.
 $reset();
 $at = time() + 16000;
