@@ -1,6 +1,6 @@
 <?php
 // Main's Schedules dialog (Actions, Schedules): a dataset's own snapshot schedule (ZFSMScheduleSnapshot.php) and its own copies
-// under a dataset (ZFSMScheduleCopies.php), each Default (what it follows), None or a repeat, saved in one change.
+// under a dataset (ZFSMScheduleCopies.php), here or on a trusted server, each Default (what it follows), None or a repeat, saved in one change.
 
 // $job, a dataset's own schedule of either kind, as zfsmRepeatHtml shows it: 'default' with none.
 function zfsmScheduleDialogFields($job) {
@@ -21,26 +21,29 @@ function zfsmScheduleDialogPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_
 		'skipped' => zfsmScheduleSnapshotNot($zdataset, $listed), 'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
 }
 
-// The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under (its own, else what Default follows; none on a server), what Default
-// follows, and why what it follows leaves it out besides the reasons Snapshots shows (zfsmScheduleCopiesNot); '' when it copies it or nothing does.
+// The dialog's Replication: $zdataset's own copies, their Copy Keeps, Copy Under and Server (its own, else what Default follows), the servers
+// (zfsmReplicaServerNames; why unread), what Default follows, and why what runs leaves it out past Snapshots' reasons, its server too.
 function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$own = zfsmScheduleOwn($jobs, $zdataset, 'zfsmScheduleCopiesUnder');
 	$job = reset($own) ?: null;
 	$followed = zfsmScheduleFollowed($zdataset, array_diff_key($jobs, $own), 'zfsmScheduleCopiesUnder');
-	$under = $job !== null && $job['every'] !== 'none' ? $job : $followed;
+	// A None record's dest and server are '/' and '' too.
+	$where = ($job !== null && $job['every'] !== 'none' ? $job : $followed) ?? array('dest' => '/', 'server' => '');
 	$runs = $job ?? $followed;
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
-	$skipped = $runs !== null && $runs['every'] !== 'none' && $row !== null ? zfsmScheduleCopiesNot($runs, $jobs, $zdataset, $row, $listed['name']) : '';
-	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => $under !== null && $under['every'] !== 'none' && $under['server'] === '' ? substr($under['dest'], 0, -1) : '',
-		'inherited' => zfsmScheduleCopiesFollowedText($followed), 'skipped' => $skipped);
+	$skipped = $runs !== null && $runs['every'] !== 'none' && $row !== null ? (zfsmScheduleCopiesServerNot($runs) ?: zfsmScheduleCopiesNot($runs, $jobs, $zdataset, $row, $listed['name'])) : '';
+	$remotes = zfsmReplicaRemotes();
+	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => substr($where['dest'], 0, -1),
+		'server' => $where['server'], 'servers' => zfsmReplicaServerNames($where['server'], $remotes), 'inherited' => zfsmScheduleCopiesFollowedText($followed), 'skipped' => $skipped)
+		+ ($remotes === null ? array('servers_error' => zfsmReplicaRemotesUnreadable()) : array());
 }
 
-// Saves $zdataset's own snapshot schedule ($snapshots: every, time, days, keep) and its own copies ($copies: those, copy_keeps and under) in one
+// Saves $zdataset's own snapshot schedule ($snapshots: every, time, days, keep) and its own copies ($copies: those, copy_keeps, under and server) in one
 // change, 'default' removing either. Nothing is taken or copied now. As zfsmScheduleChange answers, and 'said' of both.
 function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
 	if (!zfsmValidDatasetName($zdataset)) return array('saved' => false, 'why' => 'Nothing was saved: that is no dataset name', 'said' => '');
 	$snap = zfsmScheduleSnapshotRecord($zdataset, $snapshots['every'], $snapshots['time'], $snapshots['days'], $snapshots['keep']);
-	$copy = zfsmScheduleCopiesRecord($zdataset, $copies['every'], $copies['under'], $copies['time'], $copies['days'], $copies['keep'], $copies['copy_keeps']);
+	$copy = zfsmScheduleCopiesRecord($zdataset, $copies['every'], $copies['under'], $copies['time'], $copies['days'], $copies['keep'], $copies['copy_keeps'], $copies['server']);
 	$drop = array($snapshots['every'] === 'default', $copies['every'] === 'default');
 	$wrong = zfsmScheduleDialogWhy(zfsmScheduleSnapshotWrong($snap, $drop[0]), zfsmScheduleCopiesWrong($copy, $drop[1]));
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');

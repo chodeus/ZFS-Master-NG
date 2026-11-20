@@ -255,10 +255,10 @@ try {
 			break;
 
 		case 'scheduledataset':
-			// Main's Schedules dialog: a dataset's own snapshot schedule and its own copies (copy_*, under) at once.
+			// Main's Schedules dialog: a dataset's own snapshot schedule and its own copies (copy_*, under, server) at once.
 			echo zfsmScheduleSavedJson(zfsmScheduleDialogSave(zfsmPostString('zdataset'),
 				array('every' => zfsmPostString('every'), 'time' => zfsmPostString('time'), 'days' => zfsmPostString('days'), 'keep' => zfsmPostKeep()),
-				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'copy_keeps' => zfsmPostCopyKeeps(), 'under' => zfsmPostString('under')), $zfsm_cfg), $zfsm_cfg);
+				array('every' => zfsmPostString('copy_every'), 'time' => zfsmPostString('copy_time'), 'days' => zfsmPostString('copy_days'), 'keep' => zfsmPostKeep('copy_keep'), 'copy_keeps' => zfsmPostCopyKeeps(), 'under' => zfsmPostString('under'), 'server' => zfsmPostString('server')), $zfsm_cfg), $zfsm_cfg);
 			break;
 
 		case 'schedulecopies':

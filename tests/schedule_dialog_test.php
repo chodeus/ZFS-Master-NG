@@ -35,6 +35,8 @@ putenv('ZFSM_TEST_NOTIFY_LOG='.$work.'/notify.log');
 putenv('ZFSM_TEST_NOTIFY_DETAIL_LOG='.$work.'/notify-detail.log');
 $root = $work.'/root';
 $GLOBALS['zfsm_root'] = $root;
+// No server trusted: Server offers This server only.
+$GLOBALS['zfsm_ssh_dir'] = $work.'/ssh';
 mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
 mkdir($root.'/usr/local/sbin', 0700, true);
 mkdir($root.'/var/log', 0700, true);
@@ -56,7 +58,7 @@ $copies = function($zdataset) use ($cfg) { return zfsmScheduleDialogPreview($zda
 $fields = function($every, $time = '00:00', $days = null, $keep = '', $copy_keeps = '') { return array('every' => $every, 'time' => $time, 'days' => $days ?? range(0, 6), 'keep' => $keep, 'copy_keeps' => $copy_keeps); };
 
 // The dialog's start: Replication follows Replicate Every Dataset, off at first.
-same($fields('default') + array('under' => '', 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => ''), $copies('tank/data'), 'nothing to follow');
+same($fields('default') + array('under' => '', 'server' => '', 'servers' => array(), 'inherited' => 'Replicate Every Dataset, which is off: no scheduled copies', 'skipped' => ''), $copies('tank/data'), 'nothing to follow');
 same(true, zfsmScheduleCopiesSave('backup', 'hourly', '', '', 0, $cfg)['saved'], 'Replicate Every Dataset saved');
 $m = array_values($stored())[0]['minute'];
 $minute = sprintf(':%02d', $m);
@@ -64,13 +66,13 @@ $minute = sprintf(':%02d', $m);
 $clash = sprintf('05:%02d', $m);
 $free = sprintf('05:%02d', ($m + 10) % 60);
 $every = 'Replicate Every Dataset, under backup every hour at '.$minute.'; it keeps all its snapshots';
-same($fields('default') + array('under' => 'backup', 'inherited' => $every, 'skipped' => ''), $copies('tank/data'), 'Default shows what it follows, and Copy Under starts at its');
+same($fields('default') + array('under' => 'backup', 'server' => '', 'servers' => array(), 'inherited' => $every, 'skipped' => ''), $copies('tank/data'), 'Default shows what it follows, and Copy Under starts at its');
 same(array('backup is in pool backup, where its copy would go', ''), array($copies('backup')['skipped'], $copies('tank/docker/0a1b')['skipped']),
 	'why what it follows leaves it out, past what Snapshots says');
 
 // Save: what is wrong in either part is said, by part, and nothing saved.
 $save = function($zdataset, $snapshots, $copies) use ($cfg) { return zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg); };
-$part = function($every, $time = '', $days = '', $keep = 0, $under = '', $copy_keeps = null) { return array('every' => $every, 'time' => $time, 'days' => $days, 'keep' => $keep, 'copy_keeps' => $copy_keeps, 'under' => $under); };
+$part = function($every, $time = '', $days = '', $keep = 0, $under = '', $copy_keeps = null) { return array('every' => $every, 'time' => $time, 'days' => $days, 'keep' => $keep, 'copy_keeps' => $copy_keeps, 'under' => $under, 'server' => ''); };
 $before = $stored();
 $refused = array(
 	array('tank/data', $part('days'), $part('hourly'), 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day; Replication: under Copy Under, name a dataset on this server, such as backup'),
@@ -93,7 +95,7 @@ $at = sprintf(':%02d', $own[1]['minute']);
 same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of 2 dataset(s) (tank/data and below) every Monday at '.$free.'; it keeps the newest 1 scheduled snapshots of each dataset. '
 	.'Saved: a copy of each of 2 dataset(s) (tank/data and below) under usb every hour at '.$at.'; it keeps the newest 2 of the snapshots of each dataset it copies'), $saved, 'each part said');
 same(array(1, array()), array(count($read('cron.log')), preg_grep('/^(snapshot|send|receive|create) /', $read('calls.log'))), 'one crontab rebuild, nothing taken or copied');
-same($fields('hourly', '00:00', null, '2') + array('under' => 'usb', 'inherited' => $every, 'skipped' => ''), $copies('tank/data'), 'the dialog starts at its own');
+same($fields('hourly', '00:00', null, '2') + array('under' => 'usb', 'server' => '', 'servers' => array(), 'inherited' => $every, 'skipped' => ''), $copies('tank/data'), 'the dialog starts at its own');
 same(array('default', 'usb', 'the copies of tank/data and below, under usb every hour at '.$at.'; it keeps the newest 2 of the snapshots of each dataset it copies'),
 	array($copies('tank/data/sub')['every'], $copies('tank/data/sub')['under'], $copies('tank/data/sub')['inherited']), 'the one below follows it');
 same(1, preg_match('/>Copies of tank\/data and below under usb, every hour at '.$at.', keeps the newest 2 of the snapshots of each dataset it copies </', zfsmSchedulesHtml($cfg)), 'Settings lists it');
