@@ -48,7 +48,7 @@ function zfsmReplicaShortName($zdataset, $mark) {
 	return substr($mark, strlen($zdataset) + 1);
 }
 
-// The send for a plan: progress on stderr (-v -P), raw for an encrypted dataset, incremental from the plan's base, or resumed from its token.
+// The send for a plan: progress on stderr (-v -P), raw as zfsmReplicatePlan decides, incremental from the plan's base, or resumed from its token.
 // Records over 128K go whole (-L; raw keeps them too). Keep it on: a copy holding one refuses a later stream without -L.
 function zfsmReplicateSendArgs($plan, $dry_run = false) {
 	$args = array_merge(array('send', '-P', '-v'), $dry_run ? array('-n') : array());
@@ -66,6 +66,8 @@ function zfsmReplicateReceiveArgs($plan) {
 	$args = array('receive', '-s', '-u', '-o', 'readonly=on');
 	if ($plan['holder']) $args[] = '-F';
 	array_push($args, '-o', $plan['type'] === 'filesystem' ? 'canmount=noauto' : 'volmode=none');
+	// An encrypted dataset's copy received decrypted is marked so, as a server's checker marks one (zfsmReplicaReceiveMarked).
+	if ($plan['how'] !== '' && !$plan['raw']) array_push($args, '-o', ZFSM_REPLICA_RAW.'=off');
 	$args[] = $plan['dest'];
 	return $args;
 }
@@ -88,7 +90,7 @@ function zfsmReplicaBookmarkFits($zdataset, $mark, $snapshot) {
 
 // What a run from $snapshot to $zdest would do, or why it can't: mode 'full', 'incremental' (from 'base') or 'resume' (from 'token'), with an estimated size.
 // A null $snapshot is one the run takes first, named $with['new_name']: newer than all the others, its size unknown until then.
-// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest), $with['under'] a copy under a dataset.
+// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest), $with['under'] a copy under a dataset; $with['decrypt'] true sends a new copy decrypted (zfsmReplicaPlanCrypt).
 function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	$refuse = function($why) { return array('can_proceed' => false, 'error' => $why); };
 	$target = $with['target'] ?? array('server' => '');
@@ -110,11 +112,13 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	list($missing, $why) = zfsmReplicaTargetMissing($target, $zdest);
 	if ($missing === null) return $refuse('Could not check whether '.$where.' exists'.$because($why));
 	$key = zfsmReplicaTargetMark($target, $zdest);
-	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off', 'type' => $type, 'base' => null, 'token' => null, 'holder' => false);
+	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off' && !($with['decrypt'] ?? false),
+		'how' => $encryption !== 'off' ? 'choice' : '', 'type' => $type, 'base' => null, 'token' => null, 'holder' => false);
 	list($token, $why) = $missing ? array('', '') : zfsmReplicaTargetToken($target, $zdest);
 	if ($token === null) return $refuse('Could not check whether '.$where.' holds a part-received replication'.$because($why));
 	if ($token !== '') {
 		$plan = zfsmReplicaPlanResume($plan, $target, $zdataset, $token);
+		if (!is_string($plan)) $plan = zfsmReplicaPlanCrypt($plan, $target, $zdataset);
 		return is_string($plan) ? $refuse($plan) : $plan;
 	}
 	$snap = $from === null ? array('name' => null, 'guid' => '', 'txg' => PHP_INT_MAX) : null;
@@ -132,11 +136,13 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 		$now = $missing ? ' is gone' : ' only holds the copies of datasets below this one';
 		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.$now.', though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
 	}
+	$plan = zfsmReplicaPlanCrypt($plan, $target, $zdataset);
+	if (is_string($plan)) return $refuse($plan);
 	return array_merge($plan, array('size' => $from === null || ($with['estimate'] ?? true) === false ? null : zfsmReplicateEstimate($plan)));
 }
 
-// $plan carrying on the run that stopped part-way and left $token on the copy (zfs send -t), whatever snapshot is picked now; onto
-// a holder with -F again, which zfs asks for there. Else why not.
+// $plan carrying on the run that stopped part-way and left $token on the copy (zfs send -t), whatever snapshot is picked now, raw
+// when it was (the token says rawok); onto a holder with -F again, which zfs asks for there. Else why not.
 function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 	$zdest = $plan['dest'];
 	$where = zfsmReplicaTargetWhere($target, $zdest);
@@ -155,7 +161,44 @@ function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
 		$mounted = $holder ? zfsmReplicaHolderMounted($zdest) : '';
 		if ($mounted !== '') return $where.' only holds the copies of datasets below this one, and '.$mounted;
 	}
-	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $snapshot, 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder));
+	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $snapshot, 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder,
+		'raw' => preg_match('/^\s*rawok = 1\s*$/m', (string)$info['output']) === 1, 'how' => $plan['how'] === '' ? '' : 'token'));
+}
+
+// How $plan sends an encrypted dataset, or why it can't: into a copy as it was made (zfsmReplicaPlanMade), else as picked or as the
+// stopped run went (zfsmReplicaPlanResume); decrypted once its keys are loaded (zfsmReplicaPlanKeys), and a new copy only where it is marked.
+function zfsmReplicaPlanCrypt($plan, $target, $zdataset) {
+	if ($plan['how'] === '') return $plan;
+	$into = $plan['mode'] === 'full' ? substr($plan['dest'], 0, strrpos($plan['dest'], '/')) : $plan['dest'];
+	$crypt = false;
+	if ($plan['mode'] === 'incremental' || !$plan['raw']) {
+		list($crypt, $why) = zfsmReplicaTargetCrypt($target, $into);
+		if ($crypt === null) return 'Whether '.zfsmReplicaTargetWhere($target, $into).' is encrypted could not be read'.($why !== '' ? ': '.$why : '');
+	}
+	if ($plan['mode'] === 'incremental') $plan = zfsmReplicaPlanMade($plan, $crypt);
+	if ($plan['raw']) return $plan;
+	if ($crypt === false && $plan['mode'] === 'full') return $target['server'].' runs an older ZFS Master NG, which can\'t mark a decrypted copy: update it there, or pick Raw';
+	return zfsmReplicaPlanKeys($plan, $target, $zdataset, $crypt, $into);
+}
+
+// $plan into a copy that is there, as it was made: decrypted when it is plain or marked so (ZFSM_REPLICA_RAW), else raw. As picked
+// when $crypt is false: an older checker can't say.
+function zfsmReplicaPlanMade($plan, $crypt) {
+	if ($crypt === false) return array_merge($plan, array('how' => 'old'));
+	return array_merge($plan, array('how' => 'copy', 'raw' => $crypt['encryption'] !== 'off' && !$crypt['decrypted']));
+}
+
+// Decrypted $plan once $zdataset's key is loaded, and there the key of $into, which the copy takes ($crypt: zfsmReplicaTargetCrypt's,
+// false unread); else why not.
+function zfsmReplicaPlanKeys($plan, $target, $zdataset, $crypt, $into) {
+	$key = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'keystatus');
+	if ($key === null) return 'Whether the key of '.$zdataset.' is loaded could not be read';
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	$made = array('copy' => ', and '.$where.' was made decrypted, so it takes only that', 'token' => ', and the run that stopped at '.$where.' was decrypted, so only that carries it on');
+	if ($key !== 'available') return 'The key of '.$zdataset.' is not loaded'.($made[$plan['how']] ?? ', so only Raw can send it').': unlock it first';
+	if (!is_array($crypt) || $crypt['encryption'] === 'off' || $crypt['keystatus'] === 'available') return $plan;
+	$locked = 'The key of '.zfsmReplicaTargetWhere($target, $into).' is not loaded, so ';
+	return $locked.($into === $plan['dest'] ? 'nothing decrypted can be received into it: unlock it there first' : 'a decrypted copy can\'t be received into it: unlock it there, or pick Raw');
 }
 
 // The snapshot zfs send -P -v -n -t $token sends, by the name zfs finds it under by guid; the token's toname keeps the one it had

@@ -15,6 +15,7 @@ function zfsmReplicaVerbArgs($verb, $name) {
 		case 'snapshots': return array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', $name);
 		case 'token': return array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', $name);
 		case 'holder': return zfsmReplicaHolderArgs($name);
+		case 'crypt': return zfsmReplicaCryptArgs($name);
 		case 'receive':
 		case 'receive-zstd':
 			$args = array('receive', '-s', '-u', '-o', 'readonly=on');
@@ -25,15 +26,27 @@ function zfsmReplicaVerbArgs($verb, $name) {
 	return null;
 }
 
-// '' when a stream's first record (OpenZFS include/sys/zfs_ioctl.h, dmu_replay_record) may go to zfs receive, else why not.
+// A stream's first record (OpenZFS include/sys/zfs_ioctl.h, dmu_replay_record) as DRR_BEGIN's fields; null when it is no record.
+function zfsmReplicaStreamBegin($record) {
+	return strlen($record) === 312 ? unpack('Vrecord/Vpayload/Pmagic/Pversion/Pcreated/Vobjset/Vflags', $record) : null;
+}
+
+// '' when a stream's first record may go to zfs receive, else why not.
 // One dataset's stream only: never a clone of another's snapshot, nor a -R or -p package, which this plugin's sender never makes.
 function zfsmReplicaStreamCheck($record) {
-	if (strlen($record) !== 312) return 'Not a send stream';
-	$begin = unpack('Vrecord/Vpayload/Pmagic/Pversion/Pcreated/Vobjset/Vflags', $record);
-	if ($begin['record'] !== 0 || $begin['magic'] !== 0x2F5BACBAC) return 'Not a send stream';
+	$begin = zfsmReplicaStreamBegin($record);
+	if ($begin === null || $begin['record'] !== 0 || $begin['magic'] !== 0x2F5BACBAC) return 'Not a send stream';
 	if (($begin['version'] & 3) !== 1) return 'A stream of several datasets (zfs send -R or -p) is not accepted';
 	if (($begin['flags'] & 1) !== 0) return 'A clone\'s stream is not accepted';
 	return in_array($begin['objset'], array(2, 3), true) ? '' : 'Only a filesystem or volume stream is accepted';
+}
+
+// $args for the receive of a checked stream: one without the raw feature (featureflags bit 24, above the 2 header bits) marks the copy
+// ZFSM_REPLICA_RAW=off. The stream decides, never the request; an unencrypted dataset's copy is marked too.
+function zfsmReplicaReceiveMarked($args, $record) {
+	if ((zfsmReplicaStreamBegin($record)['version'] & (1 << 26)) !== 0) return $args;
+	array_splice($args, -1, 0, array('-o', ZFSM_REPLICA_RAW.'=off'));
+	return $args;
 }
 
 // The Accept Replicas Into setting: a dataset inside a pool, never a pool's top dataset (the Settings page asks validateaccept).
@@ -64,7 +77,7 @@ function zfsmReplicaSenderName($sender) {
 // What a request may run: array('verb', 'name', 'args'), or array('error' => why it is refused).
 function zfsmReplicaServeCheck($request, $area) {
 	if ($area === null) return array('error' => 'This server does not accept replicas from this key');
-	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|holder|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
+	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|holder|crypt|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
 		return array('error' => 'Not a replication request');
 	}
 	$verb = $match[1];
@@ -72,8 +85,8 @@ function zfsmReplicaServeCheck($request, $area) {
 	if ($verb === 'hello') return $hex === '' ? array('verb' => 'hello', 'name' => $area, 'args' => null) : array('error' => 'Not a replication request');
 	$name = strlen($hex) % 2 === 0 ? hex2bin($hex) : false;
 	if (!is_string($name) || !zfsmValidDatasetName($name)) return array('error' => 'Not a dataset name');
-	// Only exists may ask about the area itself, as the parent of a first copy.
-	if (!zfsmStartsWith($name, $area.'/') && !($verb === 'exists' && $name === $area)) return array('error' => $name.' is not inside '.$area);
+	// Only exists and crypt may ask about the area itself, as the parent of a first copy.
+	if (!zfsmStartsWith($name, $area.'/') && !(in_array($verb, array('exists', 'crypt'), true) && $name === $area)) return array('error' => $name.' is not inside '.$area);
 	return array('verb' => $verb, 'name' => $name, 'args' => zfsmReplicaVerbArgs($verb, $name));
 }
 
@@ -164,12 +177,12 @@ function zfsmReplicaUnzip($io) {
 	return is_resource($process) ? array($process, $pipes[1]) : 'Unable to start zstd';
 }
 
-// exists, snapshots, token or holder. A sender asks exists of the area itself, as no version before zstd does (zfsmReplicaTargetCan):
-// the answer adds whether this one reads zstd, and that it makes holders.
+// exists, snapshots, token, holder or crypt. A sender asks exists of the area itself, as no version before zstd does (zfsmReplicaTargetCan):
+// the answer adds whether this one reads zstd, and that it makes holders and reads encryption.
 function zfsmReplicaServeAsk($checked, $area, $io) {
 	$code = zfsmReplicaRun($checked['args'], $io);
 	if ($code !== 0 || $checked['verb'] !== 'exists' || $checked['name'] !== $area) return $code;
-	fwrite($io[1], (zfsmReplicaUnzipCommand() !== null ? "zstd\n" : '')."holder\n");
+	fwrite($io[1], (zfsmReplicaUnzipCommand() !== null ? "zstd\n" : '')."holder\ncrypt\n");
 	return $code;
 }
 
@@ -223,7 +236,7 @@ function zfsmServeReplica($request, $area, $io = null, $keep = 0) {
 		$record = zfsmReplicaFirstRecord($io[0]);
 		$why = zfsmReplicaStreamCheck($record);
 		if ($why !== '') return zfsmReplicaRefuse($why, $request, $from, $io);
-		$code = zfsmReplicaRun($checked['args'], $io, $record);
+		$code = zfsmReplicaRun(zfsmReplicaReceiveMarked($checked['args'], $record), $io, $record);
 	} finally {
 		zfsmReplicaUnzipStop($unzip);
 		zfsmJobUnlock($slot);

@@ -43,6 +43,10 @@ function zfsmReplicaHolderArgs($zdest) {
 	return array('create', '-o', 'canmount=off', '-o', 'readonly=on', '-o', ZFSM_REPLICA_HOLDER.'=on', $zdest);
 }
 
+// Set off by a checker at each receive that isn't raw (zfsmReplicaReceiveMarked), here only on an encrypted dataset's decrypted copy
+// (zfsmReplicateReceiveArgs): that copy takes only decrypted streams. A raw copy below one inherits it: only source local counts.
+define('ZFSM_REPLICA_RAW', 'zfs.master:raw');
+
 // Makes $zdest on $target an empty dataset, unmounted and read-only, that holds copies of datasets below the one whose copy it stands
 // for (a trusted server's checker makes it: zfsmReplicaTargetHolders); '' or why not.
 function zfsmReplicaHolderMake($target, $zdest) {
@@ -123,24 +127,53 @@ function zfsmReplicaTargetSnapshots($target, $zdest) {
 	return $answer['code'] === 0 ? array(zfsmReplicaMarksIn($zdest, $answer['output']), '') : array(null, $answer['error']);
 }
 
+// zfs's arguments to read $zdest's encryption, keystatus and ZFSM_REPLICA_RAW, here or by a trusted server's checker (zfsmReplicaVerbArgs).
+function zfsmReplicaCryptArgs($zdest) {
+	return array('get', '-H', '-p', '-o', 'property,value,source', 'encryption,keystatus,'.ZFSM_REPLICA_RAW, $zdest);
+}
+
+// $zdest's encryption and keystatus (- when it is off), and 'decrypted' when it carries its own ZFSM_REPLICA_RAW=off: array(them, ''),
+// array(null, why) when unread, or array(false, '') on a server whose older checker can't read them.
+function zfsmReplicaTargetCrypt($target, $zdest) {
+	$here = $target['server'] === '';
+	if (!$here) {
+		$can = zfsmReplicaTargetCan($target);
+		if (is_string($can)) return array(null, $can);
+		if (!in_array('crypt', $can, true)) return array(false, '');
+	}
+	$answer = $here ? runProcess('zfs', zfsmReplicaCryptArgs($zdest)) : zfsmReplicaAsk($target, zfsmReplicaRequest('crypt', $zdest));
+	if (($answer['code'] ?? 1) !== 0) return array(null, $here ? zfsmCommandError($answer, 'zfs get failed') : $answer['error']);
+	$read = array();
+	foreach (zfsmLines($answer['output']) as $line) {
+		$field = explode("\t", $line);
+		if (count($field) === 3) $read[$field[0]] = $field;
+	}
+	if (!isset($read['encryption'], $read['keystatus'], $read[ZFSM_REPLICA_RAW])) return array(null, 'the answer left part out');
+	$mark = $read[ZFSM_REPLICA_RAW];
+	return array(array('encryption' => $read['encryption'][1], 'keystatus' => $read['keystatus'][1], 'decrypted' => $mark[1] === 'off' && $mark[2] === 'local'), '');
+}
+
 // zstd's options for a stream to a server: its default level, on every core.
 define('ZFSM_REPLICA_ZSTD', array('-q', '-c', '-3', '-T0'));
 
-// What a trusted server's checker does besides receiving: the lines of its answer to exists on its area (zfsmReplicaServeAsk), or
-// why it could not be asked.
+// What a trusted server's checker does besides receiving: the lines of its answer to exists on its area (zfsmReplicaServeAsk), kept
+// on $target once zfsmReplicaTargetZstd has it, or why it could not be asked.
 function zfsmReplicaTargetCan($target) {
+	if (isset($target['can'])) return $target['can'];
 	$answer = zfsmReplicaAsk($target, zfsmReplicaRequest('exists', $target['area']));
 	return $answer['code'] === 0 ? zfsmLines($answer['output']) : $answer['error'];
 }
 
-// zstd here when the stream to $target goes through it: that server's checker reads zstd, as one with zstd and prlimit does
-// (zfsmServeReplica). Else null, a failed ask included: the stream goes as it is.
+// $target with 'zstd', zstd here when the stream to it goes through it: that server's checker reads zstd, as one with zstd and prlimit
+// does (zfsmServeReplica). Else null, a failed ask included: the stream goes as it is, and only an answer is kept ('can').
 function zfsmReplicaTargetZstd($target) {
-	if (($target['server'] ?? '') === '' || isset($target['error'])) return null;
+	$target['zstd'] = null;
+	if (($target['server'] ?? '') === '' || isset($target['error'])) return $target;
 	$zstd = zfsmToolPath('zstd');
-	if ($zstd === null) return null;
+	if ($zstd === null) return $target;
 	$can = zfsmReplicaTargetCan($target);
-	return is_array($can) && in_array('zstd', $can, true) ? $zstd : null;
+	if (!is_array($can)) return $target;
+	return array_merge($target, array('can' => $can, 'zstd' => in_array('zstd', $can, true) ? $zstd : null));
 }
 
 // '' when $target, opened, makes holders for copies under a dataset (here, or a server's checker since this version), else why not.
