@@ -21,20 +21,28 @@ function zfsmReplicateHtml(options, zdataset) {
 		+zfsmHint('zfsm-replicate-send-hint', 'Decrypted needs this dataset\'s key loaded.', 'encrypted-datasets')+'</p>';
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
+	html += '<p id="zfsm-replicate-remake-row" style="margin:.5em 0;display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again (sends everything)</label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes.')
 		+'<p id="zfsm-replicate-repeat-help" style="margin:.5em 0;display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it. On another server, that server\'s Keep Replicas decides what the copy keeps. '+zfsmGuideLink('replicate-repeats')+'</p></div>';
 }
 
-// Repeat's rows, Copy Keeps only for This server, and its help for any repeat. A repeat takes its own snapshot, so Snapshot shows Take one now.
+// Repeat's rows, Copy Keeps only for This server, and its help and If the copy is gone for any repeat. A repeat takes its own snapshot,
+// so Snapshot shows Take one now.
 function zfsmReplicateRepeatSync(root) {
 	const server = root.querySelector('#zfsm-replicate-server');
 	const every = zfsmRepeatSync(root, 'zfsm-replicate', !server || server.value === '');
 	root.querySelector('#zfsm-replicate-repeat-help').style.display = every !== '' ? '' : 'none';
+	root.querySelector('#zfsm-replicate-remake-row').style.display = every !== '' ? '' : 'none';
 	const snapshot = root.querySelector('#zfsm-replicate-snapshot');
 	if (every !== '') snapshot.value = '';
 	snapshot.disabled = every !== '';
 	return every;
+}
+
+// If the copy is gone, sent only ticked on a repeat (zfsmPostYes).
+function zfsmReplicateRemake(root) {
+	return root.querySelector('#zfsm-replicate-remake').checked && root.querySelector('#zfsm-replicate-remake-row').style.display !== 'none' ? {remake: '1'} : {};
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy

@@ -125,7 +125,7 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', s
 const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
   copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['a"<b>'], servers_error: '<i>unread</i>', inherited: 'y', skipped: ''}});
 const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-assert.ok(words(schedules) < 250 && words(encrypted) < 150, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
+assert.ok(words(schedules) < 250 && words(encrypted) < 160, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
 // A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
 const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
 const guides = (schedules + encrypted).match(/<a [^>]*>Guide<\/a>/g);
@@ -161,5 +161,7 @@ assert.match(schedules, /^<div style="text-align:left"><div role="group" aria-la
   'Snapshots and Replication each have their own labelled part');
 assert.match(replicate, /<p id="zfsm-replicate-repeat-help" style="[^"]*display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it\. On another server, that server's Keep Replicas decides what the copy keeps\. <a [^>]*#replicate-repeats"[^>]*>Guide<\/a><\/p><\/div>$/,
   'Replicate says what a repeat does in one line, hidden until one is picked');
+assert.match(replicate, /id="zfsm-replicate-copy-keeps-row"[\s\S]*<\/p><p id="zfsm-replicate-remake-row" style="[^"]*display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again \(sends everything\)<\/label><\/p><div id="zfsm-replicate-plan"/,
+  'If the copy is gone, after Copy Keeps and before the plan, unticked and hidden until a repeat is picked, named by its label');
 
 console.log('destroy and rollback dialog tests passed');

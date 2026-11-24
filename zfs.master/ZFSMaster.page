@@ -788,7 +788,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		// Without trusted servers there is no Server select: the copy stays on this server. Send shows only for an encrypted dataset.
 		const send = (popup) => { const select = popup.querySelector('#zfsm-replicate-send'); return select ? {decrypt: select.value} : {}; };
 		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value,
-			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, send(popup), zfsmRepeatChoices(popup, 'zfsm-replicate'));
+			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, send(popup), zfsmRepeatChoices(popup, 'zfsm-replicate'), zfsmReplicateRemake(popup));
 		zfsmFormDialog({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options, zdataset),

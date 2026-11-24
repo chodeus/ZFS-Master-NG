@@ -134,7 +134,7 @@ function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
 	if (($missing || $plan['holder']) && ($with['scheduled'] ?? false)) {
 		$prefix = $zdataset.'#'.zfsmReplicaBookmarkPrefix($key);
 		$now = $missing ? ' is gone' : ' only holds the copies of datasets below this one';
-		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.$now.', though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
+		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.$now.', though this dataset made a copy there before; this schedule sends only changes, so replicate it once by hand to make a new copy');
 	}
 	$plan = zfsmReplicaPlanCrypt($plan, $target, $zdataset);
 	if (is_string($plan)) return $refuse($plan);

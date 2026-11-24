@@ -19,12 +19,19 @@ function zfsmReplicaTargetName($target, $name) {
 // line, inside one that exists; on a trusted server one name inside its area, or with $nested (copies under a dataset) a path there.
 function zfsmReplicaTargetDest($target, $zdataset, $name, $nested = false) {
 	if ($target['server'] !== '') return zfsmReplicaTargetDestServer($target, $zdataset, $name, $nested);
-	if (!zfsmValidDatasetName($name) || strpos($name, '/') === false) return array(null, 'The copy needs a dataset name inside a pool, such as backup/'.basename($zdataset));
-	if ($name === $zdataset || strncmp($name, $zdataset.'/', strlen($zdataset) + 1) === 0 || strncmp($zdataset, $name.'/', strlen($name) + 1) === 0) {
-		return array(null, 'The copy can\'t be the dataset itself, go inside it, or replace one of its parents');
-	}
+	$wrong = zfsmReplicaTargetNameWrong($zdataset, $name);
+	if ($wrong !== '') return array(null, $wrong);
 	$parent = substr($name, 0, strrpos($name, '/'));
 	return zfsmDatasetExists($parent, 'filesystem') ? array($name, '') : array(null, 'The copy goes inside '.$parent.', which doesn\'t exist');
+}
+
+// Why $name can't be $zdataset's copy here, by the name alone; '' when it can.
+function zfsmReplicaTargetNameWrong($zdataset, $name) {
+	if (!zfsmValidDatasetName($name) || strpos($name, '/') === false) return 'The copy needs a dataset name inside a pool, such as backup/'.basename($zdataset);
+	if ($name === $zdataset || strncmp($name, $zdataset.'/', strlen($zdataset) + 1) === 0 || strncmp($zdataset, $name.'/', strlen($name) + 1) === 0) {
+		return 'The copy can\'t be the dataset itself, go inside it, or replace one of its parents';
+	}
+	return '';
 }
 
 // zfsmReplicaTargetDest on a trusted server.

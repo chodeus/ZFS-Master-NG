@@ -134,11 +134,26 @@ function zfsmReplicaMark($zdataset, $plan) {
 	return '';
 }
 
+// For a schedule that makes its copy again ('remake', not 'under', whose run made its own): each dataset missing between the pool and
+// $zdest made a holder (zfsmReplicaHolderMake); array('' or why not, those it made). A name the plan refuses, as a server's one name is, makes none.
+function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
+	$made = array();
+	if (!($schedule['remake'] ?? false) || ($schedule['under'] ?? false) || zfsmReplicaTargetNameWrong($zdataset, $zdest) !== '') return array('', $made);
+	foreach (zfsmScheduleCopiesLevels(strtok($zdest, '/').'/', $zdest) as $level) {
+		if (zfsmDatasetExists($level, 'filesystem')) continue;
+		$why = zfsmReplicaHolderMake($target, $level);
+		if ($why === '') $made[] = $level;
+		// Another run to a copy below it may have made it since.
+		elseif (!zfsmDatasetExists($level, 'filesystem')) return array($why, $made);
+	}
+	return array('', $made);
+}
+
 // The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
 // $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
-// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full,
+// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full (zfsmReplicateLevels),
 // 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
 // them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt).
@@ -179,10 +194,16 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		$target = zfsmReplicaTargetOpen($server);
 		$target = zfsmReplicaTargetZstd($target);
 		$first = array('', 'normal');
+		list($why, $made) = zfsmReplicateLevels($schedule, $target, $zdataset, $zdest);
+		// Its refusal, or the notification it ends with, also names the datasets it made, which stay.
+		$also = function($text) use ($made) {
+			return $made === array() ? $text : rtrim($text, '.').'. Made to hold the copy: '.implode(', ', $made).(substr($text, -1) === '.' ? '.' : '');
+		};
+		if ($why !== '') return $refused($also($why), $first);
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
 				'under' => $schedule['under'] ?? false, 'decrypt' => $decrypt));
-			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
+			if (!$plan['can_proceed']) return $refused($also($plan['error']), $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
@@ -192,7 +213,9 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 				continue;
 			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $schedule['copy_keeps'] ?? null);
-			$notify($title, ...zfsmReplicateTold($first, $text, $type));
+			list($text, $type) = zfsmReplicateTold($first, $also($text), $type);
+			// One that made datasets is news, told even while its schedule works (zfsmScheduleNotifier).
+			$notify($title, $text, $type, $made !== array());
 			return $code;
 		}
 	} finally {

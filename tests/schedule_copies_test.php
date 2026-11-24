@@ -235,7 +235,7 @@ $refill = function($zdataset, $scheduled) {
 	$plan = zfsmReplicatePlan($zdataset, 'a', 'backup/'.$zdataset, array('estimate' => false, 'scheduled' => $scheduled));
 	return $plan['can_proceed'] ? $plan['holder'] : $plan['error'];
 };
-same(array('backup/tank/rf only holds the copies of datasets below this one, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy', true, true),
+same(array('backup/tank/rf only holds the copies of datasets below this one, though this dataset made a copy there before; this schedule sends only changes, so replicate it once by hand to make a new copy', true, true),
 	array($refill('tank/rf', true), $refill('tank/rf', false), $refill('tank/rf2', true)), 'a scheduled one where it made a copy is refused; by hand, or where it made none, it goes');
 // No holder is made for a dataset renamed or destroyed since a run listed it, nor where whether it is still there could not be read.
 $placed = array();
