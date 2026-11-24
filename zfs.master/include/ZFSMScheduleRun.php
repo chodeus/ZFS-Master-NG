@@ -22,13 +22,14 @@ function zfsmScheduleFailures($id) {
 	return zfsmScheduleState($id)['failures'];
 }
 
-// A scheduled run notifies of its first problem (a warning; the next one does if Unraid didn't take it) and of the run that works
-// again; each problem is logged with its count. A count that can't be kept notifies of every problem, rather than of none.
+// A scheduled run notifies of its first problem (a warning; the next one does if Unraid didn't take it), of the run that works
+// again, and of one with $news; each problem is logged with its count. A count that can't be kept notifies of every problem, rather than of none.
 function zfsmScheduleNotifier($id) {
-	return function($title, $text, $type) use ($id) {
+	return function($title, $text, $type, $news = false) use ($id) {
 		$state = zfsmScheduleState($id);
 		$file = zfsmScheduleStateFile($id);
 		if ($type === 'normal') {
+			if ($state['failures'] === 0 && $news) zfsnotify($title, $text, '', 'normal');
 			if ($state['failures'] === 0) return;
 			@unlink($file);
 			zfsnotify($title, $text.' It works again after '.$state['failures'].' run(s) with a problem.', '', 'normal');

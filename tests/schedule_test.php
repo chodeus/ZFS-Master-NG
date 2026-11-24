@@ -542,6 +542,14 @@ same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on 
 	'sends the copy into it: '.implode(' | ', $read('notify-detail.log')));
 same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. It works again after 1 run\(s\) with a problem\.$/D', $read('notify-detail.log')[0] ?? ''),
 	'and names no dataset it made: '.implode(' | ', $read('notify-detail.log')));
+// A schedule that works tells of a run that made datasets, and stays quiet for one that made none (zfsmScheduleNotifier).
+$gone();
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 12900), 'a run of a schedule that works, whose copy and two datasets above it are gone');
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\.$/D',
+	implode("\n", $read('notify-detail.log'))), 'says it sent it in full and which datasets it made: '.implode(' | ', $read('notify-detail.log')));
+$reset();
+same(array(0, array()), array(zfsmScheduleRun($job['id'], $cfg, time() + 13200), $read('notify-detail.log')), 'and nothing of the next run, which made none');
 // A run the plan refuses after the datasets were made says so, and leaves them for the next.
 $gone();
 $taken = count($names('tank/re', 'snapshot'));

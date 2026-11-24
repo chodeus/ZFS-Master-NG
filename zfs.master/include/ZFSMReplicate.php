@@ -213,7 +213,9 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 				continue;
 			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $schedule['copy_keeps'] ?? null);
-			$notify($title, ...zfsmReplicateTold($first, $also($text), $type));
+			list($text, $type) = zfsmReplicateTold($first, $also($text), $type);
+			// One that made datasets is news, told even while its schedule works (zfsmScheduleNotifier).
+			$notify($title, $text, $type, $made !== array());
 			return $code;
 		}
 	} finally {
