@@ -221,14 +221,14 @@ function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap, $replace 
 	if ($base !== null && $base['guid'] === $snap['guid']) return $where.' already holds '.$snap['name'];
 	$newer = $base !== null && $base['txg'] > $snap['txg'] ? $where.' already holds '.$base['name'].', which is newer than '.$snap['name'] : '';
 	$unmatched = $base === null ? $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it' : $newer;
-	if ($unmatched !== '' && $replace) return $target['server'] === '' ? zfsmReplicaPlanReplace($plan, $unmatched, $newer) : $unmatched.'; only a copy on this server is replaced';
+	if ($unmatched !== '' && $replace) return $target['server'] === '' ? zfsmReplicaPlanReplace($plan, $zdataset, $unmatched, $newer) : $unmatched.'; only a copy on this server is replaced';
 	if ($unmatched !== '') return $unmatched;
 	return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
 }
 
 // $plan to send in full once the run renames aside the copy that no longer matches (zfsmReplicateAside), with $newer when the copy is
 // only ahead of the snapshot; else $unmatched and why it stays.
-function zfsmReplicaPlanReplace($plan, $unmatched, $newer) {
+function zfsmReplicaPlanReplace($plan, $zdataset, $unmatched, $newer) {
 	$readonly = getDatasetProperty('', $plan['dest'], 'readonly');
 	if ($readonly === null) return $unmatched.'; whether it is read-only could not be read';
 	if ($readonly !== 'on') return $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is';
@@ -238,6 +238,10 @@ function zfsmReplicaPlanReplace($plan, $unmatched, $newer) {
 	$below = array_values(array_diff(array_keys($listed), array($plan['dest'])));
 	if ($below !== array()) return $unmatched.'; '.$below[0].(count($below) > 1 ? ' and '.(count($below) - 1).' more are' : ' is').' below it, so it is not replaced: only a copy with nothing below it is';
 	if (($listed[$plan['dest']] ?? '') === 'yes') return $unmatched.'; '.$plan['dest'].' is mounted, so it is not replaced: unmount it first';
+	$read = zfsmScheduleRead();
+	if ($read === null) return $unmatched.'; it is not replaced, as '.zfsmScheduleUnreadable();
+	$by = zfsmScheduleCopyOf($read['valid'], $zdataset, $plan['dest'], '');
+	if ($by !== null) return $unmatched.'; it has the name a schedule gives the copy of '.$by[1].', so it is not replaced: give this copy another name';
 	return array_merge($plan, array('replace' => $plan['dest'].'_replaced_'.date('Ymd_Hi'), 'newer' => $newer));
 }
 

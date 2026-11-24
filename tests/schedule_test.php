@@ -177,12 +177,50 @@ $reset();
 $every = '0,1,2,3,4,5,6';
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $cfg)['failed'], 'a second schedule for one copy');
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $days)['failed'], 'which says so even when their snapshot names would clash too');
-same('the copy of tank/data has that name too ('.zfsmScheduleWhen($jobs[0]).'); give this copy another name', zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other') + $jobs[0]),
+same('the copy of tank/data gets that name too ('.zfsmScheduleWhen($jobs[0]).'); give this copy another name', zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other') + $jobs[0]),
 	'nor one of another dataset into that copy');
 same(array('', '', ''), array(zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => 'backup/') + $jobs[0]), array('dest' => 'backup/') + $jobs[0]),
 	zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => '') + $jobs[0]), array('dest' => '') + $jobs[0]),
 	zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other', 'server' => 'nas') + $jobs[0])),
 	'while two datasets\' copies under one dataset, their snapshots alone, or copies of one name on two servers are not');
+// A repeat's copy with the name a copy under a dataset gets: refused whichever is saved second, unless ZFS says that dataset is gone.
+$under = array('id' => 'under', 'dataset' => '', 'dest' => 'backup/', 'minute' => ($jobs[0]['minute'] + 1) % 60) + $jobs[0];
+$into = array('id' => 'into', 'dataset' => 'tank/other', 'dest' => 'backup/tank/data') + $jobs[0];
+$gone = array('dest' => 'backup/tank/gone') + $into;
+putenv('ZFSM_TEST_LIST_FAIL=tank/gone');
+$unread = zfsmScheduleSame(array($under), $gone);
+putenv('ZFSM_TEST_LIST_FAIL');
+same(array('the copy of tank/data gets that name too (Replicate Every Dataset, '.zfsmScheduleWhen($under).'); give this copy another name',
+	'the copy of tank/other ('.zfsmScheduleWhen($into).') has the name this would give the copy of tank/data; remove that schedule in Settings first, or pick another Copy Under',
+	'the copy of tank/gone gets that name too (Replicate Every Dataset, '.zfsmScheduleWhen($under).'); give this copy another name'),
+	array(zfsmScheduleSame(array($under), $into), zfsmScheduleSame(array($into), $under), $unread), 'a repeat\'s copy where a copy under a dataset goes, or may go');
+$near = array('id' => 'near', 'dataset' => 'tank', 'dest' => 'elsewhere/', 'minute' => ($jobs[0]['minute'] + 2) % 60) + $under;
+same(array_fill(0, 10, ''), array(zfsmScheduleSame(array($under), array('dataset' => 'tank/data') + $into), zfsmScheduleSame(array(array('dataset' => 'tank/data') + $into), $under),
+	zfsmScheduleSame(array($under), $gone), zfsmScheduleSame(array($under, $near), $into), zfsmScheduleSame(array($into, $near), $under),
+	zfsmScheduleSame(array($under), array('dest' => 'backup/backup/data') + $into), zfsmScheduleSame(array($under), array('server' => 'nas') + $into),
+	zfsmScheduleSame(array(array('server' => 'nas') + $into), $under), zfsmScheduleSame(array(array('every' => 'none') + $under), $into), zfsmScheduleSame(array(array('every' => 'none') + $into), $under)),
+	'but not its own dataset\'s, a gone one\'s, one a nearer schedule copies elsewhere, one in the pool it copies into, on another server, or never run');
+// Replace reads the saved schedules too: the copy this one makes of tank/data is not replaced by tank/other's.
+file_put_contents($work.'/pool/datasets', "tank/other\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "tank/other@o\t31\t30\n", FILE_APPEND);
+$held = $names('backup/data', 'snapshot');
+$unmatched = end($held).' is not on this dataset, so backup/data can\'t be updated without destroying it';
+$replacing = function() { $plan = zfsmReplicatePlan('tank/other', 'o', 'backup/data', array('replace' => true)); return $plan['can_proceed'] ? $plan['replace'] : $plan['error']; };
+$saved = file_get_contents(zfsmScheduleFile());
+$by = $replacing();
+file_put_contents(zfsmScheduleFile(), '[');
+$unreadable = $replacing();
+file_put_contents(zfsmScheduleFile(), '[]');
+$free = $replacing();
+file_put_contents(zfsmScheduleFile(), $saved);
+$drop('tank/other');
+file_put_contents($work.'/pool/marks', "backup/data@stray\t99\t999\n", FILE_APPEND);
+$plan = zfsmReplicatePlan('tank/data', 'b', 'backup/data', array('replace' => true));
+$own = $plan['can_proceed'] ? $plan['replace'] : $plan['error'];
+$drop('backup/data@stray');
+same(array($unmatched.'; it has the name a schedule gives the copy of tank/data, so it is not replaced: give this copy another name', $unmatched.'; it is not replaced, as '.zfsmScheduleUnreadable(), 1, 1),
+	array($by, $unreadable, preg_match('/^backup\/data_replaced_\d{8}_\d{4}$/D', $free), preg_match('/^backup\/data_replaced_\d{8}_\d{4}$/D', $own)),
+	'Replace leaves a scheduled copy of another dataset, or any when the schedules can\'t be read, not that dataset\'s own: '.$free.', '.$own);
 $no_time = 'set the time it starts at';
 $no_day = 'tick at least one day';
 $no_repeat = 'Repeat has no such choice now; reload the page and pick again';

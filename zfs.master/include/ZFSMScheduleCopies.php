@@ -27,6 +27,15 @@ function zfsmScheduleCopiesDest($job, $zdataset) {
 	return $job['dest'].$zdataset;
 }
 
+// The dataset whose copy $job, beside $jobs (zfsmScheduleFollowed), may put at $zdest (Leave Out is not asked), unless ZFS says it doesn't
+// exist; null when none.
+function zfsmScheduleCopiesOf($job, $jobs, $zdest) {
+	if (strpos($zdest, $job['dest']) !== 0) return null;
+	$zdataset = substr($zdest, strlen($job['dest']));
+	if (zfsmScheduleCopiesInPool($job, $zdataset) || (zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder')['id'] ?? null) !== $job['id']) return null;
+	return zfsmDatasetMissing($zdataset) === true ? null : $zdataset;
+}
+
 // Whether $other (null: none) puts its copies where $job does: under the same Copy Under, on the same server.
 function zfsmScheduleCopiesSame($job, $other) {
 	return ($other['dest'] ?? null) === $job['dest'] && ($other['server'] ?? null) === $job['server'];

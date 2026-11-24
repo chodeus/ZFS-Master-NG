@@ -288,12 +288,12 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		awk -F'\t' -v n="$last_arg" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new" && mv "$R/props.new" "$R/props"
 		exit 0 ;;
 	rename)
-		# Moves it and all below it, with snapshots, bookmarks, properties and holds. ZFSM_TEST_RENAME_FAIL names one busy, ZFSM_TEST_RENAME_UNMOUNTED
+		# Moves it and all below it, with snapshots, bookmarks, properties and holds. ZFSM_TEST_RENAME_FAIL names one busy (a pattern), ZFSM_TEST_RENAME_UNMOUNTED
 		# one that moves then fails to mount; ZFSM_TEST_LOCK_PROBE is a lock file whose state at each rename (held or free) goes to probe.log.
 		[ -z "${ZFSM_TEST_LOCK_PROBE:-}" ] || "$ZFSM_TEST_PHP" -r 'echo flock(fopen(getenv("ZFSM_TEST_LOCK_PROBE"), "c"), LOCK_EX | LOCK_NB) ? "free\n" : "held\n";' >> "$R/probe.log"
 		eval "from=\${$(($# - 1))}"
 		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
-		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
+		[ -n "${ZFSM_TEST_RENAME_FAIL:-}" ] && case "$from" in $ZFSM_TEST_RENAME_FAIL) printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1 ;; esac
 		[ "$from" = "$last_arg" ] && exit 0
 		exists "$last_arg" && { printf "cannot rename '%s': dataset already exists\n" "$from" >&2; exit 1; }
 		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }

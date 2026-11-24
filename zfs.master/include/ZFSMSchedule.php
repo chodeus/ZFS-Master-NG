@@ -341,14 +341,45 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 function zfsmScheduleSame($jobs, $job) {
 	foreach ($jobs as $other) {
 		if ($other['dataset'] === $job['dataset'] && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) return 'this copy already has a schedule ('.zfsmScheduleWhen($other).'); remove it in Settings first';
-		if (!zfsmScheduleSnapshotsOnly($job) && !zfsmScheduleCopiesUnder($job) && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) {
-			return 'the copy of '.$other['dataset'].' has that name too ('.zfsmScheduleWhen($other).'); give this copy another name';
-		}
 	}
+	$named = zfsmScheduleSameName($jobs, $job);
+	if ($named !== '') return $named;
 	foreach ($jobs as $other) {
 		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';
 	}
 	return '';
+}
+
+// Why $job can't be beside $jobs by its copies' names: another dataset's copy (a repeat's, or one copied under a dataset) gets its copy's
+// name, or, copying under a dataset, it would give one a repeat's name. '' when none.
+function zfsmScheduleSameName($jobs, $job) {
+	if (zfsmScheduleSnapshotsOnly($job)) return '';
+	if (!zfsmScheduleCopiesUnder($job)) {
+		$by = zfsmScheduleCopyOf($jobs, $job['dataset'], $job['dest'], $job['server']);
+		if ($by === null) return '';
+		$what = zfsmScheduleCopiesUnder($by[0]) ? zfsmScheduleWhat($by[0]).', ' : '';
+		return 'the copy of '.$by[1].' gets that name too ('.$what.zfsmScheduleWhen($by[0]).'); give this copy another name';
+	}
+	$all = array_diff_key($jobs, array($job['id'] => 0)) + array($job['id'] => $job);
+	foreach ($jobs as $other) {
+		if (zfsmScheduleCovers($other) || !zfsmScheduleRepeats($other['every']) || $other['server'] !== $job['server']) continue;
+		$of = zfsmScheduleCopiesOf($job, $all, $other['dest']);
+		if ($of !== null && $of !== $other['dataset']) {
+			return 'the copy of '.$other['dataset'].' ('.zfsmScheduleWhen($other).') has the name this would give the copy of '.$of.'; remove that schedule in Settings first, or pick another Copy Under';
+		}
+	}
+	return '';
+}
+
+// The schedule in $jobs that gives the copy of another dataset than $zdataset the name $zdest on $server (zfsmScheduleCopiesOf):
+// array(it, that dataset), else null.
+function zfsmScheduleCopyOf($jobs, $zdataset, $zdest, $server) {
+	foreach ($jobs as $other) {
+		if ($other['server'] !== $server || !zfsmScheduleRepeats($other['every'])) continue;
+		$of = zfsmScheduleCopiesUnder($other) ? zfsmScheduleCopiesOf($other, $jobs, $zdest) : ($other['dest'] === $zdest ? $other['dataset'] : null);
+		if ($of !== null && $of !== $zdataset) return array($other, $of);
+	}
+	return null;
 }
 
 // As zfsmScheduleChange answers: removed once 'saved', even if the crontab could not be rebuilt; not when the schedule its datasets then
