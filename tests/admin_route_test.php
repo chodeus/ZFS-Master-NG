@@ -29,6 +29,8 @@ $routes = array(
 	'previewsendwrong' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'decrypt' => 'yes'),
 	'replicatesendwrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'decrypt' => ' 1'),
 	'schedulesendwrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => '2'),
+	'scheduleremake' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'remake' => '1'),
+	'scheduletickswrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => 'yes', 'remake' => 'on'),
 	'schedulepicked' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'every' => 'days', 'time' => '03:00', 'days' => '0,1,2,3,4,5,6'),
 	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'days', 'time' => '13:00', 'days' => '2'),
 	'schedulekeep' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'days', 'time' => '03:00', 'days' => '0,1,2,3,4,5,6', 'keep' => 'x5'),
@@ -57,7 +59,7 @@ $routes = array(
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulecopiesleaveoutwrong', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
+$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'scheduleremake', 'scheduletickswrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulecopiesleaveoutwrong', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -81,11 +83,13 @@ if (in_array($route, $replication, true)) {
 	$crypt = array('previewcryptopen' => "tank/data\tencryption\taes-256-gcm\n", 'previewdecrypt' => "tank/data\tencryption\taes-256-gcm\n", 'replicatedecrypt' => "tank/data\tencryption\taes-256-gcm\ntank/data\tkeystatus\tunavailable\n");
 	file_put_contents($pool.'/props', $crypt[$route] ?? ($route === 'scheduledecrypt' ? $crypt['replicatedecrypt'] : ''));
 	putenv('ZFSM_TEST_REPL_DIR='.$pool);
+	// scheduleremake's first run starts in the background, on this PHP.
+	if ($route === 'scheduleremake') $GLOBALS['zfsm_php'] = PHP_BINARY;
 }
 
 // A schedule to remove, or a snapshot schedule saved (the default or a dataset's own), on the tmpfs the runner mounts on /boot/config. No update_cron here, so
 // Unraid's crontab is not rebuilt.
-if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'scheduledatasetserver', 'replicaremove'), true)) {
+if (in_array($route, array('scheduleremake', 'scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'scheduledatasetserver', 'replicaremove'), true)) {
 	zfsmTestScratch('/boot/config');
 	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
 	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
@@ -122,6 +126,8 @@ if ($route === 'snapshotdataset_utc') {
 		exit(1);
 	}
 }
+// scheduleremake's first run, in the background, lets go of its lock before the pool is read or removed.
+for ($waited = 0; $route === 'scheduleremake' && $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/data', 'replicate')); $waited++) usleep(50000);
 // Replication: the preview plans a first, full copy; a start or schedule whose copy has nowhere to go says why and starts nothing,
 // and a schedule names no snapshot of its own, as each run takes one. A remove of something that is no schedule's id says so.
 // Snapshot schedules say what they saved, and the list; one that can't be saved says why and saves nothing. The dialog's start, or why not.
@@ -136,6 +142,9 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'previewsendwrong' => $answer === array('can_proceed' => false, 'error' => 'Send has no such choice now; reload the page'),
 		'replicatesendwrong' => $failed === 'Send has no such choice now; reload the page' && ($answer['succeeded'] ?? null) === array(),
 		'schedulesendwrong' => $failed === 'Nothing was scheduled: Send has no such choice now; reload the page' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'scheduleremake' => isset($answer['succeeded']['tank/data']) && array_column(zfsmScheduleRead()['valid'] ?? array(), 'remake') === array(true),
+		'scheduletickswrong' => $failed === 'Nothing was scheduled: Send has no such choice now; reload the page; If the copy is gone, make it again has no such choice now; reload the page'
+			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'previewreplicateopen' => ($answer['snapshots'] ?? null) === array('b', 'a') && array_key_exists('warning', $answer) && $answer['warning'] === null
 			&& ($answer['encrypted'] ?? null) === false,
 		'previewcryptopen' => ($answer['encrypted'] ?? null) === true && ($answer['can_proceed'] ?? null) === false,

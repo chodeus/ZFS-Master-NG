@@ -440,6 +440,7 @@ async function confirm() {
     const repeat = async value => { every().value = value; every().dispatchEvent(new window.Event('change')); await settle(); };
     const shown = id => window.document.getElementById(id).style.display !== 'none';
     const rows = () => [shown('zfsm-replicate-days-row'), shown('zfsm-replicate-time-row'), shown('zfsm-replicate-keep-row'), shown('zfsm-replicate-repeat-help'), snap().value, snap().disabled];
+    const remake = () => window.document.getElementById('zfsm-replicate-remake');
     const keep = () => window.document.getElementById('zfsm-replicate-keep');
     const copyKeeps = () => window.document.getElementById('zfsm-replicate-copy-keeps');
     const time = () => window.document.getElementById('zfsm-replicate-time');
@@ -454,17 +455,29 @@ async function confirm() {
     await repeat('hourly');
     assert.deepEqual([rows(), posts.length, keep().labels[0].textContent.startsWith('Snapshots to keep:'), keep().placeholder], [[false, false, true, true, '', true], planned, true, 'all'], 'Every hour: Keep, empty for all, with no days or time, and no new plan, as Snapshot did not change');
     assert.deepEqual([shown('zfsm-replicate-copy-keeps-row'), copyKeeps().labels[0].textContent.startsWith('Copy Keeps:'), copyKeeps().placeholder], [true, true, 'same as source'], 'and Copy Keeps, empty for the same as its source');
+    assert.deepEqual([shown('zfsm-replicate-remake-row'), remake().checked], [true, false], 'and If the copy is gone, unticked');
+    remake().checked = true;
     await repeat('');
-    assert.deepEqual([rows(), shown('zfsm-replicate-copy-keeps-row')], [[false, false, false, false, '', false], false], 'back to Once: the rows and help go, and Snapshot can be picked again');
+    assert.deepEqual([rows(), shown('zfsm-replicate-copy-keeps-row'), shown('zfsm-replicate-remake-row')], [[false, false, false, false, '', false], false, false], 'back to Once: the rows and help go, and Snapshot can be picked again');
+    snap().value = 'b';
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: '', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''},
+      'Once sends no If the copy is gone, though it stayed ticked');
+    window.Swal2.close();
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+    menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+    await settle();
     await repeat('days');
     days().forEach(box => { box.checked = ['1', '3', '5'].includes(box.value); });
     time().value = '13:30';
     keep().value = ' 30 ';
     copyKeeps().value = ' 30d 12M ';
+    remake().checked = true;
     window.Swal2.clickConfirm();
     await settle();
-    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30', copy_keeps: '30d 12M'},
-      'Replicate starts it with its days, time, Keep and Copy Keeps');
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'days', time: '13:30', days: '1,3,5', keep: '30', copy_keeps: '30d 12M', remake: '1'},
+      'Replicate starts it with its days, time, Keep, Copy Keeps and If the copy is gone');
     window.Swal2.close();
   }
   // Schedules: starts at the dataset's own, shows the rows that fit its choice, and Save sends what is on screen and says the answer.
@@ -652,10 +665,13 @@ async function confirm() {
     await pick('');
     const back = copyRow();
     await pick('nas');
+    const remakeRow = window.document.getElementById('zfsm-replicate-remake-row').style.display !== 'none';
+    window.document.getElementById('zfsm-replicate-remake').checked = true;
     window.Swal2.clickConfirm();
     await settle();
     assert.deepEqual([here, there, back, posts.at(-1).cmd, posts.at(-1).server, posts.at(-1).every, posts.at(-1).copy_keeps], [true, false, true, 'replicatedataset', 'nas', 'hourly', ''],
       'Copy Keeps shows for a repeat to This server, not to nas, and is sent only while it shows');
+    assert.deepEqual([remakeRow, posts.at(-1).remake], [true, '1'], 'If the copy is gone shows for a repeat to nas too, and is sent');
     window.Swal2.close();
   }
 

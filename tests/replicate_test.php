@@ -544,7 +544,7 @@ $reset();
 foreach (array('datasets', 'marks') as $file) file_put_contents($work.'/pool/'.$file, implode('', preg_grep('~^backup/replicas/tower/data[@\t]~', file($work.'/pool/'.$file), PREG_GREP_INVERT)));
 $notes = array();
 same(1, zfsmRunReplicate('tank/data', 'h', 'data', null, true, 'nas', array('notify' => function($title, $text, $type) use (&$notes) { $notes[] = $type.': '.$text; })), 'a scheduled run to nas whose copy is gone');
-same(array('warning: Replication of tank/data to data on server nas not started: backup/replicas/tower/data on server nas is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy'),
+same(array('warning: Replication of tank/data to data on server nas not started: backup/replicas/tower/data on server nas is gone, though this dataset made a copy there before; this schedule sends only changes, so replicate it once by hand to make a new copy'),
 	$notes, 'is refused, and says so through its schedule');
 same(array(array(), false, array()), array($read('notify-detail.log'), in_array('tank/data@h', $names('tank/data', 'snapshot'), true), $calls('send')), 'with no other notification, no send, and without the snapshot it took');
 $ssh();

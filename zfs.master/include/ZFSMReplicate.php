@@ -134,11 +134,22 @@ function zfsmReplicaMark($zdataset, $plan) {
 	return '';
 }
 
+// For a schedule that makes its copy again ('remake', not 'under', whose run made its own): each dataset missing between the pool and
+// $zdest made a holder (zfsmReplicaHolderMake); '' or why not. A name the plan refuses, as a server's one name is, makes none.
+function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
+	if (!($schedule['remake'] ?? false) || ($schedule['under'] ?? false) || zfsmReplicaTargetNameWrong($zdataset, $zdest) !== '') return '';
+	foreach (zfsmScheduleCopiesLevels(strtok($zdest, '/').'/', $zdest) as $level) {
+		$why = zfsmDatasetExists($level, 'filesystem') ? '' : zfsmReplicaHolderMake($target, $level);
+		if ($why !== '') return $why;
+	}
+	return '';
+}
+
 // The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
 // $take: the run takes $snapshot first, under its lock, and removes it again unless a copy holds it or a stopped run may need it.
 // $started runs once the plan holds, before zfs send; until then the reason a run doesn't start also goes to the starting page.
 // $schedule, for a scheduled run (zfsmScheduleRun): its 'notify'(title, text, importance), the seconds to 'wait' out another run, and no full send to a copy that is gone;
-// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full,
+// optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full (zfsmReplicateLevels),
 // 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
 // them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt).
@@ -179,6 +190,8 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		$target = zfsmReplicaTargetOpen($server);
 		$target = zfsmReplicaTargetZstd($target);
 		$first = array('', 'normal');
+		$why = zfsmReplicateLevels($schedule, $target, $zdataset, $zdest);
+		if ($why !== '') return $refused($why, $first);
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
 				'under' => $schedule['under'] ?? false, 'decrypt' => $decrypt));
