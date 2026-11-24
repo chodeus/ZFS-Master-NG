@@ -14,6 +14,8 @@ mkdir -p /mnt/user
 mount -t tmpfs tmpfs /mnt/user
 # Every zfsmLog call, and each script a test starts, appends to /var/log/zfs.master.log: never the host's.
 mount -t tmpfs tmpfs /var/log
+# install_lock_test.php removes the install lock in /var/run and puts a folder in its place: never the host's.
+mount -t tmpfs tmpfs /var/run
 # The diagnostics tests write zips into /boot/logs and remove them: never the host's.
 mkdir -p /boot/logs
 mount -t tmpfs tmpfs /boot/logs
