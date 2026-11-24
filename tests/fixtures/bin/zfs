@@ -102,10 +102,11 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
 		# A holder's filesystems and below it, mounted as props say, else no (a copy is received unmounted); ZFSM_TEST_MOUNTED_FAIL=1 fails it.
-		if [ "$4" = name,mounted ] && [ "$6" = filesystem ] && [ "$7" = -r ]; then
+		# Volumes too, whose mounted is - as zfs gives it.
+		if [ "$4" = name,mounted ] && [ "$6" = filesystem,volume ] && [ "$7" = -r ]; then
 			[ "${ZFSM_TEST_MOUNTED_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
-			awk -F'\t' -v d="$last_arg" '($1 == d || index($1, d "/") == 1) && $2 == "filesystem" { print $1 }' "$R/datasets" | while IFS= read -r n; do
-				printf '%s\t%s\n' "$n" "$(prop "$n" mounted no)"
+			awk -F'\t' -v d="$last_arg" '($1 == d || index($1, d "/") == 1) && ($2 == "filesystem" || $2 == "volume") { print $1 "\t" $2 }' "$R/datasets" | while IFS="$(printf '\t')" read -r n t; do
+				if [ "$t" = volume ]; then printf '%s\t-\n' "$n"; else printf '%s\t%s\n' "$n" "$(prop "$n" mounted no)"; fi
 			done
 			exit 0
 		fi
@@ -179,6 +180,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 				*) s=$(source_of "$last_arg" "$p"); [ "$s" = default ] && s=-; printf '%s\t%s\t%s\n' "$p" "$(inherited "$last_arg" "$p" -)" "$s" ;;
 			esac; done; exit 0
 		fi
+		# ZFSM_TEST_PROP_FAIL="<dataset> <property>" fails that one read.
+		[ "${ZFSM_TEST_PROP_FAIL:-}" = "$last_arg $6" ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 		case "$6" in
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
 		guid) guid_of "$last_arg" ;;
@@ -285,12 +288,12 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		awk -F'\t' -v n="$last_arg" -v p="$2" '!($1 == n && $2 == p)' "$R/props" > "$R/props.new" && mv "$R/props.new" "$R/props"
 		exit 0 ;;
 	rename)
-		# Moves it and all below it, with snapshots, bookmarks, properties and holds. ZFSM_TEST_RENAME_FAIL names one busy, ZFSM_TEST_RENAME_UNMOUNTED
+		# Moves it and all below it, with snapshots, bookmarks, properties and holds. ZFSM_TEST_RENAME_FAIL names one busy (a pattern), ZFSM_TEST_RENAME_UNMOUNTED
 		# one that moves then fails to mount; ZFSM_TEST_LOCK_PROBE is a lock file whose state at each rename (held or free) goes to probe.log.
 		[ -z "${ZFSM_TEST_LOCK_PROBE:-}" ] || "$ZFSM_TEST_PHP" -r 'echo flock(fopen(getenv("ZFSM_TEST_LOCK_PROBE"), "c"), LOCK_EX | LOCK_NB) ? "free\n" : "held\n";' >> "$R/probe.log"
 		eval "from=\${$(($# - 1))}"
 		exists "$from" || { printf "cannot open '%s': dataset does not exist\n" "$from" >&2; exit 1; }
-		[ "${ZFSM_TEST_RENAME_FAIL:-}" = "$from" ] && { printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1; }
+		[ -n "${ZFSM_TEST_RENAME_FAIL:-}" ] && case "$from" in $ZFSM_TEST_RENAME_FAIL) printf "cannot rename '%s': dataset is busy\n" "$from" >&2; exit 1 ;; esac
 		[ "$from" = "$last_arg" ] && exit 0
 		exists "$last_arg" && { printf "cannot rename '%s': dataset already exists\n" "$from" >&2; exit 1; }
 		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }

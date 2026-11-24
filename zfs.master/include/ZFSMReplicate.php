@@ -4,12 +4,12 @@
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
-// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it, and $decrypt Send's Decrypted.
-function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $keep = null, $decrypt = false) {
+// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it, $decrypt Send's Decrypted and $replace Replace a copy's.
+function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $keep = null, $decrypt = false, $replace = false) {
 	$new_name = $snapshot === '' ? zfsmNewSnapshotName($cfg, time()) : '';
 	$target = zfsmReplicaTargetOpen($server);
 	try {
-		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target, 'decrypt' => $decrypt));
+		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target, 'decrypt' => $decrypt, 'replace' => $replace));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}
@@ -20,7 +20,7 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $k
 	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
 	$resume = $plan['mode'] === 'resume';
 	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
-	$args = array_merge(array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server), $decrypt ? array((string)$keep, 'decrypted') : array_map('strval', (array)$keep));
+	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server, (string)$keep, $decrypt ? 'decrypted' : '', $replace ? 'replace' : '');
 	list($state, $why) = zfsmStartJob('replicate.php', $args, zfsmJobLockFile($zdataset, 'replicate'));
 	if ($state === 'running') return zfsmFailure($zdataset, 'A replication of this dataset is already running');
 	if ($state !== 'started') return zfsmFailure($zdataset, 'The replication could not be started'.($why !== '' ? ': '.$why : ''));
@@ -156,8 +156,8 @@ function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
 // optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full (zfsmReplicateLevels),
 // 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
-// them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt).
-function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null, $decrypt = false) {
+// them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt); $replace: zfsmReplicaPlanReplace's.
+function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null, $decrypt = false, $replace = false) {
 	$title = 'ZFS Replication';
 	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
 	$notify = $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); };
@@ -202,11 +202,14 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		if ($why !== '') return $refused($also($why), $first);
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
-				'under' => $schedule['under'] ?? false, 'decrypt' => $decrypt));
+				'under' => $schedule['under'] ?? false, 'decrypt' => $decrypt, 'replace' => $replace));
 			if (!$plan['can_proceed']) return $refused($also($plan['error']), $first);
+			$aside = zfsmReplicateAside($plan, $zdataset);
+			if ($aside !== '') return $refused($also($aside), $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
+			$text = zfsmReplicateAsideAfter($plan, $zdataset, $code, $text);
 			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
 			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) {
 				$first = array($text, $type);
@@ -214,14 +217,37 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $schedule['copy_keeps'] ?? null);
 			list($text, $type) = zfsmReplicateTold($first, $also($text), $type);
-			// One that made datasets is news, told even while its schedule works (zfsmScheduleNotifier).
-			$notify($title, $text, $type, $made !== array());
+			// One that made datasets or replaced the copy is news, told even while its schedule works (zfsmScheduleNotifier).
+			$notify($title, $text, $type, $made !== array() || $plan['replace'] !== null);
 			return $code;
 		}
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
 		zfsmJobUnlock($lock);
 	}
+}
+
+// Renames aside the copy $plan replaces (zfsmReplicaPlanReplace): '' when done or none, else why not.
+function zfsmReplicateAside($plan, $zdataset) {
+	if ($plan['replace'] === null) return '';
+	$renamed = runProcess('zfs', array('rename', $plan['dest'], $plan['replace']));
+	if (($renamed['code'] ?? 1) !== 0) return $plan['dest'].' could not be renamed to '.$plan['replace'].', so it is not replaced: '.zfsmCommandError($renamed, 'zfs rename failed');
+	$why = $plan['newer'] !== '' ? 'held a newer snapshot than the one sent' : 'no longer matched';
+	zfsmLog('Replication of '.$zdataset.' to '.$plan['dest'].' replaces the copy, which '.$why.'; the old copy is now '.$plan['replace'], LOG_NOTICE);
+	return '';
+}
+
+// $text of a send in place of a copy renamed aside, saying where that copy is; it goes back when the send failed and left nothing at its name.
+function zfsmReplicateAsideAfter($plan, $zdataset, $code, $text) {
+	if ($plan['replace'] === null) return $text;
+	$now = rtrim($text, '.').'. The old copy is now '.$plan['replace'];
+	if ($code === 0) return $now.': destroy it when you no longer need it.';
+	// A run that stopped part-way left its copy there, which the next run carries on.
+	if (zfsmDatasetExists($plan['dest'])) return $now.'.';
+	$back = runProcess('zfs', array('rename', $plan['replace'], $plan['dest']));
+	if (($back['code'] ?? 1) !== 0) return $now.', as renaming it back failed: '.zfsmSafeText(zfsmCommandError($back, 'zfs rename failed')).'.';
+	zfsmLog('Replication of '.$zdataset.' to '.$plan['dest'].' failed, so the old copy is back at '.$plan['dest'], LOG_NOTICE);
+	return rtrim($text, '.').'. The old copy is back at '.$plan['dest'].'.';
 }
 
 // A run's last step's $text and $type, with the first's when that one carried on a stopped run and warned ($first: its text, type);

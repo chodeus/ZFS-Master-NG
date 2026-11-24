@@ -20,7 +20,7 @@ function zfsmSchedulesHtml($cfg) {
 		$clash = zfsmScheduleClash($job, $read['valid'], $cfg, time(), false);
 		$text = zfsmScheduleSnapshotsOnly($job) ? zfsmScheduleSnapshotText($job) : (zfsmScheduleCopiesUnder($job) ? zfsmScheduleCopiesText($job)
 			: $job['dataset'].' to '.zfsmReplicaTargetWhere(array('server' => $job['server']), $job['dest']).', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job)
-			.(($job['remake'] ?? false) ? '; makes its copy again if it is gone' : ''));
+			.(($job['remake'] ?? false) ? '; makes its copy again if it is gone' : '').(($job['replace'] ?? false) ? '; replaces its copy if it no longer matches' : ''));
 		// The default changes and turns off in its own row above; a dataset's goes here too, as one whose dataset is gone can't be opened.
 		$html .= '<span style="display:block">'.zfsmHtml($text)
 			.($job['dataset'] !== '' ? ' <input type="button" value="Remove" onclick="zfsmScheduleRemove(\''.$job['id'].'\')">' : '')

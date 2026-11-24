@@ -10,7 +10,7 @@ define('ZFSM_DIAG_FINGERPRINT', 'SHA256:[A-Za-z0-9+/]{43}(?![A-Za-z0-9+/=])');
 // What Unraid itself mounts under /mnt beside the pools.
 define('ZFSM_DIAG_MOUNTS', 'user0?|disks|remotes|addons|rootshare|disk\d+');
 // What the plugin's log lines put after a dataset's name, each word with what follows it there: a name can hold the word alone.
-define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|received(?:: |$)|succeeded$');
+define('ZFSM_DIAG_DONE', 'started: |finished(?:: |\.| \(|$)|received(?:: |$)|succeeded$|replaces the copy$');
 define('ZFSM_DIAG_FAILED', 'not started: |failed(?:: | after | with exit code |$)');
 // Keep's words after a copy's name (ZFSMKeep.php); in Keep's lines a snapshot's name ends at ( or ;, which no name holds.
 define('ZFSM_DIAG_KEEP', '(?<=: )Keep could not ');
