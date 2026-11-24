@@ -610,17 +610,26 @@ zfsmReplicaDisconnect($target);
 same(array('hello', 'exists backup/replicas/tower', 'crypt backup/replicas/tower/enc', 'exists backup/replicas/tower', 'crypt '.$z, 'exists backup/replicas/tower', 'crypt '.$z.'/enc', 'exists backup/replicas/tower',
 	'crypt backup/replicas/tower/none', 'hello', 'exists backup/replicas/tower', 'hello', 'exists backup/replicas/tower', 'crypt '.$z), $asked(), 'so it is asked only of the newer one');
 putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
+// A run that asks the area for zstd keeps its answer for its plans (zfsmReplicaTargetZstd), but not a lost one.
+$target = zfsmReplicaTargetOpen('nas');
+putenv('ZFSM_TEST_SSH_LOST=exists');
+$target = zfsmReplicaTargetZstd($target);
+putenv('ZFSM_TEST_SSH_LOST');
+same(array(null, false, array(array('encryption' => 'off', 'keystatus' => '-', 'decrypted' => true), ''), array('hello', 'exists backup/replicas/tower', 'exists backup/replicas/tower', 'crypt '.$z)),
+	array($target['zstd'], isset($target['can']), zfsmReplicaTargetCrypt($target, $z), $asked()), 'after a lost answer, the next read asks the area again');
+zfsmReplicaDisconnect($target);
+@unlink(zfsmReplicaDownFile('nas'));
 // There the copy decides too: the raw copy stays raw though Decrypted is picked. A decrypted new copy goes through zstd once the area it
 // goes into is read as unlocked, and nas marks it, so a later run sends it decrypted though Raw is picked.
 runProcess('zfs', array('snapshot', 'tank/enc@i'));
 $e = 'backup/replicas/tower/enc';
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'i', 'enc', null, false, 'nas', null, null, true), 'Decrypted picked for the raw copy on nas');
-same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e, 'token '.$e, 'snapshots '.$e, 'exists backup/replicas/tower', 'crypt '.$e, 'receive '.$e), array('send -P -v -w -i tank/enc@e tank/enc@i')),
+same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e, 'token '.$e, 'snapshots '.$e, 'crypt '.$e, 'receive '.$e), array('send -P -v -w -i tank/enc@e tank/enc@i')),
 	array($asked(), $calls('send')), 'asks how it was made, and sends raw');
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'i', 'encdec', null, false, 'nas', null, null, true), 'a new copy there, Decrypted');
-same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e.'dec', 'exists backup/replicas/tower', 'crypt backup/replicas/tower', 'receive-zstd '.$e.'dec'), array('send -P -v -L tank/enc@i')),
+same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e.'dec', 'crypt backup/replicas/tower', 'receive-zstd '.$e.'dec'), array('send -P -v -L tank/enc@i')),
 	array($asked(), $calls('send')), 'reads the area, then sends decrypted through zstd');
 runProcess('zfs', array('snapshot', 'tank/enc@j'));
 $reset();

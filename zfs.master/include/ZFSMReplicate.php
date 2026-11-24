@@ -177,7 +177,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			if ($taken['failed']) return $not_started(implode('; ', $taken['failed']));
 		}
 		$target = zfsmReplicaTargetOpen($server);
-		$target['zstd'] = zfsmReplicaTargetZstd($target);
+		$target = zfsmReplicaTargetZstd($target);
 		$first = array('', 'normal');
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
