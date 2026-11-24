@@ -505,6 +505,8 @@ $message = "cannot open '/mnt/tank/a': gone\nPHP Warning in /usr/local/emhttp/we
 same(json_encode(array('e' => "cannot open '/mnt/tank/".zfsmDiagToken('a')."': gone\nPHP Warning in /usr/local/emhttp/webGui/include/Helpers.php on line 5\n".zfsmStatePath('/var/run/zfs.master.lock').' held'), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 	zfsmDiagAnonJson(json_encode(array('e' => $message), JSON_UNESCAPED_SLASHES)),
 	'a message of many lines in one value keeps its later lines: the plugin\'s own path and a system path stay, and a quoted folder ends at its quote');
+$line = 'This run did not wait for a plugin update to finish installing, as it could not lock '.zfsmStatePath('/var/run/zfs.master.install.lock');
+same($line, zfsmDiagAnonText($line), 'the install lock\'s path in a log line stays: it is the plugin\'s own');
 // A message is running text in any JSON file: the second net takes the words after the plugin's own path, as in an inventory's error.
 $own = zfsmStatePath('/var/run/zfs.master.rewrite');
 same('{"data":{"errors":{"tank":"failed '.$own.' '.zfsmDiagToken('CanaryClient').' busy"}}}',
