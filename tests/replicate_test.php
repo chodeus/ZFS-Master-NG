@@ -197,6 +197,77 @@ putenv('ZFSM_TEST_TOKEN_FAIL');
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'e', 'backup/enc'), 'an encrypted dataset runs');
 same(array('send -P -v -w tank/enc@e'), $calls('send'), 'sent raw (-w), without -L');
+same(array(array('encryption' => 'aes-256-gcm', 'keystatus' => 'unavailable', 'decrypted' => false), ''), zfsmReplicaTargetCrypt(array('server' => ''), 'backup/enc'),
+	'read here, the copy is encrypted, its key not loaded, and unmarked');
+putenv('ZFSM_TEST_CRYPT_FAIL=backup/enc');
+same(array(null, "cannot get property for 'backup/enc': permission denied"), zfsmReplicaTargetCrypt(array('server' => ''), 'backup/enc'), 'a read that fails says why');
+putenv('ZFSM_TEST_CRYPT_FAIL');
+// Send: a new copy goes as picked, Decrypted with -L and marked (into a plain parent here, so the copy is plain); an existing copy goes
+// as it was made, whatever is picked: decrypted when plain or marked, else raw.
+$crypt = function($name) { return zfsmReplicaTargetCrypt(array('server' => ''), $name)[0]; };
+$enc = function($snapshot, $dest, $decrypt) { $plan = zfsmReplicatePlan('tank/enc', $snapshot, $dest, array('decrypt' => $decrypt)); return $plan['can_proceed'] ? array($plan['raw'], $plan['how']) : $plan['error']; };
+$decrypted = function($snapshot, $dest) { return zfsmRunReplicate('tank/enc', $snapshot, $dest, null, false, '', null, null, true); };
+$reset();
+same(array(array(false, 'choice'), 0), array($enc('e', 'backup/dec', true), $decrypted('e', 'backup/dec')), 'Decrypted picked for a new copy plans it so, and runs');
+same(array(array('send -P -v -L tank/enc@e'), array('receive -s -u -o readonly=on -o canmount=noauto -o zfs.master:raw=off backup/dec')), array($calls('send'), $calls('receive')),
+	'sent with -L, without -w, and received marked');
+same(array('encryption' => 'off', 'keystatus' => '-', 'decrypted' => true), $crypt('backup/dec'), 'that copy is plain and marked');
+runProcess('zfs', array('snapshot', 'tank/enc@f'));
+same(array(array(true, 'copy'), array(false, 'copy')), array($enc('f', 'backup/enc', true), $enc('f', 'backup/dec', false)), 'each existing copy goes as it was made, whatever is picked');
+$reset();
+same(array(0, 0), array($decrypted('f', 'backup/enc'), zfsmRunReplicate('tank/enc', 'f', 'backup/dec')), 'and both run');
+same(array('send -P -v -w -i tank/enc@e tank/enc@f', 'send -P -v -L -i tank/enc@e tank/enc@f'), $calls('send'), 'the raw copy raw, the plain one decrypted');
+// A decrypted send needs the dataset's key loaded, though zfs send -n passes without it: refused before anything is sent. Raw needs none.
+file_put_contents($work.'/pool/props', "tank/enc\tkeystatus\tunavailable\n", FILE_APPEND);
+runProcess('zfs', array('snapshot', 'tank/enc@g'));
+same(array('The key of tank/enc is not loaded, so only Raw can send it: unlock it first', array(true, 'copy')), array($enc('g', 'backup/new', true), $enc('g', 'backup/enc', true)), 'a new copy picked Decrypted is refused; the raw copy goes');
+$reset();
+same(1, zfsmRunReplicate('tank/enc', 'g', 'backup/dec'), 'a run into the plain copy');
+same(array(array(), array('warning: Replication of tank/enc to backup/dec not started: The key of tank/enc is not loaded, and backup/dec was made decrypted, so it takes only that: unlock it first')),
+	array($calls('send'), $read('notify-detail.log')), 'sends nothing and says why');
+same(array(0, array('send -P -v -w -i tank/enc@f tank/enc@g')), array(zfsmRunReplicate('tank/enc', 'g', 'backup/enc'), $calls('send')), 'the raw copy is sent with the key not loaded');
+// A decrypted copy inside an encrypted dataset takes its key, marked; a raw one there keeps its own.
+file_put_contents($work.'/pool/datasets', "backup/locked\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/props', "tank/enc\tkeystatus\tavailable\nbackup/locked\tencryption\taes-256-gcm\n", FILE_APPEND);
+same(array(0, 0), array($decrypted('g', 'backup/locked/dec'), zfsmRunReplicate('tank/enc', 'g', 'backup/locked/raw')), 'a decrypted copy and a raw one into an encrypted dataset');
+same(array('encryption' => 'aes-256-gcm', 'keystatus' => 'available', 'decrypted' => true), $crypt('backup/locked/dec'), 'the decrypted one takes its key');
+// One another tool made decrypted has no mark, so it goes raw, which zfs refuses; zfs set zfs.master:raw=off adopts it.
+runProcess('zfs', array('inherit', 'zfs.master:raw', 'backup/locked/dec'));
+runProcess('zfs', array('snapshot', 'tank/enc@h'));
+$reset();
+same(array(array(true, 'copy'), 1), array($enc('h', 'backup/locked/dec', false), zfsmRunReplicate('tank/enc', 'h', 'backup/locked/dec')), 'unmarked, it goes raw');
+same(1, preg_match('/^warning: Replication of tank\/enc@h to backup\/locked\/dec failed: cannot receive incremental stream: IV set guid mismatch/', $read('notify-detail.log')[0] ?? ''), 'and fails with zfs\'s reason');
+file_put_contents($work.'/pool/props', "backup/locked/dec\tzfs.master:raw\toff\n", FILE_APPEND);
+same(array(false, 'copy'), $enc('h', 'backup/locked/dec', false), 'marked by hand, it goes decrypted');
+// While that dataset's key is not loaded nothing decrypted goes into it, nor a new copy beside it; Raw can still make a new copy there.
+file_put_contents($work.'/pool/props', "backup/locked\tkeystatus\tunavailable\n", FILE_APPEND);
+same(array('The key of backup/locked/dec is not loaded, so nothing decrypted can be received into it: unlock it there first',
+	'The key of backup/locked is not loaded, so a decrypted copy can\'t be received into it: unlock it there, or pick Raw', array(true, 'choice')),
+	array($enc('h', 'backup/locked/dec', false), $enc('h', 'backup/locked/new', true), $enc('h', 'backup/locked/new', false)), 'the copy and a new decrypted one are refused, naming the dataset asked about');
+// A raw copy whose key moved to its parent (zfs change-key -i) is no longer its own encryption root, but still takes raw with every key
+// unloaded (OpenZFS 2.4.4): unmarked, it goes raw.
+file_put_contents($work.'/pool/props', "backup/locked/raw\tencryptionroot\tbackup/locked\n", FILE_APPEND);
+$reset();
+same(array(array(true, 'copy'), 0, array('send -P -v -w -i tank/enc@g tank/enc@h')), array($enc('h', 'backup/locked/raw', true), $decrypted('h', 'backup/locked/raw'), $calls('send')),
+	'Decrypted picked for it plans and sends raw');
+// A stopped run carries on as it went, whatever is picked: raw from its token (rawok).
+$reset();
+putenv('ZFSM_TEST_SEND_CUT=1');
+same(array(1, 1), array(zfsmRunReplicate('tank/enc', 'h', 'backup/cutraw'), $decrypted('g', 'backup/cutdec')), 'a raw run and a decrypted one cut off part-way');
+putenv('ZFSM_TEST_SEND_CUT');
+same(array(array(true, 'token'), array(false, 'token')), array($enc('e', 'backup/cutraw', true), $enc('e', 'backup/cutdec', false)), 'each carries on as it went');
+file_put_contents($work.'/pool/props', "tank/enc\tkeystatus\tunavailable\n", FILE_APPEND);
+same('The key of tank/enc is not loaded, and the run that stopped at backup/cutdec was decrypted, so only that carries it on: unlock it first', $enc('e', 'backup/cutdec', true), 'the decrypted one needs the key');
+$reset();
+same(array(0, array('send -P -v -t tok:tank/enc@h')), array(zfsmRunReplicate('tank/enc', 'e', 'backup/cutraw'), $calls('send')), 'the raw one carries on without it');
+// A holder takes only a plain stream over it: Decrypted replaces it, marked, and Raw is still refused.
+file_put_contents($work.'/pool/datasets', "backup/hold\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/props', "tank/enc\tkeystatus\tavailable\nbackup/hold\tzfs.master:holder\ton\n", FILE_APPEND);
+same(1, preg_match('/^backup\/hold only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: /', $enc('h', 'backup/hold', false)), 'Raw onto a holder is refused');
+$reset();
+same(0, $decrypted('h', 'backup/hold'), 'Decrypted onto it runs');
+same(array(array('receive -s -u -o readonly=on -F -o canmount=noauto -o zfs.master:raw=off backup/hold'), array('backup/hold@h'), array('encryption' => 'off', 'keystatus' => '-', 'decrypted' => true)),
+	array($calls('receive'), $names('backup/hold', 'snapshot'), $crypt('backup/hold')), 'over it with -F, plain and marked');
 $reset();
 same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol'), 'a volume runs');
 same(array('receive -s -u -o readonly=on -o volmode=none backup/vol'), $calls('receive'), 'received read-only, without canmount, and not as a block device');
@@ -349,7 +420,7 @@ same(array(true, 'full', 'backup/replicas/tower/data', 'nas'), array($plan['can_
 $ssh();
 same(0, zfsmRunReplicate('tank/data', 'b', 'data', null, false, 'nas'), 'it runs');
 same(array('backup/replicas/tower/data@b'), $names('backup/replicas/tower/data', 'snapshot'), 'the copy there holds b');
-same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev backup/replicas/tower/data'), $calls('receive'), 'by the checker\'s receive: read-only, keeping the area\'s properties');
+same(array('receive -s -u -o readonly=on -x mountpoint -x volmode -x setuid -x devices -x exec -x sharenfs -x sharesmb -x snapdev -o zfs.master:raw=off backup/replicas/tower/data'), $calls('receive'), 'by the checker\'s receive: read-only, keeping the area\'s properties, marked as not raw');
 same(array($remote_mark('b')), $names('tank/data', 'bookmark'), 'and the dataset a bookmark for nas\'s copy');
 same(array('normal: Replication of tank/data@b to backup/replicas/tower/data on server nas finished (in full).'), $read('notify-detail.log'), 'the notification names the server');
 same(array(1, 2, 1), $logins($ssh()), 'one login for the run: hello, then exists and the stream on that connection, which it ends');
@@ -505,6 +576,69 @@ same(array('normal: Replication of tank/data@z1 to '.$z.' on server nas finished
 $reset();
 same(0, zfsmRunReplicate('tank/enc', 'e', 'enc', null, false, 'nas'), 'an encrypted dataset to nas');
 same(array('hello', 'exists backup/replicas/tower', 'exists backup/replicas/tower/enc', 'receive backup/replicas/tower/enc'), $asked(), 'goes raw as it is: zstd can\'t shrink it');
+// The checker marks a copy whose stream isn't raw, and crypt reads only a copy's own mark: a raw copy received inside a marked one
+// inherits it. An older checker has no crypt; a failed read or one that leaves a line out says why.
+file_put_contents($work.'/pool/datasets', $z."/enc\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/props', $z."/enc\tencryption\taes-256-gcm\n".$z."/enc\tkeystatus\tunavailable\n", FILE_APPEND);
+same(array("zfs.master:raw\toff\tinherited from ".$z), array_values(preg_grep('/^zfs\.master:raw\t/', zfsmLines(runProcess('zfs', zfsmReplicaCryptArgs($z.'/enc'))['output']))), 'a raw copy inside the plain one on nas inherits its mark');
+$target = zfsmReplicaTargetOpen('nas');
+$raw = array(array('encryption' => 'aes-256-gcm', 'keystatus' => 'unavailable', 'decrypted' => false), '');
+same(array($raw, array(array('encryption' => 'off', 'keystatus' => '-', 'decrypted' => true), ''), $raw),
+	array(zfsmReplicaTargetCrypt($target, 'backup/replicas/tower/enc'), zfsmReplicaTargetCrypt($target, $z), zfsmReplicaTargetCrypt($target, $z.'/enc')), 'there the raw copies read unmarked, the plain one marked');
+same(array(null, "cannot open 'backup/replicas/tower/none': dataset does not exist"), zfsmReplicaTargetCrypt($target, 'backup/replicas/tower/none'), 'a read there that fails says why');
+zfsmReplicaDisconnect($target);
+file_put_contents($work.'/old_serve.php', '<?php
+$command = (string)getenv("SSH_ORIGINAL_COMMAND");
+if (strpos($command, "zfsm-replica 1 crypt ") === 0) { fwrite(STDERR, "Not a replication request\n"); exit(1); }
+exec(escapeshellarg(PHP_BINARY)." -n ".escapeshellarg('.var_export(__DIR__.'/fixtures/fake_ssh_serve.php', true).'), $out, $code);
+foreach ($out as $line) if ($line !== "crypt") echo $line, "\n";
+exit($code);
+');
+putenv('ZFSM_TEST_SERVE='.$work.'/old_serve.php');
+$target = zfsmReplicaTargetOpen('nas');
+same(array(false, ''), zfsmReplicaTargetCrypt($target, $z), 'an older nas has no crypt');
+zfsmReplicaDisconnect($target);
+file_put_contents($work.'/part_serve.php', '<?php
+exec(escapeshellarg(PHP_BINARY)." -n ".escapeshellarg('.var_export(__DIR__.'/fixtures/fake_ssh_serve.php', true).'), $out, $code);
+foreach ($out as $line) if (strpos($line, "zfs.master:raw\t") !== 0) echo $line, "\n";
+exit($code);
+');
+putenv('ZFSM_TEST_SERVE='.$work.'/part_serve.php');
+$target = zfsmReplicaTargetOpen('nas');
+same(array(null, 'the answer left part out'), zfsmReplicaTargetCrypt($target, $z), 'an answer without the mark is not read');
+zfsmReplicaDisconnect($target);
+same(array('hello', 'exists backup/replicas/tower', 'crypt backup/replicas/tower/enc', 'exists backup/replicas/tower', 'crypt '.$z, 'exists backup/replicas/tower', 'crypt '.$z.'/enc', 'exists backup/replicas/tower',
+	'crypt backup/replicas/tower/none', 'hello', 'exists backup/replicas/tower', 'hello', 'exists backup/replicas/tower', 'crypt '.$z), $asked(), 'so it is asked only of the newer one');
+putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
+// There the copy decides too: the raw copy stays raw though Decrypted is picked. A decrypted new copy goes through zstd once the area it
+// goes into is read as unlocked, and nas marks it, so a later run sends it decrypted though Raw is picked.
+runProcess('zfs', array('snapshot', 'tank/enc@i'));
+$e = 'backup/replicas/tower/enc';
+$reset();
+same(0, zfsmRunReplicate('tank/enc', 'i', 'enc', null, false, 'nas', null, null, true), 'Decrypted picked for the raw copy on nas');
+same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e, 'token '.$e, 'snapshots '.$e, 'exists backup/replicas/tower', 'crypt '.$e, 'receive '.$e), array('send -P -v -w -i tank/enc@e tank/enc@i')),
+	array($asked(), $calls('send')), 'asks how it was made, and sends raw');
+$reset();
+same(0, zfsmRunReplicate('tank/enc', 'i', 'encdec', null, false, 'nas', null, null, true), 'a new copy there, Decrypted');
+same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e.'dec', 'exists backup/replicas/tower', 'crypt backup/replicas/tower', 'receive-zstd '.$e.'dec'), array('send -P -v -L tank/enc@i')),
+	array($asked(), $calls('send')), 'reads the area, then sends decrypted through zstd');
+runProcess('zfs', array('snapshot', 'tank/enc@j'));
+$reset();
+same(array(0, array('send -P -v -L -i tank/enc@i tank/enc@j')), array(zfsmRunReplicate('tank/enc', 'j', 'encdec', null, false, 'nas'), $calls('send')), 'Raw picked for it next: sent decrypted');
+// An older nas can't mark a decrypted copy, so Decrypted makes no new copy there; an existing one goes as picked, and zfs refuses the wrong one.
+putenv('ZFSM_TEST_SERVE='.$work.'/old_serve.php');
+runProcess('zfs', array('snapshot', 'tank/enc@k'));
+$target = zfsmReplicaTargetOpen('nas');
+$old = function($zdest, $decrypt) use ($target) { $plan = zfsmReplicatePlan('tank/enc', 'k', $zdest, array('target' => $target, 'decrypt' => $decrypt)); return $plan['can_proceed'] ? array($plan['raw'], $plan['how']) : $plan['error']; };
+same(array('nas runs an older ZFS Master NG, which can\'t mark a decrypted copy: update it there, or pick Raw', array(true, 'choice'), array(true, 'old')),
+	array($old('encnew', true), $old('encnew', false), $old('encdec', false)), 'an older nas: a new copy only Raw; an existing one as picked');
+zfsmReplicaDisconnect($target);
+$reset();
+same(1, zfsmRunReplicate('tank/enc', 'k', 'encdec', null, false, 'nas'), 'so a raw run into the plain copy');
+same(array('warning: Replication of tank/enc@k to '.$e.'dec on server nas failed: cannot receive incremental stream: cannot perform raw receive on top of existing unencrypted dataset.'), $read('notify-detail.log'), 'fails with zfs\'s reason');
+same(0, zfsmRunReplicate('tank/enc', 'k', 'encdec', null, false, 'nas', null, null, true), 'and Decrypted runs');
+putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
+$ssh();
 $reset();
 runProcess('zfs', array('snapshot', 'tank/data@z2'));
 putenv('ZFSM_TEST_SEND_CUT=1');
