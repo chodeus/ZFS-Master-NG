@@ -91,6 +91,7 @@ const remote = context.zfsmReplicateHtml({snapshots: [], servers: ['nas', 'x<y']
 assert.match(remote, /<select id="zfsm-replicate-server"[^>]*><option value="">This server<\/option><option value="nas" selected>nas<\/option><option value="x&lt;y">x&lt;y<\/option><\/select>/,
   'This server, then each trusted server, escaped; the last copy\'s is picked');
 assert.match(remote, /id="zfsm-replicate-dest"[^>]*placeholder="name"[^>]*value="da&quot;ta"/, 'its name inside the area is filled in');
+assert.match(remote, /<p id="zfsm-replicate-replace-row" style="margin:\.5em 0;display:none">/, 'with Replace hidden, as only a copy on This server is replaced');
 const gone = context.zfsmReplicateHtml({snapshots: [], servers: ['nas'], last_destination: {server: 'old', dest: 'backup/replicas/tower/data'}}, 'tank/data');
 assert.match(gone, /<option value="">This server<\/option><option value="nas">nas<\/option>/, 'a last copy on a server no longer trusted picks This server');
 assert.match(gone, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value=""/, 'with nothing filled in');
@@ -115,6 +116,9 @@ const sent = how => (context.zfsmReplicatePlanHtml(Object.assign({can_proceed: t
 assert.deepEqual([{how: 'choice', raw: true}, {how: 'choice', raw: false}, {how: 'copy', raw: true}, {how: 'copy', raw: false}, {how: 'token', raw: true}, {how: 'token', raw: false}, {how: 'old', raw: true}, {how: '', raw: false}].map(sent),
   ['Sent raw: the copy stays locked with this dataset\'s key.', '', 'Sent raw, as this copy was made; to change that, replicate to a new name.', 'Sent decrypted, as this copy was made; to change that, replicate to a new name.',
     'Sent raw, as the run that stopped was.', 'Sent decrypted, as the run that stopped was.', 'n&lt;s runs an older ZFS Master NG, so this copy goes as Send says: keep Raw for a copy this plugin made, or update the plugin there.', ''], 'each says how it goes');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, raw: false, replace: 'backup/d<x_replaced_20261124_1200'}),
+  /^<p[^>]*>The copy there no longer matches this dataset\. It is renamed to backup\/d&lt;x_replaced_20261124_1200 \(named for the time the run starts\), with the copies below it, and everything is sent again\.<\/p>/,
+  'a copy that is replaced says so, and its new name, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');
@@ -125,7 +129,7 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', s
 const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
   copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['a"<b>'], servers_error: '<i>unread</i>', inherited: 'y', skipped: ''}});
 const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-assert.ok(words(schedules) < 250 && words(encrypted) < 160, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
+assert.ok(words(schedules) < 250 && words(encrypted) < 170, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
 // A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
 const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
 const guides = (schedules + encrypted).match(/<a [^>]*>Guide<\/a>/g);
@@ -161,7 +165,7 @@ assert.match(schedules, /^<div style="text-align:left"><div role="group" aria-la
   'Snapshots and Replication each have their own labelled part');
 assert.match(replicate, /<p id="zfsm-replicate-repeat-help" style="[^"]*display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it\. On another server, that server's Keep Replicas decides what the copy keeps\. <a [^>]*#replicate-repeats"[^>]*>Guide<\/a><\/p><\/div>$/,
   'Replicate says what a repeat does in one line, hidden until one is picked');
-assert.match(replicate, /id="zfsm-replicate-copy-keeps-row"[\s\S]*<\/p><p id="zfsm-replicate-remake-row" style="[^"]*display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again \(sends everything\)<\/label><\/p><div id="zfsm-replicate-plan"/,
-  'If the copy is gone, after Copy Keeps and before the plan, unticked and hidden until a repeat is picked, named by its label');
+assert.match(replicate, /id="zfsm-replicate-copy-keeps-row"[\s\S]*<\/p><p id="zfsm-replicate-remake-row" style="[^"]*display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again \(sends everything\)<\/label><\/p><p id="zfsm-replicate-replace-row" style="margin:\.5em 0"><label><input id="zfsm-replicate-replace" type="checkbox"> Replace a copy that no longer matches \(it is renamed, not destroyed\)<\/label><\/p><div id="zfsm-replicate-plan"/,
+  'If the copy is gone, after Copy Keeps, unticked and hidden until a repeat is picked; then Replace, unticked and shown for This server; each named by its label');
 
 console.log('destroy and rollback dialog tests passed');

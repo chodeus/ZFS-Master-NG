@@ -97,7 +97,8 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		$repeat = zfsmScheduleRepeatRead($job['dataset'], $cfg, ZFSM_SCHEDULE_COVER_WAIT);
 		$not = $repeat['warning'] !== null ? zfsmScheduleSkippedText($repeat['warning']).'. Remove its schedule in Settings' : $repeat['unread'];
 		if ($not !== null) return zfsmScheduleSnapshotTell($job, $what.' not started: '.$not, true, $notify, 'ZFS Replication');
-		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings', 'copy_keeps' => $job['copy_keeps'] ?? null, 'remake' => ($job['remake'] ?? false) === true), $job['keep'], ($job['decrypted'] ?? false) === true);
+		return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings', 'copy_keeps' => $job['copy_keeps'] ?? null, 'remake' => ($job['remake'] ?? false) === true), $job['keep'], ($job['decrypted'] ?? false) === true,
+			($job['replace'] ?? false) === true);
 	} catch (Throwable $error) {
 		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
 		zfsmLog($what.' failed: '.zfsmOneLine($error->getMessage()));

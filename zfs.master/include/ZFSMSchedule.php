@@ -46,12 +46,14 @@ function zfsmScheduleValid($job) {
 	$what = ($job['dest'] ?? null) === '' ? zfsmScheduleSnapshotValid($job) : (zfsmScheduleCopiesUnder($job) ? zfsmScheduleCopiesValid($job) : zfsmScheduleCopyValid($job) && zfsmScheduleRepeats($job['every'] ?? null));
 	$number = function($value, $top) { return is_int($value) && $value >= 0 && $value <= $top; };
 	return $what && $number($job['minute'] ?? null, 59) && $number($job['hour'] ?? null, 23) && zfsmScheduleDaysValid($job['days'] ?? null) && zfsmKeepValid($job['keep'] ?? 0)
-		&& zfsmScheduleCopyKeepsValid($job) && zfsmScheduleTickValid($job, 'decrypted') && zfsmScheduleTickValid($job, 'remake') && zfsmScheduleLeaveOutValid($job);
+		&& zfsmScheduleCopyKeepsValid($job) && zfsmScheduleTickValid($job, 'decrypted') && zfsmScheduleTickValid($job, 'remake') && zfsmScheduleTickValid($job, 'replace', true)
+		&& zfsmScheduleLeaveOutValid($job);
 }
 
-// A copy's choice saved as $key (Send's Decrypted; remake, If the copy is gone): only on a copy's schedule, and only as true.
-function zfsmScheduleTickValid($job, $key) {
-	return !array_key_exists($key, $job) || ($job[$key] === true && $job['dest'] !== '' && !zfsmScheduleCopiesUnder($job));
+// A copy's choice saved as $key (Send's Decrypted; remake, If the copy is gone; replace, Replace a copy): only on a copy's schedule,
+// only as true, and with $here only for a copy on this server.
+function zfsmScheduleTickValid($job, $key, $here = false) {
+	return !array_key_exists($key, $job) || ($job[$key] === true && $job['dest'] !== '' && !zfsmScheduleCopiesUnder($job) && (!$here || $job['server'] === ''));
 }
 
 // The copy is a dataset in a pool here, or one name inside the area on a trusted server (zfsmReplicaTargetDest).
@@ -294,16 +296,17 @@ function zfsmScheduleWrong($job) {
 	if ($copy !== '') $fix[] = $copy;
 	$leave = zfsmScheduleLeaveOutWrong($job);
 	if ($leave !== '') $fix[] = $leave;
+	if (isset($job['replace']) && $job['server'] !== '') $fix[] = 'Replace a copy that no longer matches is only for a copy on this server';
 	if ($fix === array() && !zfsmScheduleValid($job)) $fix[] = 'give the copy a name as Replicate does';
 	return implode('; ', $fix);
 }
 
 // Saves a schedule for a copy and starts its first run now with Keep 0, as it may never be saved: one whose first run can't start
 // isn't. $keep: zfsmKeepParse's (-1: what the page sent is no Keep; empty is 0, all); $copy_keeps: zfsmCopyKeepsParse's; $decrypt: Send's;
-// $remake: If the copy is gone's.
-function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $decrypt = false, $remake = false) {
+// $remake: If the copy is gone's; $replace: Replace a copy's.
+function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $days, $keep, $cfg, $copy_keeps = null, $decrypt = false, $remake = false, $replace = false) {
 	$job = zfsmScheduleCopyKeepsSet(array('id' => '00000000', 'dataset' => $zdataset, 'dest' => $zdest, 'server' => $server, 'every' => $every) + zfsmScheduleAt($every, $time, $days)
-		+ array('keep' => $keep), $copy_keeps) + array_filter(array('decrypted' => $decrypt === true, 'remake' => $remake === true));
+		+ array('keep' => $keep), $copy_keeps) + array_filter(array('decrypted' => $decrypt === true, 'remake' => $remake === true, 'replace' => $replace === true));
 	$wrong = zfsmScheduleWrong($job);
 	if ($wrong !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$wrong);
 	if ($snapshot !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now');
@@ -320,7 +323,7 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 	$job['id'] = zfsmScheduleNewId($read['valid']);
 	$clash = zfsmScheduleClash($job, $read['valid'], $cfg, time(), true);
 	if ($clash !== '') return zfsmFailure($zdataset, 'Nothing was scheduled: '.$clash.'; add the time to it in Settings');
-	$started = zfsmStartReplicate($zdataset, '', $zdest, $cfg, $server, 0, $decrypt);
+	$started = zfsmStartReplicate($zdataset, '', $zdest, $cfg, $server, 0, $decrypt, $replace);
 	if (!isset($started['succeeded'][$zdataset])) return zfsmFailure($zdataset, 'Nothing was scheduled: '.($started['failed'][$zdataset] ?? 'the first run did not start'));
 	$changed = zfsmScheduleChange(function($jobs) use ($job) {
 		$same = zfsmScheduleSame($jobs, $job);

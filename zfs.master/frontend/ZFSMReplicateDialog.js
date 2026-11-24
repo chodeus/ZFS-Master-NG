@@ -22,16 +22,19 @@ function zfsmReplicateHtml(options, zdataset) {
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
 	html += '<p id="zfsm-replicate-remake-row" style="margin:.5em 0;display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again (sends everything)</label></p>';
+	html += '<p id="zfsm-replicate-replace-row" style="margin:.5em 0'+(server === '' ? '' : ';display:none')+'"><label><input id="zfsm-replicate-replace" type="checkbox"> Replace a copy that no longer matches (it is renamed, not destroyed)</label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
 	return '<div style="text-align:left">'+html+say('It runs in the background: the row shows how far it got, and a notification says when it finishes.')
 		+'<p id="zfsm-replicate-repeat-help" style="margin:.5em 0;display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it. On another server, that server\'s Keep Replicas decides what the copy keeps. '+zfsmGuideLink('replicate-repeats')+'</p></div>';
 }
 
-// Repeat's rows, Copy Keeps only for This server, and its help and If the copy is gone for any repeat. A repeat takes its own snapshot,
-// so Snapshot shows Take one now.
+// Repeat's rows, Copy Keeps only for This server, and its help and If the copy is gone for any repeat; Replace a copy for This server.
+// A repeat takes its own snapshot, so Snapshot shows Take one now.
 function zfsmReplicateRepeatSync(root) {
 	const server = root.querySelector('#zfsm-replicate-server');
-	const every = zfsmRepeatSync(root, 'zfsm-replicate', !server || server.value === '');
+	const here = !server || server.value === '';
+	const every = zfsmRepeatSync(root, 'zfsm-replicate', here);
+	root.querySelector('#zfsm-replicate-replace-row').style.display = here ? '' : 'none';
 	root.querySelector('#zfsm-replicate-repeat-help').style.display = every !== '' ? '' : 'none';
 	root.querySelector('#zfsm-replicate-remake-row').style.display = every !== '' ? '' : 'none';
 	const snapshot = root.querySelector('#zfsm-replicate-snapshot');
@@ -43,6 +46,11 @@ function zfsmReplicateRepeatSync(root) {
 // If the copy is gone, sent only ticked on a repeat (zfsmPostYes).
 function zfsmReplicateRemake(root) {
 	return root.querySelector('#zfsm-replicate-remake').checked && root.querySelector('#zfsm-replicate-remake-row').style.display !== 'none' ? {remake: '1'} : {};
+}
+
+// Replace a copy, sent only ticked for This server (zfsmPostYes).
+function zfsmReplicateReplace(root) {
+	return root.querySelector('#zfsm-replicate-replace').checked && root.querySelector('#zfsm-replicate-replace-row').style.display !== 'none' ? {replace: '1'} : {};
 }
 
 // What Copy goes to holds for a server: the last copy's dataset here, or its name inside the area there; another server's copy
@@ -60,7 +68,8 @@ function zfsmReplicatePlanHtml(plan) {
 	const area = plan.area ? say('On '+esc(plan.server)+', copies go inside '+esc(plan.area)+'.') : '';
 	if (plan.can_proceed !== true) return area;
 	const size = plan.size === null || plan.size === undefined ? '' : ', about '+zfsmSize(plan.size);
-	let html = say(plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
+	let html = say(plan.replace ? 'The copy there no longer matches this dataset. It is renamed to '+esc(plan.replace)+' (named for the time the run starts), with the copies below it, and everything is sent again'+size+'.'
+		: plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');
 	// How an encrypted dataset goes: as picked, as the copy was made, or as the stopped run went (zfsmReplicaPlanCrypt).

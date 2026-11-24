@@ -92,6 +92,8 @@ $log_lines = array(
 	// A folder's name holding what ends a dataset's in a log line.
 	'Convert: cloning /mnt/tank/CanaryDs One/Canary Mix | Live (in full) failed, so rsync copies it: cp failed',
 	'Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received',
+	// A copy that no longer matched, renamed aside (zfsmReplicateAside).
+	'Replication of tank/CanaryDs One to tank/CanaryCopy replaces the copy, which no longer matched; the old copy is now tank/CanaryCopy_replaced_20261124_1251',
 	// Keep Replicas on what was received: what it removed, what stayed and why, and a read that failed.
 	'Removed tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvOld (not among the newest 2 Keep Replicas keeps)',
 	"Replication from 2001:db8::77 into tank/CanaryDs One/canarysender/CanaryIn received: Keep Replicas could not remove tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed (cannot destroy 'tank/CanaryDs One/canarysender/CanaryIn@CanaryRecvStayed': Input/output error); the next receive tries again",
@@ -288,6 +290,8 @@ has(' not started: The key line on '.zfsmDiagToken('canary.backup').' is for '.z
 has('. Copies already in '.zfsmDiagToken('remote').'?s area stay there', $log, 'wherever the line names it');
 has('Replication of tank/'.$token('CanarySrc').' to '.$token('Canary Name').' on server '.zfsmDiagToken('canary.backup').' not started: Nothing answers SSH at ', $log, 'the name it was given there, spaces and all, ends the dataset\'s; the server is the same token');
 has(' to tank/'.zfsmDiagToken('CanaryCopy').' (changes since '.$token('CanaryBase').') started: zfs send -i tank/'.$ds.'@'.zfsmDiagToken('CanaryBase'), $log, 'a snapshot the plugin names by its short name alone is a token, the one it has after its dataset');
+has('Replication of tank/'.$ds.' to tank/'.zfsmDiagToken('CanaryCopy').' replaces the copy, which no longer matched; the old copy is now tank/'.$token('CanaryCopy_replaced_20261124_1251')."\n", $log,
+	'a copy renamed aside: each name is a token, and the words between them stay');
 has(' refused: tank/'.$token('CanaryElse').'/'.$token('x').' is not inside tank/'.$ds.'/'.zfsmDiagToken('canarysender').' (zfsm-replica 1 exists (as hex) tank/'.$ds.'/'.$token('CanaryHex').')', $log, 'a dataset a request names as hex is read and replaced');
 has('Convert: cloning /mnt/tank/'.$ds.'/'.$token('Canary Artist - Album (2019)')." failed, so rsync copies it: cp failed\n", $log, 'a folder\'s path ends where the plugin\'s words follow it, and the why after them stays');
 $folder = $token('Canary Old Folder');

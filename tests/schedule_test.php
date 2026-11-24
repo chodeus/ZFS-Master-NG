@@ -569,4 +569,25 @@ same(array(array('warning: Replication of tank/re to gone/x/re not started: The 
 	'warning: Replication of tank/re to tank/re/x/re not started: The copy can?t be the dataset itself, go inside it, or replace one of its parents'.$later), array('create -o canmount=off -o readonly=on -o zfs.master:holder=on gone/x'), array()),
 	array($read('notify-detail.log'), $creates(), $sends()), 'each says why; only the one level below the missing pool is tried, and nothing is sent');
 
+// Replace a copy that no longer matches: saved with a copy's schedule here, only as true. A run then renames the copy aside and sends
+// the dataset in full, and tells of it while its schedule works (zfsmScheduleNotifier).
+same(array(true, false, false, false, false, false), array_map('zfsmScheduleValid', array(array('replace' => true) + $hourly, array('replace' => true, 'server' => 'nas', 'dest' => 'data') + $hourly,
+	array('replace' => false) + $hourly, array('replace' => 1) + $hourly, array('replace' => true) + $snapshots_job, array('replace' => true) + $under_job)), 'only a copy\'s schedule here saves replace, and only as true');
+same('Replace a copy that no longer matches is only for a copy on this server', zfsmScheduleWrong(array('replace' => true, 'server' => 'nas', 'dest' => 'data', 'keep' => 0) + $hourly), 'one on a server is told why');
+same('give the copy a name as Replicate does', zfsmScheduleWrong(array('replace' => true, 'dest' => '', 'keep' => 0) + $hourly), 'and one here with no copy named is told to name it');
+$pool('datasets', array("tank\tfilesystem", "tank/re\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array("tank/re@a\t31\t10"));
+$pool('props', array());
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$answer = $add('tank/re', '', 'backup/re', '', 'hourly', '', '', 0, $cfg, null, false, false, true);
+$job = $stored()[0] ?? array();
+same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['replace'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/re, every hour at :[0-9]{2}, keeps all its snapshots; replaces its copy if it no longer matches <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
+	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
+file_put_contents($work.'/pool/marks', "backup/re@stray\t998\t900\n", FILE_APPEND);
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 3600), 'a run of a schedule that works, whose copy went its own way');
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/re finished \(in full\)\. The old copy is now backup\/re_replaced_[0-9]{8}_[0-9]{4}: destroy it when you no longer need it\.$/D',
+	implode("\n", $read('notify-detail.log'))), 'replaces it, and tells of it: '.implode(' | ', $read('notify-detail.log')));
+
 echo "schedule tests passed\n";

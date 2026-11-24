@@ -102,8 +102,10 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 			printf "cannot open '%s': dataset does not exist\n" "$last_arg" >&2; exit 1
 		fi
 		# A holder's filesystems and below it, mounted as props say, else no (a copy is received unmounted); ZFSM_TEST_MOUNTED_FAIL=1 fails it.
+		# As zfs refuses a volume named there: -t filesystem opens only a filesystem.
 		if [ "$4" = name,mounted ] && [ "$6" = filesystem ] && [ "$7" = -r ]; then
 			[ "${ZFSM_TEST_MOUNTED_FAIL:-0}" = 1 ] && { printf "cannot open '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
+			awk -F'\t' -v n="$last_arg" '$1 == n && $2 == "volume" { f = 1 } END { exit !f }' "$R/datasets" && { printf "cannot open '%s': operation not applicable to datasets of this type\n" "$last_arg" >&2; exit 1; }
 			awk -F'\t' -v d="$last_arg" '($1 == d || index($1, d "/") == 1) && $2 == "filesystem" { print $1 }' "$R/datasets" | while IFS= read -r n; do
 				printf '%s\t%s\n' "$n" "$(prop "$n" mounted no)"
 			done
@@ -179,6 +181,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 				*) s=$(source_of "$last_arg" "$p"); [ "$s" = default ] && s=-; printf '%s\t%s\t%s\n' "$p" "$(inherited "$last_arg" "$p" -)" "$s" ;;
 			esac; done; exit 0
 		fi
+		# ZFSM_TEST_PROP_FAIL="<dataset> <property>" fails that one read.
+		[ "${ZFSM_TEST_PROP_FAIL:-}" = "$last_arg $6" ] && { printf "cannot get property for '%s': Input/output error\n" "$last_arg" >&2; exit 1; }
 		case "$6" in
 		type) awk -F'\t' -v n="$last_arg" '$1 == n { print $2 }' "$R/datasets" ;;
 		guid) guid_of "$last_arg" ;;
