@@ -273,9 +273,9 @@ function zfsmReplicaPlanHolder($plan, $target) {
 }
 
 // What the Replicate dialog shows: snapshots newest first, the last destination, the trusted servers, on $opening the warning if a repeat
-// leaves it out and whether Send shows, and the plan once a destination is given ($decrypt: Send's; $replace: Replace a copy's); for a
+// leaves it out and whether Send shows, and the plan once a destination is given ($choices: Replicate's ticks, zfsmPostChoices); for a
 // server also its area, or why not.
-function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false, $decrypt = false, $replace = false) {
+function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false, $choices = array()) {
 	if (!zfsmDatasetExists($zdataset)) return array('can_proceed' => false, 'error' => 'Only an existing dataset can be replicated');
 	$marks = zfsmReplicaMarks($zdataset);
 	if ($marks === null) return array('can_proceed' => false, 'error' => 'The dataset\'s snapshots could not be read');
@@ -295,7 +295,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', 
 		$options['area'] = $target['area'] ?? null;
 		if ($zdest === '' && !isset($target['error'])) return array_merge($options, array('can_proceed' => false, 'error' => ''));
 		// No snapshot picked means the run takes one first (zfsmStartReplicate).
-		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target, 'decrypt' => $decrypt, 'replace' => $replace)));
+		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target) + $choices));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}

@@ -94,6 +94,18 @@ $reset();
 same(0, zfsmRunReplicate('tank/data', 'd', 'backup/other'), 'a second destination runs');
 same(array($bookmark('backup/data', 'd'), $bookmark('backup/other', 'd')), $names('tank/data', 'bookmark'), 'each destination keeps its own bookmark');
 same(array('server' => '', 'dest' => 'backup/other'), zfsmReplicaLastDestination(zfsmReplicaMarks('tank/data')), 'the dialog offers the newest destination, on this server');
+// A run with no lock to take sends nothing and says why: the dataset's guid unread, or its lock file not opened.
+$reset();
+putenv('ZFSM_TEST_PROP_FAIL=tank/data guid');
+$unread = zfsmRunReplicate('tank/data', 'd', 'backup/data');
+putenv('ZFSM_TEST_PROP_FAIL');
+$lock_dir = zfsmJobLockFile('tank/data', 'replicate');
+unlink($lock_dir);
+mkdir($lock_dir);
+$unopened = zfsmRunReplicate('tank/data', 'd', 'backup/data');
+rmdir($lock_dir);
+same(array(array(1, 1), array(), array('warning: Replication of tank/data to backup/data not started: its guid could not be read', 'warning: Replication of tank/data to backup/data not started: its lock file could not be opened')),
+	array(array($unread, $unopened), $calls('send'), $read('notify-detail.log')), 'a run with no lock sends nothing, and says why');
 
 // Nothing is ever destroyed at the copy: what it can't take is refused, with why.
 $refuse = function($snapshot, $dest) { $plan = zfsmReplicatePlan('tank/data', $snapshot, $dest); return $plan['can_proceed'] ? 'proceeds' : $plan['error']; };
@@ -134,7 +146,7 @@ $replacing = function($snapshot, $dest = 'backup/data', $zdataset = 'tank/data')
 	$plan = zfsmReplicatePlan($zdataset, $snapshot, $dest, array('replace' => true));
 	return $plan['can_proceed'] ? array($plan['mode'], $minute($plan['replace'], $dest), $plan['newer']) : $plan['error'];
 };
-$replace = function($snapshot) { return zfsmRunReplicate('tank/data', $snapshot, 'backup/data', null, false, '', null, null, false, true); };
+$replace = function($snapshot) { return zfsmRunReplicate('tank/data', $snapshot, 'backup/data', null, false, '', null, null, array('replace' => true)); };
 $prop = function($line) use ($work) { file_put_contents($work.'/pool/props', $line."\n", FILE_APPEND); };
 $ahead = 'backup/data already holds tank/data@b, which is newer than tank/data@a';
 same(array('backup/data already holds tank/data@b', array('full', 'backup/data_replaced_<minute>', $ahead), 'backup/empty already exists and holds no snapshot, so it can\'t be updated without destroying it'),
@@ -319,7 +331,7 @@ putenv('ZFSM_TEST_CRYPT_FAIL');
 // as it was made, whatever is picked: decrypted when plain or marked, else raw.
 $crypt = function($name) { return zfsmReplicaTargetCrypt(array('server' => ''), $name)[0]; };
 $enc = function($snapshot, $dest, $decrypt) { $plan = zfsmReplicatePlan('tank/enc', $snapshot, $dest, array('decrypt' => $decrypt)); return $plan['can_proceed'] ? array($plan['raw'], $plan['how']) : $plan['error']; };
-$decrypted = function($snapshot, $dest) { return zfsmRunReplicate('tank/enc', $snapshot, $dest, null, false, '', null, null, true); };
+$decrypted = function($snapshot, $dest) { return zfsmRunReplicate('tank/enc', $snapshot, $dest, null, false, '', null, null, array('decrypt' => true)); };
 $reset();
 same(array(array(false, 'choice'), 0), array($enc('e', 'backup/dec', true), $decrypted('e', 'backup/dec')), 'Decrypted picked for a new copy plans it so, and runs');
 same(array(array('send -P -v -L tank/enc@e'), array('receive -s -u -o readonly=on -o canmount=noauto -o zfs.master:raw=off backup/dec')), array($calls('send'), $calls('receive')),
@@ -488,7 +500,7 @@ if (is_string($docroot) && is_file($docroot.'/plugins/zfs.master/scripts/replica
 	// Replace reaches the job: a start to a copy that went its own way renames it aside there.
 	file_put_contents($work.'/pool/marks', "backup/data@stray3\t996\t800\n", FILE_APPEND);
 	$reset();
-	same(array('tank/data' => 'Replication to backup/data started; a notification says when it is done'), zfsmStartReplicate('tank/data', 'b', 'backup/data', $cfg, '', null, false, true)['succeeded'] ?? null, 'a start that replaces the copy');
+	same(array('tank/data' => 'Replication to backup/data started; a notification says when it is done'), zfsmStartReplicate('tank/data', 'b', 'backup/data', $cfg, '', null, array('replace' => true))['succeeded'] ?? null, 'a start that replaces the copy');
 	for ($wait = 0; $wait < 100 && zfsmJobRunning($background_lock); $wait++) usleep(50000);
 	$to = $aside();
 	same(array(array('backup/data@b'), true), array($names('backup/data', 'snapshot'), in_array($to.'@stray3', $names($to, 'snapshot'), true)), 'and the job renames it aside, then sends b in full');
@@ -560,7 +572,7 @@ same(array($remote_mark('c')), $names('tank/data', 'bookmark'), 'and the bookmar
 same(array(1, 4, 1), $logins($ssh()), 'still one login: exists, token, snapshots and the stream ride it');
 same(array('backup/replicas/tower/data on server nas already holds tank/data@c'), array(zfsmReplicatePreview('tank/data', 'c', 'data', $cfg, 'nas')['error']), 'the copy there is read back through the checker');
 same('backup/replicas/tower/data on server nas already holds tank/data@c, which is newer than tank/data@b; only a copy on this server is replaced',
-	zfsmReplicatePreview('tank/data', 'b', 'data', $cfg, 'nas', false, false, true)['error'], 'and one there is never replaced');
+	zfsmReplicatePreview('tank/data', 'b', 'data', $cfg, 'nas', false, array('replace' => true))['error'], 'and one there is never replaced');
 $ssh();
 
 // A cut-off stream leaves a token there; the next run carries on from it. Keep Replicas 1 there, from its settings, removes nothing
@@ -752,11 +764,11 @@ zfsmReplicaDisconnect($target);
 runProcess('zfs', array('snapshot', 'tank/enc@i'));
 $e = 'backup/replicas/tower/enc';
 $reset();
-same(0, zfsmRunReplicate('tank/enc', 'i', 'enc', null, false, 'nas', null, null, true), 'Decrypted picked for the raw copy on nas');
+same(0, zfsmRunReplicate('tank/enc', 'i', 'enc', null, false, 'nas', null, null, array('decrypt' => true)), 'Decrypted picked for the raw copy on nas');
 same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e, 'token '.$e, 'snapshots '.$e, 'crypt '.$e, 'receive '.$e), array('send -P -v -w -i tank/enc@e tank/enc@i')),
 	array($asked(), $calls('send')), 'asks how it was made, and sends raw');
 $reset();
-same(0, zfsmRunReplicate('tank/enc', 'i', 'encdec', null, false, 'nas', null, null, true), 'a new copy there, Decrypted');
+same(0, zfsmRunReplicate('tank/enc', 'i', 'encdec', null, false, 'nas', null, null, array('decrypt' => true)), 'a new copy there, Decrypted');
 same(array(array('hello', 'exists backup/replicas/tower', 'exists '.$e.'dec', 'crypt backup/replicas/tower', 'receive-zstd '.$e.'dec'), array('send -P -v -L tank/enc@i')),
 	array($asked(), $calls('send')), 'reads the area, then sends decrypted through zstd');
 runProcess('zfs', array('snapshot', 'tank/enc@j'));
@@ -773,7 +785,7 @@ zfsmReplicaDisconnect($target);
 $reset();
 same(1, zfsmRunReplicate('tank/enc', 'k', 'encdec', null, false, 'nas'), 'so a raw run into the plain copy');
 same(array('warning: Replication of tank/enc@k to '.$e.'dec on server nas failed: cannot receive incremental stream: cannot perform raw receive on top of existing unencrypted dataset.'), $read('notify-detail.log'), 'fails with zfs\'s reason');
-same(0, zfsmRunReplicate('tank/enc', 'k', 'encdec', null, false, 'nas', null, null, true), 'and Decrypted runs');
+same(0, zfsmRunReplicate('tank/enc', 'k', 'encdec', null, false, 'nas', null, null, array('decrypt' => true)), 'and Decrypted runs');
 putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
 $ssh();
 $reset();

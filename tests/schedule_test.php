@@ -546,7 +546,7 @@ $pool('props', array("tank/enc\tencryption\taes-256-gcm"));
 file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
 $GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
-$answer = zfsmScheduleAdd('tank/enc', '', 'backup/dec', '', 'hourly', '', '', 0, $cfg, null, true);
+$answer = zfsmScheduleAdd('tank/enc', '', 'backup/dec', '', 'hourly', '', '', 0, $cfg, null, array('decrypt' => true));
 for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/enc', 'replicate')); $waited++) usleep(50000);
 $GLOBALS['docroot'] = $work.'/docroot';
 $job = $stored()[0] ?? array();
@@ -565,7 +565,7 @@ $pool('marks', array("tank/re@a\t31\t10"));
 $pool('props', array());
 file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
-$answer = $add('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, false, true);
+$answer = $add('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, array('remake' => true));
 $job = $stored()[0] ?? array();
 same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['remake'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/a\/b\/c\/re, every hour at :[0-9]{2}, keeps all its snapshots; makes its copy again if it is gone <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
 	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
@@ -649,7 +649,7 @@ $pool('marks', array("tank/re@a\t31\t10"));
 $pool('props', array());
 file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
-$answer = $add('tank/re', '', 'backup/re', '', 'hourly', '', '', 0, $cfg, null, false, false, true);
+$answer = $add('tank/re', '', 'backup/re', '', 'hourly', '', '', 0, $cfg, null, array('replace' => true));
 $job = $stored()[0] ?? array();
 same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['replace'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/re, every hour at :[0-9]{2}, keeps all its snapshots; replaces its copy if it no longer matches <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
 	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
