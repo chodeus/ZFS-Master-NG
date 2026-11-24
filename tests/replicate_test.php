@@ -68,8 +68,13 @@ same(array('normal: Replication of tank/data@b to backup/data finished (in full)
 // The next run sends only the changes, from the snapshot the copy last got; the bookmark moves on and the old one goes.
 $reset();
 runProcess('zfs', array('snapshot', 'tank/data@c'));
+// A bookmark has its snapshot's createtxg, so a listing sorted by it may put the bookmark first.
+$marks = array_values(array_filter($read('pool/marks'), function($line) { return strpos($line, 'tank/data#') !== 0; }));
+array_splice($marks, array_search("tank/data@b\t", array_map(function($line) { return substr($line, 0, 12); }, $marks), true), 0, preg_grep('/^tank\/data#/', $read('pool/marks')));
+$pool('marks', $marks);
+same(array($bookmark('backup/data', 'b'), 'tank/data@b'), array_slice($names('tank/data', 'snapshot,bookmark'), 1, 2), 'with the bookmark of b listed before b');
 $plan = zfsmReplicatePlan('tank/data', 'c', 'backup/data');
-same(array('incremental', 'tank/data@b'), array($plan['mode'], $plan['base']), 'a snapshot is the base while it exists');
+same(array('incremental', 'tank/data@b'), array($plan['mode'], $plan['base']), 'a snapshot is the base while it exists, even listed after its bookmark');
 same(0, zfsmRunReplicate('tank/data', 'c', 'backup/data'), 'it runs');
 same(array('send -P -v -L -i tank/data@b tank/data@c'), $calls('send'), 'send streams the changes since b');
 same(array($bookmark('backup/data', 'c')), $names('tank/data', 'bookmark'), 'the bookmark moves to c and the old one is removed');

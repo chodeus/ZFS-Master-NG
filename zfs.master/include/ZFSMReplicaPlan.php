@@ -215,20 +215,26 @@ function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap, $replace 
 	if ($held === null) return zfsmReplicaUnread($where, $why);
 	if (!$held) return zfsmReplicaPlanHolder($plan, $target);
 	$newest = end($held);
-	$base = null;
-	// The snapshot or bookmark the copy's newest snapshot came from; a snapshot first, as older OpenZFS can't send raw from some bookmarks.
-	foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
+	$base = zfsmReplicaPlanBase($marks, $newest);
 	if ($base !== null && $base['guid'] === $snap['guid']) return $where.' already holds '.$snap['name'];
 	$newer = $base !== null && $base['txg'] > $snap['txg'] ? $where.' already holds '.$base['name'].', which is newer than '.$snap['name'] : '';
 	$unmatched = $base === null ? $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it' : $newer;
-	if ($unmatched !== '' && $replace) return $target['server'] === '' ? zfsmReplicaPlanReplace($plan, $zdataset, $unmatched, $newer) : $unmatched.'; only a copy on this server is replaced';
-	if ($unmatched !== '') return $unmatched;
-	return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
+	if ($unmatched === '') return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
+	return $replace ? zfsmReplicaPlanReplace($plan, $target, $zdataset, $unmatched, $newer) : $unmatched;
+}
+
+// The mark in $marks that $newest, the copy's newest snapshot, came from: a snapshot first, as older OpenZFS can't send raw from some
+// bookmarks; null when none.
+function zfsmReplicaPlanBase($marks, $newest) {
+	$base = null;
+	foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
+	return $base;
 }
 
 // $plan to send in full once the run renames aside the copy that no longer matches (zfsmReplicateAside), with $newer when the copy is
 // only ahead of the snapshot; else $unmatched and why it stays.
-function zfsmReplicaPlanReplace($plan, $zdataset, $unmatched, $newer) {
+function zfsmReplicaPlanReplace($plan, $target, $zdataset, $unmatched, $newer) {
+	if ($target['server'] !== '') return $unmatched.'; only a copy on this server is replaced';
 	$readonly = getDatasetProperty('', $plan['dest'], 'readonly');
 	if ($readonly === null) return $unmatched.'; whether it is read-only could not be read';
 	if ($readonly !== 'on') return $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is';
