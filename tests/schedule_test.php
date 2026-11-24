@@ -68,7 +68,7 @@ $add = function(...$args) use ($work) {
 	$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
 	$GLOBALS['zfsm_php'] = PHP_BINARY;
 	$answer = zfsmScheduleAdd(...$args);
-	$lock = zfsmJobLockFile('tank/data', 'replicate');
+	$lock = zfsmJobLockFile($args[0], 'replicate');
 	for ($waited = 0; $waited < 100 && zfsmJobRunning($lock); $waited++) usleep(50000);
 	same(false, zfsmJobRunning($lock), 'the background run finishes, letting go of its lock');
 	$GLOBALS['docroot'] = $work.'/docroot';
@@ -496,10 +496,7 @@ $pool('marks', array("tank/re@a\t31\t10"));
 $pool('props', array());
 file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
-$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
-$answer = zfsmScheduleAdd('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, false, true);
-for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/re', 'replicate')); $waited++) usleep(50000);
-$GLOBALS['docroot'] = $work.'/docroot';
+$answer = $add('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, false, true);
 $job = $stored()[0] ?? array();
 same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['remake'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/a\/b\/c\/re, every hour at :[0-9]{2}, keeps all its snapshots; makes its copy again if it is gone <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
 	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
@@ -520,12 +517,12 @@ $holder = array('create -o canmount=off -o readonly=on -o zfs.master:holder=on b
 same(array($holder, 1, true, array("backup/a/b\tcanmount\toff", "backup/a/b\treadonly\ton", "backup/a/b\tzfs.master:holder\ton"), array()),
 	array($creates(), preg_match('/^send -P -v -L tank\/re@repl-[0-9]{14}$/D', implode("\n", $sends())), zfsmDatasetExists('backup/a/b/c/re'), array_values(preg_grep('/^backup\/a\/b\t/', $read('pool/props'))),
 	array_values(preg_grep('/^backup\/a\t/', $read('pool/props')))), 'makes each missing dataset above it a holder, top first, leaves backup/a as it was, and sends it all: '.implode(' | ', $sends()));
-same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. It works again after 1 run\(s\) with a problem\.$/D', $read('notify-detail.log')[0] ?? ''),
-	'and says it sent it in full: '.implode(' | ', $read('notify-detail.log')));
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\. It works again after 1 run\(s\) with a problem\.$/D',
+	$read('notify-detail.log')[0] ?? ''), 'and says it sent it in full, and which datasets it made: '.implode(' | ', $read('notify-detail.log')));
 // A Copy Under run makes no level here: its own run made them, leaving any another copy is coming to (zfsmScheduleCopiesPlace).
 $gone();
 $reset();
-same(array('', array()), array(zfsmReplicateLevels(array('remake' => true, 'under' => true), array('server' => ''), 'tank/re', 'backup/a/b/c/re'), $creates()),
+same(array(array('', array()), array()), array(zfsmReplicateLevels(array('remake' => true, 'under' => true), array('server' => ''), 'tank/re', 'backup/a/b/c/re'), $creates()),
 	'a Copy Under run, with its levels gone since, makes none');
 // A dataset that can't be made stops the run before it sends; the ones made before it stay.
 $taken = count($names('tank/re', 'snapshot'));
@@ -533,9 +530,28 @@ putenv('ZFSM_TEST_CREATE_FAIL=backup/a/b/c');
 $reset();
 same(1, zfsmScheduleRun($job['id'], $cfg, time() + 10800), 'a run where backup/a/b/c can\'t be made');
 putenv('ZFSM_TEST_CREATE_FAIL');
-same(array(array('warning: Replication of tank/re to backup/a/b/c/re not started: The dataset to hold the copies below backup/a/b/c could not be made: cannot create ?backup/a/b/c?: dataset already exists'.$later),
+same(array(array('warning: Replication of tank/re to backup/a/b/c/re not started: The dataset to hold the copies below backup/a/b/c could not be made: cannot create ?backup/a/b/c?: dataset already exists. Made to hold the copy: backup/a/b'.$later),
 	array(), $holder, array(true, false), $taken), array($read('notify-detail.log'), $sends(), $creates(), array(zfsmDatasetExists('backup/a/b'), zfsmDatasetExists('backup/a/b/c')),
 	count($names('tank/re', 'snapshot'))), 'says why, sends nothing, keeps backup/a/b, and removes the snapshot it took');
+// A dataset another run makes first, as two copies below it run at once, is used.
+putenv('ZFSM_TEST_CREATE_RACE=backup/a/b/c');
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 12600), 'a run where another makes backup/a/b/c first');
+putenv('ZFSM_TEST_CREATE_RACE');
+same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/a/b/c'), 1, true), array($creates(), count($sends()), zfsmDatasetExists('backup/a/b/c/re')),
+	'sends the copy into it: '.implode(' | ', $read('notify-detail.log')));
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. It works again after 1 run\(s\) with a problem\.$/D', $read('notify-detail.log')[0] ?? ''),
+	'and names no dataset it made: '.implode(' | ', $read('notify-detail.log')));
+// A run the plan refuses after the datasets were made says so, and leaves them for the next.
+$gone();
+$taken = count($names('tank/re', 'snapshot'));
+putenv('ZFSM_TEST_CRYPT_FAIL=tank/re');
+$reset();
+same(1, zfsmScheduleRun($job['id'], $cfg, time() + 13500), 'a run whose dataset\'s encryption can\'t be read');
+putenv('ZFSM_TEST_CRYPT_FAIL');
+same(array(1, array(), array(true, true), $taken), array(preg_match('/^warning: Replication of tank\/re to backup\/a\/b\/c\/re not started: .+\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\. Later problems /',
+	$read('notify-detail.log')[0] ?? ''), $sends(), array(zfsmDatasetExists('backup/a/b'), zfsmDatasetExists('backup/a/b/c')), count($names('tank/re', 'snapshot'))),
+	'says why and which datasets it made, which stay, sends nothing, and removes the snapshot it took: '.implode(' | ', $read('notify-detail.log')));
 // A pool that is gone, or a copy inside its own dataset (a record edited by hand), makes nothing.
 $elsewhere = array(array('id' => '0badc0f2', 'dest' => 'gone/x/re') + $job, array('id' => '0badc0f3', 'dest' => 'tank/re/x/re') + $job);
 file_put_contents(zfsmScheduleFile(), json_encode($elsewhere));

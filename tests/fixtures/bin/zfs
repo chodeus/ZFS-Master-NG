@@ -311,6 +311,8 @@ if [ -n "${ZFSM_TEST_REPL_DIR:-}" ] && ! { [ "$1" = destroy ] && contains_arg -n
 		printf '%s\t%s\t%s\n' "$3" "$guid" "$txg" >> "$R/marks"
 		exit 0 ;;
 	create)
+		# ZFSM_TEST_CREATE_RACE names one another run makes first, between this one's read and its create.
+		[ "${ZFSM_TEST_CREATE_RACE:-}" = "$last_arg" ] && printf '%s\tfilesystem\n' "$last_arg" >> "$R/datasets"
 		# ZFSM_TEST_CREATE_FAIL names one that fails, as it does without a pool (below).
 		{ exists "$last_arg" || [ "${ZFSM_TEST_CREATE_FAIL:-}" = "$last_arg" ]; } && { printf "cannot create '%s': dataset already exists\n" "$last_arg" >&2; exit 1; }
 		exists "${last_arg%/*}" || { printf "cannot create '%s': parent does not exist\n" "$last_arg" >&2; exit 1; }

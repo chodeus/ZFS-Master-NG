@@ -135,14 +135,18 @@ function zfsmReplicaMark($zdataset, $plan) {
 }
 
 // For a schedule that makes its copy again ('remake', not 'under', whose run made its own): each dataset missing between the pool and
-// $zdest made a holder (zfsmReplicaHolderMake); '' or why not. A name the plan refuses, as a server's one name is, makes none.
+// $zdest made a holder (zfsmReplicaHolderMake); array('' or why not, those it made). A name the plan refuses, as a server's one name is, makes none.
 function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
-	if (!($schedule['remake'] ?? false) || ($schedule['under'] ?? false) || zfsmReplicaTargetNameWrong($zdataset, $zdest) !== '') return '';
+	$made = array();
+	if (!($schedule['remake'] ?? false) || ($schedule['under'] ?? false) || zfsmReplicaTargetNameWrong($zdataset, $zdest) !== '') return array('', $made);
 	foreach (zfsmScheduleCopiesLevels(strtok($zdest, '/').'/', $zdest) as $level) {
-		$why = zfsmDatasetExists($level, 'filesystem') ? '' : zfsmReplicaHolderMake($target, $level);
-		if ($why !== '') return $why;
+		if (zfsmDatasetExists($level, 'filesystem')) continue;
+		$why = zfsmReplicaHolderMake($target, $level);
+		if ($why === '') $made[] = $level;
+		// Another run to a copy below it may have made it since.
+		elseif (!zfsmDatasetExists($level, 'filesystem')) return array($why, $made);
 	}
-	return '';
+	return array('', $made);
 }
 
 // The background run, here or to $server (opened under the lock): one per dataset at a time, its progress on the row, a notification at the end, or why it didn't start.
@@ -190,12 +194,16 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		$target = zfsmReplicaTargetOpen($server);
 		$target = zfsmReplicaTargetZstd($target);
 		$first = array('', 'normal');
-		$why = zfsmReplicateLevels($schedule, $target, $zdataset, $zdest);
-		if ($why !== '') return $refused($why, $first);
+		list($why, $made) = zfsmReplicateLevels($schedule, $target, $zdataset, $zdest);
+		// Its refusal, or the notification it ends with, also names the datasets it made, which stay.
+		$also = function($text) use ($made) {
+			return $made === array() ? $text : rtrim($text, '.').'. Made to hold the copy: '.implode(', ', $made).(substr($text, -1) === '.' ? '.' : '');
+		};
+		if ($why !== '') return $refused($also($why), $first);
 		for ($pass = 1; ; $pass++) {
 			$plan = zfsmReplicatePlan($zdataset, $snapshot, $zdest, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
 				'under' => $schedule['under'] ?? false, 'decrypt' => $decrypt));
-			if (!$plan['can_proceed']) return $refused($plan['error'], $first);
+			if (!$plan['can_proceed']) return $refused($also($plan['error']), $first);
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
@@ -205,7 +213,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 				continue;
 			}
 			list($text, $type) = zfsmKeepAfter($code, $zdataset, $plan, $keep, $tag, $to, $text, $type, $schedule['copy_keeps'] ?? null);
-			$notify($title, ...zfsmReplicateTold($first, $text, $type));
+			$notify($title, ...zfsmReplicateTold($first, $also($text), $type));
 			return $code;
 		}
 	} finally {
