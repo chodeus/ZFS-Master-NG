@@ -272,6 +272,9 @@ function zfsmReplicaAsk($link, $request, $keep_bytes = ZFSM_KEEP_OUTPUT) {
 	return $answer;
 }
 
+// The dialog tells its two causes apart (zfsmReplicaTargetRefusal).
+define('ZFSM_REPLICA_NO_KEY', 'This server has no key yet, or its RAM copy could not be made');
+
 // hello on the other server, with the connection kept for more requests: array('remote', 'files', 'area' its copies go into),
 // or array('error' => why: the wait after a failure, this server's name, ssh's own failure or the checker's refusal). zfsmReplicaDisconnect ends it.
 function zfsmReplicaConnect($remote) {
@@ -281,7 +284,7 @@ function zfsmReplicaConnect($remote) {
 	$this_name = zfsmReplicaThisName();
 	if ($this_name === null) return array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification, then give '.$remote['name'].' its new line');
 	$files = zfsmReplicaSshFiles($remote);
-	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
+	if ($files === null) return array('error' => ZFSM_REPLICA_NO_KEY);
 	$link = array('remote' => $remote, 'files' => $files + array('control' => $files['dir'].'/cm'));
 	try {
 		$hello = zfsmReplicaAsk($link, zfsmReplicaRequest('hello'));

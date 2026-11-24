@@ -74,9 +74,12 @@ function zfsmReplicaSenderName($sender) {
 	return is_string($sender) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/D', $sender) === 1;
 }
 
+// The answer to a key this server takes nothing from; the sending side knows it (zfsmReplicaTargetRefusal).
+define('ZFSM_REPLICA_UNACCEPTED', 'This server does not accept replicas from this key');
+
 // What a request may run: array('verb', 'name', 'args'), or array('error' => why it is refused).
 function zfsmReplicaServeCheck($request, $area) {
-	if ($area === null) return array('error' => 'This server does not accept replicas from this key');
+	if ($area === null) return array('error' => ZFSM_REPLICA_UNACCEPTED);
 	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|holder|crypt|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
 		return array('error' => 'Not a replication request');
 	}
@@ -118,8 +121,21 @@ function zfsmReplicaAreaHolds($area, $again = true) {
 		$field = explode("\t", $line);
 		if (count($field) === 2) $found[$field[0]] = $field[1];
 	}
+	return array_diff_assoc($props, $found) === array() ? '' : zfsmReplicaAreaChanged($area);
+}
+
+// Why every request is refused once a property of $area changed.
+function zfsmReplicaAreaChanged($area) {
+	$props = zfsmReplicaAreaProps();
 	$wanted = implode(', ', array_map(function($property) use ($props) { return $property.'='.$props[$property]; }, array_keys($props)));
-	return array_diff_assoc($props, $found) === array() ? '' : $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
+	return $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
+}
+
+// The area a zfsmReplicaAreaChanged answer names, as the sending side reads it; null for any other answer.
+function zfsmReplicaAreaChangedIn($why) {
+	$at = strrpos($why, ' must keep ');
+	$area = $at === false ? '' : substr($why, 0, $at);
+	return $why === zfsmReplicaAreaChanged($area) ? $area : null;
 }
 
 // One of four receive slots per area, held until the receive ends, or why none is: named by the area's guid, as no name may be

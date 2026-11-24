@@ -112,9 +112,23 @@ $refuse = function($snapshot, $dest) { $plan = zfsmReplicatePlan('tank/data', $s
 same('backup/data already holds tank/data@d', $refuse('d', 'backup/data'), 'a copy that holds the snapshot');
 same('backup/data already holds tank/data@d, which is newer than tank/data@b', $refuse('b', 'backup/data'), 'a copy ahead of the snapshot');
 same('backup/empty already exists and holds no snapshot, so it can\'t be updated without destroying it', $refuse('d', 'backup/empty'), 'an existing dataset without snapshots');
+// The Replicate dialog's warning for a refusal the wiki explains; each guide is its heading on the Warnings page, as GitHub names it:
+// change the page and these together.
+$guided = function($snapshot, $dest, $with = array()) { return zfsmReplicatePlan('tank/data', $snapshot, $dest, $with)['refusal'] ?? null; };
+$warning = function($fact, $impact, $guide) { return array('fact' => $fact, 'impact' => $impact, 'guide' => $guide); };
+same(array(null, $warning('backup/data already holds d, which is newer than b', 'Replicate can\'t send an older snapshot to it', 'the-copy-holds-a-newer-snapshot'),
+	$warning('backup/empty already exists and has no snapshots', 'Replicate can\'t put a copy there', 'the-name-is-taken')),
+	array($guided('d', 'backup/data'), $guided('b', 'backup/data'), $guided('d', 'backup/empty')), 'a copy ahead of the snapshot, or a name taken, is a warning; one that holds it is not');
+// The copy's newest snapshot came from another tool's bookmark here: the warning names the copy's snapshot, not the bookmark.
+file_put_contents($work.'/pool/marks', "backup/data@hourly\t777\t900\ntank/data#foo\t777\t900\n", FILE_APPEND);
+same(array('backup/data already holds tank/data#foo, which is newer than tank/data@b', 'backup/data already holds hourly, which is newer than b'),
+	array($refuse('b', 'backup/data'), $guided('b', 'backup/data')['fact'] ?? null), 'a copy ahead by another tool\'s bookmark names its own snapshot');
+file_put_contents($work.'/pool/marks', implode('', array_filter(file($work.'/pool/marks'), function($line) { return strpos($line, "backup/data@hourly\t") !== 0 && strpos($line, "tank/data#foo\t") !== 0; })));
 file_put_contents($work.'/pool/marks', "backup/data@stray\t999\t500\n", FILE_APPEND);
 same('backup/data@stray is not on this dataset, so backup/data can\'t be updated without destroying it', $refuse('d', 'backup/data'), 'a copy that went its own way');
 same("The copy can't be the dataset itself, go inside it, or replace one of its parents", $refuse('d', 'tank/data/copy'), 'inside the dataset');
+same(array($warning('backup/data no longer matches this dataset', 'Replicate can\'t add to it', 'the-copy-no-longer-matches'), null), array($guided('d', 'backup/data'), $guided('d', 'tank/data/copy')),
+	'a copy that went its own way is a warning; a name that can\'t be a copy is not');
 // A run that takes its snapshot first isn't planned or started with a name ZFS refuses; a picked snapshot's run is not named so.
 $taking = function($snapshot, $name) { $plan = zfsmReplicatePlan('tank/data', $snapshot, 'backup/fresh', array('new_name' => $name)); return $plan['can_proceed'] ? 'proceeds' : $plan['error']; };
 $untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
@@ -162,6 +176,7 @@ runProcess('zfs', array('snapshot', 'tank/data@c'));
 $unmatched = 'backup/data@stray is not on this dataset, so backup/data can\'t be updated without destroying it';
 $prop("backup/data\treadonly\toff");
 $off = $replacing('c');
+same(null, $guided('c', 'backup/data', array('replace' => true)), 'with Replace ticked, a copy it can\'t replace keeps its red line, which says why');
 $prop("backup/data\treadonly\ton");
 $prop("backup/data\tmounted\tyes");
 $mounted = $replacing('c');
@@ -253,9 +268,20 @@ same(array(array('backup/data@b'), array($bookmark('backup/data', 'b'))), array(
 same(array('normal: Replication of tank/data@b to backup/data finished (carried on from where it stopped).'), $read('notify-detail.log'), 'the notification says it carried on');
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/vol@v\n", FILE_APPEND);
 same('backup/data holds a part-received replication of tank/vol@v, not of this dataset', $refuse('b', 'backup/data'), 'another dataset\'s token is not resumed');
+same($warning('backup/data holds a stopped replication of tank/vol', 'Replicate can\'t send to it until that one is finished or discarded', 'a-stopped-replication-of-another-dataset'),
+	$guided('b', 'backup/data'), 'and is a warning that names that dataset');
 file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/data@gone\n", FILE_APPEND);
 same('backup/data holds a part-received replication that can\'t be resumed (cannot open \'tank/data@gone\': dataset does not exist); zfs receive -A on that dataset discards it',
 	$refuse('b', 'backup/data'), 'a token zfs can\'t resume says how to discard it, naming no command to paste');
+same($warning('backup/data holds a stopped replication that can\'t carry on', 'Replicate can\'t send to it until that is discarded', 'a-stopped-replication-that-cant-carry-on'),
+	$guided('b', 'backup/data'), 'and is a warning');
+// tank/data#zfsm_ plus the hex of backup/data (22) plus _ is 38: a snapshot named with 218 characters takes the bookmark past 255.
+$tall = str_repeat('s', 218);
+runProcess('zfs', array('snapshot', 'tank/data@'.$tall));
+file_put_contents($work.'/pool/props', "backup/data\treceive_resume_token\ttok:tank/data@".$tall."\n", FILE_APPEND);
+same(array('The names are too long for the bookmark that keeps the next replication incremental',
+	$warning('backup/data holds a stopped replication that can\'t carry on', 'Replicate can\'t send to it until that is discarded', 'a-stopped-replication-that-cant-carry-on')),
+	array($refuse('b', 'backup/data'), $guided('b', 'backup/data')), 'a stopped run whose snapshot\'s bookmark would be too long is not carried on, and its warning says to discard it');
 // zfs send -P -v -n -t as it prints after the source and the copy were renamed, values made up: toname still says src@b.
 $dry = file_get_contents(__DIR__.'/fixtures/zfs_send_resume_renamed.txt');
 same(array('tank/new@b', 12345678), array(zfsmReplicaResumeSnapshot($dry), zfsmReplicateSize($dry)), 'a dry run in the live shape, after a rename, gives the snapshot\'s name now and its size');
@@ -460,6 +486,7 @@ same(array(), array_values(array_filter($read('calls.log'), function($line) { re
 // tank/data#zfsm_ plus the hex of this name (2 x 117) plus _ is 250, which fits; the new snapshot's repl-<14 digits> takes it past ZFS's 255.
 $long = 'backup/'.str_repeat('x', 110);
 same('The names are too long for the bookmark that keeps the next replication incremental', zfsmReplicatePreview('tank/data', '', $long, $cfg)['error'], 'a new snapshot whose bookmark would be too long');
+same($warning('The names are too long for this copy\'s bookmark', 'Replicate can\'t send it', 'names-too-long'), zfsmReplicatePreview('tank/data', '', $long, $cfg)['refusal'] ?? null, 'is a warning in the dialog');
 $other = function($named) { return array('name' => 'tank/data#zfsm_'.bin2hex($named).'_daily', 'guid' => '1', 'txg' => 1); };
 same(array(null, null, null), array_map('zfsmReplicaLastDestination', array(array(array('name' => 'tank/data#zfsm_ab_daily', 'guid' => '1', 'txg' => 1)), array($other('a@b@c/d')), array($other('bad name@pool/copy')))), 'another tool\'s zfsm_ bookmark names no destination');
 
@@ -573,6 +600,35 @@ same(array(1, 4, 1), $logins($ssh()), 'still one login: exists, token, snapshots
 same(array('backup/replicas/tower/data on server nas already holds tank/data@c'), array(zfsmReplicatePreview('tank/data', 'c', 'data', $cfg, 'nas')['error']), 'the copy there is read back through the checker');
 same('backup/replicas/tower/data on server nas already holds tank/data@c, which is newer than tank/data@b; only a copy on this server is replaced',
 	zfsmReplicatePreview('tank/data', 'b', 'data', $cfg, 'nas', false, array('replace' => true))['error'], 'and one there is never replaced');
+same($warning('backup/replicas/tower/data on server nas already holds c, which is newer than b', 'Replicate can\'t send an older snapshot to it', 'the-copy-holds-a-newer-snapshot'),
+	zfsmReplicatePreview('tank/data', 'b', 'data', $cfg, 'nas')['refusal'] ?? null, 'a copy there ahead of the snapshot is a warning');
+file_put_contents($work.'/pool/datasets', "backup/replicas/tower/empty\tfilesystem\n", FILE_APPEND);
+same($warning('backup/replicas/tower/empty on server nas already exists and has no snapshots', 'Replicate can\'t put a copy there', 'the-name-is-taken'),
+	zfsmReplicatePreview('tank/data', 'b', 'empty', $cfg, 'nas')['refusal'] ?? null, 'and so is a name taken there');
+file_put_contents($work.'/pool/datasets', implode('', array_filter(file($work.'/pool/datasets'), function($line) { return strpos($line, "backup/replicas/tower/empty\t") !== 0; })));
+// What stops the plan at nas's hello, or at this server's key before it: the error as the log has it, and the warning.
+$hello = function() use ($cfg) { $plan = zfsmReplicatePreview('tank/data', 'c', 'data', $cfg, 'nas'); return array($plan['error'], $plan['refusal'] ?? null); };
+putenv('ZFSM_TEST_ACCEPT=');
+same(array('This server does not accept replicas from this key', $warning('nas doesn\'t accept copies from this server', 'Replicate can\'t send to it', 'copies-not-accepted')), $hello(), 'nas accepting nothing');
+putenv('ZFSM_TEST_ACCEPT=backup/replicas');
+$prop("backup/replicas/tower\texec\ton");
+same(array('backup/replicas/tower must keep mountpoint=none, volmode=none, setuid=off, devices=off, exec=off, so nothing replicated into it mounts or runs',
+	$warning('A setting of backup/replicas/tower on nas was changed', 'nas refuses every copy into it', 'the-copies-dataset-was-changed')), $hello(), 'a property of the area there changed');
+$prop("backup/replicas/tower\texec\toff");
+$key = file_get_contents($work.'/flash/ssh/id_ed25519');
+file_put_contents($work.'/flash/ssh/id_ed25519', '');
+same(array('This server has no key yet, or its RAM copy could not be made', $warning('This server\'s key could not be used', 'Replicate can\'t send to another server', 'no-key-or-the-key-could-not-be-used')),
+	$hello(), 'a key that could not be copied into memory');
+file_put_contents($work.'/flash/ssh/id_ed25519', $key);
+rename($work.'/flash/ssh/id_ed25519', $work.'/flash/id_aside');
+same(array('This server has no key yet, or its RAM copy could not be made', $warning('This server has no key yet', 'Replicate can\'t send to another server', 'no-key-or-the-key-could-not-be-used')),
+	$hello(), 'no key yet, with nas still trusted');
+rename($work.'/flash/id_aside', $work.'/flash/ssh/id_ed25519');
+same(array('backup/replicas/tower/data on server nas already holds tank/data@c', null), $hello(), 'with all set back, nas answers again');
+same(null, zfsmReplicatePreview('tank/data', 'b', 'data', $cfg, 'gone')['refusal'] ?? null, 'any other reason a server can\'t be asked stays a red line');
+// Only the answer this version's checker gives: one naming other properties, as another version might, is shown as it came.
+same(array('backup/replicas/tower', null, null), array(zfsmReplicaAreaChangedIn(zfsmReplicaAreaChanged('backup/replicas/tower')),
+	zfsmReplicaAreaChangedIn('backup/replicas/tower must keep exec=off, so nothing replicated into it mounts or runs'), zfsmReplicaAreaChangedIn(ZFSM_REPLICA_UNACCEPTED)), 'the area is read back only from that answer');
 $ssh();
 
 // A cut-off stream leaves a token there; the next run carries on from it. Keep Replicas 1 there, from its settings, removes nothing

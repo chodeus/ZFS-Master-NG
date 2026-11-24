@@ -63,6 +63,8 @@ function zfsmReplicateName(last, server, zdataset) {
 function zfsmReplicatePlanHtml(plan) {
 	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
+	// One the wiki says what to do about (zfsmReplicaRefusal) is amber; the rest stay red.
+	if (plan.refusal) return zfsmWarningHtml(plan.refusal, 'zfsm-replicate-refusal');
 	if (plan.error) return '<p style="color:#e22828;margin:.5em 0">'+esc(plan.error)+'</p>';
 	// A trusted server's area, from its hello: the copy is one name inside it.
 	const area = plan.area ? say('On '+esc(plan.server)+', copies go inside '+esc(plan.area)+'.') : '';

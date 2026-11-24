@@ -106,6 +106,11 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', siz
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume', server: 'nas', area: 'a/b'}), /has no \/dev\/zvol device, so/, 'a volume\'s copy there never had a device to remove');
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
+assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'b/<x> already holds d', server: 'nas', area: 'a/b',
+  refusal: {fact: 'b/<x> already holds d, which is newer than b', impact: 'Replicate can\'t send an older snapshot to it', guide: 'the-copy-holds-a-newer-snapshot'}}),
+  '<div id="zfsm-replicate-refusal" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> b/&lt;x&gt; already holds d, which is newer than b</b>'
+  + '<br>Replicate can&#039;t send an older snapshot to it. <a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#the-copy-holds-a-newer-snapshot" target="_blank" rel="noopener noreferrer">Guide</a></div>',
+  'one the wiki explains is amber, escaped, with Guide to its section of the Warnings page, and no red line');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: true}), /It replaces the empty dataset there, made to hold the copies below it, which stay\./, 'a copy onto a holder says it replaces it');
 assert.doesNotMatch(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: false}), /replaces the empty dataset/, 'only onto a holder');
