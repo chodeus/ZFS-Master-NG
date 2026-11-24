@@ -18,7 +18,7 @@ function zfsmScheduleDialogPreview($zdataset, $cfg, $wait = ZFSM_SCHEDULE_COUNT_
 	$own = zfsmScheduleOwn($read['valid'], $zdataset);
 	$listed = zfsmScheduleCoverRead($cfg, $wait, array('-d', '1', $zdataset));
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
-	return zfsmScheduleDialogFields(reset($own)) + array('inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own))),
+	return zfsmScheduleDialogFields(reset($own)) + array('inherited' => zfsmScheduleFollowedText(zfsmScheduleFollowed($zdataset, array_diff_key($read['valid'], $own)), $zdataset),
 		'warning' => $row === null ? null : zfsmScheduleSkippedWarning($zdataset, $row), 'skipped' => $row === null ? zfsmScheduleSnapshotNot($zdataset, $listed) : '',
 		'copies' => zfsmScheduleDialogCopies($zdataset, $read['valid'], $listed));
 }
@@ -36,7 +36,7 @@ function zfsmScheduleDialogCopies($zdataset, $jobs, $listed) {
 	$skipped = $runs !== null && $runs['every'] !== 'none' && $row !== null ? (zfsmScheduleCopiesServerNot($runs) ?: zfsmScheduleCopiesNot($runs, $jobs, $zdataset, $row, $listed['name'])) : '';
 	$remotes = zfsmReplicaRemotes();
 	return zfsmScheduleDialogFields($job) + array('copy_keeps' => zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'under' => substr($where['dest'], 0, -1),
-		'server' => $where['server'], 'servers' => zfsmReplicaServerNames($where['server'], $remotes), 'inherited' => zfsmScheduleCopiesFollowedText($followed), 'skipped' => $skipped)
+		'server' => $where['server'], 'servers' => zfsmReplicaServerNames($where['server'], $remotes), 'inherited' => zfsmScheduleCopiesFollowedText($followed, $zdataset), 'skipped' => $skipped)
 		+ ($remotes === null ? array('servers_error' => zfsmReplicaRemotesUnreadable()) : array());
 }
 

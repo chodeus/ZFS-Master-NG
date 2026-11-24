@@ -46,7 +46,7 @@ function zfsmScheduleValid($job) {
 	$what = ($job['dest'] ?? null) === '' ? zfsmScheduleSnapshotValid($job) : (zfsmScheduleCopiesUnder($job) ? zfsmScheduleCopiesValid($job) : zfsmScheduleCopyValid($job) && zfsmScheduleRepeats($job['every'] ?? null));
 	$number = function($value, $top) { return is_int($value) && $value >= 0 && $value <= $top; };
 	return $what && $number($job['minute'] ?? null, 59) && $number($job['hour'] ?? null, 23) && zfsmScheduleDaysValid($job['days'] ?? null) && zfsmKeepValid($job['keep'] ?? 0)
-		&& zfsmScheduleCopyKeepsValid($job) && zfsmScheduleDecryptedValid($job);
+		&& zfsmScheduleCopyKeepsValid($job) && zfsmScheduleDecryptedValid($job) && zfsmScheduleLeaveOutValid($job);
 }
 
 // Send's Decrypted: saved only on a copy's schedule, and only as true.
@@ -282,7 +282,8 @@ function zfsmScheduleAt($every, $time, $days) {
 	return array('minute' => $at[0], 'hour' => $at[1], 'days' => $days);
 }
 
-// What the user fixes for $job to make a schedule: a Repeat the page no longer offers, else each wrong time, days or Keep, else the copy's name; '' when it makes one.
+// What the user fixes for $job to make a schedule: a Repeat the page no longer offers, else each wrong time, days, Keep, Copy Keeps or
+// Leave Out, else the copy's name; '' when it makes one.
 function zfsmScheduleWrong($job) {
 	if (!zfsmScheduleRepeats($job['every'])) return 'Repeat has no such choice now; reload the page and pick again';
 	$fix = array();
@@ -291,6 +292,8 @@ function zfsmScheduleWrong($job) {
 	if (!zfsmKeepValid($job['keep'])) $fix[] = 'under Snapshots to keep, '.zfsmKeepFix();
 	$copy = zfsmScheduleCopyKeepsWrong($job);
 	if ($copy !== '') $fix[] = $copy;
+	$leave = zfsmScheduleLeaveOutWrong($job);
+	if ($leave !== '') $fix[] = $leave;
 	if ($fix === array() && !zfsmScheduleValid($job)) $fix[] = 'give the copy a name as Replicate does';
 	return implode('; ', $fix);
 }

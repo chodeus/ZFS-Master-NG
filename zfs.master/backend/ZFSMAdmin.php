@@ -40,6 +40,11 @@ function zfsmPostCopyKeeps() {
 	return zfsmCopyKeepsParse(zfsmPostString('copy_keeps'));
 }
 
+// Leave Out as zfsmLeaveOutParse saves it.
+function zfsmPostLeaveOut() {
+	return zfsmLeaveOutParse(zfsmPostString('leave_out'));
+}
+
 // A schedule Save's answer for the page: what it said or why not, and Settings' list once saved, even if the crontab step failed.
 function zfsmScheduleSavedJson($saved, $cfg) {
 	return zfsmJson(array_filter(array('said' => $saved['said'], 'error' => $saved['why'])) + ($saved['saved'] ? array('schedules_html' => zfsmSchedulesHtml($cfg)) : array()));
@@ -263,7 +268,8 @@ try {
 
 		case 'schedulesnapshots':
 			// zdataset: '' (Settings) for the default.
-			echo zfsmScheduleSavedJson(zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg), $zfsm_cfg);
+			echo zfsmScheduleSavedJson(zfsmScheduleSnapshotSave(zfsmPostString('zdataset'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg,
+				ZFSM_SCHEDULE_COUNT_WAIT, zfsmPostLeaveOut()), $zfsm_cfg);
 			break;
 
 		case 'scheduledataset':
@@ -276,7 +282,7 @@ try {
 		case 'schedulecopies':
 			// Settings' Replicate Every Dataset.
 			echo zfsmScheduleSavedJson(zfsmScheduleCopiesSave(zfsmPostString('under'), zfsmPostString('every'), zfsmPostString('time'), zfsmPostString('days'), zfsmPostKeep(), $zfsm_cfg, zfsmPostCopyKeeps(),
-				zfsmPostString('server')), $zfsm_cfg);
+				zfsmPostString('server'), ZFSM_SCHEDULE_COUNT_WAIT, zfsmPostLeaveOut()), $zfsm_cfg);
 			break;
 
 		case 'scheduleremove':

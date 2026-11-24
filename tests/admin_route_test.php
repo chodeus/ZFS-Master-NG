@@ -42,6 +42,9 @@ $routes = array(
 	'schedulesnapshotswrong' => array('cmd' => 'schedulesnapshots', 'every' => 'days', 'time' => '', 'days' => '9', 'keep' => 'x5'),
 	'schedulesnapshotsown' => array('cmd' => 'schedulesnapshots', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => ''),
 	'schedulecopies' => array('cmd' => 'schedulecopies', 'under' => 'backup', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '3', 'copy_keeps' => ' 30D '),
+	'schedulesnapshotsleaveout' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'leave_out' => ' data , x* , data'),
+	'schedulesnapshotsleaveoutshape' => array('cmd' => 'schedulesnapshots', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'leave_out' => array('data')),
+	'schedulecopiesleaveoutwrong' => array('cmd' => 'schedulecopies', 'under' => 'backup', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'leave_out' => 'tank/data'),
 	'schedulecopiesnowhere' => array('cmd' => 'schedulecopies', 'under' => 'nowhere', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => ''),
 	'schedulecopiesserver' => array('cmd' => 'schedulecopies', 'under' => 'copies', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'server' => 'gone'),
 	'scheduledataset' => array('cmd' => 'scheduledataset', 'zdataset' => 'tank/data', 'every' => 'days', 'time' => '04:00', 'days' => '1', 'keep' => '',
@@ -54,7 +57,7 @@ $routes = array(
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
+$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulecopiesleaveoutwrong', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -82,7 +85,7 @@ if (in_array($route, $replication, true)) {
 
 // A schedule to remove, or a snapshot schedule saved (the default or a dataset's own), on the tmpfs the runner mounts on /boot/config. No update_cron here, so
 // Unraid's crontab is not rebuilt.
-if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'scheduledatasetserver', 'replicaremove'), true)) {
+if (in_array($route, array('scheduleremovesaved', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulesnapshotsown', 'schedulecopies', 'scheduledataset', 'scheduledatasetserver', 'replicaremove'), true)) {
 	zfsmTestScratch('/boot/config');
 	putenv('ZFSM_TEST_JOB_DIR='.sys_get_temp_dir().'/zfsm-route-jobs-'.getmypid());
 	@mkdir('/boot/config/plugins/zfs.master', 0700, true);
@@ -163,6 +166,13 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 			&& strpos($answer['schedules_html'] ?? '', '>Replicate Every Dataset under backup, every hour at :') !== false
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array('backup/')
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array('30d'),
+		'schedulesnapshotsleaveout' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) every hour at :[0-5][0-9]; it keeps all it takes\. Leave Out leaves out 1 dataset\(s\); nothing matches x\*$/D', $answer['said'] ?? '') === 1
+			&& strpos($answer['schedules_html'] ?? '', ', keeps all it takes; leaves out data, x*</span>') !== false
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'leave_out') === array(array('data', 'x*')),
+		'schedulesnapshotsleaveoutshape' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps all it takes$/D', $answer['said'] ?? '') === 1
+			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'leave_out') === array(),
+		'schedulecopiesleaveoutwrong' => $answer === array('error' => 'Nothing was saved: under Leave Out, give a name without its pool, such as appdata, not tank/data')
+			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulecopiesnowhere' => $answer === array('error' => 'Nothing was saved: nowhere does not exist on this server') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulecopiesserver' => $answer === array('error' => 'Nothing was saved: No server here is named gone') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduledataset' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) \(tank\/data and below\) every Monday at 04:00; it keeps all it takes\. Saved: a copy of each of 1 dataset\(s\) \(tank\/data and below\) under backup every hour at :[0-5][0-9]; it keeps the newest 24 and 7 daily of the snapshots of each dataset it copies; each copy keeps all its snapshots$/D', $answer['said'] ?? '') === 1
