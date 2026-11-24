@@ -364,6 +364,24 @@ switch ($check) {
 		if (strpos($html, '<input type="text" id="zfsm-copysched-copy-keeps" maxlength="40" placeholder="same as source" value="30d 12m">') === false) { fwrite(STDERR, "settings page does not show Copy Keeps as saved\n"); exit(1); }
 		break;
 
+	case 'settings_leave_out':
+		// Each Every Dataset's Leave Out shows as saved, so its Save sends it back.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$schedules = '/boot/config/plugins/zfs.master/schedules.json';
+		$every = array('server' => '', 'every' => 'hourly', 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
+		file_put_contents($schedules, json_encode(array(array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '', 'minute' => 5, 'leave_out' => array('appdata', 'backup_*')) + $every,
+			array('id' => '1a1b2c3d', 'dataset' => '', 'dest' => 'backup/', 'minute' => 10, 'leave_out' => array('media')) + $every)));
+		try {
+			$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			unlink($schedules);
+		}
+		foreach (array('zfsm-snapsched' => 'appdata, backup_*', 'zfsm-copysched' => 'media') as $prefix => $value) {
+			if (strpos($html, '<input type="text" id="'.$prefix.'-leave-out" placeholder="none" value="'.$value.'">') === false) { fwrite(STDERR, "settings page does not show $prefix Leave Out as saved\n"); exit(1); }
+		}
+		break;
+
 	case 'create_popup':
 		$_SERVER['REQUEST_METHOD'] = 'GET';
 		$_GET = array('zpool' => 'tank');

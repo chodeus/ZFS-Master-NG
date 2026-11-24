@@ -91,7 +91,7 @@ same("Saved: a snapshot of each of 11 dataset(s) every hour at $at; it keeps all
 putenv('ZFSM_TEST_COVER_FAIL=cache/vm1');
 $unread = $save('appdata, bkup_*, plex');
 putenv('ZFSM_TEST_COVER_FAIL');
-same(array(1, 0), array(preg_match('/; not every dataset could be read: .*\. Leave Out leaves out 3 dataset\(s\)$/', $unread), substr_count($unread, 'nothing matches')), 'not with a dataset unread');
+same(array(1, 0), array(preg_match('/; not every dataset could be read: /', $unread), substr_count($unread, 'Leave Out')), 'not with a dataset unread');
 same(array($id, $job['minute']), array($stored()[0]['id'], $stored()[0]['minute']), 'its id and minute stay');
 $save('appdata, backup_*');
 
@@ -137,6 +137,23 @@ $reset();
 same(array(0, 0), array(zfsmScheduleRun($id, $cfg, $t + 14400), zfsmScheduleRun($copies['id'], $cfg, $t + 14460)), 'both defaults run again, a minute apart');
 same(array(1, 1), array($logged('/ Schedule '.$id.': Scheduled snapshots of 8 of 8 dataset\(s\) taken, 5 left out by Leave Out$/'),
 	$logged('/ Schedule '.$copies['id'].': Scheduled copies under backup: 7 of 7 dataset\(s\) copied, 5 left out by Leave Out$/')), 'counted: only those it would take');
+
+// A rename the Leave Out of a default it follows matches on one side only says so; one below a dataset at the top, or with its own, doesn't.
+$renamed = function($from, $to) use ($cfg) { return renameDataset($from, $to, 0, $cfg)['failed']; };
+same(array('Snapshot Every Dataset' => 'takes snapshots of cache/apps now: its Leave Out (appdata) matched only the old name',
+	'Replicate Every Dataset' => 'copies cache/apps now: its Leave Out (appdata) matched only the old name'), $renamed('cache/appdata', 'cache/apps'), 'renamed out of Leave Out');
+same(array('Snapshot Every Dataset' => 'no longer takes snapshots of cache/backup_vm: its Leave Out (backup_*) matches the new name',
+	'Replicate Every Dataset' => 'no longer copies cache/backup_vm: its Leave Out (backup_*) matches the new name'), $renamed('cache/vm1', 'cache/backup_vm'), 'renamed into it');
+same(array(array(), array(), array()), array($renamed('tank/backup_a', 'tank/backup_b'), $renamed('tank/backup_b/x', 'tank/backup_b/y'), $renamed('tank/appdata/plex', 'tank/plex')),
+	'no change, below the top, or its own');
+// A dataset's own schedule takes no Leave Out: one sent with it is saved without it.
+same(true, zfsmScheduleSnapshotSave('tank/media', 'hourly', '', '', 0, $cfg, $wait, array('appdata'))['saved'], 'a dataset\'s own saved');
+same(false, array_key_exists('leave_out', array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/media'; }))[0]), 'without a Leave Out');
+same(array('Replicate Every Dataset' => 'no longer copies tank/backup_c: its Leave Out (backup_*) matches the new name'), $renamed('tank/media/appdata', 'tank/backup_c'),
+	'only a default it followed before');
+// A dataset left out of copies needs no room for a copy's bookmark.
+$long = 'tank/backup_b/'.str_repeat('x', 220);
+same(array('succeeded' => array($long => 0), 'failed' => array()), renameDataset('tank/backup_b/y', $long, 0, $cfg), 'one left out takes a long name');
 
 // Off removes the record and its list; on again with none saves none.
 zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg, $wait, zfsmLeaveOutParse('appdata'));

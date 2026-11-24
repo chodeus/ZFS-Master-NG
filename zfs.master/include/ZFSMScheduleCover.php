@@ -87,11 +87,11 @@ function zfsmLeaveOutName($name) {
 	return is_string($name) && zfsmValidNameComponent(substr($name, -1) === '*' ? substr($name, 0, -1) : $name);
 }
 
-// Leave Out: none, or on a default that repeats, a list of 1 to ZFSM_LEAVE_OUT_MAX names.
+// Leave Out: none, or on a default (zfsmScheduleValid checks it repeats), a list of 1 to ZFSM_LEAVE_OUT_MAX names.
 function zfsmScheduleLeaveOutValid($job) {
 	if (!array_key_exists('leave_out', $job)) return true;
 	$names = $job['leave_out'];
-	if ($job['dataset'] !== '' || !zfsmScheduleCovers($job) || !zfsmScheduleRepeats($job['every']) || !is_array($names) || $names === array()) return false;
+	if ($job['dataset'] !== '' || !is_array($names) || $names === array()) return false;
 	return count($names) <= ZFSM_LEAVE_OUT_MAX && array_keys($names) === range(0, count($names) - 1) && !array_filter($names, function($name) { return !zfsmLeaveOutName($name); });
 }
 
@@ -120,7 +120,7 @@ function zfsmScheduleLeaveOutBy($job, $zdataset) {
 	$top = explode('/', $zdataset)[1] ?? null;
 	if ($top === null) return null;
 	foreach ($job['leave_out'] as $name) {
-		if ($name === $top || (substr($name, -1) === '*' && strncmp($top, $name, strlen($name) - 1) === 0)) return $name;
+		if ($name === $top || (substr($name, -1) === '*' && zfsmStartsWith($top, substr($name, 0, -1)))) return $name;
 	}
 	return null;
 }
@@ -139,12 +139,11 @@ function zfsmScheduleLeaveOutRan($listed, $job, $jobs) {
 	return $count > 0 ? ', '.$count.' left out by Leave Out' : '';
 }
 
-// Save's words on $job's Leave Out, with $jobs as saved: how many it leaves out of $listed, and, when zfs read every dataset, the names
-// no dataset matches; '' with none set.
+// Save's words on $job's Leave Out, with $jobs as saved: how many it leaves out of $listed, and the names no dataset matches; '' with
+// none set, or when zfs did not read every dataset.
 function zfsmScheduleLeaveOutSaid($job, $jobs, $listed) {
-	if (empty($job['leave_out'])) return '';
+	if (empty($job['leave_out']) || ($listed['code'] ?? 1) !== 0) return '';
 	$said = 'Leave Out leaves out '.zfsmScheduleLeaveOutCount($listed, $job, $jobs).' dataset(s)';
-	if (($listed['code'] ?? 1) !== 0) return $said;
 	$datasets = array_keys(zfsmScheduleListed($listed)[0]);
 	$unmatched = array_filter($job['leave_out'], function($name) use ($datasets) {
 		foreach ($datasets as $zdataset) if (zfsmScheduleLeaveOutBy(array('leave_out' => array($name)), $zdataset) !== null) return false;
@@ -163,10 +162,28 @@ function zfsmScheduleLeaveOutText($job) {
 	return empty($job['leave_out']) ? '' : '; leaves out '.zfsmLeaveOutField($job);
 }
 
-// What following $job, whose Leave Out leaves out $zdataset, means, $none saying what it then has; '' when it takes it.
+// What following $job, whose Leave Out leaves out $zdataset, means, $none saying what it then has; '' when its Leave Out does not.
 function zfsmScheduleLeaveOutFollowed($job, $zdataset, $none) {
 	$by = $job === null ? null : zfsmScheduleLeaveOutBy($job, $zdataset);
 	return $by === null ? '' : zfsmScheduleWhat($job).', which leaves this dataset out (Leave Out: '.$by.'): '.$none;
+}
+
+// What renaming $from to $to changes for each default it follows both before ($before) and after ($after), whose Leave Out matches
+// only one of the two names.
+function zfsmScheduleLeaveOutMoved($before, $after, $from, $to) {
+	$said = array();
+	foreach ($after as $job) {
+		if ($job['dataset'] !== '' || empty($job['leave_out'])) continue;
+		$kind = zfsmScheduleKindOf($job);
+		if ((zfsmScheduleFollowed($from, $before, $kind)['id'] ?? null) !== $job['id'] || (zfsmScheduleFollowed($to, $after, $kind)['id'] ?? null) !== $job['id']) continue;
+		$was = zfsmScheduleLeaveOutBy($job, $from);
+		$now = zfsmScheduleLeaveOutBy($job, $to);
+		if (($was === null) === ($now === null)) continue;
+		$does = zfsmScheduleCopiesUnder($job) ? 'copies ' : 'takes snapshots of ';
+		$said[zfsmScheduleWhat($job)] = $now !== null ? 'no longer '.$does.$to.': its Leave Out ('.$now.') matches the new name'
+			: $does.$to.' now: its Leave Out ('.$was.') matched only the old name';
+	}
+	return $said;
 }
 
 // Why no run of $job takes $zdataset, listed as $row: its Leave Out, zfsmScheduleSkipped's reasons, and for copies under a dataset

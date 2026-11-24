@@ -140,7 +140,7 @@ function zfsmScheduleOwnMove($from, $to) {
 }
 
 // Once zfs renamed $from to $to, or destroyed it ($to ''), as $answer says: its own schedules follow (zfsmScheduleOwnMove), and on a
-// rename a clash they meet ($cfg names the snapshots) and its copies (zfsmScheduleCopiesMove). $answer gains each that did not.
+// rename a clash they meet ($cfg names the snapshots) and its copies (zfsmScheduleCopiesMove). $answer gains each that did not, and Leave Out's change.
 function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
 	// zfs renames a dataset to its own name by doing nothing.
 	if ($from === $to || ($answer['failed'] && !($to !== '' && zfsmRenameLanded($from, $to)))) return $answer;
@@ -158,6 +158,7 @@ function zfsmScheduleOwnFollow($answer, $from, $to, $cfg = array()) {
 	$copies = zfsmScheduleCopiesMove($from, $to, $moved['before'], $after, $cfg);
 	$clash = $moved['saved'] ? zfsmScheduleNewClash($moved['before'], $after, $cfg) : '';
 	if ($clash !== '') $answer['failed']['Schedules of '.$to] = 'moved with it, but '.$clash;
+	foreach (zfsmScheduleLeaveOutMoved($moved['before'], $after, $from, $to) as $what => $said) $answer['failed'][$what] = $said;
 	foreach ($copies as $copy => $why) $answer['failed']['Copy '.$copy] = $why;
 	return $answer;
 }

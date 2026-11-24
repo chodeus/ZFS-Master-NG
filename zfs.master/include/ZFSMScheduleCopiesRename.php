@@ -8,8 +8,8 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 	// The rename's follow-up says so.
 	if ($read === null) return '';
 	$snapshot = zfsmNewSnapshotName($cfg, time());
-	// One a run leaves out (zfsmScheduleSkipped), there and once moved, needs no room; one whose row could not be read is checked. Read
-	// once a name is too long.
+	// One a run leaves out (zfsmScheduleSkipped, Leave Out), there and once moved, needs no room; one whose row could not be read is
+	// checked. Read once a name is too long.
 	$rows = $moving = null;
 	$skipped = function($zdataset, $name) use (&$rows, &$moving, $cfg, $from, $to) {
 		if ($rows === null) {
@@ -21,7 +21,7 @@ function zfsmScheduleCopiesFit($names, $from, $to, $cfg) {
 	};
 	$fits = function($zdataset, $jobs, $name) use ($snapshot, $skipped) {
 		$job = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-		return $job === null || !zfsmScheduleRepeats($job['every']) || zfsmScheduleCopiesInPool($job, $zdataset)
+		return $job === null || !zfsmScheduleRepeats($job['every']) || zfsmScheduleCopiesInPool($job, $zdataset) || zfsmScheduleLeaveOutBy($job, $zdataset) !== null
 			|| zfsmReplicaBookmarkFits($zdataset, zfsmReplicaTargetMark(array('server' => $job['server']), zfsmScheduleCopiesDest($job, $zdataset)), $snapshot)
 			|| $skipped($zdataset, $name);
 	};
@@ -246,7 +246,8 @@ function zfsmScheduleCopiesHoldMove($snapshot, $from, $to) {
 	return ($released['code'] ?? 1) === 0 ? '' : zfsmCommandError($released, 'zfs release failed');
 }
 
-// Whether a schedule in $jobs copies $zdataset, or one below it, where $job does.
+// Whether a schedule in $jobs copies $zdataset, or one below it, where $job does; a default's Leave Out is not asked, so the copy
+// of a dataset renamed into it follows the dataset.
 function zfsmScheduleCopiesKept($zdataset, $job, $jobs) {
 	if (zfsmScheduleCopiesSame($job, zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder'))) return true;
 	foreach ($jobs as $other) {
