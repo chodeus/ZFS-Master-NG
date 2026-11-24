@@ -140,16 +140,16 @@ same(array(1, 1), array($logged('/ Schedule '.$id.': Scheduled snapshots of 8 of
 
 // A rename the Leave Out of a default it follows matches on one side only says so; one below a dataset at the top, or with its own, doesn't.
 $renamed = function($from, $to) use ($cfg) { return renameDataset($from, $to, 0, $cfg)['failed']; };
-same(array('Snapshot Every Dataset' => 'its Leave Out (appdata) matched only the old name, so it now takes snapshots of cache/apps',
-	'Replicate Every Dataset' => 'its Leave Out (appdata) matched only the old name, so it now copies cache/apps'), $renamed('cache/appdata', 'cache/apps'), 'renamed out of Leave Out');
-same(array('Snapshot Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it no longer takes snapshots of cache/backup_vm',
-	'Replicate Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it no longer copies cache/backup_vm'), $renamed('cache/vm1', 'cache/backup_vm'), 'renamed into it');
+same(array('Snapshot Every Dataset' => 'its Leave Out (appdata) matched only the old name, so it no longer leaves out cache/apps',
+	'Replicate Every Dataset' => 'its Leave Out (appdata) matched only the old name, so it no longer leaves out cache/apps'), $renamed('cache/appdata', 'cache/apps'), 'renamed out of Leave Out');
+same(array('Snapshot Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it now leaves out cache/backup_vm',
+	'Replicate Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it now leaves out cache/backup_vm'), $renamed('cache/vm1', 'cache/backup_vm'), 'renamed into it');
 same(array(array(), array(), array()), array($renamed('tank/backup_a', 'tank/backup_b'), $renamed('tank/backup_b/x', 'tank/backup_b/y'), $renamed('tank/appdata/plex', 'tank/plex')),
 	'no change, below the top, or its own');
 // A dataset's own schedule takes no Leave Out: one sent with it is saved without it.
 same(true, zfsmScheduleSnapshotSave('tank/media', 'hourly', '', '', 0, $cfg, $wait, array('appdata'))['saved'], 'a dataset\'s own saved');
 same(false, array_key_exists('leave_out', array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/media'; }))[0]), 'without a Leave Out');
-same(array('Replicate Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it no longer copies tank/backup_c'), $renamed('tank/media/appdata', 'tank/backup_c'),
+same(array('Replicate Every Dataset' => 'its Leave Out (backup_*) matches the new name, so it now leaves out tank/backup_c'), $renamed('tank/media/appdata', 'tank/backup_c'),
 	'only a default it followed before');
 // A dataset left out of copies needs no room for a copy's bookmark.
 $long = 'tank/backup_b/'.str_repeat('x', 220);

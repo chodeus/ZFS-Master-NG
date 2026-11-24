@@ -179,10 +179,10 @@ function zfsmScheduleLeaveOutMoved($before, $after, $from, $to) {
 		$was = zfsmScheduleLeaveOutBy($job, $from);
 		$now = zfsmScheduleLeaveOutBy($job, $to);
 		if (($was === null) === ($now === null)) continue;
-		$does = zfsmScheduleCopiesUnder($job) ? 'copies ' : 'takes snapshots of ';
-		// The name last: in diagnostics a name runs to the end of its log line unless ZFSM_DIAG_AFTER's words follow it.
-		$said[zfsmScheduleWhat($job)] = $now !== null ? 'its Leave Out ('.$now.') matches the new name, so it no longer '.$does.$to
-			: 'its Leave Out ('.$was.') matched only the old name, so it now '.$does.$to;
+		// Not "takes" or "copies": zfsmScheduleSkipped's reasons may still leave it out. The name last: in diagnostics a name runs to the
+		// end of its log line unless ZFSM_DIAG_AFTER's words follow it.
+		$said[zfsmScheduleWhat($job)] = $now !== null ? 'its Leave Out ('.$now.') matches the new name, so it now leaves out '.$to
+			: 'its Leave Out ('.$was.') matched only the old name, so it no longer leaves out '.$to;
 	}
 	return $said;
 }
