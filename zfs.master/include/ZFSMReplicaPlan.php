@@ -236,18 +236,18 @@ function zfsmReplicaPlanHolder($plan, $target) {
 	if ($target['server'] !== '') return $where.' already exists and holds no snapshot, such as an empty dataset made to hold the copies below it; nothing is received over a dataset on another server';
 	if (!zfsmReplicaHolder($target, $plan['dest'])) return $where.' already exists and holds no snapshot, so it can\'t be updated without destroying it';
 	$held = $where.' only holds the copies of datasets below this one, and ';
-	$fix = ': copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)';
-	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it'.$fix;
+	$fix = 'copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)';
 	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
 	if ($crypt === null) return $held.'whether it is encrypted could not be read';
-	if ($crypt !== 'off') return $held.'zfs cannot receive a copy over it, as it is encrypted'.$fix;
+	if ($crypt !== 'off') return $held.'zfs cannot receive a copy over it, as it is encrypted: '.$fix;
+	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it: pick Decrypted under Send in Replicate, '.$fix;
 	$mounted = zfsmReplicaHolderMounted($plan['dest']);
 	return $mounted === '' ? array_merge($plan, array('holder' => true)) : $held.$mounted;
 }
 
 // What the Replicate dialog shows: snapshots newest first, the last destination, the trusted servers, on $opening the warning if a repeat
-// leaves it out, and the plan once a destination is given; for a trusted server ($server) also its area, or why it can't be reached.
-function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false) {
+// leaves it out and whether Send shows, and the plan once a destination is given ($decrypt: Send's); for a server also its area, or why not.
+function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false, $decrypt = false) {
 	if (!zfsmDatasetExists($zdataset)) return array('can_proceed' => false, 'error' => 'Only an existing dataset can be replicated');
 	$marks = zfsmReplicaMarks($zdataset);
 	if ($marks === null) return array('can_proceed' => false, 'error' => 'The dataset\'s snapshots could not be read');
@@ -257,6 +257,8 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', 
 	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => zfsmReplicaServerNames('', $remotes), 'server' => $server, 'area' => null);
 	if ($remotes === null) $options['servers_error'] = zfsmReplicaRemotesUnreadable();
 	if ($opening) $options['warning'] = zfsmScheduleRepeatRead($zdataset, $cfg, ZFSM_SCHEDULE_COUNT_WAIT)['warning'];
+	// The dialog builds Send's row once, from this answer; an unread encryption offers it too, as the plan reads it again.
+	if ($opening) $options['encrypted'] = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'encryption') !== 'off';
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file !== null && zfsmJobRunning($lock_file)) return array_merge($options, array('can_proceed' => false, 'error' => 'A replication of this dataset is already running'));
 	if ($zdest === '' && $server === '') return array_merge($options, array('can_proceed' => false, 'error' => ''));
@@ -265,7 +267,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', 
 		$options['area'] = $target['area'] ?? null;
 		if ($zdest === '' && !isset($target['error'])) return array_merge($options, array('can_proceed' => false, 'error' => ''));
 		// No snapshot picked means the run takes one first (zfsmStartReplicate).
-		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target)));
+		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target, 'decrypt' => $decrypt)));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}

@@ -22,6 +22,13 @@ $routes = array(
 	'previewreplicate' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data'),
 	'previewreplicateopen' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => '', 'opening' => '1'),
 	'replicatedataset' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'nowhere/data'),
+	'previewcryptopen' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => '', 'opening' => '1'),
+	'previewdecrypt' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'decrypt' => '1'),
+	'replicatedecrypt' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'decrypt' => '1'),
+	'scheduledecrypt' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => '1'),
+	'previewsendwrong' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'decrypt' => 'yes'),
+	'replicatesendwrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'decrypt' => ' 1'),
+	'schedulesendwrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => '2'),
 	'schedulepicked' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'every' => 'days', 'time' => '03:00', 'days' => '0,1,2,3,4,5,6'),
 	'schedulenowhere' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'days', 'time' => '13:00', 'days' => '2'),
 	'schedulekeep' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'nowhere/data', 'every' => 'days', 'time' => '03:00', 'days' => '0,1,2,3,4,5,6', 'keep' => 'x5'),
@@ -47,7 +54,7 @@ $routes = array(
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
+$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -67,7 +74,9 @@ if (in_array($route, $replication, true)) {
 	@mkdir($pool);
 	file_put_contents($pool.'/datasets', "tank/data\tfilesystem\nbackup\tfilesystem\n");
 	file_put_contents($pool.'/marks', "tank/data@a\t11\t10\ntank/data@b\t12\t20\n");
-	file_put_contents($pool.'/props', '');
+	// Encrypted for Send's Decrypted; its key not loaded where only Decrypted is then refused, which shows the choice got there.
+	$crypt = array('previewcryptopen' => "tank/data\tencryption\taes-256-gcm\n", 'previewdecrypt' => "tank/data\tencryption\taes-256-gcm\n", 'replicatedecrypt' => "tank/data\tencryption\taes-256-gcm\ntank/data\tkeystatus\tunavailable\n");
+	file_put_contents($pool.'/props', $crypt[$route] ?? ($route === 'scheduledecrypt' ? $crypt['replicatedecrypt'] : ''));
 	putenv('ZFSM_TEST_REPL_DIR='.$pool);
 }
 
@@ -117,8 +126,16 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 	$failed = $answer['failed']['tank/data'] ?? '';
 	$ok = array(
 		'previewreplicate' => ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full'
-			&& !array_key_exists('warning', $answer),
-		'previewreplicateopen' => ($answer['snapshots'] ?? null) === array('b', 'a') && array_key_exists('warning', $answer) && $answer['warning'] === null,
+			&& !array_key_exists('warning', $answer) && !array_key_exists('encrypted', $answer) && ($answer['how'] ?? null) === '',
+		'previewdecrypt' => ($answer['can_proceed'] ?? null) === true && ($answer['raw'] ?? null) === false && ($answer['how'] ?? '') === 'choice',
+		'replicatedecrypt' => $failed === 'The key of tank/data is not loaded, so only Raw can send it: unlock it first',
+		'scheduledecrypt' => $failed === 'Nothing was scheduled: The key of tank/data is not loaded, so only Raw can send it: unlock it first' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'previewsendwrong' => $answer === array('can_proceed' => false, 'error' => 'Send has no such choice now; reload the page'),
+		'replicatesendwrong' => $failed === 'Send has no such choice now; reload the page' && ($answer['succeeded'] ?? null) === array(),
+		'schedulesendwrong' => $failed === 'Nothing was scheduled: Send has no such choice now; reload the page' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
+		'previewreplicateopen' => ($answer['snapshots'] ?? null) === array('b', 'a') && array_key_exists('warning', $answer) && $answer['warning'] === null
+			&& ($answer['encrypted'] ?? null) === false,
+		'previewcryptopen' => ($answer['encrypted'] ?? null) === true && ($answer['can_proceed'] ?? null) === false,
 		'replicatedataset' => $failed === 'The copy goes inside nowhere, which doesn\'t exist',
 		'schedulepicked' => $failed === 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now',
 		'schedulenowhere' => $failed === 'Nothing was scheduled: The copy goes inside nowhere, which doesn\'t exist' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),

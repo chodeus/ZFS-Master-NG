@@ -82,6 +82,10 @@ assert.doesNotMatch(replicate, /new<b>/, 'a snapshot name cannot inject markup')
 assert.match(replicate, /<option value="new&lt;b&gt;">[\s\S]*<option value="old">[\s\S]*<option value="">Take one now<\/option>/, 'newest snapshot first, Take one now last');
 assert.match(replicate, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
 assert.doesNotMatch(replicate, /zfsm-replicate-server/, 'with no trusted servers there is no Server select');
+assert.doesNotMatch(replicate, /zfsm-replicate-send/, 'nor Send for a dataset that is not encrypted');
+const encrypted = context.zfsmReplicateHtml({snapshots: [], servers: [], encrypted: true}, 'tank/data');
+assert.match(encrypted, /<label[^>]*>Send:<select id="zfsm-replicate-send" aria-describedby="zfsm-replicate-send-hint"[^>]*><option value="">Raw: the copy stays encrypted with this dataset's key<\/option><option value="1">Decrypted: the copy is plain, or takes the key of the dataset it goes into<\/option><\/select><\/label><span id="zfsm-replicate-send-hint"[^>]*>Decrypted needs this dataset's key loaded\. <a [^>]*#encrypted-datasets"[^>]*>Guide<\/a><\/span>/,
+  'an encrypted one has Send, Raw first, with its hint');
 // Trusted servers: the last copy's server is picked, and its name inside that server's area filled in.
 const remote = context.zfsmReplicateHtml({snapshots: [], servers: ['nas', 'x<y'], last_destination: {server: 'nas', dest: 'backup/replicas/tower/da"ta'}}, 'tank/data');
 assert.match(remote, /<select id="zfsm-replicate-server"[^>]*><option value="">This server<\/option><option value="nas" selected>nas<\/option><option value="x&lt;y">x&lt;y<\/option><\/select>/,
@@ -104,7 +108,13 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: true}), /It replaces the empty dataset there, made to hold the copies below it, which stay\./, 'a copy onto a holder says it replaces it');
 assert.doesNotMatch(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: false}), /replaces the empty dataset/, 'only onto a holder');
-assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset goes raw');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true, how: 'copy'}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset\'s copy goes raw');
+// How an encrypted dataset goes, and why: as picked (only Raw needs saying), as its copy was made, as the stopped run went, or as picked
+// on a server that can't say how its copy was made. An unencrypted one says nothing.
+const sent = how => (context.zfsmReplicatePlanHtml(Object.assign({can_proceed: true, mode: 'incremental', since: 'a', size: null, server: 'n<s'}, how)).match(/<p[^>]*>((?:Sent|n&lt;s runs)[^<]*)<\/p>/) || [])[1] || '';
+assert.deepEqual([{how: 'choice', raw: true}, {how: 'choice', raw: false}, {how: 'copy', raw: true}, {how: 'copy', raw: false}, {how: 'token', raw: true}, {how: 'token', raw: false}, {how: 'old', raw: true}, {how: '', raw: false}].map(sent),
+  ['Sent raw: the copy stays locked with this dataset\'s key.', '', 'Sent raw, as this copy was made; to change that, replicate to a new name.', 'Sent decrypted, as this copy was made; to change that, replicate to a new name.',
+    'Sent raw, as the run that stopped was.', 'Sent decrypted, as the run that stopped was.', 'n&lt;s runs an older ZFS Master NG, so this copy goes as Send says: keep Raw for a copy this plugin made, or update the plugin there.', ''], 'each says how it goes');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');
@@ -115,15 +125,15 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', s
 const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
   copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['a"<b>'], servers_error: '<i>unread</i>', inherited: 'y', skipped: ''}});
 const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-assert.ok(words(schedules) < 250 && words(replicate) < 150, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(replicate)} words`);
+assert.ok(words(schedules) < 250 && words(encrypted) < 150, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
 // A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
-const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server'];
-const guides = (schedules + replicate).match(/<a [^>]*>Guide<\/a>/g);
+const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
+const guides = (schedules + encrypted).match(/<a [^>]*>Guide<\/a>/g);
 for (const guide of guides) {
   const [, section] = guide.match(/^<a href="https:\/\/github\.com\/chodeus\/ZFS-Master-NG\/wiki\/Schedules#([a-z-]+)" target="_blank" rel="noopener noreferrer">Guide<\/a>$/) || [];
   assert.ok(sections.includes(section), `${guide}: opens a section of the guide in a new tab, which can't reach back to this page`);
 }
-assert.equal(guides.length, 9, 'Snapshots to keep three times, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line');
+assert.equal(guides.length, 10, 'Snapshots to keep three times, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line and Send');
 // A warning opens each dialog: amber, its fact and what that does as text, and Guide to its section of the wiki's Warnings page.
 const warning = {fact: 'tank/<i>x</i> is Read Only', impact: 'Scheduled snapshots and copies skip it', guide: 'read-only'};
 const box = id => '<div id="' + id + '" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> tank/&lt;i&gt;x&lt;/i&gt; is Read Only</b>'

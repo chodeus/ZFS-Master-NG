@@ -15,6 +15,10 @@ function zfsmReplicateHtml(options, zdataset) {
 	if (servers.length) html += row('Server:', zfsmServerSelect('zfsm-replicate-server', servers, server, options.servers_error ? 'zfsm-replicate-server-error' : ''));
 	if (options.servers_error) html += '<p id="zfsm-replicate-server-error" style="color:#e22828;margin:.5em 0">'+esc(options.servers_error)+'</p>';
 	html += row('Copy goes to:', '<input id="zfsm-replicate-dest" type="text" style="width:100%" placeholder="'+(server === '' ? 'pool/dataset' : 'name')+'" value="'+esc(zfsmReplicateName(last, server, zdataset))+'">');
+	// Only an encrypted dataset's copy can go either way (zfsmReplicaPlanCrypt).
+	if (options.encrypted) html += '<p style="margin:.5em 0"><label style="display:block">Send:<select id="zfsm-replicate-send" aria-describedby="zfsm-replicate-send-hint" style="width:100%">'
+		+'<option value="">Raw: the copy stays encrypted with this dataset\'s key</option><option value="1">Decrypted: the copy is plain, or takes the key of the dataset it goes into</option></select></label>'
+		+zfsmHint('zfsm-replicate-send-hint', 'Decrypted needs this dataset\'s key loaded.', 'encrypted-datasets')+'</p>';
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';
@@ -51,7 +55,11 @@ function zfsmReplicatePlanHtml(plan) {
 	let html = say(plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');
-	if (plan.raw) html += say('Sent raw: the copy stays locked with this dataset\'s key.');
+	// How an encrypted dataset goes: as picked, as the copy was made, or as the stopped run went (zfsmReplicaPlanCrypt).
+	const way = plan.raw ? 'raw' : 'decrypted';
+	const how = {choice: plan.raw ? 'Sent raw: the copy stays locked with this dataset\'s key.' : '', copy: 'Sent '+way+', as this copy was made; to change that, replicate to a new name.',
+		token: 'Sent '+way+', as the run that stopped was.', old: esc(plan.server)+' runs an older ZFS Master NG, so this copy goes as Send says: keep Raw for a copy this plugin made, or update the plugin there.'}[plan.how];
+	if (how) html += say(how);
 	if (plan.holder) html += say('It replaces the empty dataset there, made to hold the copies below it, which stay.');
 	html = area+html;
 	// An incremental or resumed receive into a copy here that has a /dev/zvol device removes it (volmode=none, zfsmReplicateReceiveArgs);

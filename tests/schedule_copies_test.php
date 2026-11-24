@@ -202,7 +202,7 @@ same(1, count(preg_grep('/^receive .*-F/', $read('calls.log'))), '-F only onto t
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/enc\tfilesystem", "backup/tank/enc\tfilesystem")));
 $pool('marks', array_merge($read('pool/marks'), array("tank/enc@a\t4242\t9000")));
 $pool('props', array_merge($read('pool/props'), array("tank/enc\tencryption\taes-256-gcm", "backup/tank/enc\tzfs.master:holder\ton")));
-same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)'),
+same(array('can_proceed' => false, 'error' => 'backup/tank/enc only holds the copies of datasets below this one, and zfs cannot receive the raw copy of this encrypted dataset over it: pick Decrypted under Send in Replicate, copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)'),
 	zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/enc', array('estimate' => false)), 'a raw stream onto a holder');
 // Nor any copy onto an encrypted holder, as one under an encrypted dataset is; one not read is not sent onto.
 $pool('datasets', array_merge($read('pool/datasets'), array("tank/sealed\tfilesystem", "backup/tank/sealed\tfilesystem")));
@@ -211,6 +211,8 @@ $pool('props', array_merge($read('pool/props'), array("backup/tank/sealed\tzfs.m
 $plan = function() { return zfsmReplicatePlan('tank/sealed', 'a', 'backup/tank/sealed', array('estimate' => false)); };
 same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and zfs cannot receive a copy over it, as it is encrypted: copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)'),
 	$plan(), 'a stream onto an encrypted holder');
+same(1, preg_match('/^backup\/tank\/sealed only holds .*, and zfs cannot receive a copy over it, as it is encrypted: copy it /', zfsmReplicatePlan('tank/enc', 'a', 'backup/tank/sealed', array('estimate' => false))['error']),
+	'a raw one too: Decrypted would not help there');
 putenv('ZFSM_TEST_CRYPT_FAIL=backup/tank/sealed');
 same(array('can_proceed' => false, 'error' => 'backup/tank/sealed only holds the copies of datasets below this one, and whether it is encrypted could not be read'), $plan(), 'one whose encryption could not be read');
 putenv('ZFSM_TEST_CRYPT_FAIL');

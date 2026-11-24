@@ -94,6 +94,10 @@ same(array(true, true, false, false, false, false, false, false, false, false, f
 	array('server' => 'nas', 'dest' => 'a/b') + $hourly, array('dest' => 'data') + $hourly, array('every' => 'minutely') + $hourly, array('every' => 'weekly') + $weekly, array('hour' => 24) + $daily, array('hour' => '3') + $daily,
 	array('minute' => 60) + $daily, array('days' => array()) + $daily, array('days' => array(3, 1)) + $daily, array('days' => array(1, 1)) + $daily, array('days' => array('1')) + $daily, array('days' => array(7)) + $daily, array('days' => array('x' => 1)) + $daily)),
 	'a copy here is a dataset in a pool, one on a server a name in its area; nothing runs more often than hourly; a time is numbers, and days 0 to 6, in order, each once');
+$snapshots_job = array('dataset' => '', 'dest' => '') + $hourly;
+$under_job = array('dest' => 'backup/') + $hourly;
+same(array(true, true, true, false, false, false, false), array_map('zfsmScheduleValid', array(array('decrypted' => true) + $hourly, $snapshots_job, $under_job,
+	array('decrypted' => false) + $hourly, array('decrypted' => '1') + $hourly, array('decrypted' => true) + $snapshots_job, array('decrypted' => true) + $under_job)), 'only a copy\'s schedule saves decrypted, and only as true');
 
 // One saved before start times and days of the week reads as one: its minute from its id, a daily one on each day and a weekly one
 // on its day, with its cron line as before; the next change saves it so, and keeps one it can't use as it was.
@@ -462,5 +466,25 @@ touch($work.'/cron-fail');
 same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id, $cfg), 'a removal whose crontab can\'t be rebuilt');
 unlink($work.'/cron-fail');
 same(array(array(array('id' => 'zz')), false, 0), array($stored(), strpos(zfsmSchedulesHtml($cfg), 'tank/data'), zfsmScheduleFailures($weekly_id)), 'is removed from the list and Settings, with its count');
+
+// Send's Decrypted is saved with a copy's schedule: the first run sends so (scripts/replicate.php), and so does a scheduled one that
+// makes the copy, as when that first run never landed. One without it sends raw.
+$pool('datasets', array("tank\tfilesystem", "tank/enc\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array("tank/enc@a\t11\t10"));
+$pool('props', array("tank/enc\tencryption\taes-256-gcm"));
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+$answer = zfsmScheduleAdd('tank/enc', '', 'backup/dec', '', 'hourly', '', '', 0, $cfg, null, true);
+for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/enc', 'replicate')); $waited++) usleep(50000);
+$GLOBALS['docroot'] = $work.'/docroot';
+$job = $stored()[0] ?? array();
+same(array(array(), true, 1), array($answer['failed'] ?? null, $job['decrypted'] ?? null, preg_match('/^send -P -v -L tank\/enc@repl-[0-9]{14}$/D', implode("\n", $sends()))), 'saved with the schedule, and its first run sends decrypted: '.implode(' | ', $sends()));
+$unsent = array('id' => '0badc0f0', 'dest' => 'backup/fresh') + $job;
+$raw = array('id' => '0badc0f1', 'dest' => 'backup/fresh-raw') + array_diff_key($job, array('decrypted' => 0));
+file_put_contents(zfsmScheduleFile(), json_encode(array($unsent, $raw)));
+$reset();
+same(array(0, 0), array(zfsmScheduleRun('0badc0f0', $cfg, time() + 3600), zfsmScheduleRun('0badc0f1', $cfg, time() + 7200)), 'scheduled runs whose copies were never made');
+same(array(1, 1), array(preg_match('/^send -P -v -L tank\/enc@repl-[0-9]{14}$/D', $sends()[0] ?? ''), preg_match('/^send -P -v -w tank\/enc@repl-[0-9]{14}$/D', $sends()[1] ?? '')), 'send decrypted as saved, else raw: '.implode(' | ', $sends()));
 
 echo "schedule tests passed\n";

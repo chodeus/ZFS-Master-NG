@@ -30,6 +30,11 @@ function zfsmPostKeep($key = 'keep') {
 	return zfsmKeepParse(zfsmPostString($key)) ?? -1;
 }
 
+// Replicate's Send: true for Decrypted (zfsmReplicaPlanCrypt says where it decides); why not, for a value the dialog never sends.
+function zfsmPostDecrypt() {
+	return array('' => false, '1' => true)[zfsmPostString('decrypt')] ?? 'Send has no such choice now; reload the page';
+}
+
 // Copy Keeps as zfsmCopyKeepsParse saves it.
 function zfsmPostCopyKeeps() {
 	return zfsmCopyKeepsParse(zfsmPostString('copy_keeps'));
@@ -233,7 +238,12 @@ try {
 			$zdest = zfsmPostString('destination');
 			$server = zfsmPostString('server');
 			$opening = zfsmPostString('opening') === '1';
-			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening); }), JSON_UNESCAPED_SLASHES);
+			$decrypt = zfsmPostDecrypt();
+			if (is_string($decrypt)) {
+				echo zfsmJson(array('can_proceed' => false, 'error' => $decrypt));
+				break;
+			}
+			echo zfsmJson(zfsmWithReadLimit(function() use ($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening, $decrypt) { return zfsmReplicatePreview($zdataset, $snapshot, $zdest, $zfsm_cfg, $server, $opening, $decrypt); }), JSON_UNESCAPED_SLASHES);
 			break;
 
 		case 'replicatedataset':
@@ -241,8 +251,9 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
 			$keep = zfsmPostKeep();
-			$answer = $every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'))
-				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg, zfsmPostCopyKeeps());
+			$decrypt = zfsmPostDecrypt();
+			$answer = is_string($decrypt) ? zfsmFailure($zdataset, ($every === '' ? '' : 'Nothing was scheduled: ').$decrypt) : ($every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'), null, $decrypt)
+				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg, zfsmPostCopyKeeps(), $decrypt));
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
 			break;
 

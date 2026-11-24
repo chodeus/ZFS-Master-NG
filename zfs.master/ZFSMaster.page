@@ -785,9 +785,10 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		}
 		let asked = 0;
 		let timer = null;
-		// Without trusted servers there is no Server select: the copy stays on this server.
+		// Without trusted servers there is no Server select: the copy stays on this server. Send shows only for an encrypted dataset.
+		const send = (popup) => { const select = popup.querySelector('#zfsm-replicate-send'); return select ? {decrypt: select.value} : {}; };
 		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value,
-			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, zfsmRepeatChoices(popup, 'zfsm-replicate'));
+			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, send(popup), zfsmRepeatChoices(popup, 'zfsm-replicate'));
 		zfsmFormDialog({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options, zdataset),
@@ -799,7 +800,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					const ask = ++asked;
 					const chosen = choices(popup);
 					confirm.disabled = true;
-					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination, server: chosen.server}, function(answer) {
+					zfsmFetchReview('<?=$urlzmadmin?>', Object.assign({cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination, server: chosen.server}, send(popup)), function(answer) {
 						if (ask !== asked) return;
 						popup.querySelector('#zfsm-replicate-plan').innerHTML = zfsmReplicatePlanHtml(answer);
 						confirm.disabled = answer.can_proceed !== true;
@@ -807,6 +808,8 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				};
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				const decrypt = popup.querySelector('#zfsm-replicate-send');
+				if (decrypt) decrypt.addEventListener('change', plan);
 				popup.querySelector('#zfsm-replicate-every').addEventListener('change', () => {
 					const snapshot = popup.querySelector('#zfsm-replicate-snapshot').value;
 					// Repeat sets Snapshot to Take one now: the plan changes only when Snapshot did.
