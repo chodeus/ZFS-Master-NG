@@ -314,9 +314,9 @@ same(array('alerts are on every 60 minutes, but the last check was 180 minutes a
 
 // Jobs: a held lock is fine while one of the plugin's scripts runs.
 $hold = function() use ($work) { $GLOBALS['zfsm_held'] = fopen($work.'/jobs/rewrite/4711.lock', 'c'); flock($GLOBALS['zfsm_held'], LOCK_EX); };
-// Never this test's own process: the collector leaves that one out.
+// A fake pid is never this test's own, which the collector leaves out: its pid + 1, or one above Linux's pid limit (4194304).
 $script_pid = getmypid() + 1;
-$running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  900    2 nginx: worker process\n";
+$running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  9000900    2 nginx: worker process\n";
 list($findings, $text) = $found('zfsmDiagJobs', $hold);
 same(array('a job\'s lock is held, but its script is not running: '.$work.'/jobs/rewrite/4711.lock'), $findings, 'a lock held with no script running');
 has($work."/jobs/rewrite/4711.lock: held\n", $text, 'the held lock is shown');
@@ -328,7 +328,7 @@ same(array(), $findings, 'the run\'s own lock is no finding');
 has($work."/jobs/diagnostics/run.lock: held (this run)\n", $text, 'it is shown as the run\'s');
 list($findings, $text) = $found('zfsmDiagJobs', function() use ($hold, $work, $running) { $hold(); file_put_contents($work.'/ps.txt', $running); });
 same(array(), $findings, 'a lock held by a running script');
-$others = "  813    5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n  814    3 timeout 600 /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n";
+$others = "  9000813    5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n  9000814    3 timeout 600 /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n";
 list($findings) = $found('zfsmDiagJobs', function() use ($hold, $work, $others) { $hold(); file_put_contents($work.'/ps.txt', $others); });
 same(array('a job\'s lock is held, but its script is not running: '.$work.'/jobs/rewrite/4711.lock'), $findings, 'another of the plugin\'s scripts, or a command that only names the job\'s, does not hold its lock');
 list(, $with_alerts_lock) = $found('zfsmDiagJobs', function($root) { $GLOBALS['zfsm_alerts_held'] = fopen($root.'/var/run/zfs.master.alerts.json.lock', 'c'); flock($GLOBALS['zfsm_alerts_held'], LOCK_EX); });
@@ -535,17 +535,17 @@ putenv('ZFSM_TEST_POOL_HEALTH=DEGRADED');
 list($findings) = $found('zfsmDiagZpoolList');
 putenv('ZFSM_TEST_POOL_HEALTH');
 same(array(array('a pool is not ONLINE: tank is DEGRADED'), '1 (tank is DEGRADED)'), array($findings, $GLOBALS['zfsm_diag']['facts']['pools']), 'a pool that is not ONLINE');
-$commands = "  700  900 zfs list -H -t snapshot\n  701 7200 zfs send -w tank/data@a\n  702   30 /usr/sbin/zpool status -p tank\n  703 5000 /usr/bin/rsync -a rsync://user:hunter2@nas/a/ /mnt/b/\n  704  100 nginx: worker process\n"
-	."  705   10 mysqldump --password=hunter2 zfs\n  706   50 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n  707 9000 /usr/sbin/zfs get -H guid tank\n"
-	."  708   20 zfs receive -o keylocation=https://user:pw@keys.example/k tank/copy\n  709    5 /usr/sbin/zfs load-key -L file:///mnt/keys/x tank/enc\n"
-	."  710    3 curl -u user:hunter2 https://tower/plugins/zfs.master/scripts/x\n  711    9 sh -c /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n"
-	."  712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n"
-	."  714    6 /usr/sbin/zpool create -O encryption=on -O keylocation=https://user:hunter2@keys.example/p tank2 sdc\n  715    7 zpool import -d /dev/disk/by-id tank3\n";
+$commands = "  9000700  900 zfs list -H -t snapshot\n  9000701 7200 zfs send -w tank/data@a\n  9000702   30 /usr/sbin/zpool status -p tank\n  9000703 5000 /usr/bin/rsync -a rsync://user:hunter2@nas/a/ /mnt/b/\n  9000704  100 nginx: worker process\n"
+	."  9000705   10 mysqldump --password=hunter2 zfs\n  9000706   50 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n  9000707 9000 /usr/sbin/zfs get -H guid tank\n"
+	."  9000708   20 zfs receive -o keylocation=https://user:pw@keys.example/k tank/copy\n  9000709    5 /usr/sbin/zfs load-key -L file:///mnt/keys/x tank/enc\n"
+	."  9000710    3 curl -u user:hunter2 https://tower/plugins/zfs.master/scripts/x\n  9000711    9 sh -c /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n"
+	."  9000712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  9000713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n"
+	."  9000714    6 /usr/sbin/zpool create -O encryption=on -O keylocation=https://user:hunter2@keys.example/p tank2 sdc\n  9000715    7 zpool import -d /dev/disk/by-id tank3\n";
 list($findings, $text) = $found('zfsmDiagZfsProcesses', function() use ($work, $commands) { file_put_contents($work.'/ps.txt', $commands); });
 same(array('2 zfs or zpool read(s) have been running for more than 10 minutes'), $findings, 'a list or get still running after 10 minutes is stuck; a long send or copy is not');
-same("pid\tseconds\tcommand\n700\t900\tzfs list -H -t snapshot\n701\t7200\tzfs send -w tank/data@a\n702\t30\t/usr/sbin/zpool status -p tank\n703\t5000\trsync (its arguments are left out)\n"
-	."706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n707\t9000\t/usr/sbin/zfs get -H guid tank\n"
-	."708\t20\tzfs receive (its arguments are left out)\n709\t5\tzfs load-key (its arguments are left out)\n712\t4\tzfs create (its arguments are left out)\n713\t4\tzfs change-key (its arguments are left out)\n714\t6\tzpool create (its arguments are left out)\n715\t7\tzpool import -d /dev/disk/by-id tank3\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
+same("pid\tseconds\tcommand\n9000700\t900\tzfs list -H -t snapshot\n9000701\t7200\tzfs send -w tank/data@a\n9000702\t30\t/usr/sbin/zpool status -p tank\n9000703\t5000\trsync (its arguments are left out)\n"
+	."9000706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n9000707\t9000\t/usr/sbin/zfs get -H guid tank\n"
+	."9000708\t20\tzfs receive (its arguments are left out)\n9000709\t5\tzfs load-key (its arguments are left out)\n9000712\t4\tzfs create (its arguments are left out)\n9000713\t4\tzfs change-key (its arguments are left out)\n9000714\t6\tzpool create (its arguments are left out)\n9000715\t7\tzpool import -d /dev/disk/by-id tank3\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
 same("tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\tlocal\n", zfsmDiagFreeRows("tank/a\tkeylocation\thttps://user:pw@keys.example/a\tlocal\ntank/b\tkeylocation\tprompt\tlocal\n", "tank/a\tkeylocation\ntank/b\tkeylocation\n"), 'where a key is kept stays out of the file: only that it is set');
 // Part of a received copy: its dataset is named, its token is not, and a read that failed is not "none".
 putenv('ZFSM_TEST_RESUME_TOKEN=1-e604ea4bf-e0-789c636064000310a500c4ec50360710e72765a5269740f80cd8');
