@@ -336,11 +336,14 @@ function zfsmScheduleAdd($zdataset, $snapshot, $zdest, $server, $every, $time, $
 	return array('succeeded' => array($zdataset => $said), 'failed' => array($zdataset => ($changed['saved'] ? '' : 'It was not scheduled: ').$changed['why']));
 }
 
-// Why $job can't be added beside $jobs: one for the same copy already runs it, or one sharing a dataset with it starts in the same
-// minute (two at once can get one snapshot name). '' when none does.
+// Why $job can't be added beside $jobs: one for the same copy already runs it, another dataset's copy has its copy's name, or one sharing
+// a dataset with it starts in the same minute (two at once can get one snapshot name). '' when none does.
 function zfsmScheduleSame($jobs, $job) {
 	foreach ($jobs as $other) {
 		if ($other['dataset'] === $job['dataset'] && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) return 'this copy already has a schedule ('.zfsmScheduleWhen($other).'); remove it in Settings first';
+		if (!zfsmScheduleSnapshotsOnly($job) && !zfsmScheduleCopiesUnder($job) && $other['dest'] === $job['dest'] && $other['server'] === $job['server']) {
+			return 'the copy of '.$other['dataset'].' has that name too ('.zfsmScheduleWhen($other).'); give this copy another name';
+		}
 	}
 	foreach ($jobs as $other) {
 		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too; pick another time';

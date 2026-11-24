@@ -156,8 +156,7 @@ function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
 // optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full (zfsmReplicateLevels),
 // 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
-// them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt); $replace: true
-// replaces a copy here that no longer matches (zfsmReplicaPlanReplace).
+// them $keep keeps stay (0: all, zfsmKeepPrune). $decrypt: true sends a new copy decrypted (zfsmReplicaPlanCrypt); $replace: zfsmReplicaPlanReplace's.
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null, $decrypt = false, $replace = false) {
 	$title = 'ZFS Replication';
 	$tag = $schedule['tag'] ?? zfsmKeepTag($server, $zdest);
@@ -210,7 +209,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 			if ($started !== null) $started();
 			// Holds go by the copy, so a run by hand carries on a scheduled one and takes its holds off.
 			list($code, $text, $type) = zfsmReplicateSent($plan, $zdataset, $snapshot, $take, $target, zfsmKeepTag($server, $zdest));
-			$text = zfsmReplicateAsideAfter($plan, $code, $text);
+			$text = zfsmReplicateAsideAfter($plan, $zdataset, $code, $text);
 			// A scheduled run that carried on a stopped one then sends the snapshot it took (help: Schedules); only its last step notifies.
 			if ($code === 0 && $schedule !== null && $plan['mode'] === 'resume' && $pass === 1) {
 				$first = array($text, $type);
@@ -228,25 +227,27 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 	}
 }
 
-// Renames aside the copy $plan replaces (zfsmReplicaPlanReplace), with the copies below it: '' when done or none, else why not.
+// Renames aside the copy $plan replaces (zfsmReplicaPlanReplace): '' when done or none, else why not.
 function zfsmReplicateAside($plan, $zdataset) {
 	if ($plan['replace'] === null) return '';
 	$renamed = runProcess('zfs', array('rename', $plan['dest'], $plan['replace']));
-	if (($renamed['code'] ?? 1) !== 0) return $plan['dest'].' no longer matches this dataset, and could not be renamed to '.$plan['replace'].': '.zfsmCommandError($renamed, 'zfs rename failed');
-	zfsmLog('Replication of '.$zdataset.' to '.$plan['dest'].' replaces the copy, which no longer matched; the old copy is now '.$plan['replace'], LOG_NOTICE);
+	if (($renamed['code'] ?? 1) !== 0) return $plan['dest'].' could not be renamed to '.$plan['replace'].', so it is not replaced: '.zfsmCommandError($renamed, 'zfs rename failed');
+	$why = $plan['newer'] !== '' ? 'held a newer snapshot than the one sent' : 'no longer matched';
+	zfsmLog('Replication of '.$zdataset.' to '.$plan['dest'].' replaces the copy, which '.$why.'; the old copy is now '.$plan['replace'], LOG_NOTICE);
 	return '';
 }
 
 // $text of a send in place of a copy renamed aside, saying where that copy is; it goes back when the send failed and left nothing at its name.
-function zfsmReplicateAsideAfter($plan, $code, $text) {
+function zfsmReplicateAsideAfter($plan, $zdataset, $code, $text) {
 	if ($plan['replace'] === null) return $text;
 	$now = rtrim($text, '.').'. The old copy is now '.$plan['replace'];
 	if ($code === 0) return $now.': destroy it when you no longer need it.';
 	// A run that stopped part-way left its copy there, which the next run carries on.
 	if (zfsmDatasetExists($plan['dest'])) return $now.'.';
 	$back = runProcess('zfs', array('rename', $plan['replace'], $plan['dest']));
-	if (($back['code'] ?? 1) === 0) return rtrim($text, '.').'. The old copy is back at '.$plan['dest'].'.';
-	return $now.', as renaming it back failed: '.zfsmSafeText(zfsmCommandError($back, 'zfs rename failed')).'.';
+	if (($back['code'] ?? 1) !== 0) return $now.', as renaming it back failed: '.zfsmSafeText(zfsmCommandError($back, 'zfs rename failed')).'.';
+	zfsmLog('Replication of '.$zdataset.' to '.$plan['dest'].' failed, so the old copy is back at '.$plan['dest'], LOG_NOTICE);
+	return rtrim($text, '.').'. The old copy is back at '.$plan['dest'].'.';
 }
 
 // A run's last step's $text and $type, with the first's when that one carried on a stopped run and warned ($first: its text, type);

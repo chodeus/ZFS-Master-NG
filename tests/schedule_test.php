@@ -177,6 +177,12 @@ $reset();
 $every = '0,1,2,3,4,5,6';
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $cfg)['failed'], 'a second schedule for one copy');
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $days)['failed'], 'which says so even when their snapshot names would clash too');
+same('the copy of tank/data has that name too ('.zfsmScheduleWhen($jobs[0]).'); give this copy another name', zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other') + $jobs[0]),
+	'nor one of another dataset into that copy');
+same(array('', '', ''), array(zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => 'backup/') + $jobs[0]), array('dest' => 'backup/') + $jobs[0]),
+	zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => '') + $jobs[0]), array('dest' => '') + $jobs[0]),
+	zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other', 'server' => 'nas') + $jobs[0])),
+	'while two datasets\' copies under one dataset, their snapshots alone, or copies of one name on two servers are not');
 $no_time = 'set the time it starts at';
 $no_day = 'tick at least one day';
 $no_repeat = 'Repeat has no such choice now; reload the page and pick again';

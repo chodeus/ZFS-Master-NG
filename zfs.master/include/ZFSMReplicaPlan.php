@@ -219,24 +219,26 @@ function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap, $replace 
 	// The snapshot or bookmark the copy's newest snapshot came from; a snapshot first, as older OpenZFS can't send raw from some bookmarks.
 	foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
 	if ($base !== null && $base['guid'] === $snap['guid']) return $where.' already holds '.$snap['name'];
-	$unmatched = $base === null ? $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it'
-		: ($base['txg'] > $snap['txg'] ? $where.' already holds '.$base['name'].', which is newer than '.$snap['name'] : '');
-	if ($unmatched !== '' && $replace) return $target['server'] === '' ? zfsmReplicaPlanReplace($plan, $unmatched) : $unmatched.'; only a copy on this server is replaced';
+	$newer = $base !== null && $base['txg'] > $snap['txg'] ? $where.' already holds '.$base['name'].', which is newer than '.$snap['name'] : '';
+	$unmatched = $base === null ? $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it' : $newer;
+	if ($unmatched !== '' && $replace) return $target['server'] === '' ? zfsmReplicaPlanReplace($plan, $unmatched, $newer) : $unmatched.'; only a copy on this server is replaced';
 	if ($unmatched !== '') return $unmatched;
 	return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
 }
 
-// $plan sending everything into the copy's name once the run renames the copy there aside, with the copies below it (zfsmReplicateAside),
-// named for the minute; else $unmatched, why it can't be updated, and why it stays: a copy is replaced only while read-only and unmounted.
-function zfsmReplicaPlanReplace($plan, $unmatched) {
+// $plan to send in full once the run renames aside the copy that no longer matches (zfsmReplicateAside), with $newer when the copy is
+// only ahead of the snapshot; else $unmatched and why it stays.
+function zfsmReplicaPlanReplace($plan, $unmatched, $newer) {
 	$readonly = getDatasetProperty('', $plan['dest'], 'readonly');
 	if ($readonly === null) return $unmatched.'; whether it is read-only could not be read';
 	if ($readonly !== 'on') return $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is';
-	// A volume is never mounted, and zfs refuses one in a list of filesystems.
-	list($mounted, $why) = $plan['type'] === 'volume' ? array('', '') : zfsmReplicaMountedIn($plan['dest']);
-	if ($mounted === null) return $unmatched.'; whether it is mounted could not be read: '.$why;
-	if ($mounted !== '') return $unmatched.'; '.$mounted.' is mounted, so it is not replaced: unmount it first';
-	return array_merge($plan, array('replace' => $plan['dest'].'_replaced_'.date('Ymd_Hi')));
+	list($listed, $why) = zfsmReplicaListed($plan['dest']);
+	if ($listed === null) return $unmatched.'; whether it is mounted or has datasets below it could not be read: '.$why;
+	// The rename would take a dataset below it, which may be another schedule's copy.
+	$below = array_values(array_diff(array_keys($listed), array($plan['dest'])));
+	if ($below !== array()) return $unmatched.'; '.$below[0].(count($below) > 1 ? ' and '.(count($below) - 1).' more are' : ' is').' below it, so it is not replaced: only a copy with nothing below it is';
+	if (($listed[$plan['dest']] ?? '') === 'yes') return $unmatched.'; '.$plan['dest'].' is mounted, so it is not replaced: unmount it first';
+	return array_merge($plan, array('replace' => $plan['dest'].'_replaced_'.date('Ymd_Hi'), 'newer' => $newer));
 }
 
 // Why the snapshots of the copy at $where (zfsmReplicaTargetSnapshots) could not be read.

@@ -78,22 +78,24 @@ function zfsmReplicaHolderClear($zdest) {
 	return ($cleared['code'] ?? 1) === 0 ? '' : 'The copy still carries the mark of the empty dataset it replaced: '.zfsmCommandError($cleared, 'zfs inherit failed');
 }
 
-// The first filesystem mounted at or below $zdest: array(its name, or '' when none is, ''), or array(null, why it could not be read).
-function zfsmReplicaMountedIn($zdest) {
-	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,mounted', '-t', 'filesystem', '-r', $zdest));
+// Each filesystem and volume at and below $zdest with whether it is mounted (a volume's is -): array(name => mounted, ''), or array(null, why not).
+function zfsmReplicaListed($zdest) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,mounted', '-t', 'filesystem,volume', '-r', $zdest));
 	if (($listed['code'] ?? 1) !== 0) return array(null, zfsmCommandError($listed, 'zfs list failed'));
+	$mounted = array();
 	foreach (zfsmLines($listed['output']) as $line) {
-		list($name, $mounted) = explode("\t", $line, 2) + array(1 => '');
-		if ($mounted === 'yes') return array($name, '');
+		list($name, $state) = explode("\t", $line, 2) + array(1 => '');
+		$mounted[$name] = $state;
 	}
-	return array('', '');
+	return array($mounted, '');
 }
 
 // Why a copy received over the holder $zdest would unmount one below it, which zfs leaves so (-u); '' when none is.
 function zfsmReplicaHolderMounted($zdest) {
-	list($name, $why) = zfsmReplicaMountedIn($zdest);
-	if ($name === null) return 'whether a copy below it is mounted could not be read: '.$why;
-	return $name === '' ? '' : $name.' below it is mounted, which receiving this copy over it would unmount: unmount it first';
+	list($listed, $why) = zfsmReplicaListed($zdest);
+	if ($listed === null) return 'whether a copy below it is mounted could not be read: '.$why;
+	$name = array_search('yes', $listed, true);
+	return $name === false ? '' : $name.' below it is mounted, which receiving this copy over it would unmount: unmount it first';
 }
 
 // Whether $zdest on $target is a holder; false on a trusted server, which makes none, and when it can't be read.

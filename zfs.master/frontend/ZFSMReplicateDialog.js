@@ -68,7 +68,7 @@ function zfsmReplicatePlanHtml(plan) {
 	const area = plan.area ? say('On '+esc(plan.server)+', copies go inside '+esc(plan.area)+'.') : '';
 	if (plan.can_proceed !== true) return area;
 	const size = plan.size === null || plan.size === undefined ? '' : ', about '+zfsmSize(plan.size);
-	let html = say(plan.replace ? 'The copy there no longer matches this dataset. It is renamed to '+esc(plan.replace)+' (named for the time the run starts), with the copies below it, and everything is sent again'+size+'.'
+	let html = say(plan.replace ? (plan.newer ? esc(plan.newer) : 'The copy there no longer matches this dataset')+'. It is renamed to '+esc(plan.replace)+' (named for the time the run starts), and everything is sent again'+size+'.'
 		: plan.mode === 'resume' ? 'Carries on from where the last run to this copy stopped'+size+'.'
 		: plan.mode === 'incremental' ? 'Sends only the changes since '+esc(plan.since)+size+'.'
 		: 'The first replication sends everything'+size+'.');

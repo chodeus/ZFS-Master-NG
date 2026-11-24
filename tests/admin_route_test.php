@@ -31,6 +31,7 @@ $routes = array(
 	'schedulesendwrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => '2'),
 	'scheduleremake' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'remake' => '1'),
 	'previewreplace' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'replace' => '1'),
+	'previewreplacewrong' => array('cmd' => 'previewreplicate', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'replace' => 'yes'),
 	'replicatereplacewrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => 'b', 'destination' => 'backup/data', 'replace' => 'yes'),
 	'schedulereplace' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'keep' => '', 'replace' => '1'),
 	'scheduletickswrong' => array('cmd' => 'replicatedataset', 'zdataset' => 'tank/data', 'snapshot' => '', 'destination' => 'backup/data', 'every' => 'hourly', 'time' => '', 'days' => '', 'decrypt' => 'yes', 'remake' => 'on'),
@@ -62,7 +63,7 @@ $routes = array(
 	'previewschedulesbad' => array('cmd' => 'previewschedules', 'zdataset' => 'tank/bad name!'),
 	'replicaremove' => array('cmd' => 'replicaremove', 'name' => 'old', 'server' => 'old'),
 );
-$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'scheduleremake', 'previewreplace', 'replicatereplacewrong', 'schedulereplace', 'scheduletickswrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulecopiesleaveoutwrong', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
+$replication = array('previewreplicate', 'previewreplicateopen', 'replicatedataset', 'previewcryptopen', 'previewdecrypt', 'replicatedecrypt', 'scheduledecrypt', 'previewsendwrong', 'replicatesendwrong', 'schedulesendwrong', 'scheduleremake', 'previewreplace', 'previewreplacewrong', 'replicatereplacewrong', 'schedulereplace', 'scheduletickswrong', 'schedulepicked', 'schedulenowhere', 'schedulekeep', 'schedulecopykeeps', 'schedulekeepchange', 'schedulekeepchangewrong', 'schedulesnapshots', 'schedulesnapshotstiers', 'schedulesnapshotsleaveout', 'schedulesnapshotsleaveoutshape', 'schedulecopiesleaveoutwrong', 'schedulesnapshotswrong', 'schedulesnapshotsown', 'schedulecopies', 'schedulecopiesnowhere', 'schedulecopiesserver', 'scheduledataset', 'scheduledatasetwrong', 'scheduledatasetserver', 'previewschedules', 'previewschedulesbad', 'replicaremove');
 
 $route = $argv[1] ?? '';
 if (!isset($routes[$route])) exit(2);
@@ -149,6 +150,7 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'schedulesendwrong' => $failed === 'Nothing was scheduled: Send has no such choice now; reload the page' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduleremake' => isset($answer['succeeded']['tank/data']) && array_column(zfsmScheduleRead()['valid'] ?? array(), 'remake') === array(true),
 		'previewreplace' => ($answer['can_proceed'] ?? null) === true && preg_match('/^backup\/data_replaced_[0-9]{8}_[0-9]{4}$/D', $answer['replace'] ?? '') === 1,
+		'previewreplacewrong' => $answer === array('can_proceed' => false, 'error' => 'Replace a copy that no longer matches has no such choice now; reload the page'),
 		'replicatereplacewrong' => $failed === 'Replace a copy that no longer matches has no such choice now; reload the page' && ($answer['succeeded'] ?? null) === array(),
 		'schedulereplace' => isset($answer['succeeded']['tank/data']) && array_column(zfsmScheduleRead()['valid'] ?? array(), 'replace') === array(true),
 		'scheduletickswrong' => $failed === 'Nothing was scheduled: Send has no such choice now; reload the page; If the copy is gone, make it again has no such choice now; reload the page'

@@ -117,8 +117,10 @@ assert.deepEqual([{how: 'choice', raw: true}, {how: 'choice', raw: false}, {how:
   ['Sent raw: the copy stays locked with this dataset\'s key.', '', 'Sent raw, as this copy was made; to change that, replicate to a new name.', 'Sent decrypted, as this copy was made; to change that, replicate to a new name.',
     'Sent raw, as the run that stopped was.', 'Sent decrypted, as the run that stopped was.', 'n&lt;s runs an older ZFS Master NG, so this copy goes as Send says: keep Raw for a copy this plugin made, or update the plugin there.', ''], 'each says how it goes');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, raw: false, replace: 'backup/d<x_replaced_20261124_1200'}),
-  /^<p[^>]*>The copy there no longer matches this dataset\. It is renamed to backup\/d&lt;x_replaced_20261124_1200 \(named for the time the run starts\), with the copies below it, and everything is sent again\.<\/p>/,
+  /^<p[^>]*>The copy there no longer matches this dataset\. It is renamed to backup\/d&lt;x_replaced_20261124_1200 \(named for the time the run starts\), and everything is sent again\.<\/p>/,
   'a copy that is replaced says so, and its new name, escaped');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, raw: false, replace: 'b/d_replaced_20261124_1200', newer: 'b/d already holds t/d@<b>, which is newer than t/d@a'}),
+  /^<p[^>]*>b\/d already holds t\/d@&lt;b&gt;, which is newer than t\/d@a\. It is renamed to /, 'one only ahead of the snapshot says that instead, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');

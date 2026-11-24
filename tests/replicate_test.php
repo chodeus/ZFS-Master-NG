@@ -111,47 +111,59 @@ same('The copy goes inside nowhere, which doesn\'t exist', $refuse('d', 'nowhere
 same('The copy needs a dataset name inside a pool, such as backup/data', $refuse('d', 'backup'), 'a bare pool');
 same('The snapshot tank/data@gone no longer exists', $refuse('gone', 'backup/new'), 'a snapshot that is gone');
 
-// Replace a copy that no longer matches: it goes aside with the copies below it, named for the minute, and the dataset is sent in
-// full; a send that leaves nothing at its name gives it back. Only a read-only copy here, with nothing in it mounted, is replaced.
+// Replace a copy that no longer matches: it goes aside, named for the minute, and the dataset is sent in full; a send that leaves
+// nothing at its name gives it back. Only a read-only copy here, not mounted and with no dataset below it, is replaced.
 $fresh();
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a copy to replace');
-file_put_contents($work.'/pool/datasets', "backup/data/sub\tfilesystem\n", FILE_APPEND);
 // A minute that turns mid-test would rename the copy to another name than the test expects.
 $aside = function($dest = 'backup/data') { while ((int)date('s') > 55) sleep(1); return $dest.'_replaced_'.date('Ymd_Hi'); };
 $replacing = function($snapshot, $dest = 'backup/data', $zdataset = 'tank/data') {
 	$plan = zfsmReplicatePlan($zdataset, $snapshot, $dest, array('replace' => true));
-	return $plan['can_proceed'] ? array($plan['mode'], $plan['replace']) : $plan['error'];
+	return $plan['can_proceed'] ? array($plan['mode'], $plan['replace'], $plan['newer']) : $plan['error'];
 };
 $replace = function($snapshot) { return zfsmRunReplicate('tank/data', $snapshot, 'backup/data', null, false, '', null, null, false, true); };
 $prop = function($line) use ($work) { file_put_contents($work.'/pool/props', $line."\n", FILE_APPEND); };
 $to = $aside();
-same(array('backup/data already holds tank/data@b', array('full', $to), 'backup/empty already exists and holds no snapshot, so it can\'t be updated without destroying it'),
-	array($replacing('b'), $replacing('a'), $replacing('b', 'backup/empty')), 'one that holds the snapshot, or none, stays; one ahead of it is replaced');
+$ahead = 'backup/data already holds tank/data@b, which is newer than tank/data@a';
+same(array('backup/data already holds tank/data@b', array('full', $to, $ahead), 'backup/empty already exists and holds no snapshot, so it can\'t be updated without destroying it'),
+	array($replacing('b'), $replacing('a'), $replacing('b', 'backup/empty')), 'one that holds the snapshot, or none, stays; one ahead of it is replaced, saying why');
+same('', zfsmReplicateAside(zfsmReplicatePlan('tank/data', 'a', 'backup/data', array('replace' => true)), 'tank/data'), 'and goes aside');
+// Diagnostics masks this line's names by its words (diagnostics_bundle_test).
+same(1, substr_count((string)@file_get_contents(zfsmLogFile()), 'Replication of tank/data to backup/data replaces the copy, which held a newer snapshot than the one sent; the old copy is now '.$to."\n"),
+	'the log says why');
+runProcess('zfs', array('rename', $to, 'backup/data'));
 file_put_contents($work.'/pool/marks', "backup/data@stray\t999\t500\n", FILE_APPEND);
 runProcess('zfs', array('snapshot', 'tank/data@c'));
 $unmatched = 'backup/data@stray is not on this dataset, so backup/data can\'t be updated without destroying it';
 $prop("backup/data\treadonly\toff");
 $off = $replacing('c');
 $prop("backup/data\treadonly\ton");
-$prop("backup/data/sub\tmounted\tyes");
+$prop("backup/data\tmounted\tyes");
 $mounted = $replacing('c');
-$prop("backup/data/sub\tmounted\tno");
+$prop("backup/data\tmounted\tno");
+file_put_contents($work.'/pool/datasets', "backup/data/sub\tfilesystem\n", FILE_APPEND);
+$below = $replacing('c');
+file_put_contents($work.'/pool/datasets', "backup/data/vol\tvolume\n", FILE_APPEND);
+$reset();
+same(array(1, array(), array('warning: Replication of tank/data to backup/data not started: '.str_replace("'", '?', $unmatched).'; backup/data/sub and 1 more are below it, so it is not replaced: only a copy with nothing below it is')),
+	array($replace('c'), $calls('rename'), $read('notify-detail.log')), 'a run that would take datasets below the copy renames nothing, and says so');
+file_put_contents($work.'/pool/datasets', str_replace(array("backup/data/sub\tfilesystem\n", "backup/data/vol\tvolume\n"), '', file_get_contents($work.'/pool/datasets')));
 putenv('ZFSM_TEST_PROP_FAIL=backup/data readonly');
 $unread = $replacing('c');
 putenv('ZFSM_TEST_PROP_FAIL');
 putenv('ZFSM_TEST_MOUNTED_FAIL=1');
 $unlisted = $replacing('c');
 putenv('ZFSM_TEST_MOUNTED_FAIL');
-same(array($unmatched, $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is', $unmatched.'; backup/data/sub is mounted, so it is not replaced: unmount it first',
-	$unmatched.'; whether it is read-only could not be read', $unmatched."; whether it is mounted could not be read: cannot open 'backup/data': Input/output error", array('full', $aside())),
-	array($refuse('c', 'backup/data'), $off, $mounted, $unread, $unlisted, $replacing('c')), 'one that went its own way is replaced only when asked, read-only and unmounted');
+same(array($unmatched, $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is', $unmatched.'; backup/data is mounted, so it is not replaced: unmount it first',
+	$unmatched.'; backup/data/sub is below it, so it is not replaced: only a copy with nothing below it is', $unmatched.'; whether it is read-only could not be read',
+	$unmatched."; whether it is mounted or has datasets below it could not be read: cannot open 'backup/data': Input/output error", array('full', $aside(), '')),
+	array($refuse('c', 'backup/data'), $off, $mounted, $below, $unread, $unlisted, $replacing('c')), 'one that went its own way is replaced only when asked, read-only, unmounted and with nothing below it');
 
 $reset();
 $to = $aside();
 same(0, $replace('c'), 'a run replaces it');
 same(array(array('rename backup/data '.$to), array('receive -s -u -o readonly=on -o canmount=noauto backup/data')), array($calls('rename'), $calls('receive')), 'renaming it aside, then receiving a new copy');
-same(array(array('backup/data@c'), array($to.'@b', $to.'@stray'), true, false), array($names('backup/data', 'snapshot'), $names($to, 'snapshot'), zfsmDatasetExists($to.'/sub'), zfsmDatasetExists('backup/data/sub')),
-	'the old copy keeps its snapshots, and the copy below it');
+same(array(array('backup/data@c'), array($to.'@b', $to.'@stray')), array($names('backup/data', 'snapshot'), $names($to, 'snapshot')), 'the old copy keeps its snapshots');
 same(array('normal: Replication of tank/data@c to backup/data finished (in full). The old copy is now '.$to.': destroy it when you no longer need it.'), $read('notify-detail.log'), 'the notification says where the old copy is');
 // Diagnostics masks this line's names by its words (diagnostics_bundle_test).
 same(1, substr_count((string)@file_get_contents(zfsmLogFile()), 'Replication of tank/data to backup/data replaces the copy, which no longer matched; the old copy is now '.$to."\n"), 'and the log says so');
@@ -164,13 +176,14 @@ $to = $aside();
 putenv('ZFSM_TEST_RENAME_FAIL=backup/data');
 same(1, $replace('c'), 'a rename that fails fails the run');
 putenv('ZFSM_TEST_RENAME_FAIL');
-same(array(array('warning: Replication of tank/data to backup/data not started: backup/data no longer matches this dataset, and could not be renamed to '.$to.': cannot rename ?backup/data?: dataset is busy'), array(), $stray),
+same(array(array('warning: Replication of tank/data to backup/data not started: backup/data could not be renamed to '.$to.', so it is not replaced: cannot rename ?backup/data?: dataset is busy'), array(), $stray),
 	array($read('notify-detail.log'), $calls('send'), $names('backup/data', 'snapshot')), 'before it sends, and the copy stays as it was');
 $reset();
 $to = $aside();
 putenv('ZFSM_TEST_SEND_FAIL=1');
 same(1, $replace('c'), 'a send that fails');
 $back = array($read('notify-detail.log'), $names('backup/data', 'snapshot'));
+same(1, substr_count((string)@file_get_contents(zfsmLogFile()), "Replication of tank/data to backup/data failed, so the old copy is back at backup/data\n"), 'the log says the copy is back');
 $reset();
 $to = $aside();
 putenv('ZFSM_TEST_RENAME_FAIL='.$to);
@@ -188,10 +201,16 @@ same(1, $replace('c'), 'a send cut off part-way');
 putenv('ZFSM_TEST_SEND_CUT');
 same(array(true, array($to.'@c', $to.'@stray2'), 'resume'), array(substr($read('notify-detail.log')[0] ?? '', -strlen($cut = 'Replicate it again to carry on from where it stopped. The old copy is now '.$to.'.')) === $cut,
 	$names($to, 'snapshot'), zfsmReplicatePlan('tank/data', 'c', 'backup/data')['mode']), 'leaves the new copy for the next run to carry on, and the old one aside: '.($read('notify-detail.log')[0] ?? ''));
-// A volume is never mounted, and zfs refuses one in a list of filesystems.
+// A volume's copy, and copies of another type than their dataset: each is checked as the copy it is.
 same(0, zfsmRunReplicate('tank/vol', 'v', 'backup/vol'), 'a volume\'s copy');
 file_put_contents($work.'/pool/marks', "backup/vol@stray\t997\t700\n", FILE_APPEND);
-same(array('full', $aside('backup/vol')), $replacing('v', 'backup/vol', 'tank/vol'), 'is replaced without that read');
+same(array('full', $aside('backup/vol'), ''), $replacing('v', 'backup/vol', 'tank/vol'), 'is replaced');
+file_put_contents($work.'/pool/datasets', "backup/other\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "backup/other@x\t996\t800\n", FILE_APPEND);
+$prop("backup/other\treadonly\ton");
+$prop("backup/other\tmounted\tyes");
+same(array(array('full', $aside('backup/vol'), ''), 'backup/other@x is not on this dataset, so backup/other can\'t be updated without destroying it; backup/other is mounted, so it is not replaced: unmount it first'),
+	array($replacing('c', 'backup/vol'), $replacing('v', 'backup/other', 'tank/vol')), 'a filesystem\'s over a volume, and a volume\'s over a mounted filesystem');
 
 // A stopped run leaves a token on the copy; the next one carries on from it, whatever snapshot is picked.
 $fresh();
