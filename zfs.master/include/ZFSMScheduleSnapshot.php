@@ -47,9 +47,11 @@ function zfsmScheduleFollowed($zdataset, $jobs, $kind = 'zfsmScheduleSnapshotsOn
 	return $by[''] ?? null;
 }
 
-// What following $job means, for the dialog's Default and Save's answer.
-function zfsmScheduleFollowedText($job) {
+// What following $job means for $zdataset, for the dialog's Default and Save's answer.
+function zfsmScheduleFollowedText($job, $zdataset) {
 	if ($job === null) return 'Snapshot Every Dataset, which is off: no scheduled snapshots';
+	$out = zfsmScheduleLeaveOutFollowed($job, $zdataset, 'no scheduled snapshots');
+	if ($out !== '') return $out;
 	$whose = zfsmScheduleWhat($job);
 	return $job['every'] === 'none' ? $whose.', None: no scheduled snapshots' : $whose.', '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
 }
@@ -57,7 +59,7 @@ function zfsmScheduleFollowedText($job) {
 // Settings' row of a snapshot schedule.
 function zfsmScheduleSnapshotText($job) {
 	if ($job['every'] === 'none') return 'No scheduled snapshots of '.$job['dataset'].' and below';
-	return ($job['dataset'] === '' ? 'Snapshot Every Dataset' : 'Snapshots of '.$job['dataset'].' and below').', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job);
+	return ($job['dataset'] === '' ? 'Snapshot Every Dataset' : 'Snapshots of '.$job['dataset'].' and below').', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job).zfsmScheduleLeaveOutText($job);
 }
 
 // What Settings' row of the default of $kind shows: it (an hourly one with Off's Starts At, which it doesn't use), or Off when there
@@ -81,11 +83,11 @@ function zfsmScheduleSnapshotWrong($job, $remove) {
 	return $remove || ($job['every'] === 'none' && $job['dataset'] !== '') ? '' : zfsmScheduleWrong($job);
 }
 
-// Saves Snapshot Every Dataset ($zdataset '') or a dataset's own in place (zfsmScheduleSnapshotPut); 'off' or 'default' removes it.
-// Nothing is taken now. As zfsmScheduleChange answers, and 'said'.
-function zfsmScheduleSnapshotSave($zdataset, $every, $time, $days, $keep, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT) {
+// Saves Snapshot Every Dataset ($zdataset '', with $leave_out: zfsmLeaveOutParse's) or a dataset's own in place (zfsmScheduleSnapshotPut);
+// 'off' or 'default' removes it. Nothing is taken now. As zfsmScheduleChange answers, and 'said'.
+function zfsmScheduleSnapshotSave($zdataset, $every, $time, $days, $keep, $cfg, $wait = ZFSM_SCHEDULE_COUNT_WAIT, $leave_out = array()) {
 	$remove = $every === ($zdataset === '' ? 'off' : 'default');
-	$job = zfsmScheduleSnapshotRecord($zdataset, $every, $time, $days, $keep);
+	$job = zfsmScheduleLeaveOutSet(zfsmScheduleSnapshotRecord($zdataset, $every, $time, $days, $keep), $zdataset === '' && !$remove ? $leave_out : array());
 	$wrong = zfsmScheduleSnapshotWrong($job, $remove);
 	if ($wrong !== '') return array('saved' => false, 'why' => 'Nothing was saved: '.$wrong, 'said' => '');
 	// One zfsmScheduleCoverRead: a dataset's own must be one a run can take, and the answer counts what a schedule that runs takes.
@@ -210,11 +212,12 @@ function zfsmScheduleNewClash($before, $after, $cfg) {
 // Save's answer: what $job does now, with $jobs as saved; one that runs is counted in $listed.
 function zfsmScheduleSnapshotSaid($job, $remove, $jobs, $listed) {
 	if ($remove && $job['dataset'] === '') return 'Snapshot Every Dataset is off; the snapshots it took stay';
-	if ($remove) return 'Saved: '.$job['dataset'].' follows '.zfsmScheduleFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs));
+	if ($remove) return 'Saved: '.$job['dataset'].' follows '.zfsmScheduleFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs), $job['dataset']);
 	if ($job['every'] === 'none') return 'Saved: no scheduled snapshots of '.$job['dataset'].' and below, but for datasets with their own; the snapshots taken stay';
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
 	$count = ($unread !== '' && !$pools ? 'each dataset' : 'each of '.array_sum(array_map('count', $pools)).' dataset(s)').($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '');
-	return 'Saved: a snapshot of '.$count.' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job).($unread !== '' ? '; not every dataset could be read: '.$unread : '');
+	$leave = zfsmScheduleLeaveOutSaid($job, $jobs, $listed);
+	return 'Saved: a snapshot of '.$count.' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job).($unread !== '' ? '; not every dataset could be read: '.$unread : '').($leave !== '' ? '. '.$leave : '');
 }
 
 // Takes $name of each of $datasets (one pool's) with the snapshots tag in one command, all at one moment; when that fails (one name
@@ -302,7 +305,7 @@ function zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait) {
 		$stayed = array_merge($stayed, zfsmScheduleSnapshotKeep($pool, $took, $job['keep']));
 	}
 	$of = $job['dataset'] === '' ? '' : ' ('.$job['dataset'].' and below)';
-	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.zfsmScheduleTakenBeforeSaid($again).($self !== '' ? '. Not taken: '.$self : '')
+	return array('Scheduled snapshots of '.$taken.' of '.($taken + count($failed)).' dataset(s)'.$of.' taken'.zfsmScheduleLeaveOutRan($listed, $job, $jobs).zfsmScheduleTakenBeforeSaid($again).($self !== '' ? '. Not taken: '.$self : '')
 		.($unread !== '' ? '. Not every dataset could be read: '.$unread : '').($failed ? '. Could not take '.zfsmKeepFirst($failed) : '')
 		.($stayed ? '. '.zfsmKeepStayed('Keep', $stayed, 'run') : ''), zfsmScheduleTakenBeforeProblem($again, $taken, $self !== '' || $unread !== '' || $failed || $stayed));
 }

@@ -321,6 +321,7 @@ _(Snapshot Every Dataset)_:
 > - It also leaves out datasets with Sanoid or Syncoid snapshots (named `autosnap_` or `syncoid_`): that tool takes their snapshots, and Syncoid would carry scheduled ones into its copies, where Sanoid never removes them. Once those snapshots are deleted, the dataset is taken again. With a **Snapshots Prefix** that itself starts `autosnap_` or `syncoid_`, snapshots named with it count as this plugin's own, and so do that tool's when they start the same.
 > - A run takes all of a pool's snapshots at one moment (one at a time if that fails), named by **Snapshots Pattern**. Nothing is taken when you save: the first run is at its time.
 > - **Snapshots To Keep**: after each run, only the scheduled snapshots it keeps stay on each dataset, whichever snapshot schedule took them (a run removes up to 50 from each). A number keeps the newest that many; `7d`, `4w` and `12m` keep the newest snapshot of each of the last 7 days, 4 weeks (Monday first) and 12 months that have one, in this server's time zone, so a day with none doesn't count; `h` and `y` count hours and years. Give any of them together, such as `24 7d 4w 12m`: what any one keeps stays. Snapshots made by hand or by a copy's schedule are never counted or removed, and one held or cloned stays. Empty keeps all.
+> - **Leave Out**: names of datasets it leaves out, split by commas, such as `appdata, backup_*`. Each matches a dataset at the top of a pool, such as `cache/appdata`, in every pool. A `*` at the end matches every name that starts with the text before it. The datasets below each one are left out too, unless one has a schedule of its own (**Actions**, **Schedules** in the Main tab). The snapshots taken before stay. Save says how many datasets it leaves out, and names any entry that matches none.
 > - It and a copy's schedule can't start in the same minute: saving either one says so.
 > - The first run with a problem sends a notification. Later ones are logged in `/var/log/zfs.master.log` until a run works again, and that run's notification says so.
 :end
@@ -333,6 +334,9 @@ _(Starts At)_:
 
 _(Snapshots To Keep)_:
 : <input type="text" id="zfsm-snapsched-keep" maxlength="40" placeholder="all" value="<?=zfsmHtml(zfsmKeepField($zfsm_snapsched['keep']))?>">
+
+_(Leave Out)_:
+: <input type="text" id="zfsm-snapsched-leave-out" placeholder="none" value="<?=zfsmHtml(zfsmLeaveOutField($zfsm_snapsched))?>">
 
 &nbsp;
 : <input type="button" id="zfsm-snapsched-save" value="_(Save)_" onclick="zfsmEverySave('zfsm-snapsched', 'schedulesnapshots')"> <span id="zfsm-snapsched-status" aria-live="polite"></span>
@@ -352,6 +356,7 @@ _(Replicate Every Dataset)_:
 > - A dataset's copy goes after the copy of the dataset above it. Where the dataset above one is not copied, an empty dataset, read-only and not mounted, is made in its place to hold the copies below it. If that dataset is copied later, its first copy replaces the empty one and the copies below it stay, though not while one of them is mounted, which receiving over it would unmount; an encrypted dataset sent raw can't replace it, nor can any copy replace an empty one that is encrypted, as one under an encrypted dataset is, and the run says what to do. When the copy of the dataset above one is missing because it failed, or the schedule that copies it has not made it yet, that one waits for the next run. On another server, which must run this version or later, the empty datasets are made there, and none is replaced: a dataset copied later where one stands is not copied, and the run says why.
 > - **Snapshots To Keep**: for each dataset, as for a copy's schedule: only those it keeps of the snapshots taken for copies under its **Copy Under** stay, on the dataset, and in its copy when **Copy Keeps** is empty, whichever schedule took them: a dataset's own copies under the same one share them. Empty keeps all. A new **Copy Under** starts new copies there: the copies under the old one, and the snapshots taken for them, stay, as with Off.
 > - **Copy Keeps**: empty, each copy loses the snapshots **Snapshots To Keep** removes from its dataset. `all` keeps every snapshot in each copy; rules as **Snapshots To Keep** reads them, such as `30d 12m`, count every snapshot in each copy, one sent by hand too, the newest and the one just sent always staying, so a copy can keep more or fewer than its dataset. One held or cloned stays. Copies on another server have none: its **Keep Replicas** decides.
+> - **Leave Out**: names of datasets it leaves out, split by commas, such as `appdata, backup_*`. Each matches a dataset at the top of a pool, such as `cache/appdata`, in every pool. A `*` at the end matches every name that starts with the text before it. The datasets below each one are left out too, unless one has a schedule of its own (**Actions**, **Schedules** in the Main tab). The copies made before stay, and are no longer updated. Save says how many datasets it leaves out, and names any entry that matches none.
 > - A dataset can have copies of its own, or None, under **Actions**, **Schedules** in the Main tab (**Replication**): it and the datasets below it follow that one instead, unless they have their own, each with its own **Copy Under** and **Server**.
 > - Renaming a dataset in the Main tab renames its copies under each **Copy Under** a schedule uses with it on this server (one on another server keeps its name, and a run copies the dataset there again in full under the new one), unless a dataset already has the new name there, no schedule copies it or a dataset below it there now, another schedule sends copies into it, what is there is neither its copy nor a holder of the copies below it, or a dataset made to hold it would stop an encrypted copy due there; it says which of those stayed, and a clash its schedules meet where they went. Nothing is renamed while a copy of it or a dataset below it runs, or when the new name leaves no room for the bookmark a copy made now keeps where the old name did (named by Snapshots Pattern as it is now); a bookmark made before that no longer fits stays, and the rename says so. Copies under a **Copy Under** no schedule uses now stay as they are. Destroying a dataset removes what it and the datasets below it had under **Actions**, **Schedules** (or, when the schedules can't be changed then, says so: remove them in Settings), and leaves its copies.
 > - It and a snapshot schedule or copy's schedule of the same dataset can't start in the same minute: saving either one says so.
@@ -379,6 +384,9 @@ _(Snapshots To Keep)_:
 
 _(Copy Keeps)_:
 : <input type="text" id="zfsm-copysched-copy-keeps" maxlength="40" placeholder="same as source" value="<?=zfsmHtml(zfsmCopyKeepsField($zfsm_copysched['copy_keeps'] ?? null))?>">
+
+_(Leave Out)_:
+: <input type="text" id="zfsm-copysched-leave-out" placeholder="none" value="<?=zfsmHtml(zfsmLeaveOutField($zfsm_copysched))?>">
 
 &nbsp;
 : <input type="button" id="zfsm-copysched-save" value="_(Save)_" onclick="zfsmEverySave('zfsm-copysched', 'schedulecopies')"> <span id="zfsm-copysched-status" aria-live="polite"></span>
@@ -562,6 +570,7 @@ function zfsmEverySync(prefix) {
 	show('#' + prefix + '-days', every === 'days');
 	show('#' + prefix + '-time', every === 'days');
 	show('#' + prefix + '-keep', every !== 'off');
+	show('#' + prefix + '-leave-out', every !== 'off');
 	show('#' + prefix + '-copy-keeps', every !== 'off' && !$('#' + prefix + '-server').val());
 	show('#' + prefix + '-server', every !== 'off');
 	show('#' + prefix + '-under', every !== 'off');
@@ -577,6 +586,8 @@ function zfsmEverySave(prefix, cmd) {
 	// Hidden for a server, which has none: what is left in it is not sent.
 	var copy = $('#' + prefix + '-copy-keeps');
 	if (copy.length) post.copy_keeps = post.server ? '' : copy.val();
+	var leave = $('#' + prefix + '-leave-out');
+	if (leave.length) post.leave_out = leave.val();
 	zfsmSchedulesSend(post, function(answer) {
 		status.css('color', answer.error ? '#e22828' : '').text([answer.said, answer.error].filter(Boolean).join('. '));
 	});

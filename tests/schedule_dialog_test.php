@@ -257,6 +257,22 @@ same(array(array('c0ffee00', ''), 1), array($check($old), preg_match('/^Snapshot
 same(array('', array()), array($save('tank/data', $part('default'), $part('default'))['why'], array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/data'; }))),
 	'back to Default');
 
+// Leave Out: Default names the rule for a dataset a default leaves out and those below, not where an own schedule above decides.
+$before = $stored();
+same(array(true, true), array(zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg, ZFSM_SCHEDULE_COUNT_WAIT, array('dat*'))['saved'],
+	zfsmScheduleCopiesSave('backup', 'hourly', '', '', 0, $cfg, null, '', ZFSM_SCHEDULE_COUNT_WAIT, array('data'))['saved']), 'both defaults with Leave Out');
+$out = 'Snapshot Every Dataset, which leaves this dataset out (Leave Out: dat*): no scheduled snapshots';
+$cout = 'Replicate Every Dataset, which leaves this dataset out (Leave Out: data): no scheduled copies';
+$followed = function($zdataset) use ($cfg) { $preview = zfsmScheduleDialogPreview($zdataset, $cfg); return array($preview['inherited'], $preview['copies']['inherited']); };
+same(array(array($out, $cout), array($out, $cout), 0), array($followed('tank/data'), $followed('tank/data/sub'), substr_count(implode(' ', $followed('tank/docker')), 'Leave Out')),
+	'Default says it leaves it out, and those below; not one it takes');
+same(true, $save('tank/data', $part('hourly'), $part('hourly', '', '', 0, 'usb'))['saved'], 'tank/data with its own');
+same(array($out, $cout, 0), array_merge($followed('tank/data'), array(substr_count(implode(' ', $followed('tank/data/sub')), 'Leave Out'))), 'one below it follows its own');
+same('Saved: tank/data follows '.$out.'. Saved: the copies of tank/data follow '.$cout, $save('tank/data', $part('default'), $part('default'))['said'], 'Save to Default says it');
+zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg);
+zfsmScheduleCopiesSave('backup', 'hourly', '', '', 0, $cfg);
+same($before, $stored(), 'as before');
+
 // Rename: the copy under each dataset copies go under takes the new name, the datasets below it with it, and stays incremental.
 $id = array_values($stored())[0]['id'];
 $t = 1800000000;

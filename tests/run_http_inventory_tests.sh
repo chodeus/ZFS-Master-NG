@@ -54,6 +54,7 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_downgrade_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_snapshot_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_leave_out_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_server_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_dialog_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/keep_test.php"

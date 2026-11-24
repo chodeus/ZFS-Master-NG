@@ -140,6 +140,9 @@ $log_lines = array(
 	// Replicate Every Dataset: how many it copied, those waiting for the copy above them, a holder it could not make, one in a copy's place.
 	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/CanaryWaitA, tank/CanaryWait B, tank/CanaryWaitC, and 2 more). '
 		."The dataset to hold the copies below tank/CanaryUnder/tank/CanaryHold could not be made: cannot create 'tank/CanaryUnder/tank/CanaryHold': out of space",
+	// Leave Out's count after how many a run took or copied, before the names.
+	"Schedule 0a1b2c3f: Scheduled snapshots of 3 of 5 dataset(s) taken, 2 left out by Leave Out. Could not take tank/CanaryLeaveSnap@CanaryPrefix_1 (cannot create snapshot 'tank/CanaryLeaveSnap@CanaryPrefix_1': out of space)",
+	'Schedule 0a1b2c40: Scheduled copies under tank/CanaryUnder: 1 of 8 dataset(s) copied, 2 left out by Leave Out. Not copied, as the copy of a dataset above it is missing (tank/CanaryLeaveWait)',
 	'Replication of tank/CanaryCpSrc to tank/CanaryUnder/tank/CanaryCpSrc not started: tank/CanaryUnder/tank/CanaryCpSrc only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them',
 	'ZFS Dataset Rename: Schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate',
 	"ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvCopy failed: not renamed with it: cannot rename 'tank/CanaryUnder/tank/CanaryMvCopy': dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one",
@@ -333,6 +336,10 @@ $cp = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryCpSrc');
 $hold = $under.'/'.zfsmDiagToken('tank').'/'.$token('CanaryHold');
 has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryWaitA').', tank/'.$token('CanaryWait B').', tank/'.$token('CanaryWaitC').', and 2 more). '
 	."The dataset to hold the copies below $hold could not be made: cannot create ?$hold?: out of space\n", $log, 'a run of copies under a dataset: each name a token, the plugin\'s words in clear');
+has("Schedule ".zfsmDiagToken('0a1b2c3f').": Scheduled snapshots of 3 of 5 dataset(s) taken, 2 left out by Leave Out. Could not take tank/".$token('CanaryLeaveSnap')."@$snap (cannot create snapshot ?tank/".$token('CanaryLeaveSnap')."@$snap?: out of space)\n",
+	$log, 'Leave Out\'s count in a snapshot run\'s line');
+has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied, 2 left out by Leave Out. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryLeaveWait').")\n",
+	$log, 'and in a run of copies\' line');
 has('Schedule '.zfsmDiagToken('0a1b2c3f').': Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/'.$token('CanaryAgainA').', tank/'.$token('CanaryAgain B').", and 2 more)\n",
 	$log, 'a run cron started again where the clock went back: each name a token, the pool in clear');
 has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');
