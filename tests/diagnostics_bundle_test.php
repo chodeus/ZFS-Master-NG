@@ -147,6 +147,9 @@ $log_lines = array(
 	'ZFS Dataset Rename: Schedules of tank/CanaryMvFrom failed: not moved to tank/CanaryMvTo (Another change to the schedules is being saved; try again): Remove them in Settings and set them again under Actions, Schedules or Replicate',
 	"ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvCopy failed: not renamed with it: cannot rename 'tank/CanaryUnder/tank/CanaryMvCopy': dataset is busy. It stays under its old name, so the next copy of the renamed dataset is a full one",
 	'ZFS Dataset Rename: Copy tank/CanaryUnder/tank/CanaryMvRep failed: the repeats set in Replicate that send into it still send to tank/CanaryUnder/tank/CanaryMvRep (Another change to the schedules is being saved; try again): set them again under Actions, Replicate',
+	// A rename a default's Leave Out matches on one side only: its entry, and the dataset's name last.
+	'ZFS Dataset Rename: Snapshot Every Dataset failed: its Leave Out (CanaryLoName) matched only the old name, so it now takes snapshots of tank/CanaryLoOut',
+	'ZFS Dataset Rename: Replicate Every Dataset failed: its Leave Out (CanaryLo*) matches the new name, so it no longer copies tank/CanaryLo In',
 	// A schedule's Keep: what it removed, what stayed and why, and holds a run could not put on or take off.
 	'Removed tank/CanaryDs One@CanaryKeepOld (not among the newest 3, 7 daily and 4 weekly its schedule keeps)',
 	// Snapshots Prefix can put any words in a snapshot's name, Keep's own among them.
@@ -340,6 +343,10 @@ has("Schedule ".zfsmDiagToken('0a1b2c3f').": Scheduled snapshots of 3 of 5 datas
 	$log, 'Leave Out\'s count in a snapshot run\'s line');
 has('Schedule '.zfsmDiagToken('0a1b2c40').": Scheduled copies under $under: 1 of 8 dataset(s) copied, 2 left out by Leave Out. Not copied, as the copy of a dataset above it is missing (tank/".$token('CanaryLeaveWait').")\n",
 	$log, 'and in a run of copies\' line');
+has('ZFS Dataset Rename: Snapshot Every Dataset failed: its Leave Out ('.$token('CanaryLoName').') matched only the old name, so it now takes snapshots of tank/'.$token('CanaryLoOut')."\n",
+	$log, 'a rename\'s Leave Out note: its entry and the dataset are tokens, its words stay');
+has('ZFS Dataset Rename: Replicate Every Dataset failed: its Leave Out ('.$token('CanaryLo').'*) matches the new name, so it no longer copies tank/'.$token('CanaryLo In')."\n",
+	$log, 'and a prefix keeps its *');
 has('Schedule '.zfsmDiagToken('0a1b2c3f').': Scheduled snapshots of 0 of 0 dataset(s) taken. Left out, as each has a snapshot of the name this run gives, from before the clock went back (tank, tank/'.$token('CanaryAgainA').', tank/'.$token('CanaryAgain B').", and 2 more)\n",
 	$log, 'a run cron started again where the clock went back: each name a token, the pool in clear');
 has('Replication of tank/'.$token('CanaryCpSrc')." to $cp not started: $cp only holds the copies of datasets below this one, made while it was not copied; its own copy cannot go there without destroying them\n", $log, 'and one in a copy\'s place');

@@ -173,15 +173,16 @@ function zfsmScheduleLeaveOutFollowed($job, $zdataset, $none) {
 function zfsmScheduleLeaveOutMoved($before, $after, $from, $to) {
 	$said = array();
 	foreach ($after as $job) {
-		if ($job['dataset'] !== '' || empty($job['leave_out'])) continue;
+		if (empty($job['leave_out'])) continue;
 		$kind = zfsmScheduleKindOf($job);
 		if ((zfsmScheduleFollowed($from, $before, $kind)['id'] ?? null) !== $job['id'] || (zfsmScheduleFollowed($to, $after, $kind)['id'] ?? null) !== $job['id']) continue;
 		$was = zfsmScheduleLeaveOutBy($job, $from);
 		$now = zfsmScheduleLeaveOutBy($job, $to);
 		if (($was === null) === ($now === null)) continue;
 		$does = zfsmScheduleCopiesUnder($job) ? 'copies ' : 'takes snapshots of ';
-		$said[zfsmScheduleWhat($job)] = $now !== null ? 'no longer '.$does.$to.': its Leave Out ('.$now.') matches the new name'
-			: $does.$to.' now: its Leave Out ('.$was.') matched only the old name';
+		// The name last: in diagnostics a name runs to the end of its log line unless ZFSM_DIAG_AFTER's words follow it.
+		$said[zfsmScheduleWhat($job)] = $now !== null ? 'its Leave Out ('.$now.') matches the new name, so it no longer '.$does.$to
+			: 'its Leave Out ('.$was.') matched only the old name, so it now '.$does.$to;
 	}
 	return $said;
 }
