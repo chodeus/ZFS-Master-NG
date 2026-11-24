@@ -32,8 +32,32 @@ function zfsmScheduleCopiesDest($job, $zdataset) {
 function zfsmScheduleCopiesOf($job, $jobs, $zdest) {
 	if (strpos($zdest, $job['dest']) !== 0) return null;
 	$zdataset = substr($zdest, strlen($job['dest']));
-	if (zfsmScheduleCopiesInPool($job, $zdataset) || (zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder')['id'] ?? null) !== $job['id']) return null;
+	if (!zfsmValidDatasetName($zdataset) || zfsmScheduleCopiesInPool($job, $zdataset) || (zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder')['id'] ?? null) !== $job['id']) return null;
 	return zfsmDatasetMissing($zdataset) === true ? null : $zdataset;
+}
+
+// Why $job, copies under a dataset, can't be beside $other, a repeat on its server, in $jobs: where their copies first meet (each one's
+// own dataset's copy, or a copy's name), they are of two datasets; or zfsmScheduleCopiesInside. '' when neither.
+function zfsmScheduleCopiesMeet($job, $other, $jobs) {
+	foreach (zfsmScheduleCopiesUnder($other) ? array($other['dest'].$other['dataset'], $job['dest'].$job['dataset']) : array($other['dest']) as $zdest) {
+		$mine = zfsmScheduleCopiesOf($job, $jobs, $zdest);
+		$theirs = zfsmScheduleCopyAt($other, $jobs, $zdest);
+		if ($mine === null || $theirs === null || $mine === $theirs) continue;
+		$what = zfsmScheduleCopiesUnder($other) ? zfsmScheduleWhat($other).', ' : '';
+		return 'the copy of '.$theirs.' ('.$what.zfsmScheduleWhen($other).') has the name this would give the copy of '.$mine.'; remove that schedule in Settings first, or pick another Copy Under';
+	}
+	return zfsmScheduleCopiesInside($job, $other, $jobs);
+}
+
+// Why Replicate Every Dataset, $job or $other in $jobs, can't copy under the copy the other makes of a dataset: the copy of a pool
+// there could get the name of the copy of a dataset in it. '' when it doesn't.
+function zfsmScheduleCopiesInside($job, $other, $jobs) {
+	$clash = function($in) { return ', so the copy of a pool there could get the name of the copy of a dataset in '.$in; };
+	$in = $job['dataset'] === '' ? zfsmScheduleCopiesOf($other, $jobs, substr($job['dest'], 0, -1)) : null;
+	if ($in !== null) return 'Copy Under '.zfsmScheduleCopiesUnderText($job).' is the copy of '.$in.' ('.zfsmScheduleWhat($other).', '.zfsmScheduleWhen($other).')'.$clash($in).'; pick another Copy Under';
+	$in = $other['dataset'] === '' ? zfsmScheduleCopiesOf($job, $jobs, substr($other['dest'], 0, -1)) : null;
+	if ($in === null) return '';
+	return 'Replicate Every Dataset copies under '.zfsmScheduleCopiesUnderText($other).' ('.zfsmScheduleWhen($other).'), which is the copy this would make of '.$in.$clash($in).'; change it in Settings first, or pick another Copy Under';
 }
 
 // Whether $other (null: none) puts its copies where $job does: under the same Copy Under, on the same server.
