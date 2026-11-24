@@ -35,11 +35,10 @@ function zfsmPostYes($key, $field) {
 	return array('' => false, '1' => true)[zfsmPostString($key)] ?? $field.' has no such choice now; reload the page';
 }
 
-// Replicate's ticks (zfsmPostYes): 'decrypt', 'replace' and with $remake 'remake', each true or false; why not, for a value it never sends.
-function zfsmPostChoices($remake = false) {
-	$fields = array('decrypt' => 'Send') + ($remake ? array('remake' => 'If the copy is gone, make it again') : array()) + array('replace' => 'Replace a copy that no longer matches');
+// Replicate's ticks (zfsmPostYes): 'decrypt', 'remake' and 'replace', each true or false (one not sent is false); why not, for a value it never sends.
+function zfsmPostChoices() {
 	$choices = array();
-	foreach ($fields as $key => $field) $choices[$key] = zfsmPostYes($key, $field);
+	foreach (array('decrypt' => 'Send', 'remake' => 'If the copy is gone, make it again', 'replace' => 'Replace a copy that no longer matches') as $key => $field) $choices[$key] = zfsmPostYes($key, $field);
 	$wrong = implode('; ', array_filter($choices, 'is_string'));
 	return $wrong !== '' ? $wrong : $choices;
 }
@@ -265,7 +264,7 @@ try {
 			$zdataset = zfsmPostString('zdataset');
 			$every = zfsmPostString('every');
 			$keep = zfsmPostKeep();
-			$choices = zfsmPostChoices(true);
+			$choices = zfsmPostChoices();
 			$answer = is_string($choices) ? zfsmFailure($zdataset, ($every === '' ? '' : 'Nothing was scheduled: ').$choices) : ($every === '' ? zfsmStartReplicate($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), $zfsm_cfg, zfsmPostString('server'), null, $choices)
 				: zfsmScheduleAdd($zdataset, zfsmPostString('snapshot'), zfsmPostString('destination'), zfsmPostString('server'), $every, zfsmPostString('time'), zfsmPostString('days'), $keep, $zfsm_cfg, zfsmPostCopyKeeps(), $choices));
 			zfsmReturnAnswer($answer, 'ZFS Replication', 'Replication started', 'Unable to start the replication');
