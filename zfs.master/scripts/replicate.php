@@ -17,4 +17,4 @@ if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '
 	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep [decrypted [replace]]]]]\n");
 	exit(2);
 }
-exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? '', null, $keep !== '' ? (int)$keep : null, ($argv[7] ?? '') === 'decrypted', ($argv[8] ?? '') === 'replace'));
+exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? '', null, $keep !== '' ? (int)$keep : null, array('decrypt' => ($argv[7] ?? '') === 'decrypted', 'replace' => ($argv[8] ?? '') === 'replace')));
