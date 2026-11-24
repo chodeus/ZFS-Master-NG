@@ -4,12 +4,13 @@
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
-// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it; $choices: Replicate's ticks (zfsmPostChoices).
+// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it; $choices: Replicate's ticks, of which it takes zfsmReplicateTicks'.
 function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $keep = null, $choices = array()) {
 	$new_name = $snapshot === '' ? zfsmNewSnapshotName($cfg, time()) : '';
+	$ticks = zfsmReplicateTicks($choices);
 	$target = zfsmReplicaTargetOpen($server);
 	try {
-		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target) + $choices);
+		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target) + $ticks);
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}
@@ -20,7 +21,7 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $k
 	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
 	$resume = $plan['mode'] === 'resume';
 	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
-	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server, (string)$keep, !empty($choices['decrypt']) ? 'decrypted' : '', !empty($choices['replace']) ? 'replace' : '');
+	$args = array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server, (string)$keep, $ticks['decrypt'] ? 'decrypted' : '', $ticks['replace'] ? 'replace' : '');
 	list($state, $why) = zfsmStartJob('replicate.php', $args, zfsmJobLockFile($zdataset, 'replicate'));
 	if ($state === 'running') return zfsmFailure($zdataset, 'A replication of this dataset is already running');
 	if ($state !== 'started') return zfsmFailure($zdataset, 'The replication could not be started'.($why !== '' ? ': '.$why : ''));
@@ -156,7 +157,7 @@ function zfsmReplicateLevels($schedule, $target, $zdataset, $zdest) {
 // optional: 'waited'(seconds) told the wait, 'gone' what to do when the dataset is, a 'tag' (zfsmKeepTag) for Keep, 'remake' a gone copy in full (zfsmReplicateLevels),
 // 'copy_keeps' a copy here's Copy Keeps (zfsmKeepCopyPrune), 'under' a copy under a dataset, whose run made the levels above it.
 // $keep, for any run of a schedule: the snapshot it takes is tagged for the copy (zfsmKeepTag), and once it lands only those of
-// them $keep keeps stay (0: all, zfsmKeepPrune). $choices: 'decrypt' and 'replace' for the plan's $with, as zfsmPostChoices reads them.
+// them $keep keeps stay (0: all, zfsmKeepPrune). $choices: Replicate's ticks, of which it takes zfsmReplicateTicks'; a schedule's remake comes in $schedule.
 function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take = false, $server = '', $schedule = null, $keep = null, $choices = array()) {
 	$run = array('dataset' => $zdataset, 'snapshot' => $snapshot, 'dest' => $zdest, 'server' => $server, 'take' => $take, 'started' => $started, 'schedule' => $schedule,
 		'keep' => $keep, 'tag' => $schedule['tag'] ?? zfsmKeepTag($server, $zdest), 'notify' => $schedule['notify'] ?? function($title, $text, $type) { zfsnotify($title, $text, '', $type); },
@@ -173,7 +174,7 @@ function zfsmRunReplicate($zdataset, $snapshot, $zdest, $started = null, $take =
 		list($why, $made) = zfsmReplicateLevels($schedule, $target, $zdataset, $zdest);
 		if ($why !== '') return zfsmReplicateRefused($run, $made, $why, array('', 'normal'));
 		return zfsmReplicatePasses($run, $made, array('estimate' => false, 'target' => $target, 'scheduled' => $schedule !== null && !($schedule['remake'] ?? false),
-			'under' => $schedule['under'] ?? false) + $choices);
+			'under' => $schedule['under'] ?? false) + zfsmReplicateTicks($choices));
 	} finally {
 		zfsmReplicaDisconnect($target ?? array());
 		zfsmJobUnlock($lock);

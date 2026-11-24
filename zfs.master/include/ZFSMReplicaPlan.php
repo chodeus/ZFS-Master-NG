@@ -272,6 +272,11 @@ function zfsmReplicaPlanHolder($plan, $target) {
 	return $mounted === '' ? array_merge($plan, array('holder' => true)) : $held.$mounted;
 }
 
+// The ticks of $choices (zfsmPostChoices) a plan takes in its $with: 'decrypt' (zfsmReplicaPlanCrypt) and 'replace' (zfsmReplicaPlanReplace).
+function zfsmReplicateTicks($choices) {
+	return array('decrypt' => ($choices['decrypt'] ?? false) === true, 'replace' => ($choices['replace'] ?? false) === true);
+}
+
 // What the Replicate dialog shows: snapshots newest first, the last destination, the trusted servers, on $opening the warning if a repeat
 // leaves it out and whether Send shows, and the plan once a destination is given ($choices: Replicate's ticks, zfsmPostChoices); for a
 // server also its area, or why not.
@@ -295,7 +300,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', 
 		$options['area'] = $target['area'] ?? null;
 		if ($zdest === '' && !isset($target['error'])) return array_merge($options, array('can_proceed' => false, 'error' => ''));
 		// No snapshot picked means the run takes one first (zfsmStartReplicate).
-		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target) + $choices));
+		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target) + zfsmReplicateTicks($choices)));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}

@@ -30,12 +30,12 @@ function zfsmPostKeep($key = 'keep') {
 	return zfsmKeepParse(zfsmPostString($key)) ?? -1;
 }
 
-// A choice Replicate sends as '' or '1' ($key; Send's Decrypted, zfsmReplicaPlanCrypt): false or true; why not, naming $field, for a value it never sends.
+// A choice Replicate sends as '' or '1' ($key; Send's Decrypted, zfsmReplicaPlanCrypt): false or true; why not, naming $field, for another string (zfsmPostString reads any other shape as '').
 function zfsmPostYes($key, $field) {
 	return array('' => false, '1' => true)[zfsmPostString($key)] ?? $field.' has no such choice now; reload the page';
 }
 
-// Replicate's ticks (zfsmPostYes): 'decrypt', 'remake' and 'replace', each true or false (one not sent is false); why not, for a value it never sends.
+// Replicate's ticks: 'decrypt', 'remake' and 'replace', each true or false (one not sent is false); why not, as zfsmPostYes says it.
 function zfsmPostChoices() {
 	$choices = array();
 	foreach (array('decrypt' => 'Send', 'remake' => 'If the copy is gone, make it again', 'replace' => 'Replace a copy that no longer matches') as $key => $field) $choices[$key] = zfsmPostYes($key, $field);
