@@ -617,6 +617,24 @@ async function confirm() {
   await settle();
   assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'new', server: 'nas', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''}, 'Replicate starts it there');
   window.Swal2.close();
+  // Send, for an encrypted dataset only: its pick is planned and posted, and a change plans again.
+  const remoteAnswer = replicateAnswer;
+  replicateAnswer = data => ({...options, encrypted: true, ...(data.destination === '' ? {can_proceed: false, error: ''} : {can_proceed: true, mode: 'full', size: 1, raw: data.decrypt !== '1', how: 'choice'})});
+  window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+  menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+  await settle();
+  const sendPick = () => window.document.getElementById('zfsm-replicate-send');
+  const planned = decrypt => ({cmd: 'previewreplicate', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: '', decrypt});
+  assert.deepEqual([sendPick().value, sendPick().labels[0].textContent.startsWith('Send:'), posts.at(-1), /Sent raw/.test(planText())], ['', true, planned(''), true], 'Raw is picked, planned and said');
+  sendPick().value = '1';
+  sendPick().dispatchEvent(new window.Event('change'));
+  await settle();
+  assert.deepEqual([posts.at(-1), /Sent raw/.test(planText()), held()], [planned('1'), false, false], 'Decrypted plans again');
+  window.Swal2.clickConfirm();
+  await settle();
+  assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: 'b', destination: 'backup/data', server: '', decrypt: '1', every: '', time: '00:00', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''}, 'Replicate starts it decrypted');
+  window.Swal2.close();
+  replicateAnswer = remoteAnswer;
   // Copy Keeps: for a repeat to This server only, following the server picked; one to a server sends none.
   window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
   menu.find(option => option.text === 'Replicate').action({preventDefault() {}});

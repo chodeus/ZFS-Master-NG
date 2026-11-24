@@ -10,9 +10,11 @@ require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 zfsmInstallDone($zfsm_install_hold, $zfsm_install_waited);
 
-// "new": take the snapshot first (zfsmStartReplicate names it). A trusted server's name sends the copy there; keep is a schedule's first run's.
-if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '' || (isset($argv[6]) && !(ctype_digit($argv[6]) && zfsmKeepValid((int)$argv[6])))) {
-	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep]]]\n");
+// "new": take the snapshot first (zfsmStartReplicate names it). A trusted server's name sends the copy there; keep is a schedule's
+// first run's, empty for none; "decrypted" is Send's Decrypted.
+$keep = $argv[6] ?? '';
+if (($argv[1] ?? '') === '' || ($argv[2] ?? '') === '' || ($argv[3] ?? '') === '' || ($keep !== '' && !(ctype_digit($keep) && zfsmKeepValid((int)$keep))) || !in_array($argv[7] ?? '', array('', 'decrypted'), true)) {
+	fwrite(STDERR, "Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep [decrypted]]]]\n");
 	exit(2);
 }
-exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? '', null, isset($argv[6]) ? (int)$argv[6] : null));
+exit(zfsmRunReplicate($argv[1], $argv[2], $argv[3], 'zfsmJobStarted', ($argv[4] ?? '') === 'new', $argv[5] ?? '', null, $keep !== '' ? (int)$keep : null, ($argv[7] ?? '') === 'decrypted'));

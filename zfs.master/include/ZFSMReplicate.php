@@ -4,12 +4,12 @@
 
 // Starts scripts/replicate.php in the background (zfsmStartJob). With no snapshot picked, the job takes one under its lock;
 // a copy with a stopped run carries that run on instead of the snapshot picked. $server: zfsmReplicaTargetOpen's. $keep: a
-// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it.
-function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $keep = null) {
+// schedule's first run (zfsmScheduleAdd), as zfsmRunReplicate takes it, and $decrypt Send's Decrypted.
+function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $keep = null, $decrypt = false) {
 	$new_name = $snapshot === '' ? zfsmNewSnapshotName($cfg, time()) : '';
 	$target = zfsmReplicaTargetOpen($server);
 	try {
-		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target));
+		$plan = zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('new_name' => $new_name, 'estimate' => false, 'target' => $target, 'decrypt' => $decrypt));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}
@@ -20,7 +20,7 @@ function zfsmStartReplicate($zdataset, $snapshot, $zdest, $cfg, $server = '', $k
 	if (!$plan['can_proceed']) return zfsmFailure($zdataset, $plan['error']);
 	$resume = $plan['mode'] === 'resume';
 	$from = $resume ? substr($plan['snapshot'], strlen($zdataset) + 1) : ($new_name !== '' ? $new_name : $snapshot);
-	$args = array_merge(array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server), array_map('strval', (array)$keep));
+	$args = array_merge(array($zdataset, $from, $zdest, !$resume && $new_name !== '' ? 'new' : 'existing', $server), $decrypt ? array((string)$keep, 'decrypted') : array_map('strval', (array)$keep));
 	list($state, $why) = zfsmStartJob('replicate.php', $args, zfsmJobLockFile($zdataset, 'replicate'));
 	if ($state === 'running') return zfsmFailure($zdataset, 'A replication of this dataset is already running');
 	if ($state !== 'started') return zfsmFailure($zdataset, 'The replication could not be started'.($why !== '' ? ': '.$why : ''));

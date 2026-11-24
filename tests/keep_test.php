@@ -390,10 +390,11 @@ $reset();
 same(array(0, 0, 2, array(), 1, $copied + 1), array($jobs[0]['copy_keeps'], zfsmScheduleRun($jobs[0]['id'], $cfg, (int)($t0 + 3600 * 23)), count($destroys()), preg_grep('~backup/~', $destroys()),
 	$tagged(), count($short('backup/data'))), 'saved as 0; its next run removes the older two here (its first run took one), none in the copy');
 $reset();
-foreach (array('1x', '10000', '') as $keep) {
+// Keep may be empty, for none, only so that decrypted can follow it.
+foreach (array(array('1x'), array('10000'), array('', 'raw'), array('x', 'decrypted')) as $more) {
 	$said = array();
-	exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg(getenv('ZFSM_TEST_DOCROOT').'/plugins/zfs.master/scripts/replicate.php').' tank/data x backup/data new "" '.escapeshellarg($keep).' 2>&1', $said, $code);
-	same(array(2, 'Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep]]]', array()), array($code, implode("\n", $said), $read('calls.log')), 'replicate.php refuses keep "'.$keep.'"');
+	exec(escapeshellarg(PHP_BINARY).' -n '.escapeshellarg(getenv('ZFSM_TEST_DOCROOT').'/plugins/zfs.master/scripts/replicate.php').' tank/data x backup/data new "" '.implode(' ', array_map('escapeshellarg', $more)).' 2>&1', $said, $code);
+	same(array(2, 'Usage: replicate.php <dataset> <snapshot> <destination> [new|existing [server [keep [decrypted]]]]', array()), array($code, implode("\n", $said), $read('calls.log')), 'replicate.php refuses '.implode(' ', $more));
 }
 
 echo "keep tests passed\n";
