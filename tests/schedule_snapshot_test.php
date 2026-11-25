@@ -34,7 +34,7 @@ $GLOBALS['zfsm_root'] = $root;
 mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
 mkdir($root.'/usr/local/sbin', 0700, true);
 mkdir($root.'/var/log', 0700, true);
-file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n");
+file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n[ ! -e ".escapeshellarg($work.'/cron-fail')." ] || { echo 'crontab: cannot write' >&2; exit 1; }\n");
 
 $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$file, $lines ? implode("\n", $lines)."\n" : ''); };
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
@@ -87,6 +87,22 @@ same(false, strpos(zfsmSchedulesHtml($cfg), "zfsmScheduleRemove('$id')"), 'with 
 $but31 = array_filter(zfsmScheduleRead()['valid'], function($job) { return $job['minute'] !== 31; });
 same(array(31), array_values(array_unique(array_map(function() use ($but31, $copy) { return zfsmScheduleFreeMinute($but31, array('dest' => 'backup/new') + $copy); }, range(1, 20)))), 'an hourly copy\'s minute is never the snapshot schedule\'s');
 same('Snapshot Every Dataset (every hour at :30) starts then too; pick another time', zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'days', 'minute' => 30, 'hour' => 4, 'dest' => 'backup/new') + $copy), 'nor a copy at that minute');
+
+// On a cron line, in place: said with its next run, its numbers in the cron file, its line in Settings.
+$from = time();
+$said = zfsmScheduleSnapshotSave('', 'cron', ' 30  */6 * * *', '', 2, $cfg)['said'];
+$nextAt = function($at, $now) { return date(date('Y', $at) === date('Y', $now) ? 'D j M H:i' : 'D j M Y H:i', $at); };
+$next = function($now) use ($nextAt) { return 'Saved: a snapshot of each of 5 dataset(s) on the cron line 30 */6 * * *, next at '.$nextAt(zfsmScheduleNext(array('every' => 'cron', 'cron' => '30 */6 * * *'), $now), $now).'; it keeps the newest 2 scheduled snapshots of each dataset'; };
+same(array(true, array('every' => 'cron', 'minute' => 0, 'hour' => 0, 'cron' => '30 */6 * * *'), 1, true),
+	array(in_array($said, array($next($from), $next(time())), true), array_intersect_key(zfsmScheduleRead()['valid'][$id], array_flip(array('every', 'minute', 'hour', 'cron'))),
+		substr_count((string)file_get_contents(zfsmScheduleCronFile()), "30 0,6,12,18 * * * $script run $id &> /dev/null\n"),
+		strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, on the cron line 30 */6 * * *, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false),
+	'on a cron line, in place: '.$said);
+touch($work.'/cron-fail');
+$failed = zfsmScheduleSnapshotSave('', 'cron', '30 */6 * * *', '', 2, $cfg);
+unlink($work.'/cron-fail');
+same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were saved, but Unraid\'s crontab could not be rebuilt /', $failed['why']), strpos($failed['said'], 'Saved: a snapshot of each of 5 dataset(s) on the cron line 30 */6 * * *; it keeps')),
+	'saved while the crontab can\'t be rebuilt: no next run is said: '.$failed['said']);
 
 // Saved again, in place: its id and minute stay, and Keep changes.
 same('Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps all it takes', zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg)['said'], 'Keep changes in place');

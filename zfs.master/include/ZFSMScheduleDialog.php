@@ -5,8 +5,8 @@
 // $job, a dataset's own schedule of either kind, as zfsmRepeatHtml shows it: 'default' with none.
 function zfsmScheduleDialogFields($job) {
 	$job = $job ?: array('every' => 'default', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
-	return array('every' => $job['every'], 'time' => $job['every'] === 'days' ? sprintf('%02d:%02d', $job['hour'], $job['minute']) : '00:00',
-		'days' => $job['days'], 'keep' => zfsmKeepField($job['keep']));
+	$time = $job['every'] === 'cron' ? $job['cron'] : ($job['every'] === 'days' ? sprintf('%02d:%02d', $job['hour'], $job['minute']) : '00:00');
+	return array('every' => $job['every'], 'time' => $time, 'days' => $job['days'], 'keep' => zfsmKeepField($job['keep']));
 }
 
 // The dialog's start: $zdataset's own snapshot schedule, what Default follows, its warning (zfsmScheduleSkippedWarning) or why no run takes
@@ -73,7 +73,8 @@ function zfsmScheduleDialogSave($zdataset, $snapshots, $copies, $cfg, $wait = ZF
 		return $why === '' ? $all : 'Nothing was saved: '.$why;
 	}, $after);
 	if (!$changed['saved']) return $changed + array('said' => '');
-	return $changed + array('said' => zfsmScheduleSnapshotSaid($snap, $drop[0], $after, $listed).'. '.zfsmScheduleCopiesOwnSaid($copy, $drop[1], $after, $listed));
+	$now = zfsmScheduleSavedNow($changed);
+	return $changed + array('said' => zfsmScheduleSnapshotSaid($snap, $drop[0], $after, $listed, $now).'. '.zfsmScheduleCopiesOwnSaid($copy, $drop[1], $after, $listed, $now));
 }
 
 // What stops Save, by part, a reason both give said once; '' when nothing does.

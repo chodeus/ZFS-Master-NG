@@ -40,7 +40,7 @@ $GLOBALS['zfsm_ssh_dir'] = $work.'/ssh';
 mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
 mkdir($root.'/usr/local/sbin', 0700, true);
 mkdir($root.'/var/log', 0700, true);
-file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n");
+file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n[ ! -e ".escapeshellarg($work.'/cron-fail')." ] || { echo 'crontab: cannot write' >&2; exit 1; }\n");
 
 $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$file, $lines ? implode("\n", $lines)."\n" : ''); };
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
@@ -99,6 +99,22 @@ same($fields('hourly', '00:00', null, '2') + array('under' => 'usb', 'server' =>
 same(array('default', 'usb', 'the copies of tank/data and below, under usb every hour at '.$at.'; it keeps the newest 2 of the snapshots of each dataset it copies'),
 	array($copies('tank/data/sub')['every'], $copies('tank/data/sub')['under'], $copies('tank/data/sub')['inherited']), 'the one below follows it');
 same(1, preg_match('/>Copies of tank\/data and below under usb, every hour at '.$at.', keeps the newest 2 of the snapshots of each dataset it copies </', zfsmSchedulesHtml($cfg)), 'Settings lists it');
+// Snapshots on a cron line: one Save does not take is said by part; saved, said with its next run, and the dialog shows its line.
+$line = (int)substr($free, 3).' 5 * * 1';
+same('Nothing was saved: Snapshots: under Cron line, in the minute, 50-10 goes from high to low: write the low number first', $save('tank/data', $part('cron', '50-10 * * * *'), $part('hourly', '', '', 2, 'usb'))['why'],
+	'a cron line Save does not take');
+$from = time();
+$cronned = $save('tank/data', $part('cron', $line, '', 1), $part('hourly', '', '', 2, 'usb'));
+$nextAt = function($at, $now) { return date(date('Y', $at) === date('Y', $now) ? 'D j M H:i' : 'D j M Y H:i', $at); };
+$next = function($now) use ($line, $nextAt) { return 'Saved: a snapshot of each of 2 dataset(s) (tank/data and below) on the cron line '.$line.', next at '.$nextAt(zfsmScheduleNext(array('every' => 'cron', 'cron' => $line), $now), $now).'; it keeps the newest 1 scheduled snapshots of each dataset. '; };
+same(array(true, true, array('every' => 'cron', 'time' => $line, 'days' => range(0, 6), 'keep' => '1')),
+	array($cronned['saved'], strpos($cronned['said'], $next($from)) === 0 || strpos($cronned['said'], $next(time())) === 0, array_intersect_key(zfsmScheduleDialogPreview('tank/data', $cfg), array_flip(array('every', 'time', 'days', 'keep')))),
+	'Snapshots on a cron line: '.$cronned['said']);
+touch($work.'/cron-fail');
+$failed = $save('tank/data', $part('cron', $line, '', 1), $part('hourly', '', '', 2, 'usb'));
+unlink($work.'/cron-fail');
+same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were saved, but Unraid\'s crontab could not be rebuilt /', $failed['why']), strpos($failed['said'], 'Saved: a snapshot of each of 2 dataset(s) (tank/data and below) on the cron line '.$line.'; it keeps')),
+	'saved while the crontab can\'t be rebuilt: no next run is said: '.$failed['said']);
 // Its Copy Under offline: Snapshots set to None saves beside the copies as saved; copies changed are checked.
 $all = $read('pool/datasets');
 $pool('datasets', array_values(preg_grep('~^usb[\t/]~', $all, PREG_GREP_INVERT)));
