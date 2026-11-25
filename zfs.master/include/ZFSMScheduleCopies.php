@@ -198,7 +198,7 @@ function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SC
 	return zfsmScheduleLockedRun($job, 'ZFS Replication', 'Scheduled copies not made: ', $notify, function() use ($job, $jobs, $cfg, $now, $notify, $wait) {
 		list($text, $problem) = zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait);
 		return zfsmScheduleSnapshotTell($job, $text, $problem, $notify, 'ZFS Replication');
-	}, ZFSM_SCHEDULE_COPIES_GRACE);
+	}, ZFSM_SCHEDULE_COPIES_GRACE, $now);
 }
 
 // What a run copied, and whether it had a problem: null when zfs read every pool and none had a dataset to copy, or it only left out

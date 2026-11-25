@@ -372,17 +372,16 @@ same(1, preg_match('/^warning: Scheduled copies under backup: 4 of 6 dataset\(s\
 // A run marks its start on its lock file, which the next start reads.
 $file = zfsmJobDir('schedule').'/'.$id.'.lock';
 touch($file, time() - 90000);
-$before = time();
 zfsmScheduleRun($id, $cfg, $t + 17400);
 clearstatcache();
-same(true, filemtime($file) >= $before, 'a run marks its start');
+same($t + 17400, filemtime($file), 'a run marks its start');
 // A start while the run before still goes: none made, only logged until that one has gone on a day, then notified.
 $reset();
 @unlink(zfsmScheduleStateFile($id));
 $held = zfsmJobLock($file);
 same(0, zfsmScheduleRun($id, $cfg, $t + 18000), 'a start while the run before goes');
 same(array(array(), 1, 0), array($read('notify.log'), $logged('/ Schedule '.$id.': Scheduled copies not made: the run before is still going$/'), zfsmScheduleFailures($id)), 'only logged');
-touch($file, time() - 90000);
+touch($file, $t + 18060 - 90000);
 same(1, zfsmScheduleRun($id, $cfg, $t + 18060), 'a start a day after it');
 zfsmJobUnlock($held);
 same(array(array('warning: ZFS Replication'), 1), array($read('notify.log'), preg_match('/^warning: Scheduled copies not made: the run before is still going, 25 hour\(s\) after it started/', $read('notify-detail.log')[0] ?? '')), 'notified');
