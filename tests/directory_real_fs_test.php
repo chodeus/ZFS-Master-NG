@@ -133,14 +133,17 @@ unlink($work.'/shim/rm');
 check(strlen((string)reset($result['failed'])) < 2 * ZFSM_KEEP_OUTPUT, 'a failed rm must give its first errors only: '.strlen((string)reset($result['failed'])).' bytes');
 rmdir($root.'/stuck');
 
-// Clean conversion: name with a space, identical tree, source gone.
+// Clean conversion: name with a space, identical tree, source gone, and the folder's own mode kept over a new dataset's 777.
 reset_tree($target, $mount, $root);
+chmod($target, 0750);
 $result = convertDirectory($target, 'tank');
 check(!empty($result['succeeded']), 'conversion failed: '.json_encode($result));
 check(file_get_contents($mount.'/sub dir/file') === 'payload', 'file not copied');
 check(fileinode($mount.'/sub dir/file') === fileinode($mount.'/hardlink'), 'hardlink not preserved');
 check(is_link($mount.'/symlink'), 'symlink not preserved');
 check((fileperms($mount.'/sub dir/file') & 0777) === 0640, 'mode not preserved');
+clearstatcache();
+check((fileperms($mount) & 0777) === 0750, 'the folder\'s own mode must be kept: '.decoct(fileperms($mount) & 0777));
 check(glob($root.'/*_zfsm_tmp_*') === array(), 'temporary source left behind after success');
 
 // A snapdir=visible .zfs in the new dataset is not a difference and must not be deleted.
@@ -293,14 +296,17 @@ unlink($work.'/shim/cp');
 unlink($bclone);
 putenv('ZFSM_TEST_BCLONE');
 
-// A failed copy keeps the source.
+// A failed copy keeps the source, and leaves the dataset it kept as closed as the folder was.
 reset_tree($target, $mount, $root);
+chmod($target, 0700);
 shim('case "$*" in *--version*) echo "rsync  version 3.4.1 protocol version 32"; exit 0;; esac; exit 23');
 $result = convertDirectory($target, 'tank');
 check(empty($result['succeeded']), 'failed rsync reported success');
 check(strpos(reset($result['failed']), 'rsync failed with exit code 23') !== false, 'failed rsync gave the wrong reason');
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'failed copy lost the source');
+clearstatcache();
+check((fileperms($mount) & 0777) === 0700 && fileowner($mount) === 0, 'a kept dataset must have the folder\'s mode and owner: '.decoct(fileperms($mount) & 0777).' '.fileowner($mount));
 
 // A copy that exits 0 but differs keeps the source.
 reset_tree($target, $mount, $root);
@@ -347,17 +353,25 @@ $result = convertDirectory($target, 'tank');
 putenv('ZFSM_TEST_CREATE_FAIL');
 check(strpos(reset($result['failed']) ?: '', 'dataset already exists') !== false, 'a failed create must give its own reason: '.json_encode($result));
 check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'a failed create must put the directory back');
-// Made but unfinished (no share owner) and mounted where the directory was: the data stays where the message says.
+// Made but unfinished (no share owner) and mounted where the directory was: it is removed again and the directory put back.
 reset_tree($target, $mount, $root);
 putenv('ZFSM_TEST_GET_FAIL=tank/My Share');
 putenv('ZFSM_TEST_CREATE_MOUNTS_AT='.$target);
 $result = convertDirectory($target, 'tank');
+check((reset($result['failed']) ?: '') === 'Created, but the share owner and permissions (nobody:users, 777) could not be set on tank/My Share; the new dataset was removed and the original directory was restored', 'a made but unfinished dataset must be removed and the directory put back: '.json_encode($result));
+check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'the directory must be back with its data');
+// When that dataset can't be removed, the data stays where the message says, even with nothing mounted where the directory was.
+reset_tree($target, $mount, $root);
 putenv('ZFSM_TEST_CREATE_MOUNTS_AT');
+putenv('ZFSM_TEST_DESTROY_BUSY=1');
+$result = convertDirectory($target, 'tank');
+putenv('ZFSM_TEST_DESTROY_BUSY');
 putenv('ZFSM_TEST_GET_FAIL');
+check(!file_exists($target), 'a dataset that could not be removed must not get the directory moved back: '.json_encode($result));
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed move back must keep the data aside: '.json_encode($result));
 $said = reset($result['failed']) ?: '';
-check(strpos($said, 'Created, but the share owner could not be set') === 0, 'this case must fail inside createDataset: '.json_encode($result));
+check(strpos($said, 'Created, but the share owner and permissions (nobody:users, 777) could not be set') === 0, 'this case must fail inside createDataset: '.json_encode($result));
 check(strpos($said, 'manual recovery is required') !== false && strpos($said, $kept[0]) !== false, 'a failed move back must say where the data is: '.json_encode($result));
 
 echo "real filesystem directory tests passed\n";

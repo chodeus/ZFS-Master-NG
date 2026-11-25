@@ -590,9 +590,9 @@ function zfsmCreateInTurn($names, $zdataset, $args, $stdin) {
 	return array($result, $owned);
 }
 
-// What could not be finished once the dataset existed: the share owner, then read-only.
+// What could not be finished once the dataset existed: the share owner and permissions, then read-only.
 function zfsmCreateProblems($zdataset, $unowned, $readonly) {
-	$problems = $unowned ? array('the share owner could not be set on '.implode(', ', $unowned)) : array();
+	$problems = $unowned ? array('the share owner and permissions (nobody:users, 777) could not be set on '.implode(', ', $unowned)) : array();
 	if ($readonly) {
 		$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
 		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.zfsmCommandError($set, 'zfs set failed');
@@ -600,7 +600,9 @@ function zfsmCreateProblems($zdataset, $unowned, $readonly) {
 	return $problems;
 }
 
-function createDataset($zdataset, $zoptions) {
+// $made: whether this call created $zdataset, a 'Created, but' failure included.
+function createDataset($zdataset, $zoptions, &$made = false) {
+	$made = false;
 	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure($zdataset, 'Invalid dataset name');
 	$pool = explode('/', $zdataset, 2)[0];
 	$passphrase = (string)($zoptions['passphrase'] ?? '');
@@ -618,19 +620,21 @@ function createDataset($zdataset, $zoptions) {
 	// No -p: it succeeds on a dataset someone else just made, and only ours may get the share owner.
 	list($result, $owned) = zfsmCreateInTurn($created, $zdataset, $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
 	$answer = commandAnswer($zdataset, $result);
+	$made = ($result['code'] ?? 1) === 0;
 	$unowned = zfsmSetShareOwner($pool, $owned);
 	if (($result['code'] ?? 1) !== 0) return $answer;
 	$problems = zfsmCreateProblems($zdataset, $unowned, $readonly);
 	return $problems ? zfsmFailure($zdataset, 'Created, but '.implode('; ', $problems)) : $answer;
 }
 
-// Returns the datasets whose mountpoint could not be given to nobody:users.
+// Returns the datasets whose mountpoint could not be given nobody:users 777, what Unraid's Add Share gives a share's dataset: with
+// 755, share users can't write to it over SMB.
 function zfsmSetShareOwner($pool, $names) {
 	$failed = array();
 	foreach ($names as $name) {
 		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
 		if ($mountpoint === 'none' || $mountpoint === 'legacy') continue;
-		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users')) $failed[] = $name;
+		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users') || !@chmod($mountpoint, 0777)) $failed[] = $name;
 	}
 	return $failed;
 }
@@ -809,9 +813,15 @@ function zfsmConvertTarget($directory, $pool) {
 }
 
 // Undoes a conversion whose new dataset has no usable mountpoint, and says whether the directory is back.
+// Removes the dataset Convert made, when it made one, then moves the directory back; false leaves its data at $temp.
+function zfsmConvertPutBack($made, $dataset_name, $temp, $path) {
+	$removed = $made && (runProcess('zfs', array('destroy', $dataset_name))['code'] ?? 1) === 0;
+	// Not while a made dataset remains, wherever it is mounted: the caller would say it was removed.
+	return $made === $removed && !empty(moveDirectory($temp, $path)['succeeded']);
+}
+
 function zfsmConvertUndo($dataset_name, $temp, $path) {
-	$cleanup = runProcess('zfs', array('destroy', $dataset_name));
-	if (($cleanup['code'] ?? 1) === 0 && moveDirectory($temp, $path)['succeeded']) return 'Dataset mountpoint was unavailable; the new dataset was removed and the original directory was restored';
+	if (zfsmConvertPutBack(true, $dataset_name, $temp, $path)) return 'Dataset mountpoint was unavailable; the new dataset was removed and the original directory was restored';
 	return 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required';
 }
 
@@ -872,6 +882,22 @@ function zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone = true) {
 	return '';
 }
 
+// Gives $to the owner, group and mode of $from. A failure is left to the copy: rsync -a sets them again, and its check compares them.
+function zfsmKeepFolderAccess($from, $to) {
+	$stat = @stat($from);
+	if (!is_array($stat)) return;
+	@chown($to, $stat['uid']);
+	@chgrp($to, $stat['gid']);
+	@chmod($to, $stat['mode'] & 07777);
+}
+
+// After createDataset failed; a dataset it made anyway can be mounted where the directory goes back, so it goes first.
+function zfsmConvertCreateFailed($directory, $created, $made, $dataset_name, $temp, $path) {
+	$why = implode('; ', $created['failed']);
+	if (!zfsmConvertPutBack($made, $dataset_name, $temp, $path)) return zfsmFailure($directory, $why.'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
+	return $made ? zfsmFailure($directory, $why.'; the new dataset was removed and the original directory was restored') : $created;
+}
+
 function convertDirectory($directory, $pool, $clone = true) {
 	$target = zfsmConvertTarget($directory, $pool);
 	if (is_string($target)) return zfsmFailure($directory, $target);
@@ -879,13 +905,12 @@ function convertDirectory($directory, $pool, $clone = true) {
 	$temp = $path.'_zfsm_tmp_'.date('YmdHis');
 	$moved = moveDirectory($path, $temp);
 	if (!$moved['succeeded']) return $moved;
-	$created = createDataset($dataset_name, array());
-	if (!$created['succeeded']) {
-		if (moveDirectory($temp, $path)['succeeded']) return $created;
-		return zfsmFailure($directory, implode('; ', $created['failed']).'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
-	}
+	$created = createDataset($dataset_name, array(), $made);
+	if (!$created['succeeded']) return zfsmConvertCreateFailed($directory, $created, $made, $dataset_name, $temp, $path);
 	$mountpoint = getDatasetProperty($pool, $dataset_name, 'mountpoint');
 	if (!is_string($mountpoint) || !is_dir($mountpoint)) return zfsmFailure($directory, zfsmConvertUndo($dataset_name, $temp, $path));
+	// Before the copy can stop part-way, so a dataset kept then is as closed as the folder, not createDataset's 777.
+	zfsmKeepFolderAccess($temp, $mountpoint);
 	$copy = zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone);
 	if ($copy !== '') return zfsmFailure($directory, $copy);
 	$ret = buildArrayRet();

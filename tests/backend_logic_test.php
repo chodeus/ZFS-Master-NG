@@ -244,6 +244,7 @@ if ($test_log) {
 	foreach (array('tank', 'tank/newparent', 'tank/newparent/child') as $dir) {
 		if (!is_dir("$mounts/$dir")) mkdir("$mounts/$dir", 0777, true);
 		chown("$mounts/$dir", 'root');
+		chmod("$mounts/$dir", 0755);
 	}
 	putenv('ZFSM_TEST_MOUNT_ROOT='.$mounts);
 	putenv('ZFSM_TEST_MISSING_DATASET=tank/newparent,tank/newparent/child');
@@ -259,6 +260,10 @@ if ($test_log) {
 	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent"), 'a new parent gets the share owner');
 	assertSameValue($nobody, (string)fileowner("$mounts/tank/newparent/child"), 'the new dataset gets the share owner');
 	assertSameValue('0', (string)fileowner("$mounts/tank"), 'an existing dataset keeps its owner');
+	$mode = function($dir) use ($mounts) { clearstatcache(); return decoct(fileperms("$mounts/$dir") & 0777); };
+	assertSameValue('777', $mode('tank/newparent'), 'a new parent gets mode 777 too');
+	assertSameValue('777', $mode('tank/newparent/child'), 'the new dataset gets mode 777, so share users can write to it');
+	assertSameValue('755', $mode('tank'), 'an existing dataset keeps its mode');
 
 	// A new dataset left without the share owner is reported, and read-only is still tried.
 	@unlink($test_log);
@@ -269,7 +274,7 @@ if ($test_log) {
 	putenv('ZFSM_TEST_GET_FAIL');
 	putenv('ZFSM_TEST_SET_FAIL');
 	mkdir("$mounts/tank/newparent/child");
-	assertSameValue(array('succeeded' => array(), 'failed' => array('tank/newparent/child' => "Created, but the share owner could not be set on tank/newparent, tank/newparent/child; it could not be made read-only: cannot set property for 'tank/newparent/child': permission denied")), $answer, 'an unset owner or read-only was not reported');
+	assertSameValue(array('succeeded' => array(), 'failed' => array('tank/newparent/child' => "Created, but the share owner and permissions (nobody:users, 777) could not be set on tank/newparent, tank/newparent/child; it could not be made read-only: cannot set property for 'tank/newparent/child': permission denied")), $answer, 'an unset owner or read-only was not reported');
 
 	// zfs create -p succeeds on an existing target; it must not be changed or claimed.
 	@unlink($test_log);
