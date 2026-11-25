@@ -108,8 +108,10 @@ function zfsmScheduleTimeValid($job) {
 	return $number($job['minute'] ?? null, 59) && $number($job['hour'] ?? null, 23) && zfsmScheduleDaysValid($job['days'] ?? null) && zfsmScheduleCronValid($job);
 }
 
-// $job's run times as the five sets: an hourly one's minute every hour, a days one's time on its days, or its cron line's (one Save took).
+// $job's run times as the five sets: an hourly one's minute every hour, a days one's time on its days, its cron line's (one Save took),
+// or none for When the array starts.
 function zfsmScheduleSets($job) {
+	if ($job['every'] === 'start') return array(array(), array(), array(), array(), array());
 	if ($job['every'] === 'cron') return zfsmScheduleCronParse($job['cron']);
 	$hourly = $job['every'] === 'hourly';
 	return array(array($job['minute']), $hourly ? range(0, 23) : array($job['hour']), range(1, 31), range(1, 12), $hourly ? range(0, 6) : $job['days']);
@@ -154,9 +156,10 @@ function zfsmScheduleNextAt($sets, $now) {
 	return null;
 }
 
-// Whether $a and $b ever start in the same minute: their minutes, hours, months and days meet. Over the years each date falls on every
-// weekday, so with a day of the month on one side only that day in a shared month counts.
+// Whether $a and $b start in one minute on cron's times, or both when the array starts (one then beside one on cron: zfsmScheduleStartClash).
+// Over the years each date falls on every weekday, so with a day of the month on one side only that day in a shared month counts.
 function zfsmScheduleSameTime($a, $b) {
+	if ($a['every'] === 'start' || $b['every'] === 'start') return $a['every'] === $b['every'];
 	list($minutes, $hours, $dates, $months, $days) = zfsmScheduleSets($a);
 	list($minutes_b, $hours_b, $dates_b, $months_b, $days_b) = zfsmScheduleSets($b);
 	return array_intersect($minutes, $minutes_b) && array_intersect($hours, $hours_b) && array_intersect($days, $days_b)

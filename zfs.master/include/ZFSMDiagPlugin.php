@@ -262,12 +262,13 @@ function zfsmDiagReplicaSchedules($ctx) {
 		$whose = $job['dataset'] === '' ? '(every dataset)' : zfsmDiagNamed($job['dataset']);
 		$under = $job['every'] === 'none' ? '(no copies)' : zfsmDiagNamed(rtrim($job['dest'], '/')).'/ (each dataset under it)'.($job['server'] !== '' ? ' on server '.$job['server'] : '');
 		$what = zfsmScheduleCopiesUnder($job) ? array($whose, $under) : (zfsmScheduleSnapshotsOnly($job) ? array($whose, '(snapshots only)') : array(zfsmDiagNamed($job['dataset']), $dest));
-		$runs = zfsmScheduleRepeats($job['every']);
+		$runs = zfsmScheduleTimed($job['every']);
 		$failures = zfsmScheduleProblems($job);
 		$rows .= implode("\t", array_merge(array($id), $what, array(zfsmScheduleWhen($job), zfsmDiagKeepCell($job), $failures)))."\n";
 		$wrong = array(
 			'schedule '.$id.' has no line in the live crontab, so it does not run' => $runs && !$live_unread && !zfsmDiagCronLine($live, 'schedule\.php run '.$id),
 			'schedule '.$id.' has no line in schedules.cron on the flash drive, so it stops at the next restart' => $runs && !$kept_unread && !zfsmDiagCronLine($kept, 'schedule\.php run '.$id),
+			'schedule '.$id.' runs when the array starts, but event/disks_mounted is missing or can\'t run, so it does not run' => $job['every'] === 'start' && !is_executable(zfsmScheduleStartHook()),
 			'schedule '.$id.' has had '.$failures.' run(s) in a row with a problem' => $failures > 0,
 		);
 		array_map('zfsmDiagFinding', array_keys(array_filter($wrong)));

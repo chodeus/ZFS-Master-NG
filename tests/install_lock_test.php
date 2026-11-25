@@ -61,7 +61,7 @@ $runs = function($run, $message) {
 	if ($status['running']) proc_terminate($proc, 9);
 	$said = $status['running'] ? 'still running after 20 s' : array($status['exitcode'], stream_get_contents($pipes[1]), stream_get_contents($pipes[2]));
 	proc_close($proc);
-	same(array(2, "Helpers.php new\n", "Usage: schedule.php run <schedule id> | schedule.php heal\n"), $said, $message);
+	same(array(2, "Helpers.php new\n", "Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal\n"), $said, $message);
 };
 // Another process holding the lock as $mode: flock(1) in the plg's Run takes it exclusively; a script loading takes it shared.
 $hold = function($mode) use ($lock) {

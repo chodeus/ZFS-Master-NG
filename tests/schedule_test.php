@@ -541,9 +541,10 @@ $run = function($args) {
 	return array($code, implode("\n", $said));
 };
 $before = count($names('backup/data', 'snapshot'));
-same(array(0, ''), $run('run '.$id), 'cron\'s script runs it');
+same(array(0, 'started'), $run('run '.$id), 'cron\'s script runs it, saying it started as zfsmStartJob waits for (cron drops it)');
 same(array($before + 1, 1), array(count($names('backup/data', 'snapshot')), count($sends())), 'and the copy gets its new snapshot');
-same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php heal'), $run('run ../x'), 'anything but an id is refused');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal'), $run('run ../x'), 'anything but an id is refused');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal'), $run('start now'), 'and start takes nothing after it');
 
 // A list that can't be read is never written over; records the plugin can't use are kept as they are.
 $saved = file_get_contents(zfsmScheduleFile());
@@ -764,5 +765,57 @@ $reset();
 $made = count($names('backup/cron', 'snapshot'));
 same(0, zfsmScheduleRun($job['id'] ?? '', $cfg, time() + 3600), 'a scheduled run of it: '.implode(' | ', $read('notify-detail.log')));
 same($made + 1, count($names('backup/cron', 'snapshot')), 'and that run sent its copy a new snapshot: '.implode(' | ', $names('backup/cron', 'snapshot')));
+
+// When the array starts, on a dataset of its own: its first run now, as any repeat's; no cron line, nor a second one of the dataset.
+file_put_contents($work.'/pool/datasets', "tank/st\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "tank/st@a\t51\t10\n", FILE_APPEND);
+$reset();
+$lines = $cron();
+$answer = $add('tank/st', '', 'backup/start', '', 'start', '13:30', '1,3', 0, $cfg);
+$job = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/st'; }))[0] ?? array();
+same(array(array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0), array(), 'Replication to backup/start started; a notification says when it is done. It runs again when the array starts', $lines, 1),
+	array(array_intersect_key($job, array_flip(array('every', 'minute', 'hour', 'days', 'cron', 'keep'))), $answer['failed'], $answer['succeeded']['tank/st'] ?? '', $cron(), count($names('backup/start', 'snapshot'))),
+	'saved with no time, said as when the array starts, its first run sent, and no line in the cron file: '.var_export($answer, true));
+same(1, substr_count(zfsmSchedulesHtml($cfg), 'tank/st to backup/start, when the array starts,'), 'Settings says it');
+same(array('tank/st' => 'Nothing was scheduled: the copy to backup/start (when the array starts) starts then too; pick another Repeat for one of them'),
+	$add('tank/st', '', 'backup/start2', '', 'start', '', '', 0, $cfg)['failed'], 'a second copy of tank/st when the array starts is refused');
+// A copy of tank/st at a time: with no seconds in Snapshots Pattern the two can get one name, so Save refuses it and Settings says so.
+$no_seconds = array('snap_pattern' => 'YmdHi') + $cfg;
+$st_daily = array_replace($job, array('id' => 'c0ffee00', 'dest' => 'backup/st-daily', 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 3)));
+$st_starts = 'the copy to backup/start runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute this schedule runs, both get one snapshot name';
+$st_listed = 'this schedule runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute the copy to backup/st-daily runs, both get one snapshot name, so that run fails: add the time to Snapshots Pattern';
+same(array(array('tank/st' => 'Nothing was scheduled: '.$st_starts.'; add the time to it in Settings'), '', 0),
+	array($add('tank/st', '', 'backup/st-daily', '', 'days', '04:00', '1,3', 0, $no_seconds)['failed'], zfsmScheduleClash($st_daily, zfsmScheduleRead()['valid'], $cfg, time(), false), count($names('backup/st-daily', 'snapshot'))),
+	'refused with no seconds, nothing sent; with seconds it clashes with none');
+zfsmScheduleChange(function($jobs) use ($st_daily) { return $jobs + array($st_daily['id'] => $st_daily); });
+same(array(1, 0), array(substr_count(zfsmSchedulesHtml($no_seconds), $st_listed), substr_count(zfsmSchedulesHtml($cfg), 'Snapshots Pattern has no seconds')),
+	'saved beside it anyway, Settings shows the clash on the row of the one when the array starts, and none with seconds');
+zfsmScheduleChange(function($jobs) { unset($jobs['c0ffee00']); return $jobs; });
+
+// The array starts (event/disks_mounted runs schedule.php start): its run alone starts, through the real script in ZFSM_TEST_DOCROOT.
+copy(zfsmScheduleFile(), '/boot/config/plugins/zfs.master/schedules.json');
+$reset();
+$copies = array('backup/start' => count($names('backup/start', 'snapshot')), 'backup/cron' => count($names('backup/cron', 'snapshot')));
+$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+$GLOBALS['zfsm_php'] = PHP_BINARY;
+// In Maintenance mode none starts, and the log says why; Normal (var.ini) starts them.
+@mkdir($root.'/var/local/emhttp', 0700, true);
+file_put_contents($root.'/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nstartMode=\"Maintenance\"\n");
+same(array(0, 1), array(zfsmScheduleStartRuns(), preg_match('/ notice \[\d+\] Schedules not started when the array started: it started in Maintenance mode\n$/D', (string)file_get_contents($root.'/var/log/zfs.master.log'))),
+	'in Maintenance mode the array start starts none, and logs why');
+usleep(500000);
+same(array(array(), array()), array($sends(), $read('notify.log')), 'no run sends, nothing is notified');
+file_put_contents($root.'/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nstartMode=\"Normal\"\n");
+same(0, zfsmScheduleStartRuns(), 'the array start starts its runs');
+for ($waited = 0; $waited < 100 && count($sends()) === 0; $waited++) usleep(50000);
+for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/st', 'replicate')); $waited++) usleep(50000);
+same(array('backup/start' => $copies['backup/start'] + 1, 'backup/cron' => $copies['backup/cron']), array('backup/start' => count($names('backup/start', 'snapshot')), 'backup/cron' => count($names('backup/cron', 'snapshot'))),
+	'tank/st\'s copy gets a new snapshot; the cron one runs nothing: '.implode(' | ', $sends()));
+file_put_contents('/boot/config/plugins/zfs.master/schedules.json', '{');
+$GLOBALS['docroot'] = $work.'/docroot';
+$reset();
+file_put_contents(zfsmScheduleFile(), '{');
+unlink($root.'/var/local/emhttp/var.ini');
+same(array(1, array('warning: Schedules not read when the array started, so no run for When the array starts started: '.zfsmSafeText($unreadable))), array(zfsmScheduleStartRuns(), $read('notify-detail.log')), 'with no var.ini it reads the list: one it can\'t read starts nothing and says so');
 
 echo "schedule tests passed\n";

@@ -416,6 +416,21 @@ same(1, preg_match('~\tevery Monday and Friday at 03:07\t0\t0$~m', $found('zfsmD
 same(false, strpos($text, 'private'), 'no name of the copy');
 same(array('schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
 	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');
+// When the array starts: no cron line, but the plugin's event/disks_mounted, which Unraid runs, must be there and executable.
+$start = json_encode(array(array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0) + zfsmScheduleUpgrade($job)));
+$GLOBALS['docroot'] = $work.'/start-docroot';
+$hook = $work.'/start-docroot/plugins/zfs.master/event/disks_mounted';
+mkdir(dirname($hook), 0700, true);
+file_put_contents($hook, "#!/bin/bash\n");
+chmod($hook, 0755);
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start));
+same(array(array(), 1), array($findings, preg_match('~\twhen the array starts\t0\t0$~m', $text)), 'one that runs when the array starts needs no cron line, and says when it runs');
+$unrun = array('schedule 0a1b2c3d runs when the array starts, but event/disks_mounted is missing or can\'t run, so it does not run');
+chmod($hook, 0644);
+same($unrun, $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start))[0], 'one whose event script can\'t run');
+unlink($hook);
+same($unrun, $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start))[0], 'or is missing');
+unset($GLOBALS['docroot']);
 same(array('schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
 	$scheduled()($root);
 	mkdir($work.'/jobs/schedule', 0700, true);

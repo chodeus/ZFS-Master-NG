@@ -1,6 +1,7 @@
 #!/usr/bin/php -q
 <?php
-// Cron runs "run <id>" from schedules.cron (include/ZFSMSchedule.php writes it), and zfs.master.plg "heal". Must stay executable: pkg_build.sh.
+// Cron runs "run <id>" from schedules.cron (include/ZFSMSchedule.php writes it), event/disks_mounted "start", and zfs.master.plg "heal".
+// Must stay executable: pkg_build.sh.
 // PHP's command line leaves DOCUMENT_ROOT empty; only the test harness sets ZFSM_TEST_DOCROOT.
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
 // Waits while an update installs (include/ZFSMInstallLock.php); here, as any file loaded first could be one it is replacing.
@@ -18,8 +19,11 @@ if (($argv[1] ?? '') === 'heal' && !isset($argv[2])) {
 	zfsmLog($said, $healed['why'] === '' ? LOG_NOTICE : LOG_ERR);
 	exit($healed['why'] === '' ? 0 : 1);
 }
+if (($argv[1] ?? '') === 'start' && !isset($argv[2])) exit(zfsmScheduleStartRuns());
 if (($argv[1] ?? '') !== 'run' || !zfsmScheduleId($argv[2] ?? null)) {
-	fwrite(STDERR, "Usage: schedule.php run <schedule id> | schedule.php heal\n");
+	fwrite(STDERR, "Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal\n");
 	exit(2);
 }
+// zfsmScheduleStartRuns waits for it (zfsmStartJob); cron drops what a run prints.
+zfsmJobStarted();
 exit(zfsmScheduleRun($argv[2], loadConfig(parse_plugin_cfg('zfs.master', true)), time()));

@@ -108,3 +108,35 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		return 1;
 	}
 }
+
+// Unraid runs it at each array start (emhttp_event disks_mounted); it starts zfsmScheduleStartRuns. Must stay executable: pkg_build.sh.
+function zfsmScheduleStartHook() {
+	return ($GLOBALS['docroot'] ?? '/usr/local/emhttp').'/plugins/zfs.master/event/disks_mounted';
+}
+
+// At each array start (scripts/schedule.php start): each When the array starts schedule's run, in a session of its own as cron starts
+// one; none in Maintenance mode (var.ini unread: as Normal). One that can't start is its schedule's problem; schedules.json unread: logged, notified. 0, else 1.
+function zfsmScheduleStartRuns() {
+	$var = @parse_ini_file(zfsmStatePath('/var/local/emhttp/var.ini'));
+	if (is_array($var) && ($var['startMode'] ?? '') === 'Maintenance') {
+		zfsmLog('Schedules not started when the array started: it started in Maintenance mode', LOG_NOTICE);
+		return 0;
+	}
+	$read = zfsmScheduleRead();
+	if ($read === null) {
+		$not = 'Schedules not read when the array started, so no run for When the array starts started: ';
+		zfsmLog($not.zfsmScheduleUnreadable());
+		zfsnotify('ZFS Schedule', $not.zfsmSafeText(zfsmScheduleUnreadable()), '', 'warning');
+		return 1;
+	}
+	$code = 0;
+	foreach ($read['valid'] as $id => $job) {
+		if ($job['every'] !== 'start') continue;
+		list($state, $printed) = zfsmStartJob('schedule.php', array('run', $id), null);
+		if ($state === 'started') continue;
+		$code = 1;
+		zfsmLog('Schedule '.$id.' not started when the array started: could not start schedule.php'.($printed !== '' ? ' ('.$printed.')' : ''));
+		zfsmScheduleNotifier($id)('ZFS Schedule', 'Scheduled run not started when the array started: could not start schedule.php', 'warning');
+	}
+	return $code;
+}
