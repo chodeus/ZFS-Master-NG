@@ -448,12 +448,12 @@ $snapped = function($root) use ($every) {
 	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every)), FILE_APPEND);
 };
 @mkdir($work.'/pool');
-file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\nbackup/copy\tfilesystem\n");
+file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\ntank/media\tfilesystem\nbackup/copy\tfilesystem\n");
 file_put_contents($work.'/pool/props', "backup/copy\treadonly\ton\n");
 putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
 list($findings, $text) = $found('zfsmDiagReplicaSchedules', $snapped);
 same(array(array(), false), array($findings, $GLOBALS['zfsm_diag']['unread']), 'Snapshot Every Dataset with its lines in both has no findings');
-has("records in schedules.json the plugin does not use: 0\ndatasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 2\n\n", $text, 'how many datasets it takes, read-only ones left out');
+has("records in schedules.json the plugin does not use: 0\ndatasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 2\n\n", $text, 'how many datasets it takes, read-only ones and each pool\'s own left out');
 has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'its row');
 putenv('ZFSM_TEST_COVER_FAIL=1');
 $text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
