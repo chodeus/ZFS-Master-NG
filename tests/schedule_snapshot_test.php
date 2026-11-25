@@ -201,13 +201,24 @@ $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 7200), 'the next run works');
 same(array('normal: Scheduled snapshots of 5 of 5 dataset(s) taken. It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says so');
 
-// A run while the one before still goes: none taken, notified. One whose lock can't be opened says so.
-$reset();
-$held = zfsmJobLock(zfsmJobDir('schedule').'/'.$id.'.lock');
+// A run while the one before still goes: none taken; only logged until an hour of clock minutes from that one's start, then notified. One whose lock can't be opened says so.
+$own_lock = zfsmJobDir('schedule').'/'.$id.'.lock';
+$held = zfsmJobLock($own_lock);
 same(true, is_resource($held), 'a run lets go of its lock');
-same(1, zfsmScheduleRun($id, $cfg, $t + 9000), 'a run while the one before still goes');
+$skipped = function() use ($id) { return preg_match_all('/ Schedule '.$id.': Scheduled snapshots not taken: the run before is still going$/m', (string)file_get_contents(zfsmLogFile())); };
+$own_start = $t + 9000;
+foreach (array('5 seconds' => 5, '59 minutes and 59 seconds' => 3599) as $when => $after) {
+	$reset();
+	$logged_before = $skipped();
+	touch($own_lock, $own_start);
+	same(array(0, array(), array(), 0, $logged_before + 1), array(zfsmScheduleRun($id, $cfg, $own_start + $after), $takes(), $read('notify.log'), zfsmScheduleFailures($id), $skipped()),
+		'a run '.$when.' after the one before started takes none, notifies and counts nothing, and logs why');
+}
+$reset();
+touch($own_lock, $own_start + 50);
+same(1, zfsmScheduleRun($id, $cfg, $own_start + 3605), 'a run 60 clock minutes after the one before started, 3555 seconds on');
 zfsmJobUnlock($held);
-same(array(array(), array('warning: Scheduled snapshots not taken: the run before is still going. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+same(array(array(), array('warning: Scheduled snapshots not taken: the run before is still going, 1 hour(s) after it started. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
 	array($takes(), $read('notify-detail.log')), 'takes none, and says why');
 $reset();
 touch($work.'/plain-file');

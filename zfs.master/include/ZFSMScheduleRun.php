@@ -100,7 +100,7 @@ function zfsmScheduleRun($id, $cfg, $now, $wait = ZFSM_SCHEDULE_WAIT) {
 		return zfsmScheduleLockedRun($job, 'ZFS Replication', $what.' not started: ', $notify, function() use ($job, $cfg, $now, $notify, $wait) {
 			return zfsmRunReplicate($job['dataset'], zfsmNewSnapshotName($cfg, $now), $job['dest'], null, true, $job['server'], array('notify' => $notify, 'wait' => $wait, 'gone' => 'remove its schedule in Settings', 'copy_keeps' => $job['copy_keeps'] ?? null, 'remake' => ($job['remake'] ?? false) === true), $job['keep'],
 				array('decrypt' => ($job['decrypted'] ?? false) === true, 'replace' => ($job['replace'] ?? false) === true));
-		}, ZFSM_SCHEDULE_COPIES_GRACE);
+		}, ZFSM_SCHEDULE_COPIES_GRACE, $now);
 	} catch (Throwable $error) {
 		// Cron drops what PHP prints: an error that ends a run is a problem like any other.
 		zfsmLog($what.' failed: '.zfsmOneLine($error->getMessage()));
