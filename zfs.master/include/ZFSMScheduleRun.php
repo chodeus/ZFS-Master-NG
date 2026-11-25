@@ -115,8 +115,7 @@ function zfsmScheduleStartHook() {
 }
 
 // At each array start (scripts/schedule.php start): each When the array starts schedule's run, in a session of its own as cron starts
-// one; none in Maintenance mode (var.ini unread: as Normal). A run that can't start is a problem of its schedule; schedules.json
-// unread is logged and notified. 0, else 1.
+// one; none in Maintenance mode (var.ini unread: as Normal). One that can't start is its schedule's problem; schedules.json unread: logged, notified. 0, else 1.
 function zfsmScheduleStartRuns() {
 	$var = @parse_ini_file(zfsmStatePath('/var/local/emhttp/var.ini'));
 	if (is_array($var) && ($var['startMode'] ?? '') === 'Maintenance') {

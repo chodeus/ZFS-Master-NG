@@ -210,8 +210,7 @@ function zfsmScheduleRuns($job, $from, $until) {
 }
 
 // Why Snapshots Pattern gives one of $job's runs in the next two weeks the name of another snapshot it or a schedule in $jobs
-// sharing a dataset with it takes (zfsmScheduleStartClash too), so that run can't take its own; $first: Repeat's run at $now is one.
-// '' when none does.
+// sharing a dataset with it takes (or zfsmScheduleStartClash), so that run can't take its own; $first: Repeat's run at $now is one. '' when none.
 function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	$until = $now + 14 * 86400 + 3600;
 	$named = $first ? array(zfsmNewSnapshotName($cfg, $now) => 'this run') : array();

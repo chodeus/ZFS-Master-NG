@@ -156,8 +156,8 @@ function zfsmScheduleNextAt($sets, $now) {
 	return null;
 }
 
-// Whether $a and $b ever start in the same minute: both when the array starts, or their minutes, hours, months and days meet. Over the
-// years each date falls on every weekday, so with a day of the month on one side only that day in a shared month counts.
+// Whether $a and $b start in one minute on cron's times, or both when the array starts (one then beside one on cron: zfsmScheduleStartClash).
+// Over the years each date falls on every weekday, so with a day of the month on one side only that day in a shared month counts.
 function zfsmScheduleSameTime($a, $b) {
 	if ($a['every'] === 'start' || $b['every'] === 'start') return $a['every'] === $b['every'];
 	list($minutes, $hours, $dates, $months, $days) = zfsmScheduleSets($a);
