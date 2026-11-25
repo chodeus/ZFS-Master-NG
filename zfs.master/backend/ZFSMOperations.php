@@ -813,9 +813,15 @@ function zfsmConvertTarget($directory, $pool) {
 }
 
 // Undoes a conversion whose new dataset has no usable mountpoint, and says whether the directory is back.
+// Removes the dataset Convert made, when it made one, then moves the directory back; false leaves its data at $temp.
+function zfsmConvertPutBack($made, $dataset_name, $temp, $path) {
+	$removed = $made && (runProcess('zfs', array('destroy', $dataset_name))['code'] ?? 1) === 0;
+	// Not while a made dataset remains, wherever it is mounted: the caller would say it was removed.
+	return $made === $removed && !empty(moveDirectory($temp, $path)['succeeded']);
+}
+
 function zfsmConvertUndo($dataset_name, $temp, $path) {
-	$cleanup = runProcess('zfs', array('destroy', $dataset_name));
-	if (($cleanup['code'] ?? 1) === 0 && moveDirectory($temp, $path)['succeeded']) return 'Dataset mountpoint was unavailable; the new dataset was removed and the original directory was restored';
+	if (zfsmConvertPutBack(true, $dataset_name, $temp, $path)) return 'Dataset mountpoint was unavailable; the new dataset was removed and the original directory was restored';
 	return 'Dataset mountpoint is unavailable; original data remains at '.$temp.' and manual recovery is required';
 }
 
@@ -885,14 +891,11 @@ function zfsmKeepFolderAccess($from, $to) {
 	@chmod($to, $stat['mode'] & 07777);
 }
 
-// Puts the directory back after createDataset failed. A dataset it made anyway is mounted where the directory goes, so it is removed
-// first, before anything was copied into it.
+// After createDataset failed; a dataset it made anyway can be mounted where the directory goes back, so it goes first.
 function zfsmConvertCreateFailed($directory, $created, $made, $dataset_name, $temp, $path) {
 	$why = implode('; ', $created['failed']);
-	$removed = $made && (runProcess('zfs', array('destroy', $dataset_name))['code'] ?? 1) === 0;
-	// Not while a made dataset remains, wherever it is mounted: the message would say it was removed.
-	if ($made === $removed && moveDirectory($temp, $path)['succeeded']) return $made ? zfsmFailure($directory, $why.'; the new dataset was removed and the original directory was restored') : $created;
-	return zfsmFailure($directory, $why.'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
+	if (!zfsmConvertPutBack($made, $dataset_name, $temp, $path)) return zfsmFailure($directory, $why.'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
+	return $made ? zfsmFailure($directory, $why.'; the new dataset was removed and the original directory was restored') : $created;
 }
 
 function convertDirectory($directory, $pool, $clone = true) {
