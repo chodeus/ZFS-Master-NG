@@ -6,13 +6,41 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.20.1">
-<!ENTITY md5 "101af24c568e1a95812e332b0fb0d576">
+<!ENTITY version "2026.11.25.1">
+<!ENTITY md5 "2351c49269df37011bb710ad98c3dacd">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.25.1
+**Schedules**
+
+- Schedules can run on a cron line, such as `0 3 1 * *`: pick Custom (cron)
+- Every Dataset settings can leave datasets out by name, under Leave Out
+- Schedules and Replicate warn of read-only, legacy-mounted and Sanoid/Syncoid datasets
+- Replicate repeats of those datasets stop with one notification; Save refuses new ones
+- A scheduled run is skipped and logged while the one before still goes
+
+**Replicate**
+
+- An encrypted dataset can be sent decrypted: pick Decrypted under Send
+- A new decrypted copy on another server needs this version there
+- A repeat can make its copy again if it is gone
+- A copy here that no longer matches can be renamed aside and sent again
+- Replicate shows why it can't send a copy, with a Guide link
+
+**Fixes**
+
+- Save refuses two schedules whose copies would get the same name
+- Scheduled runs wait while an update installs, from the update after this one
+
+**After going back to an older version**
+
+- Custom (cron) schedules wait until you update; Settings counts them as records it can't use
+- Leave Out is ignored, so Every Dataset settings take every dataset again
+- If the copy is gone and Replace are ignored, so those runs stop as before
 
 ###2026.11.20.1
 **Copies to another server**

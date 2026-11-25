@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.25.1 (beta)
 
 **Schedules**
 
