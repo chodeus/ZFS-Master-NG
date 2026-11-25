@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- feat(schedules): run a schedule each time the array starts
+- refactor(convert): one helper removes a made dataset and moves the folder back
+- fix(convert): remove a dataset Create made but could not finish before putting the folder back
+- fix(create): give a new dataset mode 777, as Unraid's Add Share does
+
 ## 2026.11.25.1 (beta)
 
 **Schedules**
