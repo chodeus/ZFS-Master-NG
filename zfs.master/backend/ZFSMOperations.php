@@ -590,9 +590,9 @@ function zfsmCreateInTurn($names, $zdataset, $args, $stdin) {
 	return array($result, $owned);
 }
 
-// What could not be finished once the dataset existed: the share owner, then read-only.
+// What could not be finished once the dataset existed: the share owner and permissions, then read-only.
 function zfsmCreateProblems($zdataset, $unowned, $readonly) {
-	$problems = $unowned ? array('the share owner could not be set on '.implode(', ', $unowned)) : array();
+	$problems = $unowned ? array('the share owner and permissions (nobody:users, 777) could not be set on '.implode(', ', $unowned)) : array();
 	if ($readonly) {
 		$set = runProcess('zfs', array('set', 'readonly=on', $zdataset));
 		if (($set['code'] ?? 1) !== 0) $problems[] = 'it could not be made read-only: '.zfsmCommandError($set, 'zfs set failed');
@@ -624,13 +624,14 @@ function createDataset($zdataset, $zoptions) {
 	return $problems ? zfsmFailure($zdataset, 'Created, but '.implode('; ', $problems)) : $answer;
 }
 
-// Returns the datasets whose mountpoint could not be given to nobody:users.
+// Returns the datasets whose mountpoint could not be given nobody:users 777, what Unraid's Add Share gives a share's dataset: with
+// 755, share users can't write to it over SMB.
 function zfsmSetShareOwner($pool, $names) {
 	$failed = array();
 	foreach ($names as $name) {
 		$mountpoint = getDatasetProperty($pool, $name, 'mountpoint');
 		if ($mountpoint === 'none' || $mountpoint === 'legacy') continue;
-		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users')) $failed[] = $name;
+		if (!is_string($mountpoint) || $mountpoint === '' || $mountpoint[0] !== '/' || !@chown($mountpoint, 'nobody') || !@chgrp($mountpoint, 'users') || !@chmod($mountpoint, 0777)) $failed[] = $name;
 	}
 	return $failed;
 }
@@ -872,6 +873,15 @@ function zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone = true) {
 	return '';
 }
 
+// Gives $to the owner, group and mode of $from. A failure is left to the copy: rsync -a sets them again, and its check compares them.
+function zfsmKeepFolderAccess($from, $to) {
+	$stat = @stat($from);
+	if (!is_array($stat)) return;
+	@chown($to, $stat['uid']);
+	@chgrp($to, $stat['gid']);
+	@chmod($to, $stat['mode'] & 07777);
+}
+
 function convertDirectory($directory, $pool, $clone = true) {
 	$target = zfsmConvertTarget($directory, $pool);
 	if (is_string($target)) return zfsmFailure($directory, $target);
@@ -886,6 +896,8 @@ function convertDirectory($directory, $pool, $clone = true) {
 	}
 	$mountpoint = getDatasetProperty($pool, $dataset_name, 'mountpoint');
 	if (!is_string($mountpoint) || !is_dir($mountpoint)) return zfsmFailure($directory, zfsmConvertUndo($dataset_name, $temp, $path));
+	// Before the copy can stop part-way, so a dataset kept then is as closed as the folder, not createDataset's 777.
+	zfsmKeepFolderAccess($temp, $mountpoint);
 	$copy = zfsmConvertCopy($temp, $mountpoint, $dataset_name, $clone);
 	if ($copy !== '') return zfsmFailure($directory, $copy);
 	$ret = buildArrayRet();
