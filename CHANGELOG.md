@@ -1,5 +1,36 @@
 # Changelog
 
+## Unreleased
+
+- feat(schedules): warn of datasets schedules leave out, and leave them out of Replicate repeats
+- refactor(schedules): move what a schedule covers and cron's run into their own files
+- refactor(frontend): move the Schedules and Replicate dialogs out of ZFSMImpact.js
+- fix(install): scripts wait while an update replaces the plugin's files
+- perf(replicate): a run asks a server's area once
+- feat(replicate): mark copies received decrypted and update each as it was made
+- feat(replicate): Send picks Raw or Decrypted for an encrypted dataset
+- fix(schedules): a rename's Leave Out note says only what Leave Out does
+- fix(schedules): a rename's Leave Out note names the dataset last
+- fix(schedules): a rename into or out of Leave Out says so
+- feat(schedules): Leave Out names datasets the every-dataset defaults skip
+- fix(replicate): a scheduled run that made datasets tells of them while its schedule works
+- fix(replicate): a remade copy's run names the datasets it made, and uses one another run made first
+- feat(replicate): a repeat can make its copy again when it is gone
+- fix(schedule): refuse two Copy Unders whose copies get one name
+- refactor(replicate): take the base lookup and server check out of the copy step
+- fix(replicate): leave a copy that a schedule names for another dataset
+- fix(replicate): replace only a copy with nothing below it, and say when it was only ahead
+- feat(replicate): a copy that no longer matches can be renamed aside and sent again
+- refactor(replicate): give the plan's ticks one owner
+- refactor(admin): read every Replicate tick on both routes
+- refactor(replicate): one choices array for the ticks, and the run in steps
+- feat(replicate): show the dialog's refusals as amber warnings with a Guide
+- fix(schedules): a clock set back under half an hour counts at once too
+- feat(schedules): skip a repeat's run while its run before still goes
+- feat(schedules): run times as cron's five sets, and a Custom (cron) kind
+- feat(schedules): log a snapshot run's overlap for an hour, aged from each run's start
+- feat(schedules): offer Custom (cron) in Schedules, Replicate and Settings
+
 ## 2026.11.20.1 (beta)
 
 **Copies to another server**
