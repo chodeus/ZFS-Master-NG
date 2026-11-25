@@ -159,15 +159,16 @@ function zfsmScheduleCopiesSave($under, $every, $time, $days, $keep, $cfg, $copy
 	$after = array();
 	$changed = zfsmScheduleSnapshotChange(function($all) use (&$job, $remove, $cfg) { return zfsmScheduleSnapshotPut($all, $job, $remove, $cfg); }, $after);
 	if (!$changed['saved']) return $changed + array('said' => '');
-	return $changed + array('said' => $remove ? 'Replicate Every Dataset is off; the copies it made and their snapshots stay' : zfsmScheduleCopiesSaved($job, $listed, $after));
+	return $changed + array('said' => $remove ? 'Replicate Every Dataset is off; the copies it made and their snapshots stay' : zfsmScheduleCopiesSaved($job, $listed, $after, zfsmScheduleSavedNow($changed)));
 }
 
-// Save's answer for $job: what a run copies, counted from $listed (zfsmScheduleCoverRead) with the schedules saved, $after.
-function zfsmScheduleCopiesSaved($job, $listed, $after) {
+// Save's answer for $job: what a run copies, counted from $listed (zfsmScheduleCoverRead) with the schedules saved, $after; a cron
+// line's next run from $now.
+function zfsmScheduleCopiesSaved($job, $listed, $after, $now) {
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $after);
 	$count = $unread !== '' && !$pools ? 'each dataset' : 'each of '.array_sum(array_map('count', $pools)).' dataset(s)';
 	$leave = zfsmScheduleLeaveOutSaid($job, $after, $listed);
-	return 'Saved: a copy of '.$count.($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '').' under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job)
+	return 'Saved: a copy of '.$count.($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '').' under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhenNext($job, $now).'; it '.zfsmScheduleKeepText($job)
 		.($unread !== '' ? '; not every dataset could be read: '.$unread : '').($leave !== '' ? '. '.$leave : '');
 }
 
@@ -181,14 +182,14 @@ function zfsmScheduleCopiesOwnNot($job, $jobs, $listed) {
 }
 
 // The dialog Save's answer for $job, a dataset's own copies under a dataset ($remove: gone), with $jobs as saved; one that runs is
-// counted in $listed.
-function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
+// counted in $listed, a cron line's next run from $now.
+function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed, $now) {
 	if ($remove) return 'Saved: the copies of '.$job['dataset'].' follow '.zfsmScheduleCopiesFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs, 'zfsmScheduleCopiesUnder'), $job['dataset']);
 	if ($job['every'] === 'none') return 'Saved: no scheduled copies of '.$job['dataset'].' and below, but for datasets with their own and repeats set in Replicate; the copies made stay';
 	// Copies as saved aren't checked again (zfsmScheduleDialogSave), so a server removed since is said here.
 	$server = zfsmScheduleCopiesServerNot($job);
 	$down = $server !== '' ? lcfirst($server) : zfsmScheduleCopiesUnderNot($job, $listed);
-	return zfsmScheduleCopiesSaved($job, $listed, $jobs).($down !== '' ? '; no run copies while '.$down : '');
+	return zfsmScheduleCopiesSaved($job, $listed, $jobs, $now).($down !== '' ? '; no run copies while '.$down : '');
 }
 
 // Cron's run of copies under a dataset: each dataset it covers, parents first, sent to its copy as a copy's schedule sends it

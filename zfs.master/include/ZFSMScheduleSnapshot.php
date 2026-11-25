@@ -97,7 +97,7 @@ function zfsmScheduleSnapshotSave($zdataset, $every, $time, $days, $keep, $cfg, 
 	$after = array();
 	$changed = zfsmScheduleSnapshotChange(function($all) use (&$job, $remove, $cfg) { return zfsmScheduleSnapshotPut($all, $job, $remove, $cfg); }, $after);
 	if (!$changed['saved']) return $changed + array('said' => '');
-	return $changed + array('said' => zfsmScheduleSnapshotSaid($job, $remove, $after, $listed));
+	return $changed + array('said' => zfsmScheduleSnapshotSaid($job, $remove, $after, $listed, zfsmScheduleSavedNow($changed)));
 }
 
 // zfsmScheduleChange for snapshot records and copies under a dataset, $after as saved: one that goes or is None (it never runs)
@@ -210,15 +210,15 @@ function zfsmScheduleNewClash($before, $after, $cfg) {
 	return '';
 }
 
-// Save's answer: what $job does now, with $jobs as saved; one that runs is counted in $listed.
-function zfsmScheduleSnapshotSaid($job, $remove, $jobs, $listed) {
+// Save's answer: what $job does now, with $jobs as saved; one that runs is counted in $listed, a cron line's next run from $now.
+function zfsmScheduleSnapshotSaid($job, $remove, $jobs, $listed, $now) {
 	if ($remove && $job['dataset'] === '') return 'Snapshot Every Dataset is off; the snapshots it took stay';
 	if ($remove) return 'Saved: '.$job['dataset'].' follows '.zfsmScheduleFollowedText(zfsmScheduleFollowed($job['dataset'], $jobs), $job['dataset']);
 	if ($job['every'] === 'none') return 'Saved: no scheduled snapshots of '.$job['dataset'].' and below, but for datasets with their own; the snapshots taken stay';
 	list($pools, $unread) = zfsmScheduleCovered($listed, $job, $jobs);
 	$count = ($unread !== '' && !$pools ? 'each dataset' : 'each of '.array_sum(array_map('count', $pools)).' dataset(s)').($job['dataset'] !== '' ? ' ('.$job['dataset'].' and below)' : '');
 	$leave = zfsmScheduleLeaveOutSaid($job, $jobs, $listed);
-	return 'Saved: a snapshot of '.$count.' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job).($unread !== '' ? '; not every dataset could be read: '.$unread : '').($leave !== '' ? '. '.$leave : '');
+	return 'Saved: a snapshot of '.$count.' '.zfsmScheduleWhenNext($job, $now).'; it '.zfsmScheduleKeepText($job).($unread !== '' ? '; not every dataset could be read: '.$unread : '').($leave !== '' ? '. '.$leave : '');
 }
 
 // Takes $name of each of $datasets (one pool's) with the snapshots tag in one command, all at one moment; when that fails (one name

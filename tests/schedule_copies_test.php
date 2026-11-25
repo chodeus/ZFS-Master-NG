@@ -42,7 +42,7 @@ $GLOBALS['zfsm_root'] = $root;
 mkdir($root.'/boot/config/plugins/zfs.master', 0700, true);
 mkdir($root.'/usr/local/sbin', 0700, true);
 mkdir($root.'/var/log', 0700, true);
-file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n");
+file_put_contents($root.'/usr/local/sbin/update_cron', "#/bin/bash\necho ran >> ".escapeshellarg($work.'/cron.log')."\n[ ! -e ".escapeshellarg($work.'/cron-fail')." ] || { echo 'crontab: cannot write' >&2; exit 1; }\n");
 
 $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$file, $lines ? implode("\n", $lines)."\n" : ''); };
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
@@ -91,7 +91,7 @@ $mine = array('id' => 'ffff0000', 'dataset' => 'tank/data/sub') + $every;
 same(array(true, false, false, 30), array(zfsmScheduleShare($tank, $mine, array()), zfsmScheduleShare($tank, $mine, array($none['id'] => $none)),
 	zfsmScheduleShare($mine, $tank, array($none['id'] => $none)), zfsmScheduleFreeMinute(array($tank['id'] => $tank, $none['id'] => $none), $mine, 30)),
 	'a nearer one of its kind, None too, takes the datasets below it from one above');
-same('the copies of tank/data/sub and below (every hour at :30) starts then too; pick another time', zfsmScheduleSame(array($mine['id'] => $mine), $tank),
+same('the copies of tank/data/sub and below (every hour at :30) starts then too; pick another time', zfsmScheduleSame(array($mine['id'] => $mine), array('every' => 'days', 'hour' => 4) + $tank),
 	'one above is checked against one below it before it is in the list');
 // A repeat set in Replicate to the copy a run of copies would make of its dataset takes that one out of the run: they share none.
 $repeat = array('id' => '1a2b3c4d', 'dataset' => 'tank/data/sub', 'dest' => 'backup/tank/data/sub', 'server' => '', 'every' => 'hourly') + zfsmScheduleAt('hourly', '', '') + array('keep' => 0);
@@ -141,6 +141,18 @@ same(true, zfsmScheduleSnapshotSave('', 'days', $at, '1', 0, $cfg)['saved'], 'Sn
 same('Nothing was saved: Snapshot Every Dataset (every Monday at '.$at.') starts then too; pick another time', zfsmScheduleCopiesSave('backup', 'days', $at, '1,2', 0, $cfg)['why'], 'not at the same minute');
 same('Saved: a copy of each of 6 dataset(s) under backup every Monday at 05:00; it keeps the newest 1 of the snapshots of each dataset it copies', zfsmScheduleCopiesSave('backup', 'days', '05:00', '1', 1, $cfg)['said'], 'another time');
 same(array($job['id'], 'days', 1), array(array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0]['id'], array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0]['every'], array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0]['keep']), 'in place');
+// On a cron line, in place, said with its next run.
+$from = time();
+$said = zfsmScheduleCopiesSave('backup', 'cron', '0 5 * *  1', '', 1, $cfg)['said'];
+$nextAt = function($at, $now) { return date(date('Y', $at) === date('Y', $now) ? 'D j M H:i' : 'D j M Y H:i', $at); };
+$next = function($now) use ($nextAt) { return 'Saved: a copy of each of 6 dataset(s) under backup on the cron line 0 5 * * 1, next at '.$nextAt(zfsmScheduleNext(array('every' => 'cron', 'cron' => '0 5 * * 1'), $now), $now).'; it keeps the newest 1 of the snapshots of each dataset it copies'; };
+$own = array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0];
+same(array(true, array($job['id'], 'cron', '0 5 * * 1')), array(in_array($said, array($next($from), $next(time())), true), array($own['id'], $own['every'], $own['cron'] ?? null)), 'on a cron line, in place: '.$said);
+touch($work.'/cron-fail');
+$failed = zfsmScheduleCopiesSave('backup', 'cron', '0 5 * * 1', '', 1, $cfg);
+unlink($work.'/cron-fail');
+same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were saved, but Unraid\'s crontab could not be rebuilt /', $failed['why']), strpos($failed['said'], 'Saved: a copy of each of 6 dataset(s) under backup on the cron line 0 5 * * 1; it keeps')),
+	'saved while the crontab can\'t be rebuilt: no next run is said: '.$failed['said']);
 // Off: removed, the snapshot schedule left.
 same(array('saved' => true, 'why' => '', 'said' => 'Replicate Every Dataset is off; the copies it made and their snapshots stay'), zfsmScheduleCopiesSave('', 'off', '', '', 0, $cfg), 'off');
 same(array(''), array_column($stored(), 'dest'), 'only the snapshot schedule stays');
