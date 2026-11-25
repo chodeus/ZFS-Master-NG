@@ -600,7 +600,9 @@ function zfsmCreateProblems($zdataset, $unowned, $readonly) {
 	return $problems;
 }
 
-function createDataset($zdataset, $zoptions) {
+// $made: whether $zdataset exists afterwards, a 'Created, but' failure included.
+function createDataset($zdataset, $zoptions, &$made = false) {
+	$made = false;
 	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure($zdataset, 'Invalid dataset name');
 	$pool = explode('/', $zdataset, 2)[0];
 	$passphrase = (string)($zoptions['passphrase'] ?? '');
@@ -618,6 +620,7 @@ function createDataset($zdataset, $zoptions) {
 	// No -p: it succeeds on a dataset someone else just made, and only ours may get the share owner.
 	list($result, $owned) = zfsmCreateInTurn($created, $zdataset, $args, $encrypted ? $passphrase."\n".$passphrase."\n" : null);
 	$answer = commandAnswer($zdataset, $result);
+	$made = ($result['code'] ?? 1) === 0;
 	$unowned = zfsmSetShareOwner($pool, $owned);
 	if (($result['code'] ?? 1) !== 0) return $answer;
 	$problems = zfsmCreateProblems($zdataset, $unowned, $readonly);
@@ -882,6 +885,16 @@ function zfsmKeepFolderAccess($from, $to) {
 	@chmod($to, $stat['mode'] & 07777);
 }
 
+// Puts the directory back after createDataset failed. A dataset it made anyway is mounted where the directory goes, so it is removed
+// first, before anything was copied into it.
+function zfsmConvertCreateFailed($directory, $created, $made, $dataset_name, $temp, $path) {
+	$why = implode('; ', $created['failed']);
+	$removed = $made && (runProcess('zfs', array('destroy', $dataset_name))['code'] ?? 1) === 0;
+	// Not while a made dataset remains, wherever it is mounted: the message would say it was removed.
+	if ($made === $removed && moveDirectory($temp, $path)['succeeded']) return $made ? zfsmFailure($directory, $why.'; the new dataset was removed and the original directory was restored') : $created;
+	return zfsmFailure($directory, $why.'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
+}
+
 function convertDirectory($directory, $pool, $clone = true) {
 	$target = zfsmConvertTarget($directory, $pool);
 	if (is_string($target)) return zfsmFailure($directory, $target);
@@ -889,11 +902,8 @@ function convertDirectory($directory, $pool, $clone = true) {
 	$temp = $path.'_zfsm_tmp_'.date('YmdHis');
 	$moved = moveDirectory($path, $temp);
 	if (!$moved['succeeded']) return $moved;
-	$created = createDataset($dataset_name, array());
-	if (!$created['succeeded']) {
-		if (moveDirectory($temp, $path)['succeeded']) return $created;
-		return zfsmFailure($directory, implode('; ', $created['failed']).'; the directory could not be moved back, so its data remains at '.$temp.' and manual recovery is required');
-	}
+	$created = createDataset($dataset_name, array(), $made);
+	if (!$created['succeeded']) return zfsmConvertCreateFailed($directory, $created, $made, $dataset_name, $temp, $path);
 	$mountpoint = getDatasetProperty($pool, $dataset_name, 'mountpoint');
 	if (!is_string($mountpoint) || !is_dir($mountpoint)) return zfsmFailure($directory, zfsmConvertUndo($dataset_name, $temp, $path));
 	// Before the copy can stop part-way, so a dataset kept then is as closed as the folder, not createDataset's 777.

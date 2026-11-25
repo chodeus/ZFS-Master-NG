@@ -353,13 +353,21 @@ $result = convertDirectory($target, 'tank');
 putenv('ZFSM_TEST_CREATE_FAIL');
 check(strpos(reset($result['failed']) ?: '', 'dataset already exists') !== false, 'a failed create must give its own reason: '.json_encode($result));
 check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'a failed create must put the directory back');
-// Made but unfinished (no share owner) and mounted where the directory was: the data stays where the message says.
+// Made but unfinished (no share owner) and mounted where the directory was: it is removed again and the directory put back.
 reset_tree($target, $mount, $root);
 putenv('ZFSM_TEST_GET_FAIL=tank/My Share');
 putenv('ZFSM_TEST_CREATE_MOUNTS_AT='.$target);
 $result = convertDirectory($target, 'tank');
+check((reset($result['failed']) ?: '') === 'Created, but the share owner and permissions (nobody:users, 777) could not be set on tank/My Share; the new dataset was removed and the original directory was restored', 'a made but unfinished dataset must be removed and the directory put back: '.json_encode($result));
+check(is_file($target.'/sub dir/file') && glob($root.'/*_zfsm_tmp_*') === array(), 'the directory must be back with its data');
+// When that dataset can't be removed, the data stays where the message says, even with nothing mounted where the directory was.
+reset_tree($target, $mount, $root);
 putenv('ZFSM_TEST_CREATE_MOUNTS_AT');
+putenv('ZFSM_TEST_DESTROY_BUSY=1');
+$result = convertDirectory($target, 'tank');
+putenv('ZFSM_TEST_DESTROY_BUSY');
 putenv('ZFSM_TEST_GET_FAIL');
+check(!file_exists($target), 'a dataset that could not be removed must not get the directory moved back: '.json_encode($result));
 $kept = glob($root.'/*_zfsm_tmp_*');
 check(count($kept) === 1 && is_file($kept[0].'/sub dir/file'), 'a failed move back must keep the data aside: '.json_encode($result));
 $said = reset($result['failed']) ?: '';
