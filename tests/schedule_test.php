@@ -432,19 +432,64 @@ same(1, zfsmScheduleRun($id, $cfg, $at + 14400), 'a run that an error ends');
 $error = 'warning: Replication of tank/data to backup/data failed: nchan is down. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
 same(array(array($error), 1, false), array($read('notify-detail.log'), zfsmScheduleFailures($id), zfsmJobRunning($lock_file)), 'says why, counts it and lets go of the lock');
 @unlink(zfsmScheduleStateFile($id));
+// A start while the run before still sends: nothing taken or sent, only logged until that one has gone on a day, then notified.
+$own_lock = zfsmJobDir('schedule').'/'.$id.'.lock';
+$own_held = zfsmJobLock($own_lock);
+$reset();
+$own_count = count($names('tank/data', 'snapshot'));
+same(0, zfsmScheduleRun($id, $cfg, $at + 18000), 'a start while the run before still sends');
+same(array($own_count, array(), array(), 0, 1), array(count($names('tank/data', 'snapshot')), $sends(), $read('notify.log'), zfsmScheduleFailures($id),
+	preg_match('/ Schedule '.$id.': Replication of tank\/data to backup\/data not started: the run before is still going$/m', (string)file_get_contents(zfsmLogFile()))),
+	'takes and sends nothing, notifies and counts nothing, and logs why');
+touch($own_lock, time() - 90000);
+same(1, zfsmScheduleRun($id, $cfg, $at + 18060), 'a start a day after it');
+same(array(array(), array('warning: Replication of tank/data to backup/data not started: the run before is still going, 25 hour(s) after it started. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array($sends(), $read('notify-detail.log')), 'sends nothing, and notifies');
+@unlink(zfsmScheduleStateFile($id));
+// A daily repeat's start a few seconds short of a day counts the day; one after the clock was set back counts at once, with no age.
+touch($own_lock, time() - 86390);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going, 24 hour(s) after it started'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $at + 18120), $read('notify-detail.log')), 'a start a few seconds short of a day after it');
+@unlink(zfsmScheduleStateFile($id));
+touch($own_lock, time() + 7200);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $at + 18180), $read('notify-detail.log')), 'a start after the clock was set back');
+zfsmJobUnlock($own_held);
+@unlink(zfsmScheduleStateFile($id));
+// Once it is done, the next run sends, marks its start on the lock file and lets go of it.
+touch($own_lock, time() - 90000);
+$own_before = time();
+$reset();
+same(0, zfsmScheduleRun($id, $cfg, $at + 21600), 'the next run once that one is done');
+clearstatcache();
+$own_free = zfsmJobLock($own_lock);
+same(array(1, true, true), array(count($sends()), filemtime($own_lock) >= $own_before, is_resource($own_free)), 'sends, marks its start and lets go of its lock');
+zfsmJobUnlock($own_free);
+@unlink(zfsmScheduleStateFile($id));
 
-// Where the count can't be kept, each problem notifies, without saying later ones won't.
-$state = zfsmJobDir('schedule');
-rename($state, $state.'.away');
-touch($state);
+// Where the count can't be kept, each problem notifies, without saying later ones won't. A folder where the count's file goes: the run's lock still opens.
+$state = zfsmScheduleStateFile($id);
+@unlink($state);
+mkdir($state);
 $reset();
 $drop('backup/data');
 zfsmScheduleRun($id, $cfg, time() + 18000);
 zfsmScheduleRun($id, $cfg, time() + 21600);
 same(array($gone, $gone), $read('notify-detail.log'), 'a count that can\'t be kept notifies each time');
+rmdir($state);
+zfsmRunReplicate('tank/data', 'b', 'backup/data');
+// With a file where the schedules' folder goes, a run can't open its lock: it takes and sends nothing, and says why.
+$state = zfsmJobDir('schedule');
+rename($state, $state.'.away');
+touch($state);
+$reset();
+$own_count = count($names('tank/data', 'snapshot'));
+same(array(1, $own_count, array(), array('warning: Replication of tank/data to backup/data not started: the lock file could not be opened.')),
+	array(zfsmScheduleRun($id, $cfg, time() + 25200), count($names('tank/data', 'snapshot')), $sends(), $read('notify-detail.log')), 'a run whose lock can\'t be opened');
 unlink($state);
 rename($state.'.away', $state);
-zfsmRunReplicate('tank/data', 'b', 'backup/data');
 
 // A cron line that outlived its schedule runs nothing; cron's script runs a schedule by its id.
 $reset();

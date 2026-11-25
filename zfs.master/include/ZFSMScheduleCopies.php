@@ -2,7 +2,8 @@
 // Copies under a dataset, here or in a trusted server's area: dest, a dataset and '/', holds each covered dataset's copy (backup/ and
 // cache/appdata: backup/cache/appdata). Dataset '' is Replicate Every Dataset; None is dest '/'. Coverage: zfsmScheduleFollowed.
 
-// A start while the run before still goes is only logged for a day (zfsmScheduleLockedSkip): a first run sends each dataset in full.
+// For copies and a copy's repeat, a start while the run before still goes is only logged for a day (zfsmScheduleLockedSkip): a first
+// run sends in full.
 define('ZFSM_SCHEDULE_COPIES_GRACE', 86400);
 
 function zfsmScheduleCopiesUnder($job) {
@@ -193,8 +194,9 @@ function zfsmScheduleCopiesOwnSaid($job, $remove, $jobs, $listed) {
 // Cron's run of copies under a dataset: each dataset it covers, parents first, sent to its copy as a copy's schedule sends it
 // (zfsmRunReplicate, with its Keep as saved when that copy starts); one notification for the run. 0, or 1 after a problem.
 function zfsmScheduleCopiesRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SCHEDULE_WAIT) {
-	return zfsmScheduleLockedRun($job, 'ZFS Replication', 'Scheduled copies not made: ', $notify, function() use ($job, $jobs, $cfg, $now, $wait) {
-		return zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait);
+	return zfsmScheduleLockedRun($job, 'ZFS Replication', 'Scheduled copies not made: ', $notify, function() use ($job, $jobs, $cfg, $now, $notify, $wait) {
+		list($text, $problem) = zfsmScheduleCopiesMade($job, $jobs, $cfg, $now, $wait);
+		return zfsmScheduleSnapshotTell($job, $text, $problem, $notify, 'ZFS Replication');
 	}, ZFSM_SCHEDULE_COPIES_GRACE);
 }
 
