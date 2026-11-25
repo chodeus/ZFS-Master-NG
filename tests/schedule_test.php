@@ -446,7 +446,7 @@ same(1, zfsmScheduleRun($id, $cfg, $at + 18060), 'a start a day after it');
 same(array(array(), array('warning: Replication of tank/data to backup/data not started: the run before is still going, 25 hour(s) after it started. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
 	array($sends(), $read('notify-detail.log')), 'sends nothing, and notifies');
 @unlink(zfsmScheduleStateFile($id));
-// A daily repeat's start a few seconds short of a day counts the day; one after the clock was set back counts at once, with no age.
+// A daily repeat's start a few seconds short of a day counts the day; one after the clock was set back, by any amount, counts at once, with no age.
 touch($own_lock, time() - 86390);
 $reset();
 same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going, 24 hour(s) after it started'.$later)),
@@ -456,6 +456,11 @@ touch($own_lock, time() + 7200);
 $reset();
 same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going'.$later)),
 	array(zfsmScheduleRun($id, $cfg, $at + 18180), $read('notify-detail.log')), 'a start after the clock was set back');
+@unlink(zfsmScheduleStateFile($id));
+touch($own_lock, time() + 600);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $at + 18240), $read('notify-detail.log')), 'a start after the clock was set back 10 minutes');
 zfsmJobUnlock($own_held);
 @unlink(zfsmScheduleStateFile($id));
 // Once it is done, the next run sends, marks its start on the lock file and lets go of it.

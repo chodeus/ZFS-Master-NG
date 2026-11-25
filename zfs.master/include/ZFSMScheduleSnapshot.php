@@ -280,12 +280,13 @@ function zfsmScheduleLockedRun($job, $title, $not, $notify, $run, $grace = 0) {
 // A start while the run before still goes: only logged until that run, which started at $file's time, has gone on $grace seconds.
 // In whole hours, so a daily schedule's start a few seconds short of a day counts the day; a clock set back counts at once.
 function zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace) {
-	$hours = (int)round((time() - (int)@filemtime($file)) / 3600);
-	if ($hours >= 0 && $hours * 3600 < $grace) {
+	$age = time() - (int)@filemtime($file);
+	$hours = (int)round($age / 3600);
+	if ($age >= 0 && $hours * 3600 < $grace) {
 		zfsmLog('Schedule '.$job['id'].': '.$not.'the run before is still going', LOG_NOTICE);
 		return 0;
 	}
-	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 && $hours >= 0 ? ', '.$hours.' hour(s) after it started' : ''), true, $notify, $title);
+	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 && $age >= 0 ? ', '.$hours.' hour(s) after it started' : ''), true, $notify, $title);
 }
 
 // What a run took and kept, and its problem: null when zfs read every pool and the default had none to take, or it only left out.
