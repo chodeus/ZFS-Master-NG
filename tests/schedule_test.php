@@ -741,9 +741,7 @@ same(0, zfsmScheduleRun($job['id'], $cfg, time() + 3600), 'a run of a schedule t
 same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/re finished \(in full\)\. The old copy is now backup\/re_replaced_[0-9]{8}_[0-9]{4}: destroy it when you no longer need it\.$/D',
 	implode("\n", $read('notify-detail.log'))), 'replaces it, and tells of it: '.implode(' | ', $read('notify-detail.log')));
 
-// A Custom (cron) line saved: as typed with its spaces collapsed, run from its numbers, said with its next run; the install's heal puts back
-// the cron line an older version, which can't read it, left out.
-// Its own dataset: a run of tank/re in this second would have its snapshot name.
+// A Custom (cron) line on a dataset of its own: a run of tank/re in this second would have its snapshot name.
 file_put_contents($work.'/pool/datasets', "tank/cr\tfilesystem\n", FILE_APPEND);
 file_put_contents($work.'/pool/marks', "tank/cr@a\t41\t10\n", FILE_APPEND);
 file_put_contents(zfsmScheduleFile(), '[]');
