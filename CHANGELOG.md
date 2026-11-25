@@ -2,10 +2,21 @@
 
 ## Unreleased
 
-- feat(schedules): run a schedule each time the array starts
-- refactor(convert): one helper removes a made dataset and moves the folder back
-- fix(convert): remove a dataset Create made but could not finish before putting the folder back
-- fix(create): give a new dataset mode 777, as Unraid's Add Share does
+**Schedules**
+
+- Schedules can run each time the array starts: pick When the array starts
+- A start in Maintenance mode runs none of them
+
+**Fixes**
+
+- A new dataset gets nobody:users 777, as Unraid's Add Share gives a share, so share users can write to it over SMB
+- A dataset made before keeps 755: run Tools > New Permissions on its share, or `chmod 777` on its folder
+- A Convert that stops part-way leaves the new dataset with the folder's owner and permissions
+- A Convert whose new dataset can't get the share owner removes it and puts the folder back, instead of leaving it renamed aside
+
+**After going back to an older version**
+
+- When the array starts schedules wait until you update; Settings counts them as records it can't use
 
 ## 2026.11.25.1 (beta)
 
