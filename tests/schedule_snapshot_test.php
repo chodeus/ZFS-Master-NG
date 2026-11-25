@@ -374,10 +374,12 @@ same(array('Invalid dataset name'), array_values($preview('tank/bad name!')['fai
 same(array('read-only', 'sanoid-or-syncoid-snapshots', 'mounted-legacy', null), array_map(function($row) { return zfsmScheduleSkippedWarning('tank/x', $row)['guide'] ?? null; },
 	array(array('on', 'legacy', true), array('off', 'legacy', true), array('off', 'legacy', false), array('off', '/mnt/tank/x', null))), 'Read Only first, then Sanoid\'s, then legacy; none for one a run takes');
 
-// A copy of a dataset can't start with a snapshot schedule of it or of one above it; None and other datasets' don't count.
+// A copy of a dataset can't start with a snapshot schedule of it or of one above it; None, other datasets' and Snapshot Every Dataset's
+// on a pool's own dataset, which it leaves out, don't count.
 $at = function($dataset, $hour, $days) use ($copy) { return array('id' => 'eeee0000', 'dataset' => $dataset, 'dest' => 'backup/c', 'every' => 'days', 'minute' => 0, 'hour' => $hour, 'days' => $days) + $copy; };
-same(array('the snapshot schedule of tank (every Tuesday at 06:00) starts then too; pick another time', 'the snapshot schedule of tank/data (every Monday at 05:00) starts then too; pick another time', 'Snapshot Every Dataset (every Monday at 05:00) starts then too; pick another time', ''),
-	array_map(function($try) { return zfsmScheduleSame(zfsmScheduleRead()['valid'], $try); }, array($at('tank/vm', 6, array(2)), $at('tank/data', 5, array(1)), $at('backup', 5, array(1)), $at('tank/docker', 0, range(0, 6)))), 'which a copy shares with');
+same(array('the snapshot schedule of tank (every Tuesday at 06:00) starts then too; pick another time', 'the snapshot schedule of tank/data (every Monday at 05:00) starts then too; pick another time', 'Snapshot Every Dataset (every Monday at 05:00) starts then too; pick another time', '', ''),
+	array_map(function($try) { return zfsmScheduleSame(zfsmScheduleRead()['valid'], $try); }, array($at('tank/vm', 6, array(2)), $at('tank/data', 5, array(1)), $at('backup/media', 5, array(1)), $at('backup', 5, array(1)),
+		$at('tank/docker', 0, range(0, 6)))), 'which a copy shares with');
 
 // Refused, the store unchanged: a dataset no run can take, a name that is none, and a choice the other kind has.
 $before = $stored();

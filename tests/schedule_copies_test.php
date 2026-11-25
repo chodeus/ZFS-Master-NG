@@ -109,6 +109,9 @@ same(array('Replicate Every Dataset, which leaves out a pool\'s own dataset: no 
 	'the Default on a pool\'s own dataset; one in it is not left out');
 same(array('tank/docker', 'tank/san/kid', 'tank/vm'), zfsmScheduleCovered($listed(), $every, array($every, array('dest' => 'backup/tank/data') + $copy))[0]['tank'], 'not one whose own copy is that copy');
 same(array('tank/data', 'tank/docker', 'tank/san/kid', 'tank/vm'), zfsmScheduleCovered($listed(), $every, array($every, array('dest' => 'backup/data') + $copy))[0]['tank'], 'but one whose own copy is elsewhere');
+$own = array('id' => '0b1c2d3e') + zfsmScheduleCopiesRecord('tank', 'hourly', 'usb', '', '', 1);
+same(array('tank' => array('tank', 'tank/data', 'tank/docker', 'tank/san/kid', 'tank/vm')), zfsmScheduleCovered($listed(), $own, array($every, $own))[0],
+	'a pool\'s own dataset with copies of its own is copied, and those below it');
 $not = function($zdataset, $jobs = array(), $row = array('off', '/mnt/x', false)) use ($every, $name) { return zfsmScheduleCopiesNot($every, $jobs, $zdataset, $row, $name(1800000000)); };
 same(array('backup/old is in pool backup, where its copy would go', 'tank/data has a schedule of its own for that copy', '', 'the snapshot names of tank/data could not be read, so it may be left to Sanoid or Syncoid'),
 	array($not('backup/old'), $not('tank/data', array(array('dest' => 'backup/tank/data') + $copy)), $not('tank/data'), $not('tank/data', array(), array('off', '/mnt/tank/data', null))), 'why one is left out');
@@ -189,6 +192,11 @@ same(array('normal: Scheduled copies under backup: 6 of 6 dataset(s) copied. It 
 same(array("tank/data@$n" => $tag), $snaps('tank/data'), 'its snapshot is tagged for the record');
 same(1, $logged('/ Schedule '.$id.': Scheduled copies under backup: 6 of 6 dataset\(s\) copied$/'), 'logged');
 same(array(), preg_grep('/receive .*-F/', $read('calls.log')), 'no -F, as no holder is replaced');
+// Whether a copy is due at a level asks ZFS nothing of a pool's own dataset, which a default never copies.
+putenv('ZFSM_TEST_NAMES_FAIL=1');
+same(array(array(), null), array(zfsmScheduleCopiesTo('backup/', 'backup/tank', zfsmScheduleRead()['valid'], $cfg), zfsmScheduleCopiesTo('backup/', 'backup/tank/data', zfsmScheduleRead()['valid'], $cfg)),
+	'no copy of tank is due there, names read or not; whether tank/data\'s is could not be read');
+putenv('ZFSM_TEST_NAMES_FAIL');
 
 // The one after sends changes; Keep leaves the newest 1 of the record's snapshots on each dataset.
 $reset();

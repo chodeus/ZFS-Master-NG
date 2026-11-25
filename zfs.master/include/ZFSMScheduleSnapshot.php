@@ -50,7 +50,7 @@ function zfsmScheduleFollowed($zdataset, $jobs, $kind = 'zfsmScheduleSnapshotsOn
 // What following $job means for $zdataset, for the dialog's Default and Save's answer.
 function zfsmScheduleFollowedText($job, $zdataset) {
 	if ($job === null) return 'Snapshot Every Dataset, which is off: no scheduled snapshots';
-	$out = zfsmScheduleLeaveOutFollowed($job, $zdataset, 'no scheduled snapshots');
+	$out = zfsmScheduleDefaultOutFollowed($job, $zdataset, 'no scheduled snapshots');
 	if ($out !== '') return $out;
 	$whose = zfsmScheduleWhat($job);
 	return $job['every'] === 'none' ? $whose.', None: no scheduled snapshots' : $whose.', '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);

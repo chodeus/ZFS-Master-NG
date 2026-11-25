@@ -184,6 +184,8 @@ function zfsmScheduleShare($a, $b, $jobs) {
 	if (zfsmScheduleCovers($a) && zfsmScheduleCovers($b) && zfsmScheduleKindOf($a) === zfsmScheduleKindOf($b)) return false;
 	$in = function($job, $other) use ($jobs) {
 		if (!zfsmScheduleCovers($job) || ($job['dataset'] !== '' && !zfsmUnderAny($other['dataset'], array($job['dataset'])))) return false;
+		// A default leaves out a pool's own dataset: a repeat set in Replicate on one shares nothing with it.
+		if (!zfsmScheduleCovers($other) && zfsmScheduleRootOut($job, $other['dataset'])) return false;
 		$near = zfsmScheduleFollowed($other['dataset'], array_diff_key($jobs, array($job['id'] => 0)) + array($job['id'] => $job), zfsmScheduleKindOf($job));
 		return $near['id'] === $job['id'];
 	};

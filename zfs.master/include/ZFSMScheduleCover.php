@@ -169,7 +169,7 @@ function zfsmScheduleLeaveOutText($job) {
 
 // What following $job means when it is a default that leaves out $zdataset as a pool's own dataset or by Leave Out, $none saying
 // what it then has; '' otherwise.
-function zfsmScheduleLeaveOutFollowed($job, $zdataset, $none) {
+function zfsmScheduleDefaultOutFollowed($job, $zdataset, $none) {
 	if ($job !== null && zfsmScheduleRootOut($job, $zdataset)) return zfsmScheduleWhat($job).', which leaves out a pool\'s own dataset: '.$none;
 	$by = $job === null ? null : zfsmScheduleLeaveOutBy($job, $zdataset);
 	return $by === null ? '' : zfsmScheduleWhat($job).', which leaves this dataset out (Leave Out: '.$by.'): '.$none;

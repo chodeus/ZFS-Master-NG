@@ -113,7 +113,7 @@ function zfsmScheduleCopiesWrong($job, $remove) {
 // What following $job, copies under a dataset, means for $zdataset, for the dialog's Default and Save's answer.
 function zfsmScheduleCopiesFollowedText($job, $zdataset) {
 	if ($job === null) return 'Replicate Every Dataset, which is off: no scheduled copies';
-	$out = zfsmScheduleLeaveOutFollowed($job, $zdataset, 'no scheduled copies');
+	$out = zfsmScheduleDefaultOutFollowed($job, $zdataset, 'no scheduled copies');
 	if ($out !== '') return $out;
 	$whose = zfsmScheduleWhat($job);
 	return $job['every'] === 'none' ? $whose.', None: no scheduled copies' : $whose.', under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
@@ -401,7 +401,7 @@ function zfsmScheduleCopiesTo($dest, $level, $jobs, $cfg, $server = '') {
 	if (strncmp($level, $dest, strlen($dest)) !== 0) return $repeats;
 	$zdataset = substr($level, strlen($dest));
 	$job = zfsmScheduleFollowed($zdataset, $jobs, 'zfsmScheduleCopiesUnder');
-	if (!zfsmScheduleCopiesSame(array('dest' => $dest, 'server' => $server), $job)) return $repeats;
+	if (!zfsmScheduleCopiesSame(array('dest' => $dest, 'server' => $server), $job) || zfsmScheduleRootOut($job, $zdataset)) return $repeats;
 	$listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT, array('-d', '1', $zdataset));
 	$row = zfsmScheduleListed($listed)[0][$zdataset] ?? null;
 	if ($row === null || $row[2] === null) return null;
