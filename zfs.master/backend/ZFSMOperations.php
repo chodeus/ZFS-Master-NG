@@ -600,7 +600,7 @@ function zfsmCreateProblems($zdataset, $unowned, $readonly) {
 	return $problems;
 }
 
-// $made: whether $zdataset exists afterwards, a 'Created, but' failure included.
+// $made: whether this call created $zdataset, a 'Created, but' failure included.
 function createDataset($zdataset, $zoptions, &$made = false) {
 	$made = false;
 	if (!zfsmValidDatasetName($zdataset)) return zfsmFailure($zdataset, 'Invalid dataset name');
