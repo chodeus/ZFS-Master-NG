@@ -136,15 +136,15 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', s
 const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
   copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['a"<b>'], servers_error: '<i>unread</i>', inherited: 'y', skipped: ''}});
 const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
-assert.ok(words(schedules) < 250 && words(encrypted) < 170, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
+assert.ok(words(schedules) < 320 && words(encrypted) < 200, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
 // A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
-const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
+const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'custom-times', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
 const guides = (schedules + encrypted).match(/<a [^>]*>Guide<\/a>/g);
 for (const guide of guides) {
   const [, section] = guide.match(/^<a href="https:\/\/github\.com\/chodeus\/ZFS-Master-NG\/wiki\/Schedules#([a-z-]+)" target="_blank" rel="noopener noreferrer">Guide<\/a>$/) || [];
   assert.ok(sections.includes(section), `${guide}: opens a section of the guide in a new tab, which can't reach back to this page`);
 }
-assert.equal(guides.length, 10, 'Snapshots to keep three times, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line and Send');
+assert.equal(guides.length, 13, 'Snapshots to keep and Cron line three times each, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line and Send');
 // A warning opens each dialog: amber, its fact and what that does as text, and Guide to its section of the wiki's Warnings page.
 const warning = {fact: 'tank/<i>x</i> is Read Only', impact: 'Scheduled snapshots and copies skip it', guide: 'read-only'};
 const box = id => '<div id="' + id + '" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> tank/&lt;i&gt;x&lt;/i&gt; is Read Only</b>'
@@ -156,8 +156,9 @@ assert.ok(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], 
   copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'y', skipped: ''}})
   .startsWith('<div style="text-align:left"><p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>tank/&lt;i&gt;x&lt;/i&gt; is gone.</b></p>'), 'and why not, as text, of one gone or unread');
 const hinted = (html, prefix, row, label, text, section) => assert.match(html, new RegExp('<p id="' + prefix + '-' + row + '-row"[^>]*><label[^>]*>' + label + ':<input [^>]*aria-describedby="' + prefix + '-' + row
-  + '-hint"></label><span id="' + prefix + '-' + row + '-hint"[^>]*>' + text.replace(/[.()]/g, '\\$&') + ' <a [^>]*#' + section + '"[^>]*>Guide</a></span></p>'), `${prefix}: ${label}'s hint shows and hides with its row, and its box names it`);
+  + '-hint"></label><span id="' + prefix + '-' + row + '-hint"[^>]*>' + text.replace(/[.()*]/g, '\\$&') + ' <a [^>]*#' + section + '"[^>]*>Guide</a></span></p>'), `${prefix}: ${label}'s hint shows and hides with its row, and its box names it`);
 for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'keep', 'Snapshots to keep', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep');
+for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'cron', 'Cron line', 'Minute, hour, day of the month, month and day of the week, as in the User Scripts plugin\'s Custom schedule: <code>*/15 * * * *</code> runs every 15 minutes.', 'custom-times');
 for (const [html, prefix] of [[schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'copy-keeps', 'Copy Keeps', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps');
 assert.match(schedules, new RegExp('<p id="zfsm-copies-under-row"[^>]*><label[^>]*>Copy Under:<input [^>]*aria-describedby="zfsm-copies-under-hint"></label><span id="zfsm-copies-under-hint">'
   + '<span id="zfsm-copies-under-here"[^>]*>A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data\\. <a [^>]*#replication"[^>]*>Guide</a></span>'

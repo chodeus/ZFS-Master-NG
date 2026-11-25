@@ -6,7 +6,7 @@ function zfsmScheduleDialogHtml(preview) {
 	const esc = zfsmEscape;
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
 	const copies = preview.copies;
-	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week']];
+	const choices = [['default', 'Default'], ['none', 'None'], ['hourly', 'Every hour'], ['days', 'On days of the week'], ['cron', 'Custom (cron)']];
 	const skipped = preview.warning ? zfsmWarningHtml(preview.warning, 'zfsm-schedules-skipped')
 		: preview.skipped ? '<p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>'+esc(preview.skipped)+'.</b></p>' : '';
 	const unsent = copies.skipped ? '<p id="zfsm-copies-skipped" style="margin:.5em 0"><b>Replication as saved: '+esc(copies.skipped)+'.</b></p>' : '';
@@ -39,7 +39,7 @@ function zfsmScheduleDialogSync(root) {
 	const server = root.querySelector('#zfsm-copies-server');
 	const here = !server || server.value === '';
 	const copies = zfsmRepeatSync(root, 'zfsm-copies', here);
-	const repeats = copies === 'hourly' || copies === 'days';
+	const repeats = zfsmRepeats(copies);
 	show('#zfsm-copies-none', copies === 'none');
 	show('#zfsm-copies-default', copies === 'default');
 	show('#zfsm-copies-under-row', repeats);
