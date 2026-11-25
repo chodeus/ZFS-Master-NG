@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026.11.25.1 (beta)
+
+**Schedules**
+
+- Schedules can run on a cron line, such as `0 3 1 * *`: pick Custom (cron)
+- Every Dataset settings can leave datasets out by name, under Leave Out
+- Schedules and Replicate warn of read-only, legacy-mounted and Sanoid/Syncoid datasets
+- Replicate repeats of those datasets stop with one notification; Save refuses new ones
+- A scheduled run is skipped and logged while the one before still goes
+
+**Replicate**
+
+- An encrypted dataset can be sent decrypted: pick Decrypted under Send
+- A new decrypted copy on another server needs this version there
+- A repeat can make its copy again if it is gone
+- A copy here that no longer matches can be renamed aside and sent again
+- Replicate shows why it can't send a copy, with a Guide link
+
+**Fixes**
+
+- Save refuses two schedules whose copies would get the same name
+- Scheduled runs wait while an update installs, from the update after this one
+
+**After going back to an older version**
+
+- Custom (cron) schedules wait until you update; Settings counts them as records it can't use
+- Leave Out is ignored, so Every Dataset settings take every dataset again
+- If the copy is gone and Replace are ignored, so those runs stop as before
+
 ## 2026.11.20.1 (beta)
 
 **Copies to another server**
