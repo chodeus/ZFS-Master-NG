@@ -320,8 +320,9 @@ switch ($check) {
 		foreach (array('Snapshot Every Dataset' => '<select id="zfsm-snapsched-every">', 'Snapshots To Keep' => 'id="zfsm-snapsched-keep"', 'Replicate Every Dataset' => '<select id="zfsm-copysched-every">', 'Copy Under' => 'id="zfsm-copysched-under"', 'Copy Keeps' => 'id="zfsm-copysched-copy-keeps"') as $label => $control) {
 			if (!$row_has($label, $control)) { fwrite(STDERR, "settings page lost the $label row\n"); exit(1); }
 		}
-		// Each Every Dataset row's Days, all seven ticked while it is Off (zfsmScheduleShown).
+		// Each Every Dataset row's Days, all seven ticked while it is Off (zfsmScheduleShown), and an empty Cron Line.
 		foreach (array('zfsm-snapsched', 'zfsm-copysched') as $prefix) {
+			if (!$row_has('Cron Line', '<input type="text" id="'.$prefix.'-cron" maxlength="255" placeholder="*/15 * * * *" value="">')) { fwrite(STDERR, "settings page lost the Cron Line of $prefix\n"); exit(1); }
 			if (!$row_has('Days', '<span id="'.$prefix.'-days" role="group" aria-label="Days">') || preg_match_all('#<input type="checkbox" class="'.$prefix.'-day" value="[0-6]" checked> (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)</label>#', $rendered) !== 7) {
 				fwrite(STDERR, "settings page lost the Days of $prefix, or a day is not ticked\n"); exit(1);
 			}
@@ -364,6 +365,26 @@ switch ($check) {
 		if (strpos($html, '<input type="text" id="zfsm-copysched-copy-keeps" maxlength="40" placeholder="same as source" value="30d 12m">') === false) { fwrite(STDERR, "settings page does not show Copy Keeps as saved\n"); exit(1); }
 		break;
 
+	case 'settings_cron':
+		// Each Every Dataset's Custom (cron) shows as saved, with its Cron Line, so its Save sends it back.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$schedules = '/boot/config/plugins/zfs.master/schedules.json';
+		$every = array('server' => '', 'every' => 'cron', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
+		file_put_contents($schedules, json_encode(array(array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '', 'cron' => '*/15 * * * *') + $every,
+			array('id' => '1a1b2c3d', 'dataset' => '', 'dest' => 'backup/', 'cron' => '5 3 1 * *') + $every)));
+		try {
+			$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			unlink($schedules);
+		}
+		foreach (array('zfsm-snapsched' => '*/15 * * * *', 'zfsm-copysched' => '5 3 1 * *') as $prefix => $line) {
+			$select = preg_match('#<select id="'.$prefix.'-every">.*?</select>#s', $html, $found) === 1 ? $found[0] : '';
+			if (strpos($select, "<option value='cron' selected>Custom (cron)</option>") === false || strpos($html, '<input type="text" id="'.$prefix.'-cron" maxlength="255" placeholder="*/15 * * * *" value="'.$line.'">') === false) {
+				fwrite(STDERR, "settings page does not show $prefix Custom (cron) as saved\n"); exit(1);
+			}
+		}
+		break;
 	case 'settings_leave_out':
 		// Each Every Dataset's Leave Out shows as saved, so its Save sends it back.
 		$_SERVER['REQUEST_METHOD'] = 'GET';

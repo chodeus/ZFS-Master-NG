@@ -21,16 +21,16 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
   + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><form><input name="replica_keep"><input type="hidden" name="replica_keep_rules" value="24 7d 4w"><span id="zfsm-replica-keep-warning"></span></form>'
   + '<input name="snap_prefix" value="auto-"><input name="snap_pattern"><span id="zfsm-snap-name-warning"></span><select name="snap_utc"><option value="0">Local</option><option value="1" selected>UTC</option></select>'
-  + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option></select></dd>'
+  + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option></select></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
-  + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd>'
+  + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd><dt>Cron Line:</dt><dd><input id="zfsm-snapsched-cron" value=""></dd>'
   + '<dt>Snapshots To Keep:</dt><dd><input id="zfsm-snapsched-keep" value="3"></dd><dt>Leave Out:</dt><dd><input id="zfsm-snapsched-leave-out" value=""></dd>'
   + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-snapsched-save"> <span id="zfsm-snapsched-status"></span></dd>'
-  + '<dt>Replicate Every Dataset:</dt><dd><select id="zfsm-copysched-every"><option value="off">Off</option><option value="hourly" selected>Every hour</option><option value="days">On days</option></select></dd>'
+  + '<dt>Replicate Every Dataset:</dt><dd><select id="zfsm-copysched-every"><option value="off">Off</option><option value="hourly" selected>Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option></select></dd>'
   + '<dt>Server:</dt><dd><select id="zfsm-copysched-server"><option value="" selected>This server</option><option value="nas">nas</option></select></dd>'
   + '<dt>Copy Under:</dt><dd><input id="zfsm-copysched-under" value="backup"></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-copysched-days"><input type="checkbox" class="zfsm-copysched-day" value="3" checked><input type="checkbox" class="zfsm-copysched-day" value="5"></span></dd>'
-  + '<dt>Starts At:</dt><dd><input id="zfsm-copysched-time" value="02:30"></dd><dt>Snapshots To Keep:</dt><dd><input id="zfsm-copysched-keep" value="7d"></dd>'
+  + '<dt>Starts At:</dt><dd><input id="zfsm-copysched-time" value="02:30"></dd><dt>Cron Line:</dt><dd><input id="zfsm-copysched-cron" value=""></dd><dt>Snapshots To Keep:</dt><dd><input id="zfsm-copysched-keep" value="7d"></dd>'
   + '<dt>Copy Keeps:</dt><dd><input id="zfsm-copysched-copy-keeps" value=" 30D "></dd><dt>Leave Out:</dt><dd><input id="zfsm-copysched-leave-out" value=" appdata, backup_* "></dd>'
   + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-copysched-save"> <span id="zfsm-copysched-status"></span></dd></dl>'
   + '<span id="zfsm-schedules"><span>tank/data to backup/data</span></span><span id="zfsm-schedules-status"></span></body>',
@@ -265,16 +265,24 @@ assert.deepEqual({...remote.data}, {cmd: 'schedulekeepchange', id: '0b0b0b0b', k
 remote.done({schedules_html: 'saved'});
 assert.deepEqual([text('zfsm-schedules-status'), text('zfsm-schedules')], ['', 'saved'], 'the list it answers replaces it, and the refusal clears');
 
-// Snapshot Every Dataset: Off shows only its own row, Every hour adds Keep and Leave Out, On days adds Days and Starts At too; each row with its name.
-const shown = () => ['zfsm-snapsched-days', 'zfsm-snapsched-time', 'zfsm-snapsched-keep', 'zfsm-snapsched-leave-out'].map(id => {
+// Snapshot Every Dataset: Off shows only its own row, Every hour adds Keep and Leave Out, On days Days and Starts At too, Custom (cron) Cron Line
+// in place of those two; each row with its name.
+const shown = () => ['zfsm-snapsched-days', 'zfsm-snapsched-time', 'zfsm-snapsched-keep', 'zfsm-snapsched-leave-out', 'zfsm-snapsched-cron'].map(id => {
   const dd = window.document.getElementById(id).closest('dd');
   return [dd.style.display, dd.previousElementSibling.style.display].join('/');
 });
-assert.deepEqual(shown(), ['none/none', 'none/none', 'none/none', 'none/none'], 'Off on load shows none of its other rows');
+assert.deepEqual(shown(), ['none/none', 'none/none', 'none/none', 'none/none', 'none/none'], 'Off on load shows none of its other rows');
 $('#zfsm-snapsched-every').val('days').trigger('change');
-assert.deepEqual(shown(), ['/', '/', '/', '/'], 'On days shows them all');
+assert.deepEqual(shown(), ['/', '/', '/', '/', 'none/none'], 'On days shows all but Cron Line');
 $('#zfsm-snapsched-every').val('hourly').trigger('change');
-assert.deepEqual(shown(), ['none/none', 'none/none', '/', '/'], 'Every hour shows Keep and Leave Out only');
+assert.deepEqual(shown(), ['none/none', 'none/none', '/', '/', 'none/none'], 'Every hour shows Keep and Leave Out only');
+$('#zfsm-snapsched-every').val('cron').trigger('change');
+assert.deepEqual(shown(), ['none/none', 'none/none', '/', '/', '/'], 'Custom (cron) shows Cron Line, Keep and Leave Out');
+$('#zfsm-snapsched-cron').val('*/15 * * * *');
+window.zfsmEverySave('zfsm-snapsched', 'schedulesnapshots');
+const cron = posts.pop();
+assert.deepEqual({...cron.data}, {cmd: 'schedulesnapshots', every: 'cron', time: '*/15 * * * *', days: '1,0', keep: '3', leave_out: ''}, 'its Save sends the Cron Line as the time');
+cron.done({said: 'Saved', schedules_html: '<span>Snapshot Every Dataset</span>'});
 const color = () => window.document.getElementById('zfsm-snapsched-status').style.color;
 // Save sends what the rows say, the ticked days in their order; it is off while it saves, and the answer's list replaces Settings'.
 $('#zfsm-snapsched-every').val('days').trigger('change');
@@ -298,11 +306,11 @@ posts.pop().done({succeeded: {}, failed: {request: 'Unknown or missing command'}
 assert.deepEqual([$('#zfsm-snapsched-save').prop('disabled'), text('zfsm-snapsched-status'), text('zfsm-schedules')], [false, 'Unknown or missing command', 'z'], 'as does a backend failure');
 
 // Replicate Every Dataset: its own rows by its prefix, Copy Under with Keep; on load as saved (Every hour), and Save sends Copy Under too.
-const copyShown = () => ['zfsm-copysched-server', 'zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep', 'zfsm-copysched-copy-keeps', 'zfsm-copysched-leave-out'].map(id => window.document.getElementById(id).closest('dd').style.display);
-assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', ''], 'Every hour on load shows Server, Copy Under, Keep, Copy Keeps and Leave Out only');
+const copyShown = () => ['zfsm-copysched-server', 'zfsm-copysched-under', 'zfsm-copysched-days', 'zfsm-copysched-time', 'zfsm-copysched-keep', 'zfsm-copysched-copy-keeps', 'zfsm-copysched-leave-out', 'zfsm-copysched-cron'].map(id => window.document.getElementById(id).closest('dd').style.display);
+assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', '', 'none'], 'Every hour on load shows Server, Copy Under, Keep, Copy Keeps and Leave Out only');
 $('#zfsm-copysched-every').val('off').trigger('change');
-assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
-assert.deepEqual(shown(), ['/', '/', '/', '/'], 'and leaves Snapshot Every Dataset\'s rows as they were');
+assert.deepEqual(copyShown(), ['none', 'none', 'none', 'none', 'none', 'none', 'none', 'none'], 'Off shows none of its other rows');
+assert.deepEqual(shown(), ['/', '/', '/', '/', 'none/none'], 'and leaves Snapshot Every Dataset\'s rows as they were');
 $('#zfsm-copysched-every').val('days').trigger('change');
 $('#zfsm-schedules').html('<span>tank/a to backup/a<input type="button" id="zfsm-row-remove"></span>');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
@@ -314,11 +322,17 @@ copies.done({said: 'Saved: a copy of each of 4 dataset(s) under backup', schedul
 assert.deepEqual([$('#zfsm-copysched-save').prop('disabled'), $('#zfsm-snapsched-save').prop('disabled'), text('zfsm-copysched-status'), text('zfsm-schedules')], [false, false, 'Saved: a copy of each of 4 dataset(s) under backup', 'w']);
 // Another server: Copy Keeps is hidden, and none is sent, as its Keep Replicas decides; This server shows it again.
 $('#zfsm-copysched-server').val('nas').trigger('change');
-assert.deepEqual(copyShown(), ['', '', '', '', '', 'none', ''], 'a server hides Copy Keeps, not Leave Out');
+assert.deepEqual(copyShown(), ['', '', '', '', '', 'none', '', 'none'], 'a server hides Copy Keeps, not Leave Out');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 assert.deepEqual({...posts.pop().data}, {cmd: 'schedulecopies', every: 'days', time: '02:30', days: '3', keep: '7d', under: 'backup', server: 'nas', copy_keeps: '', leave_out: ' appdata, backup_* '},
   'Save sends the server, Leave Out and no Copy Keeps');
 $('#zfsm-copysched-server').val('').trigger('change');
 assert.deepEqual(copyShown()[5], '', 'This server shows it again');
+$('#zfsm-copysched-every').val('cron').trigger('change');
+$('#zfsm-copysched-cron').val('5 3 1 * *');
+assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', '', ''], 'Custom (cron) shows Cron Line in place of Days and Starts At');
+window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
+assert.deepEqual({...posts.pop().data}, {cmd: 'schedulecopies', every: 'cron', time: '5 3 1 * *', days: '3', keep: '7d', under: 'backup', server: '', copy_keeps: ' 30D ', leave_out: ' appdata, backup_* '},
+  'and its Save sends the Cron Line as the time');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

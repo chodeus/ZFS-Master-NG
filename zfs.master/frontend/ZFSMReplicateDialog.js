@@ -20,7 +20,7 @@ function zfsmReplicateHtml(options, zdataset) {
 		+'<option value="">Raw: the copy stays encrypted with this dataset\'s key</option><option value="1">Decrypted: the copy is plain, or takes the key of the dataset it goes into</option></select></label>'
 		+zfsmHint('zfsm-replicate-send-hint', 'Decrypted needs this dataset\'s key loaded.', 'encrypted-datasets')+'</p>';
 	const say = text => '<p style="margin:.5em 0">'+text+'</p>';
-	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week']], {}, true);
+	html += zfsmRepeatHtml('zfsm-replicate', 'Repeat:', [['', 'Once'], ['hourly', 'Every hour'], ['days', 'On days of the week'], ['cron', 'Custom (cron)']], {}, true);
 	html += '<p id="zfsm-replicate-remake-row" style="margin:.5em 0;display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again (sends everything)</label></p>';
 	html += '<p id="zfsm-replicate-replace-row" style="margin:.5em 0'+(server === '' ? '' : ';display:none')+'"><label><input id="zfsm-replicate-replace" type="checkbox"> Replace a copy that no longer matches (it is renamed, not destroyed)</label></p>';
 	html += '<div id="zfsm-replicate-plan" aria-live="polite"></div>';

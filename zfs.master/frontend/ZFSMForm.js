@@ -29,9 +29,10 @@ function zfsmFormDialog(options) {
 }
 
 // Repeat's select of choices ([value, text]), then after, then its rows (zfsmRepeatSync), ids starting with prefix, with copies Copy Keeps'
-// too; start: what they show first (zfsmScheduleDialogFields, zfsmScheduleDialogCopies' copy_keeps too), else the first choice at 00:00 daily.
+// too; start: what they show first (zfsmScheduleDialogFields, a cron line as time; zfsmScheduleDialogCopies' copy_keeps), else the first choice at 00:00 daily.
 function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false, after = '') {
 	const esc = zfsmEscape;
+	const cron = start.every === 'cron';
 	const ticked = start.days || [0, 1, 2, 3, 4, 5, 6];
 	// Monday first; all seven ticked runs every day.
 	const days = [1, 2, 3, 4, 5, 6, 0].map(day => '<label style="display:inline-block;margin-right:.8em;white-space:nowrap"><input type="checkbox" class="'+prefix+'-day" value="'+day+'"'+(ticked.includes(day) ? ' checked' : '')+'> '
@@ -39,19 +40,27 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false, afte
 	const options = choices.map(([value, text]) => '<option value="'+value+'"'+(value === start.every ? ' selected' : '')+'>'+text+'</option>').join('');
 	return '<p style="margin:.5em 0"><label style="display:block">'+label+'<select id="'+prefix+'-every" style="width:100%">'+options+'</select></label></p>'+after
 		+'<div id="'+prefix+'-days-row" role="group" aria-label="Days" style="margin:.5em 0;display:none">Days:<br>'+days+'</div>'
-		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at (this server\'s time):<input id="'+prefix+'-time" type="time" value="'+esc(start.time || '00:00')+'" style="width:100%"></label></p>'
+		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at (this server\'s time):<input id="'+prefix+'-time" type="time" value="'+esc(cron ? '00:00' : start.time || '00:00')+'" style="width:100%"></label></p>'
+		+'<p id="'+prefix+'-cron-row" style="margin:.5em 0;display:none"><label style="display:block">Cron line:<input id="'+prefix+'-cron" type="text" maxlength="255" style="width:100%" placeholder="*/15 * * * *" value="'+esc(cron ? start.time : '')+'" aria-describedby="'+prefix+'-cron-hint"></label>'
+		+zfsmHint(prefix+'-cron-hint', 'Minute, hour, day of the month, month and day of the week, as in the User Scripts plugin\'s Custom schedule: <code>*/15 * * * *</code> runs every 15 minutes.', 'custom-times')+'</p>'
 		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'" aria-describedby="'+prefix+'-keep-hint"></label>'
 		+zfsmHint(prefix+'-keep-hint', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep')+'</p>'
 		+(copies ? '<p id="'+prefix+'-copy-keeps-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Keeps:<input id="'+prefix+'-copy-keeps" type="text" maxlength="40" style="width:100%" placeholder="same as source" value="'+esc(start.copy_keeps)+'" aria-describedby="'+prefix+'-copy-keeps-hint"></label>'
 			+zfsmHint(prefix+'-copy-keeps-hint', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps')+'</p>' : '');
 }
 
-// Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Snapshots to keep for either repeat, and Copy Keeps
-// with it while the copy is here (local). Its value.
+// Repeat's choices that run on a schedule: ZFSM_SCHEDULE_PERIODS' keys (ZFSMSchedule.php).
+function zfsmRepeats(every) {
+	return every === 'hourly' || every === 'days' || every === 'cron';
+}
+
+// Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Cron line for Custom (cron), Snapshots to keep for
+// any repeat, and Copy Keeps with it while the copy is here (local). Its value.
 function zfsmRepeatSync(root, prefix, local = true) {
 	const every = root.querySelector('#'+prefix+'-every').value;
 	const show = (id, shown) => { root.querySelector('#'+prefix+id).style.display = shown ? '' : 'none'; };
-	const repeats = every === 'hourly' || every === 'days';
+	const repeats = zfsmRepeats(every);
+	show('-cron-row', every === 'cron');
 	show('-keep-row', repeats);
 	show('-days-row', every === 'days');
 	show('-time-row', every === 'days');
@@ -61,10 +70,11 @@ function zfsmRepeatSync(root, prefix, local = true) {
 	return every;
 }
 
-// What Repeat's rows hold, as the server reads them; Copy Keeps only while it shows, else '' (none).
+// What Repeat's rows hold, as the server reads them: a cron line as time; Copy Keeps only while it shows, else '' (none).
 function zfsmRepeatChoices(root, prefix) {
 	const copy = root.querySelector('#'+prefix+'-copy-keeps-row');
-	return {every: root.querySelector('#'+prefix+'-every').value, time: root.querySelector('#'+prefix+'-time').value,
+	const every = root.querySelector('#'+prefix+'-every').value;
+	return {every: every, time: root.querySelector('#'+prefix+(every === 'cron' ? '-cron' : '-time')).value,
 		days: Array.from(root.querySelectorAll('.'+prefix+'-day:checked'), box => box.value).join(','), keep: root.querySelector('#'+prefix+'-keep').value.trim(),
 		copy_keeps: copy && copy.style.display !== 'none' ? root.querySelector('#'+prefix+'-copy-keeps').value.trim() : ''};
 }
