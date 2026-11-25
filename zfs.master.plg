@@ -6,13 +6,30 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.25.1">
-<!ENTITY md5 "2351c49269df37011bb710ad98c3dacd">
+<!ENTITY version "2026.11.26.1">
+<!ENTITY md5 "c42142c1908d18386a0b74d8553b03d0">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.26.1
+**Schedules**
+
+- Schedules can run each time the array starts: pick When the array starts
+- A start in Maintenance mode runs none of them
+
+**Fixes**
+
+- A new dataset gets nobody:users 777, as Unraid's Add Share gives a share, so share users can write to it over SMB
+- A dataset made before keeps 755: run Tools &gt; New Permissions on its share, or `chmod 777` on its folder
+- A Convert that stops part-way leaves the new dataset with the folder's owner and permissions
+- A Convert whose new dataset can't get the share owner removes it and puts the folder back, instead of leaving it renamed aside
+
+**After going back to an older version**
+
+- When the array starts schedules wait until you update; Settings counts them as records it can't use
 
 ###2026.11.25.1
 **Schedules**
