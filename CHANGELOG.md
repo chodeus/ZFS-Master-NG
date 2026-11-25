@@ -2,34 +2,32 @@
 
 ## Unreleased
 
-- feat(schedules): warn of datasets schedules leave out, and leave them out of Replicate repeats
-- refactor(schedules): move what a schedule covers and cron's run into their own files
-- refactor(frontend): move the Schedules and Replicate dialogs out of ZFSMImpact.js
-- fix(install): scripts wait while an update replaces the plugin's files
-- perf(replicate): a run asks a server's area once
-- feat(replicate): mark copies received decrypted and update each as it was made
-- feat(replicate): Send picks Raw or Decrypted for an encrypted dataset
-- fix(schedules): a rename's Leave Out note says only what Leave Out does
-- fix(schedules): a rename's Leave Out note names the dataset last
-- fix(schedules): a rename into or out of Leave Out says so
-- feat(schedules): Leave Out names datasets the every-dataset defaults skip
-- fix(replicate): a scheduled run that made datasets tells of them while its schedule works
-- fix(replicate): a remade copy's run names the datasets it made, and uses one another run made first
-- feat(replicate): a repeat can make its copy again when it is gone
-- fix(schedule): refuse two Copy Unders whose copies get one name
-- refactor(replicate): take the base lookup and server check out of the copy step
-- fix(replicate): leave a copy that a schedule names for another dataset
-- fix(replicate): replace only a copy with nothing below it, and say when it was only ahead
-- feat(replicate): a copy that no longer matches can be renamed aside and sent again
-- refactor(replicate): give the plan's ticks one owner
-- refactor(admin): read every Replicate tick on both routes
-- refactor(replicate): one choices array for the ticks, and the run in steps
-- feat(replicate): show the dialog's refusals as amber warnings with a Guide
-- fix(schedules): a clock set back under half an hour counts at once too
-- feat(schedules): skip a repeat's run while its run before still goes
-- feat(schedules): run times as cron's five sets, and a Custom (cron) kind
-- feat(schedules): log a snapshot run's overlap for an hour, aged from each run's start
-- feat(schedules): offer Custom (cron) in Schedules, Replicate and Settings
+**Schedules**
+
+- Schedules can run on a cron line, such as `0 3 1 * *`: pick Custom (cron)
+- Every Dataset settings can leave datasets out by name, under Leave Out
+- Schedules and Replicate warn of read-only, legacy-mounted and Sanoid/Syncoid datasets
+- Replicate repeats of those datasets stop with one notification; Save refuses new ones
+- A scheduled run is skipped and logged while the one before still goes
+
+**Replicate**
+
+- An encrypted dataset can be sent decrypted: pick Decrypted under Send
+- A new decrypted copy on another server needs this version there
+- A repeat can make its copy again if it is gone
+- A copy here that no longer matches can be renamed aside and sent again
+- Replicate shows why it can't send a copy, with a Guide link
+
+**Fixes**
+
+- Save refuses two schedules whose copies would get the same name
+- Scheduled runs wait while an update installs, from the update after this one
+
+**After going back to an older version**
+
+- Custom (cron) schedules wait until you update; Settings counts them as records it can't use
+- Leave Out is ignored, so Every Dataset settings take every dataset again
+- If the copy is gone and Replace are ignored, so those runs stop as before
 
 ## 2026.11.20.1 (beta)
 
