@@ -255,13 +255,14 @@ function zfsmScheduleSnapshotKeep($pool, $taken, $keep) {
 // Cron's run of a snapshot schedule ($jobs: all of them, which share the datasets out): a snapshot of every dataset it covers, then its
 // Keep; logged, and given to $notify. 0, or 1 after a problem.
 function zfsmScheduleSnapshotRun($job, $jobs, $cfg, $now, $notify, $wait = ZFSM_SCHEDULE_COVER_WAIT) {
-	return zfsmScheduleLockedRun($job, 'ZFS Snapshot', 'Scheduled snapshots not taken: ', $notify, function() use ($job, $jobs, $cfg, $now, $wait) {
-		return zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait);
+	return zfsmScheduleLockedRun($job, 'ZFS Snapshot', 'Scheduled snapshots not taken: ', $notify, function() use ($job, $jobs, $cfg, $now, $notify, $wait) {
+		list($text, $problem) = zfsmScheduleSnapshotsTaken($job, $jobs, $cfg, $now, $wait);
+		return zfsmScheduleSnapshotTell($job, $text, $problem, $notify, 'ZFS Snapshot');
 	});
 }
 
-// $run of $job (array(text, problem) as zfsmScheduleSnapshotTell takes them) under the job's lock; $not starts what a run that can't
-// start says. One at a time: a run still going at the next one's time (a long send, a hung pool) stops that one (zfsmScheduleLockedSkip).
+// $run of $job (it tells its own result, and gives 0, or 1 after a problem) under the job's lock; $not starts what a run that can't
+// start says. One at a time: a run still going at the next one's time stops that one (zfsmScheduleLockedSkip).
 function zfsmScheduleLockedRun($job, $title, $not, $notify, $run, $grace = 0) {
 	$file = zfsmJobDir('schedule').'/'.$job['id'].'.lock';
 	$lock = zfsmJobLock($file);
@@ -270,21 +271,22 @@ function zfsmScheduleLockedRun($job, $title, $not, $notify, $run, $grace = 0) {
 	// Its time is this run's start, which the next start reads.
 	@touch($file);
 	try {
-		list($text, $problem) = $run();
+		return $run();
 	} finally {
 		zfsmJobUnlock($lock);
 	}
-	return zfsmScheduleSnapshotTell($job, $text, $problem, $notify, $title);
 }
 
 // A start while the run before still goes: only logged until that run, which started at $file's time, has gone on $grace seconds.
+// In whole hours, so a daily schedule's start a few seconds short of a day counts the day; a clock set back counts at once.
 function zfsmScheduleLockedSkip($job, $title, $not, $notify, $file, $grace) {
 	$age = time() - (int)@filemtime($file);
-	if ($age < $grace) {
+	$hours = (int)round($age / 3600);
+	if ($age >= 0 && $hours * 3600 < $grace) {
 		zfsmLog('Schedule '.$job['id'].': '.$not.'the run before is still going', LOG_NOTICE);
 		return 0;
 	}
-	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 ? ', '.intdiv($age, 3600).' hour(s) after it started' : ''), true, $notify, $title);
+	return zfsmScheduleSnapshotTell($job, $not.'the run before is still going'.($grace > 0 && $age >= 0 ? ', '.$hours.' hour(s) after it started' : ''), true, $notify, $title);
 }
 
 // What a run took and kept, and its problem: null when zfs read every pool and the default had none to take, or it only left out.
