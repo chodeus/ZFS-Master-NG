@@ -113,6 +113,8 @@ date_default_timezone_set('UTC');
 
 $hourly = function($minute) { return array('every' => 'hourly', 'minute' => $minute, 'hour' => 0, 'days' => range(0, 6)); };
 $days = function($hour, $days) { return array('every' => 'days', 'minute' => 0, 'hour' => $hour, 'days' => $days); };
+$start = array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6));
+same(array(array(), array(), array(), array(), array()), zfsmScheduleSets($start), 'when the array starts has no times');
 foreach (array(
 	array(true, $cron('0 0 * * 1'), $cron('0 0 * * 1,3'), 'two lines that share a weekday'),
 	array(false, $cron('0 0 * * 1'), $cron('0 0 * * 2'), 'two lines on other weekdays'),
@@ -130,6 +132,9 @@ foreach (array(
 	array(false, $cron('0 1 * * *'), $cron('0 2 * * *'), 'one minute in other hours'),
 	array(true, $hourly(0), $days(3, array(2)), 'an hourly one and days at its minute'),
 	array(false, $days(3, array(2)), $days(4, array(2)), 'days at other hours'),
+	array(true, $start, $start, 'two when the array starts'),
+	array(false, $start, $hourly(0), 'when the array starts and every hour'),
+	array(false, $start, $cron('* * * * *'), 'when the array starts and every minute'),
 ) as list($meet, $a, $b, $what)) same(array($meet, $meet), array(zfsmScheduleSameTime($a, $b), zfsmScheduleSameTime($b, $a)), 'same time: '.$what);
 
 echo "schedule times tests passed\n";

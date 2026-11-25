@@ -104,6 +104,14 @@ unlink($work.'/cron-fail');
 same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were saved, but Unraid\'s crontab could not be rebuilt /', $failed['why']), strpos($failed['said'], 'Saved: a snapshot of each of 5 dataset(s) on the cron line 30 */6 * * *; it keeps')),
 	'saved while the crontab can\'t be rebuilt: no next run is said: '.$failed['said']);
 
+// When the array starts, in place: no line in the cron file, nor a next run, and a copy of a dataset it takes then is refused.
+same(array('Saved: a snapshot of each of 5 dataset(s) when the array starts; it keeps the newest 2 scheduled snapshots of each dataset', array('every' => 'start', 'minute' => 0, 'hour' => 0), 0, true,
+	'Snapshot Every Dataset (when the array starts) starts then too; pick another Repeat for one of them', ''),
+	array(zfsmScheduleSnapshotSave('', 'start', '', '', 2, $cfg)['said'], array_intersect_key(zfsmScheduleRead()['valid'][$id], array_flip(array('every', 'minute', 'hour', 'cron'))),
+		substr_count((string)@file_get_contents(zfsmScheduleCronFile()), " run $id "), strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, when the array starts, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false,
+		zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'start', 'dest' => 'backup/new') + $copy), zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'days', 'minute' => 30, 'hour' => 4, 'dest' => 'backup/new') + $copy)),
+	'when the array starts, in place; a copy at :30, refused beside every hour at :30 above, is not now');
+
 // Saved again, in place: its id and minute stay, and Keep changes.
 same('Saved: a snapshot of each of 5 dataset(s) every hour at :30; it keeps all it takes', zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg)['said'], 'Keep changes in place');
 same(array_replace($every, array('id' => $id, 'keep' => 0)), zfsmScheduleRead()['valid'][$id], 'the same record');

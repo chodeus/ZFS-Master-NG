@@ -49,9 +49,9 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false, afte
 			+zfsmHint(prefix+'-copy-keeps-hint', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps')+'</p>' : '');
 }
 
-// Repeat's choices that run on a schedule: ZFSM_SCHEDULE_PERIODS' keys (ZFSMSchedule.php).
+// Repeat's choices that run: zfsmScheduleRepeats (ZFSMSchedule.php).
 function zfsmRepeats(every) {
-	return every === 'hourly' || every === 'days' || every === 'cron';
+	return every === 'hourly' || every === 'days' || every === 'cron' || every === 'start';
 }
 
 // Shows the rows that fit Repeat's choice: Days and Starts at for days of the week, Cron line for Custom (cron), Snapshots to keep for

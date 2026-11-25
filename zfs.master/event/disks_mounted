@@ -1,0 +1,3 @@
+#!/bin/bash
+# emhttpd waits for each event script: start the runs (scripts/schedule.php start) in a session of their own, and return.
+setsid -f /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php start </dev/null >/dev/null 2>&1

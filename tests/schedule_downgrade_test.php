@@ -127,6 +127,6 @@ $said = $run('heal');
 same(array(1, 1, 1), array($said[0], preg_match('~^Schedules: The schedules were saved, but Unraid\'s crontab could not be rebuilt \(~', $said[1]),
 	substr_count((string)@file_get_contents('/boot/config/plugins/zfs.master/schedules.cron'), ' run 5e1f0001 ')), 'with no update_cron here, the rebuild failing is said, exit 1, and the files are written');
 same(array(array(0, ''), 2), array($run('heal'), substr_count($logged(), 'Schedules: ')), 'the next heal has nothing to do');
-same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php heal'), $run('heal x'), 'heal takes nothing more');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal'), $run('heal x'), 'heal takes nothing more');
 
 echo "schedule_downgrade_test passed\n";
