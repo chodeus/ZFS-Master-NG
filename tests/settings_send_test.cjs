@@ -21,12 +21,12 @@ const {window} = new JSDOM('<!doctype html><body><span id="zfsm-send-key"></span
   + '<input id="zfsm-send-name"><input id="zfsm-send-host"><input id="zfsm-send-port" value="22"><span id="zfsm-send-found"></span>'
   + '<input name="replica_accept"><span id="zfsm-replica-accept-warning"></span><form><input name="replica_keep"><input type="hidden" name="replica_keep_rules" value="24 7d 4w"><span id="zfsm-replica-keep-warning"></span></form>'
   + '<input name="snap_prefix" value="auto-"><input name="snap_pattern"><span id="zfsm-snap-name-warning"></span><select name="snap_utc"><option value="0">Local</option><option value="1" selected>UTC</option></select>'
-  + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option></select></dd>'
+  + '<dl><dt>Snapshot Every Dataset:</dt><dd><select id="zfsm-snapsched-every"><option value="off" selected>Off</option><option value="hourly">Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option><option value="start">When the array starts</option></select></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-snapsched-days"><input type="checkbox" class="zfsm-snapsched-day" value="1" checked><input type="checkbox" class="zfsm-snapsched-day" value="2">'
   + '<input type="checkbox" class="zfsm-snapsched-day" value="0" checked></span></dd><dt>Starts At:</dt><dd><input id="zfsm-snapsched-time" value="04:00"></dd><dt>Cron Line:</dt><dd><input id="zfsm-snapsched-cron" value=""></dd>'
   + '<dt>Snapshots To Keep:</dt><dd><input id="zfsm-snapsched-keep" value="3"></dd><dt>Leave Out:</dt><dd><input id="zfsm-snapsched-leave-out" value=""></dd>'
   + '<dt>&nbsp;</dt><dd><input type="button" id="zfsm-snapsched-save"> <span id="zfsm-snapsched-status"></span></dd>'
-  + '<dt>Replicate Every Dataset:</dt><dd><select id="zfsm-copysched-every"><option value="off">Off</option><option value="hourly" selected>Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option></select></dd>'
+  + '<dt>Replicate Every Dataset:</dt><dd><select id="zfsm-copysched-every"><option value="off">Off</option><option value="hourly" selected>Every hour</option><option value="days">On days</option><option value="cron">Custom (cron)</option><option value="start">When the array starts</option></select></dd>'
   + '<dt>Server:</dt><dd><select id="zfsm-copysched-server"><option value="" selected>This server</option><option value="nas">nas</option></select></dd>'
   + '<dt>Copy Under:</dt><dd><input id="zfsm-copysched-under" value="backup"></dd>'
   + '<dt>Days:</dt><dd><span id="zfsm-copysched-days"><input type="checkbox" class="zfsm-copysched-day" value="3" checked><input type="checkbox" class="zfsm-copysched-day" value="5"></span></dd>'
@@ -283,6 +283,12 @@ window.zfsmEverySave('zfsm-snapsched', 'schedulesnapshots');
 const cron = posts.pop();
 assert.deepEqual({...cron.data}, {cmd: 'schedulesnapshots', every: 'cron', time: '*/15 * * * *', days: '1,0', keep: '3', leave_out: ''}, 'its Save sends the Cron Line as the time');
 cron.done({said: 'Saved', schedules_html: '<span>Snapshot Every Dataset</span>'});
+$('#zfsm-snapsched-every').val('start').trigger('change');
+assert.deepEqual(shown(), ['none/none', 'none/none', '/', '/', 'none/none'], 'When the array starts shows Keep and Leave Out only');
+window.zfsmEverySave('zfsm-snapsched', 'schedulesnapshots');
+const start = posts.pop();
+assert.deepEqual({...start.data}, {cmd: 'schedulesnapshots', every: 'start', time: '04:00', days: '1,0', keep: '3', leave_out: ''}, 'its Save sends When the array starts');
+start.done({said: 'Saved', schedules_html: '<span>Snapshot Every Dataset</span>'});
 const color = () => window.document.getElementById('zfsm-snapsched-status').style.color;
 // Save sends what the rows say, the ticked days in their order; it is off while it saves, and the answer's list replaces Settings'.
 $('#zfsm-snapsched-every').val('days').trigger('change');
@@ -334,5 +340,9 @@ assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', '', ''], 'Custom 
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 assert.deepEqual({...posts.pop().data}, {cmd: 'schedulecopies', every: 'cron', time: '5 3 1 * *', days: '3', keep: '7d', under: 'backup', server: '', copy_keeps: ' 30D ', leave_out: ' appdata, backup_* '},
   'and its Save sends the Cron Line as the time');
+$('#zfsm-copysched-every').val('start').trigger('change');
+assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', '', 'none'], 'When the array starts shows Server, Copy Under, Keep, Copy Keeps and Leave Out only');
+window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
+assert.equal(posts.pop().data.every, 'start', 'and its Save sends it');
 
 console.log('settings send tests passed on jQuery ' + window.$.fn.jquery);

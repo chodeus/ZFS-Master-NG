@@ -16,12 +16,17 @@ require_once __DIR__.'/ZFSMScheduleRun.php';
 
 define('ZFSM_SCHEDULE_SCRIPT', '/usr/local/emhttp/plugins/zfs.master/scripts/schedule.php');
 define('ZFSM_SCHEDULE_DAYS', array('Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'));
-// Each kind's shortest time between two runs, less by up to an hour across a summer-time change: every hour, days of the week, or a
-// cron line's, a minute at least (ZFSMScheduleTimes.php).
+// Each kind cron runs, with its shortest time between two runs, less by up to an hour across a summer-time change: every hour, days of
+// the week, or a cron line's, a minute at least (ZFSMScheduleTimes.php).
 define('ZFSM_SCHEDULE_PERIODS', array('hourly' => 3600, 'days' => 86400, 'cron' => 60));
 
-// Whether $every is a Repeat that runs; a dataset's None (ZFSMScheduleSnapshot.php) never does.
+// Whether $every is a Repeat that runs: on cron's times, or when the array starts (zfsmScheduleStartRuns); a dataset's None never does.
 function zfsmScheduleRepeats($every) {
+	return $every === 'start' || zfsmScheduleTimed($every);
+}
+
+// Whether cron runs $every, from a line in schedules.cron.
+function zfsmScheduleTimed($every) {
 	return is_string($every) && isset(ZFSM_SCHEDULE_PERIODS[$every]);
 }
 
@@ -198,19 +203,22 @@ function zfsmScheduleWhat($job) {
 // next minute on), so a change of summer time skips none.
 function zfsmScheduleRuns($job, $from, $until) {
 	$runs = array();
-	if (!zfsmScheduleRepeats($job['every'])) return $runs;
+	if (!zfsmScheduleTimed($job['every'])) return $runs;
 	$sets = zfsmScheduleSets($job);
 	for ($at = zfsmScheduleNextAt($sets, $from); $at !== null && $at < $until; $at = zfsmScheduleNextAt($sets, $at + max(0, ZFSM_SCHEDULE_PERIODS[$job['every']] - 7200))) $runs[] = $at;
 	return $runs;
 }
 
 // Why Snapshots Pattern gives one of $job's runs in the next two weeks the name of another snapshot it or a schedule in $jobs
-// sharing a dataset with it takes, so that run can't take its own; $first: Repeat's run at $now is one. '' when none does.
+// sharing a dataset with it takes (zfsmScheduleStartClash too), so that run can't take its own; $first: Repeat's run at $now is one.
+// '' when none does.
 function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	$until = $now + 14 * 86400 + 3600;
 	$named = $first ? array(zfsmNewSnapshotName($cfg, $now) => 'this run') : array();
 	foreach ($jobs as $other) {
 		if ($other['id'] === $job['id'] || !zfsmScheduleShare($job, $other, $jobs)) continue;
+		$start = zfsmScheduleStartClash($job, $other, $cfg, $now);
+		if ($start !== '') return $start;
 		foreach (zfsmScheduleRuns($other, $now, $until) as $at) $named[zfsmNewSnapshotName($cfg, $at)] = 'the run at '.date('D j M H:i', $at).' of '.zfsmScheduleWhat($other);
 	}
 	foreach (zfsmScheduleRuns($job, $now, $until) as $at) {
@@ -223,11 +231,21 @@ function zfsmScheduleClash($job, $jobs, $cfg, $now, $first) {
 	return '';
 }
 
-// Each line names only its schedule's id; None has none. '' with no schedules.
+// Why $job and $other, sharing a dataset, can give one snapshot name: one runs when the array starts, which can be in a minute the
+// other runs, and Snapshots Pattern has no seconds. '' when not.
+function zfsmScheduleStartClash($job, $other, $cfg, $now) {
+	if (($job['every'] === 'start') === ($other['every'] === 'start')) return '';
+	$minute = $now - $now % 60;
+	if (zfsmNewSnapshotName($cfg, $minute) !== zfsmNewSnapshotName($cfg, $minute + 1)) return '';
+	list($start, $timed) = $job['every'] === 'start' ? array('this schedule', zfsmScheduleWhat($other)) : array(zfsmScheduleWhat($other), 'this schedule');
+	return $start.' runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute '.$timed.' runs, both get one snapshot name';
+}
+
+// Each line names only its schedule's id; None and When the array starts have none. '' with no schedules.
 function zfsmScheduleCronText($jobs) {
 	$lines = array();
 	foreach ($jobs as $job) {
-		if (!zfsmScheduleRepeats($job['every'])) continue;
+		if (!zfsmScheduleTimed($job['every'])) continue;
 		$lines[] = zfsmScheduleCronFields($job).' '.ZFSM_SCHEDULE_SCRIPT.' run '.$job['id'];
 	}
 	return zfsmCronText('schedules', $lines);
@@ -248,6 +266,7 @@ function zfsmScheduleCron($jobs) {
 // Its days Monday first, as the dialog shows them.
 function zfsmScheduleWhen($job) {
 	if (!zfsmScheduleRepeats($job['every'])) return 'never';
+	if ($job['every'] === 'start') return 'when the array starts';
 	if ($job['every'] === 'cron') return 'on the cron line '.$job['cron'];
 	$minute = sprintf('%02d', $job['minute']);
 	if ($job['every'] === 'hourly') return 'every hour at :'.$minute;
@@ -268,9 +287,9 @@ function zfsmScheduleKeepText($job) {
 }
 
 // The page's $time ('13:30') and $days ('1,3,5'; 0 is Sunday) as a schedule's minute, hour and days: -1 and none when unread. For
-// cron, $time is the line, and the others stay as an hourly one's.
+// cron, $time is the line, and the others stay as an hourly one's, as When the array starts keeps them.
 function zfsmScheduleAt($every, $time, $days) {
-	if ($every === 'hourly') return array('minute' => 0, 'hour' => 0, 'days' => range(0, 6));
+	if ($every === 'hourly' || $every === 'start') return array('minute' => 0, 'hour' => 0, 'days' => range(0, 6));
 	if ($every === 'cron') return array('minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'cron' => zfsmScheduleCronLine($time));
 	$at = preg_match('/^([01][0-9]|2[0-3]):([0-5][0-9])$/D', $time, $parts) === 1 ? array((int)$parts[2], (int)$parts[1]) : array(-1, -1);
 	$days = preg_match('/^[0-6](,[0-6])*$/D', $days) === 1 ? array_values(array_unique(array_map('intval', explode(',', $days)))) : array();
@@ -344,10 +363,10 @@ function zfsmScheduleSame($jobs, $job) {
 	}
 	$named = zfsmScheduleSameName($jobs, $job);
 	if ($named !== '') return $named;
-	// An hourly $job's minute came from zfsmScheduleFreeMinute: a clash means none was free.
+	// An hourly $job's minute came from zfsmScheduleFreeMinute: a clash means none was free. When the array starts has no time to pick.
+	$pick = array('hourly' => ', and no minute of the hour is free for Every hour; pick On days of the week, or change that schedule', 'start' => '; pick another Repeat for one of them');
 	foreach ($jobs as $other) {
-		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too'
-			.($job['every'] === 'hourly' ? ', and no minute of the hour is free for Every hour; pick On days of the week, or change that schedule' : '; pick another time');
+		if (zfsmScheduleShare($job, $other, $jobs) && zfsmScheduleSameTime($job, $other)) return zfsmScheduleWhat($other).' ('.zfsmScheduleWhen($other).') starts then too'.($pick[$job['every']] ?? '; pick another time');
 	}
 	return '';
 }

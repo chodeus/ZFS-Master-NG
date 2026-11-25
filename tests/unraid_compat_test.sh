@@ -154,7 +154,7 @@ cp "$repo/tests/fixtures/bin/zfs" "$repo/tests/fixtures/bin/zpool" /usr/bin/ && 
 rm -f /usr/sbin/zpool
 php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" menu_order "$version" || fail 'menu without ZFS'
 mkdir -p /usr/sbin; ln -sf /usr/bin/zpool /usr/sbin/zpool
-for check in menu_order body_token no_token wrong_token main_page invalid_utf8_setting main_page_stuck_zfs settings_page settings_copy_keeps settings_cron settings_leave_out create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool unraid_sizes time_format settings_roundtrip; do
+for check in menu_order body_token no_token wrong_token main_page invalid_utf8_setting main_page_stuck_zfs settings_page settings_copy_keeps settings_cron settings_start settings_leave_out create_popup snapshot_popup snapshot_popup_parent snapshot_popup_children snapshot_popup_excluded snapshot_popup_unread snapshot_popup_children_unread snapshot_popup_automatic snapshot_popup_failed snapshot_popup_stuck_zfs snapshot_popup_stubborn_zfs snapshot_popup_held_zfs snapshot_popup_unmounted snapshot_popup_elsewhere pool_info_popup pool_info_popup_read_only pool_info_popup_compat pool_info_popup_compat_unread pool_info_popup_unknown_upgrade pool_info_popup_failed pool_info_popup_bad_name pool_info_popup_stuck_zpool unraid_sizes time_format settings_roundtrip; do
 	php -n -d display_errors=stderr "$repo/tests/unraid_compat_check.php" "$check" "$version" || fail "$check"
 done
 # Saving the settings runs the installed scripts/alerts.php schedule (#command): it writes or removes Unraid's cron file.
@@ -172,6 +172,17 @@ php -n -d display_errors=stderr -r 'require "/usr/local/emhttp/webGui/include/He
 	$why = zfsmScheduleCron(array(array("id" => "0a1b2c3d", "every" => "hourly", "minute" => 7, "hour" => 0, "days" => range(0, 6)))); echo $why; exit($why === "" ? 0 : 1);' || fail 'schedule written but the crontab not rebuilt'
 grep -q '^7 \* \* \* \* /usr/local/emhttp/plugins/zfs.master/scripts/schedule.php run 0a1b2c3d ' /tmp/zfsm-crontab || fail 'schedule line not in the crontab'
 rm -f "$flash/schedules.cron"
+# At each array start Unraid's emhttp_event (in this tree from 6.12) runs event/disks_mounted, which starts each When the array starts run.
+[ -x "$live/event/disks_mounted" ] || fail 'the installed array start script is not executable'
+if [ -f "$web/sbin/emhttp_event" ]; then
+	printf '[{"id":"0a1b2c3d","dataset":"tank/gone","dest":"backup/gone","server":"","every":"start","minute":0,"hour":0,"days":[0,1,2,3,4,5,6],"keep":0}]' > "$flash/schedules.json"
+	rm -f /var/log/zfs.master.log
+	timeout 20 bash "$web/sbin/emhttp_event" disks_mounted >/dev/null 2>&1 || fail 'emhttp_event disks_mounted did not return'
+	# Its dataset is gone here, so the run it started logs why.
+	for _ in $(seq 100); do grep -q 'Replication of tank/gone to backup/gone not started' /var/log/zfs.master.log 2>/dev/null && break; sleep 0.2; done
+	grep -q 'Replication of tank/gone to backup/gone not started' /var/log/zfs.master.log || fail 'the array start did not start the schedule run'
+	rm -f "$flash/schedules.json" /var/log/zfs.master.log
+fi
 # Diagnostics from the package. This version's own diagnostics script can't run to its end here (it reads Unraid's state and
 # runs its tools), so a stand-in holds the script's own line that names its zip: the plugin must find that zip and pack it as it is.
 unraid_script=$docroot/webGui/scripts/diagnostics

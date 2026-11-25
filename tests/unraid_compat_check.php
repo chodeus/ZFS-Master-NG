@@ -385,6 +385,23 @@ switch ($check) {
 			}
 		}
 		break;
+	case 'settings_start':
+		// Each Every Dataset's When the array starts shows as saved, so its Save sends it back.
+		$_SERVER['REQUEST_METHOD'] = 'GET';
+		require_once $docroot.'/webGui/include/Helpers.php';
+		$schedules = '/boot/config/plugins/zfs.master/schedules.json';
+		$every = array('server' => '', 'every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
+		file_put_contents($schedules, json_encode(array(array('id' => '0a1b2c3d', 'dataset' => '', 'dest' => '') + $every, array('id' => '1a1b2c3d', 'dataset' => '', 'dest' => 'backup/') + $every)));
+		try {
+			$html = run_page($docroot.'/plugins/zfs.master/ZFSMasterSettings.page', true);
+		} finally {
+			unlink($schedules);
+		}
+		foreach (array('zfsm-snapsched', 'zfsm-copysched') as $prefix) {
+			$select = preg_match('#<select id="'.$prefix.'-every">.*?</select>#s', $html, $found) === 1 ? $found[0] : '';
+			if (strpos($select, "<option value='start' selected>When the array starts</option>") === false) { fwrite(STDERR, "settings page does not show $prefix When the array starts as saved\n"); exit(1); }
+		}
+		break;
 	case 'settings_leave_out':
 		// Each Every Dataset's Leave Out shows as saved, so its Save sends it back.
 		$_SERVER['REQUEST_METHOD'] = 'GET';

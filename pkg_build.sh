@@ -51,8 +51,8 @@ filecount=$(find "$work" -type f | wc -l | tr -d ' ')
 mv "$work/manifest.md5" "$dest/manifest.md5"
 find "$work" -type d -exec chmod 0755 {} +
 find "$work" -type f -exec chmod 0644 {} +
-# Cron and the Settings page (#command) run these directly.
-chmod 0755 "$dest"/scripts/*
+# Cron, the Settings page (#command) and the array start (event/) run these directly.
+chmod 0755 "$dest"/scripts/* "$dest"/event/*
 xattr -cr "$work" 2>/dev/null || true
 # Refreshes autov() URLs so browsers fetch the new assets
 find "$work" -type f -exec touch {} +

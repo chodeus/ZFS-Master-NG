@@ -462,6 +462,9 @@ async function confirm() {
     await repeat('cron');
     assert.deepEqual([rows(), shown('zfsm-replicate-cron-row'), shown('zfsm-replicate-copy-keeps-row'), shown('zfsm-replicate-remake-row'), cronLine().labels[0].textContent.startsWith('Cron line:'), cronLine().placeholder, cronLine().value],
       [[false, false, true, true, '', true], true, true, true, true, '*/15 * * * *', ''], 'Custom (cron): an empty Cron line, Keep, Copy Keeps and If the copy is gone, with no days or time');
+    await repeat('start');
+    assert.deepEqual([rows(), shown('zfsm-replicate-cron-row'), shown('zfsm-replicate-copy-keeps-row'), shown('zfsm-replicate-remake-row')], [[false, false, true, true, '', true], false, true, true],
+      'When the array starts: Keep, Copy Keeps and If the copy is gone, with no days, time or Cron line');
     remake().checked = true;
     await repeat('');
     assert.deepEqual([rows(), shown('zfsm-replicate-copy-keeps-row'), shown('zfsm-replicate-remake-row'), shown('zfsm-replicate-cron-row')], [[false, false, false, false, '', false], false, false, false], 'back to Once: the rows and help go, and Snapshot can be picked again');
@@ -496,6 +499,16 @@ async function confirm() {
     assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'cron', time: ' 0 3  1 * * ', days: '1,2,3,4,5,6,0', keep: '', copy_keeps: ''},
       'Custom (cron) sends its Cron line as typed, as the time');
     window.Swal2.close();
+    window.addDatasetContext('tank', 'tank/new', 0, 'menu', 0, 'none', '', 'volume');
+    menu.find(option => option.text === 'Replicate').action({preventDefault() {}});
+    await settle();
+    await repeat('start');
+    keep().value = ' 5 ';
+    window.Swal2.clickConfirm();
+    await settle();
+    assert.deepEqual(posts.at(-1), {cmd: 'replicatedataset', zdataset: 'tank/new', snapshot: '', destination: 'backup/data', server: '', every: 'start', time: '00:00', days: '1,2,3,4,5,6,0', keep: '5', copy_keeps: ''},
+      'When the array starts sends its choice and Keep');
+    window.Swal2.close();
   }
   // Schedules: starts at the dataset's own, shows the rows that fit its choice, and Save sends what is on screen and says the answer.
   {
@@ -517,7 +530,7 @@ async function confirm() {
     assert.deepEqual(posts.at(-1), {cmd: 'previewschedules', zdataset: 'tank/data'}, 'it asks what the dataset has');
     assert.equal(window.Swal2.getPopup().style.width, '44em', 'Schedules opens as a form, wider than a message');
     assert.deepEqual([Array.from(every().options, option => option.textContent), every().value, every().labels[0].textContent.startsWith('Snapshots:'), rows()],
-      [['Default', 'None', 'Every hour', 'On days of the week', 'Custom (cron)'], 'days', true, [true, true, true, false, false]], 'its own schedule is picked, with its rows');
+      [['Default', 'None', 'Every hour', 'On days of the week', 'Custom (cron)', 'When the array starts'], 'days', true, [true, true, true, false, false]], 'its own schedule is picked, with its rows');
     assert.deepEqual([days().filter(box => box.checked).map(box => box.value), field('time').value, field('keep').value], [['1'], '05:00', '1'], 'and its days, time and Keep');
     assert.equal(field('skipped'), null, 'one a run can take says nothing of it');
     await pick('default');
@@ -528,6 +541,8 @@ async function confirm() {
     assert.deepEqual([rows(), visible('zfsm-schedules-cron-row')], [[false, false, true, false, false], false], 'Every hour has Keep');
     await pick('cron');
     assert.deepEqual([rows(), visible('zfsm-schedules-cron-row'), field('cron').value], [[false, false, true, false, false], true, ''], 'Custom (cron) has an empty Cron line and Keep');
+    await pick('start');
+    assert.deepEqual([rows(), visible('zfsm-schedules-cron-row')], [[false, false, true, false, false], false], 'When the array starts has Keep, and no Cron line');
     await pick('days');
     assert.equal(visible('zfsm-schedules-cron-row'), false, 'On days of the week has no Cron line');
     days().forEach(box => { box.checked = ['1', '3'].includes(box.value); });
@@ -538,7 +553,7 @@ async function confirm() {
     const copyRows = () => ['days', 'time', 'keep', 'server', 'under'].map(row => visible('zfsm-copies-'+row+'-row')).concat(visible('zfsm-copies-default'), visible('zfsm-copies-none'));
     const pickCopies = async value => { copy('every').value = value; copy('every').dispatchEvent(new window.Event('change')); await settle(); };
     assert.deepEqual([Array.from(copy('every').options, option => option.textContent), copy('every').value, copy('every').labels[0].textContent.startsWith('Replication:'), copyRows(), copy('under').value, copy('keep').value],
-      [['Default', 'None', 'Every hour', 'On days of the week', 'Custom (cron)'], 'hourly', true, [false, false, true, true, true, false, false], 'usb', '3'], 'its own copies are picked, with Server, Copy Under and Keep');
+      [['Default', 'None', 'Every hour', 'On days of the week', 'Custom (cron)', 'When the array starts'], 'hourly', true, [false, false, true, true, true, false, false], 'usb', '3'], 'its own copies are picked, with Server, Copy Under and Keep');
     const hints = () => [visible('zfsm-copies-under-here'), visible('zfsm-copies-under-there')];
     const server = async value => { copy('server').value = value; copy('server').dispatchEvent(new window.Event('change')); await settle(); };
     assert.deepEqual([Array.from(copy('server').options, option => option.textContent), copy('server').value, copy('server').labels[0].textContent, hints()],
@@ -584,6 +599,15 @@ async function confirm() {
     await schedules();
     assert.deepEqual([every().value, visible('zfsm-schedules-cron-row'), field('cron').value, copy('every').value, visible('zfsm-copies-cron-row'), copy('cron').value],
       ['cron', true, '*/15 * * * *', 'cron', true, '0 3 1 * *'], 'a saved Custom (cron) opens with its Cron line in each part');
+    await pick('start');
+    await pickCopies('start');
+    assert.deepEqual([rows(), copyRows(), visible('zfsm-schedules-cron-row'), visible('zfsm-copies-cron-row'), visible('zfsm-copies-copy-keeps-row')],
+      [[false, false, true, false, false], [false, false, true, true, true, false, false], false, false, true], 'When the array starts in each part: Keep, and for copies Server, Copy Under and Copy Keeps; no Cron line');
+    await confirm();
+    assert.deepEqual([posts.at(-1).every, posts.at(-1).copy_every], ['start', 'start'], 'Save sends When the array starts for each part');
+    schedulePreview = Object.assign({}, schedulePreview, {every: 'start', time: '00:00', copies: Object.assign({}, schedulePreview.copies, {every: 'start', time: '00:00'})});
+    await schedules();
+    assert.deepEqual([every().value, rows(), copy('every').value, copyRows()], ['start', [false, false, true, false, false], 'start', [false, false, true, true, true, false, false]], 'a saved When the array starts opens picked, with its rows');
     await pick('days');
     await pickCopies('days');
     assert.deepEqual([field('time').value, copy('time').value], ['00:00', '00:00'], 'and On days of the week then starts at 00:00, not the line');
