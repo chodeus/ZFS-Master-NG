@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- fix(settings): put focus back after Change Keep, Remove and the Every Dataset Saves
+- fix(settings): keep Change Keep open while it saves; the Schedules help opens from no label
+- fix(settings): set out the Schedules list as a table, with Change Keep in a dialog
+
 ## 2026.11.26.2 (beta)
 
 **Fixes**
