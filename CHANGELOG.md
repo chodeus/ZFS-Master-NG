@@ -2,9 +2,8 @@
 
 ## Unreleased
 
-- fix(settings): short help under each Schedules setting
-- fix(settings): Debug Log and Keep Replicas hints say only what holds
-- fix(settings): one short line of help under each setting
+- Each Settings help is one short line under its own setting
+- The detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
 
 ## 2026.11.26.3 (beta)
 
