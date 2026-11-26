@@ -6,13 +6,22 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.26.2">
-<!ENTITY md5 "4f33565764fa4842073ba4c16c8c6c2d">
+<!ENTITY version "2026.11.26.3">
+<!ENTITY md5 "76c338b6fff594e572c745948078d2d1">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.26.3
+**Settings**
+
+- The Schedules list is a table, with columns for What, Dataset, Copy To, When and Keep; schedules set to None show greyed
+- Change Keep opens a dialog and stays open while it saves; a refusal shows in it, with what you typed
+- Plugin dialogs have larger text
+- The list has no Schedules label now: its help shows with the page's Help button
+- Keyboard focus comes back to Change Keep, Remove or Save when each one finishes
 
 ###2026.11.26.2
 **Fixes**
