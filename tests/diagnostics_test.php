@@ -180,7 +180,7 @@ has("== ZFS pools and disks Unraid lists\nname=cache type=Cache fsType=zfs fsSta
 has("== installed plugins\nother 2025.05.05\nzfs.master 2026.01.02\n", $read('unraid/context.txt'), 'the installed plugins');
 same(false, strpos($read('unraid/context.txt'), 'Tower'), 'not the server\'s name');
 has("== zfs version\nzfs-2.4.4-1\nzfs-kmod-2.4.4-1\n", $read('zfs/versions.txt'), 'the OpenZFS version');
-has("== zpool status -p tank\npool: tank\n", $read('zfs/zpool-status.txt'), 'each pool\'s status');
+has("== zpool status -p tank\n  pool: tank\n", $read('zfs/zpool-status.txt'), 'each pool\'s status');
 has("== zpool get -H -o property,value,source all tank\nsize\t1.00T\t-\n", $read('zfs/zpool-get-all.txt'), 'each pool\'s properties');
 has("volblocksize\tguid\tmounted\tcanmount\tvolmode\tencryptionroot\n", $read('zfs/datasets.txt'), 'the dataset columns');
 has("tank/vol\tvolume\t", $read('zfs/datasets.txt'), 'each dataset');
@@ -195,7 +195,8 @@ same(1, preg_match('/^\d+\.\d\d\texit 0\tzpool status -p tank$/m', $read('zfs/ti
 
 // Completeness: every setting loadConfig returns and every field of the Settings page is in settings-effective.txt.
 preg_match_all('/<(?:select|textarea|input)[^>]*\sname="([a-z_]+)"/', file_get_contents(__DIR__.'/../zfs.master/ZFSMasterSettings.page'), $fields);
-$fields = array_values(array_diff($fields[1], array('csrf_token')));
+// replica_keep_rules: Keep Replicas' second copy (zfsmKeepReplicaText), shown in replica_keep's row, and by name in settings-saved.
+$fields = array_values(array_diff($fields[1], array('csrf_token', 'replica_keep_rules')));
 same(true, count($fields) >= 14, 'the Settings page\'s fields were found: '.implode(', ', $fields));
 foreach (array_unique(array_merge($fields, array_map('zfsmDiagSavedName', array_keys(loadConfig(array()))))) as $name) {
 	same(1, preg_match('/^'.preg_quote($name, '/').'\t/m', $read('plugin/settings-effective.txt')), 'the setting '.$name.' is in settings-effective.txt');
@@ -222,14 +223,24 @@ same(array(), $problems(array()), 'good settings have no findings');
 same(1, preg_match('/^the settings file has a setting this version does not know: name-[0-9a-f]{8}$/D', implode('|', $problems(array('colour' => 'red')))), 'a setting this version does not know, by a token');
 same(array('size_units holds text that a save would refuse'), $problems(array('size_units' => '${units}')), 'a value a save would refuse');
 same(1, preg_match('/^the snapshot prefix and pattern give a name ZFS refuses: name-[0-9a-f]{8}$/D', implode('|', $problems(array('snap_prefix' => 'a@b')))), 'a snapshot name ZFS refuses, as a token: its owner wrote the prefix');
+// tank/data is the longest of tank, tank/data and tank/vol: a 246 long name (229 + Y-m-d-His) is too long after it alone.
+same(1, preg_match('/^the snapshot prefix and pattern give a name too long after 1 of 3 datasets: name-[0-9a-f]{8}$/D', implode('|', $problems(array('snap_prefix' => str_repeat('a', 229))))),
+	'a name too long after a dataset there, as a token');
+same(array(), $problems(array('snap_prefix' => str_repeat('a', 228))), 'one 255 long after the longest is no finding');
 same(array('the exclusion pattern is invalid, so it is ignored'), $problems(array('exclusion' => '(')), 'an invalid exclusion pattern');
 same(array('the exclusion pattern is a Lua pattern, the format older versions used'), $problems(array('exclussion' => '/docker%-old')), 'a Lua pattern, saved under the old name');
 same(array('the exclusion pattern hides 2 of 3 datasets'), $problems(array('exclusion' => '/(data|vol)')), 'what the pattern hides');
 same(1, preg_match('/^Directory Listing names a dataset that does not exist: tank\/name-[0-9a-f]{8}$/D', implode('|', $problems(array('directory_listing' => "tank/data\ntank/gone")))), 'a listed dataset that is not there, by its pool and a token');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL=1');
-same(array('the datasets could not be listed, so the exclusion pattern and Directory Listing were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
+same(array('the datasets could not be listed, so the exclusion pattern, Directory Listing and snapshot name lengths were not checked against them'), $problems(array('exclusion' => '/data', 'directory_listing' => 'tank/gone')), 'a failed list is not "no datasets"');
 putenv('ZFSM_TEST_CHILD_LIST_FAIL');
 same(1, preg_match('/^exclusion\t"name-[0-9a-f]{8}"\t""\tsaved as exclussion$/m', $found('zfsmDiagSettingsEffective', null, array('exclussion' => '/docker%-old'))[1]), 'the old name is shown as the source, and the pattern, which its owner wrote, as a token');
+$second = array('replica_keep' => '', 'replica_keep_rules' => '24 7d 4w');
+$saved_second = function($root) { file_put_contents($root.'/boot/config/plugins/zfs.master/zfs.master.cfg', "[general]\nreplica_keep=\"\"\nreplica_keep_rules=\"24 7d 4w\"\n"); };
+same(array(1, 1, 1), array(preg_match('/^replica_keep\t"24 7d 4w"\t0\tsaved as replica_keep_rules$/m', $found('zfsmDiagSettingsEffective', null, $second)[1]),
+	preg_match('/^replica_keep_rules = name-[0-9a-f]{8}$/m', $found('zfsmDiagSettingsSaved', $saved_second, $second)[1]),
+	preg_match('/^replica_keep\t5\t0\tsaved$/m', $found('zfsmDiagSettingsEffective', null, array('replica_keep' => '5') + $second)[1])),
+	'Keep Replicas from its second copy shows as it is used and where it came from, that copy by its name in the file as saved; its own value as saved');
 
 // The install.
 $install = function($change) use ($found) { return $found('zfsmDiagInstall', $change)[0]; };
@@ -303,9 +314,9 @@ same(array('alerts are on every 60 minutes, but the last check was 180 minutes a
 
 // Jobs: a held lock is fine while one of the plugin's scripts runs.
 $hold = function() use ($work) { $GLOBALS['zfsm_held'] = fopen($work.'/jobs/rewrite/4711.lock', 'c'); flock($GLOBALS['zfsm_held'], LOCK_EX); };
-// Never this test's own process: the collector leaves that one out.
+// A fake pid is never this test's own, which the collector leaves out: its pid + 1, or one above Linux's pid limit (4194304).
 $script_pid = getmypid() + 1;
-$running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  900    2 nginx: worker process\n";
+$running = "  $script_pid   40 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n  9000900    2 nginx: worker process\n";
 list($findings, $text) = $found('zfsmDiagJobs', $hold);
 same(array('a job\'s lock is held, but its script is not running: '.$work.'/jobs/rewrite/4711.lock'), $findings, 'a lock held with no script running');
 has($work."/jobs/rewrite/4711.lock: held\n", $text, 'the held lock is shown');
@@ -317,7 +328,7 @@ same(array(), $findings, 'the run\'s own lock is no finding');
 has($work."/jobs/diagnostics/run.lock: held (this run)\n", $text, 'it is shown as the run\'s');
 list($findings, $text) = $found('zfsmDiagJobs', function() use ($hold, $work, $running) { $hold(); file_put_contents($work.'/ps.txt', $running); });
 same(array(), $findings, 'a lock held by a running script');
-$others = "  813    5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n  814    3 timeout 600 /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n";
+$others = "  9000813    5 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n  9000814    3 timeout 600 /usr/local/emhttp/plugins/zfs.master/scripts/rewrite.php tank/data\n";
 list($findings) = $found('zfsmDiagJobs', function() use ($hold, $work, $others) { $hold(); file_put_contents($work.'/ps.txt', $others); });
 same(array('a job\'s lock is held, but its script is not running: '.$work.'/jobs/rewrite/4711.lock'), $findings, 'another of the plugin\'s scripts, or a command that only names the job\'s, does not hold its lock');
 list(, $with_alerts_lock) = $found('zfsmDiagJobs', function($root) { $GLOBALS['zfsm_alerts_held'] = fopen($root.'/var/run/zfs.master.alerts.json.lock', 'c'); flock($GLOBALS['zfsm_alerts_held'], LOCK_EX); });
@@ -391,7 +402,7 @@ $scheduled = function($cron = true, $live = true, $list = null) use ($job) {
 		if ($live) file_put_contents($root.'/etc/cron.d/root', $line, FILE_APPEND);
 	};
 };
-has("== schedules (id, dataset, copy, when, keep (0: all), runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
+has("== schedules (id, dataset, copy, when, keep (0: all) and copy keeps if set, runs in a row with a problem)\n(none)\n", $found('zfsmDiagReplicaSchedules')[1], 'a server with no schedules');
 same(array(), $found('zfsmDiagReplicaSchedules', $scheduled())[0], 'a schedule with its lines in both has no findings');
 // Through a whole run: its pools are read first, so a dataset there is named by its pool.
 $build();
@@ -403,9 +414,24 @@ same(1, preg_match('~\tevery day at 03:07\t7\t0$~m', $found('zfsmDiagReplicaSche
 same(1, preg_match('~\tevery Monday and Friday at 03:07\t0\t0$~m', $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array(array('days' => array(1, 5), 'keep' => 0) + zfsmScheduleUpgrade($job)))))[1]),
 	'and one saved with its days says them');
 same(false, strpos($text, 'private'), 'no name of the copy');
-same(array('replication schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'replication schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
+same(array('schedule 0a1b2c3d has no line in the live crontab, so it does not run', 'schedule 0a1b2c3d has no line in schedules.cron on the flash drive, so it stops at the next restart'),
 	$found('zfsmDiagReplicaSchedules', $scheduled(false, false))[0], 'a schedule cron does not run, now or after a restart');
-same(array('replication schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
+// When the array starts: no cron line, but the plugin's event/disks_mounted, which Unraid runs, must be there and executable.
+$start = json_encode(array(array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0) + zfsmScheduleUpgrade($job)));
+$GLOBALS['docroot'] = $work.'/start-docroot';
+$hook = $work.'/start-docroot/plugins/zfs.master/event/disks_mounted';
+mkdir(dirname($hook), 0700, true);
+file_put_contents($hook, "#!/bin/bash\n");
+chmod($hook, 0755);
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start));
+same(array(array(), 1), array($findings, preg_match('~\twhen the array starts\t0\t0$~m', $text)), 'one that runs when the array starts needs no cron line, and says when it runs');
+$unrun = array('schedule 0a1b2c3d runs when the array starts, but event/disks_mounted is missing or can\'t run, so it does not run');
+chmod($hook, 0644);
+same($unrun, $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start))[0], 'one whose event script can\'t run');
+unlink($hook);
+same($unrun, $found('zfsmDiagReplicaSchedules', $scheduled(false, false, $start))[0], 'or is missing');
+unset($GLOBALS['docroot']);
+same(array('schedule 0a1b2c3d has had 3 run(s) in a row with a problem'), $found('zfsmDiagReplicaSchedules', function($root) use ($scheduled, $work) {
 	$scheduled()($root);
 	mkdir($work.'/jobs/schedule', 0700, true);
 	file_put_contents($work.'/jobs/schedule/0a1b2c3d.json', '{"failures":3}');
@@ -414,6 +440,82 @@ list($findings, $text) = $found('zfsmDiagReplicaSchedules', $scheduled(true, tru
 same(array('schedules.json is not a list of schedules, so none run: '.$root.'/boot/config/plugins/zfs.master/schedules.json'), $findings, 'a list of schedules that is no list');
 has("(schedules.json is not a list of schedules)\n", $text, 'is not "no schedules"');
 same(array('1 record(s) in schedules.json are not schedules the plugin can use'), $found('zfsmDiagReplicaSchedules', $scheduled(true, true, json_encode(array($job, array('id' => 'zz')))))[0], 'a record the plugin does not use');
+// Snapshot Every Dataset: its row, and how many datasets it takes now (on the fake's small pool), read under a limit of its own.
+$every = array('id' => '0b0b0b0b', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 30, 'hour' => 0, 'days' => range(0, 6), 'keep' => 2);
+$snapped = function($root) use ($every) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every)), FILE_APPEND);
+};
+@mkdir($work.'/pool');
+file_put_contents($work.'/pool/datasets', "tank\tfilesystem\ntank/data\tfilesystem\ntank/media\tfilesystem\nbackup/copy\tfilesystem\n");
+file_put_contents($work.'/pool/props', "backup/copy\treadonly\ton\n");
+putenv('ZFSM_TEST_REPL_DIR='.$work.'/pool');
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', $snapped);
+same(array(array(), false), array($findings, $GLOBALS['zfsm_diag']['unread']), 'Snapshot Every Dataset with its lines in both has no findings');
+has("records in schedules.json the plugin does not use: 0\ndatasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 2\n\n", $text, 'how many datasets it takes, read-only ones and each pool\'s own left out');
+has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'its row');
+putenv('ZFSM_TEST_COVER_FAIL=1');
+$text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+same(true, $GLOBALS['zfsm_diag']['unread'], 'a count that can\'t be read marks the file (zfsmDiagRead)');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: (could not be read: cannot iterate filesystems: Input/output error)\n", $text, 'and says why');
+putenv('ZFSM_TEST_COVER_FAIL=tank/data');
+$text = $found('zfsmDiagReplicaSchedules', $snapped)[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 1 (not every dataset could be read: cannot open 'tank/data': Input/output error)\n", $text, 'one it can\'t read: the rest counted, and it named');
+file_put_contents($work.'/pool/marks', "tank/data@autosnap_2026-11-17_00:00:01_hourly\t1\t1\n");
+has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 1\n", $found('zfsmDiagReplicaSchedules', $snapped)[1], 'one with Sanoid\'s snapshots left out');
+file_put_contents($work.'/pool/marks', '');
+// A dataset's own (Main, Schedules) and a None: each row named, each count apart; None has no cron line to miss, and is not counted.
+$own = array('id' => '0c0c0c0c', 'dataset' => 'tank/data', 'minute' => 45) + $every;
+$none = array('id' => '0d0d0d0d', 'dataset' => 'tank', 'every' => 'none', 'minute' => 0, 'keep' => 0) + $every;
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own, $none) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own, $none)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own, $none)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own, $none)), FILE_APPEND);
+});
+same(array(), $findings, 'own schedules and a None with their lines have no findings');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 0, 0c0c0c0c 1\n", $text, 'each counts only the datasets that follow it');
+same(1, preg_match('~^0c0c0c0c\t(name-[0-9a-f]{8})/name-[0-9a-f]{8}\t\(snapshots only\)\tevery hour at :45\t2\t0\n0d0d0d0d\t\1\t\(snapshots only\)\tnever\t0\t0$~m', $text), 'their rows, the datasets as tokens');
+// Replicate Every Dataset and a dataset's None of copies: rows named, where the copies go; counted apart from the snapshot schedule's.
+$copies = array('id' => '0e0e0e0e', 'dest' => 'backup/', 'minute' => 50, 'keep' => 0) + $every;
+$nocopy = array('id' => '0f0f0f0f', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none', 'minute' => 0, 'keep' => 0) + $every;
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $copies, $nocopy) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $copies, $nocopy)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $copies, $nocopy)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $copies, $nocopy)), FILE_APPEND);
+});
+same(array(), $findings, 'Replicate Every Dataset and a None with their lines have no findings');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 2, 0e0e0e0e 1\n", $text, 'each counts its own: the copies leave out the dataset with None');
+same(1, preg_match('~^0e0e0e0e\t\(every dataset\)\tname-[0-9a-f]{8}/ \(each dataset under it\)\tevery hour at :50\t0\t0\n0f0f0f0f\tname-[0-9a-f]{8}/name-[0-9a-f]{8}\t\(no copies\)\tnever\t0\t0$~m', $text), 'their rows, where the copies go a token');
+same(1, preg_match('~^0e0e0e0e\t.*\tevery hour at :50\t0, copy 30d\t0$~m', $found('zfsmDiagReplicaSchedules', function($root) use ($copies) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('copy_keeps' => '30d') + $copies)));
+})[1]), 'and copies with their own Copy Keeps say it after their keep');
+same(1, preg_match('~^0e0e0e0e\t\(every dataset\)\tname-[0-9a-f]{8}/ \(each dataset under it\) on server nas4\tevery hour at :50\t0\t0$~m', $found('zfsmDiagReplicaSchedules', function($root) use ($copies) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array(array('server' => 'nas4') + $copies)));
+})[1]), 'and copies on a server name it, as a word the bundle replaces');
+// A dataset only the default takes can't be read: a dataset's own after it, which never takes it, doesn't hide that.
+putenv('ZFSM_TEST_COVER_FAIL=backup/copy');
+$text = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own)), FILE_APPEND);
+})[1];
+putenv('ZFSM_TEST_COVER_FAIL');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: 0b0b0b0b 1, 0c0c0c0c 1 (not every dataset could be read: cannot open 'backup/copy': Input/output error)\n", $text, 'the default\'s unread dataset, with an own one after it');
+// None never runs to clear a count a run left as it was saved: not found, its row 0; the own one's count still shows.
+list($findings, $text) = $found('zfsmDiagReplicaSchedules', function($root) use ($every, $own, $none, $work) {
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.json', json_encode(array($every, $own, $none)));
+	file_put_contents($root.'/boot/config/plugins/zfs.master/schedules.cron', zfsmScheduleCronText(array($every, $own, $none)));
+	file_put_contents($root.'/etc/cron.d/root', zfsmScheduleCronText(array($every, $own, $none)), FILE_APPEND);
+	mkdir($work.'/jobs/schedule', 0700, true);
+	file_put_contents($work.'/jobs/schedule/0c0c0c0c.json', '{"failures":2}');
+	file_put_contents($work.'/jobs/schedule/0d0d0d0d.json', '{"failures":3}');
+});
+same(array(array('schedule 0c0c0c0c has had 2 run(s) in a row with a problem'), 1, 1), array($findings, preg_match('~^0c0c0c0c\t.*\t2\t2$~m', $text), preg_match('~^0d0d0d0d\t.*\tnever\t0\t0$~m', $text)),
+	'a None with a count left: no finding, its row 0');
+putenv('ZFSM_TEST_REPL_DIR');
 // A flash drive's read that fails once: plain files through this wrapper, whose one open of $fail fails.
 class ZfsmFlakyFile {
 	public static $fail = '';
@@ -448,17 +550,17 @@ putenv('ZFSM_TEST_POOL_HEALTH=DEGRADED');
 list($findings) = $found('zfsmDiagZpoolList');
 putenv('ZFSM_TEST_POOL_HEALTH');
 same(array(array('a pool is not ONLINE: tank is DEGRADED'), '1 (tank is DEGRADED)'), array($findings, $GLOBALS['zfsm_diag']['facts']['pools']), 'a pool that is not ONLINE');
-$commands = "  700  900 zfs list -H -t snapshot\n  701 7200 zfs send -w tank/data@a\n  702   30 /usr/sbin/zpool status -p tank\n  703 5000 /usr/bin/rsync -a rsync://user:hunter2@nas/a/ /mnt/b/\n  704  100 nginx: worker process\n"
-	."  705   10 mysqldump --password=hunter2 zfs\n  706   50 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n  707 9000 /usr/sbin/zfs get -H guid tank\n"
-	."  708   20 zfs receive -o keylocation=https://user:pw@keys.example/k tank/copy\n  709    5 /usr/sbin/zfs load-key -L file:///mnt/keys/x tank/enc\n"
-	."  710    3 curl -u user:hunter2 https://tower/plugins/zfs.master/scripts/x\n  711    9 sh -c /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n"
-	."  712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n"
-	."  714    6 /usr/sbin/zpool create -O encryption=on -O keylocation=https://user:hunter2@keys.example/p tank2 sdc\n  715    7 zpool import -d /dev/disk/by-id tank3\n";
+$commands = "  9000700  900 zfs list -H -t snapshot\n  9000701 7200 zfs send -w tank/data@a\n  9000702   30 /usr/sbin/zpool status -p tank\n  9000703 5000 /usr/bin/rsync -a rsync://user:hunter2@nas/a/ /mnt/b/\n  9000704  100 nginx: worker process\n"
+	."  9000705   10 mysqldump --password=hunter2 zfs\n  9000706   50 /usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n  9000707 9000 /usr/sbin/zfs get -H guid tank\n"
+	."  9000708   20 zfs receive -o keylocation=https://user:pw@keys.example/k tank/copy\n  9000709    5 /usr/sbin/zfs load-key -L file:///mnt/keys/x tank/enc\n"
+	."  9000710    3 curl -u user:hunter2 https://tower/plugins/zfs.master/scripts/x\n  9000711    9 sh -c /usr/local/emhttp/plugins/zfs.master/scripts/alerts.php check\n"
+	."  9000712    4 /usr/sbin/zfs create -o encryption=on -okeylocation=https://user:hunter2@keys.example/k tank/enc\n  9000713    4 zfs change-key -o keylocation=file:///mnt/my keys/tank.key tank/enc\n"
+	."  9000714    6 /usr/sbin/zpool create -O encryption=on -O keylocation=https://user:hunter2@keys.example/p tank2 sdc\n  9000715    7 zpool import -d /dev/disk/by-id tank3\n";
 list($findings, $text) = $found('zfsmDiagZfsProcesses', function() use ($work, $commands) { file_put_contents($work.'/ps.txt', $commands); });
 same(array('2 zfs or zpool read(s) have been running for more than 10 minutes'), $findings, 'a list or get still running after 10 minutes is stuck; a long send or copy is not');
-same("pid\tseconds\tcommand\n700\t900\tzfs list -H -t snapshot\n701\t7200\tzfs send -w tank/data@a\n702\t30\t/usr/sbin/zpool status -p tank\n703\t5000\trsync (its arguments are left out)\n"
-	."706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n707\t9000\t/usr/sbin/zfs get -H guid tank\n"
-	."708\t20\tzfs receive (its arguments are left out)\n709\t5\tzfs load-key (its arguments are left out)\n712\t4\tzfs create (its arguments are left out)\n713\t4\tzfs change-key (its arguments are left out)\n714\t6\tzpool create (its arguments are left out)\n715\t7\tzpool import -d /dev/disk/by-id tank3\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
+same("pid\tseconds\tcommand\n9000700\t900\tzfs list -H -t snapshot\n9000701\t7200\tzfs send -w tank/data@a\n9000702\t30\t/usr/sbin/zpool status -p tank\n9000703\t5000\trsync (its arguments are left out)\n"
+	."9000706\t50\t/usr/bin/php -q /usr/local/emhttp/plugins/zfs.master/scripts/replicate.php tank/data a tank/copy\n9000707\t9000\t/usr/sbin/zfs get -H guid tank\n"
+	."9000708\t20\tzfs receive (its arguments are left out)\n9000709\t5\tzfs load-key (its arguments are left out)\n9000712\t4\tzfs create (its arguments are left out)\n9000713\t4\tzfs change-key (its arguments are left out)\n9000714\t6\tzpool create (its arguments are left out)\n9000715\t7\tzpool import -d /dev/disk/by-id tank3\n", $text, 'zfs, zpool, rsync and the plugin\'s scripts by their own name: never where a key is kept, rsync\'s arguments, or a command that only names the plugin');
 same("tank/a\tkeylocation\t(set)\tlocal\ntank/b\tkeylocation\tprompt\tlocal\n", zfsmDiagFreeRows("tank/a\tkeylocation\thttps://user:pw@keys.example/a\tlocal\ntank/b\tkeylocation\tprompt\tlocal\n", "tank/a\tkeylocation\ntank/b\tkeylocation\n"), 'where a key is kept stays out of the file: only that it is set');
 // Part of a received copy: its dataset is named, its token is not, and a read that failed is not "none".
 putenv('ZFSM_TEST_RESUME_TOKEN=1-e604ea4bf-e0-789c636064000310a500c4ec50360710e72765a5269740f80cd8');
@@ -507,10 +609,20 @@ same(true, $took < 25, 'no read waits for the hung zfs to end, 30 seconds on: '.
 has('- a read timed out, so these files are incomplete: '.implode(', ', $slow)."\n", file_get_contents($work.'/hung/summary.txt'), 'the summary names the incomplete files');
 has("== zfs list -H -p -r -t filesystem,volume -o ", file_get_contents($work.'/hung/zfs/datasets.txt'), 'a skipped read keeps its title');
 has("TIMED OUT: skipped, because zfs list timed out on this pool\n", file_get_contents($work.'/hung/zfs/datasets.txt'), 'and says why it was skipped');
-has("== zpool status -p tank\npool: tank\n", file_get_contents($work.'/hung/zfs/zpool-status.txt'), 'zpool is still asked about a pool zfs hangs on');
+has("== zpool status -p tank\n  pool: tank\n", file_get_contents($work.'/hung/zfs/zpool-status.txt'), 'zpool is still asked about a pool zfs hangs on');
 has("\ttimed out\tzfs list -H -o name -t filesystem,volume -r tank\n", file_get_contents($work.'/hung/zfs/timings.txt'), 'the read that timed out is in the timings');
 same("skipped, because zfs list timed out on a pool\n", file_get_contents($work.'/hung/plugin/inventory.json.txt'), 'the Main tab\'s read asks about every pool, so it is skipped too');
 same('datasets: not read on every pool', explode("\n", strstr(file_get_contents($work.'/hung/summary.txt'), 'datasets: '))[0], 'a count that could not be read is not 0');
+// Snapshot Every Dataset's count: a zfs that hangs costs that line, not the rest of its file.
+$build();
+$snapped($root);
+putenv('ZFSM_TEST_LIST_HANG=1');
+zfsmDiagRun($work.'/hung-schedules', $context(), array(array('plugin/replication-schedules.txt', 10, 'zfsmDiagReplicaSchedules')));
+putenv('ZFSM_TEST_LIST_HANG');
+same(array('plugin/replication-schedules.txt', 'timed out'), array_slice(explode("\t", file($work.'/hung-schedules/collectors.txt', FILE_IGNORE_NEW_LINES)[1]), 0, 2), 'the count\'s read times out');
+$text = file_get_contents($work.'/hung-schedules/plugin/replication-schedules.txt');
+has("datasets each schedule of snapshots or of copies under a dataset covers now: (could not be read: zfs timed out)\n", $text, 'and says so');
+has("\n0b0b0b0b\t(every dataset)\t(snapshots only)\tevery hour at :30\t2\t0\n", $text, 'with the rest of the file');
 
 // A read its collector's limit cut short says nothing about the pool; one that ran its whole limit does.
 $build();

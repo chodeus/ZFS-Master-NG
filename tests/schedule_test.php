@@ -60,14 +60,16 @@ $drop = function($dataset) use ($work) {
 		file_put_contents($work.'/pool/'.$file, $kept ? implode("\n", $kept)."\n" : '');
 	}
 };
-$stored = function() { return json_decode((string)@file_get_contents(zfsmScheduleFile()), true); };
+require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
+$stored = 'zfsmTestStored';
 $cron = function() { return is_file(zfsmScheduleCronFile()) ? file_get_contents(zfsmScheduleCronFile()) : null; };
 // An add starts its first run as Replicate does, from the plugin in ZFSM_TEST_DOCROOT; it answers once that run is done.
 $add = function(...$args) use ($work) {
 	$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
 	$GLOBALS['zfsm_php'] = PHP_BINARY;
 	$answer = zfsmScheduleAdd(...$args);
-	$lock = zfsmJobLockFile('tank/data', 'replicate');
+	$lock = zfsmJobLockFile($args[0], 'replicate');
 	for ($waited = 0; $waited < 100 && zfsmJobRunning($lock); $waited++) usleep(50000);
 	same(false, zfsmJobRunning($lock), 'the background run finishes, letting go of its lock');
 	$GLOBALS['docroot'] = $work.'/docroot';
@@ -85,7 +87,7 @@ $hourly = array('id' => 'ffff0000', 'dataset' => 'tank/data', 'dest' => 'backup/
 $daily = array('id' => '0a1b2c3d', 'every' => 'days', 'minute' => 7, 'hour' => 3) + $hourly;
 $weekly = array('id' => '00000000', 'every' => 'days', 'minute' => 0, 'hour' => 23, 'days' => array(2)) + $hourly;
 $some = array('id' => '12345678', 'every' => 'days', 'minute' => 30, 'hour' => 13, 'days' => array(0, 1, 3, 5)) + $hourly;
-same("# Generated ZFS Master NG replication schedules:\n15 * * * * $script run ffff0000 &> /dev/null\n7 3 * * * $script run 0a1b2c3d &> /dev/null\n0 23 * * 2 $script run 00000000 &> /dev/null\n30 13 * * 0,1,3,5 $script run 12345678 &> /dev/null\n\n",
+same("# Generated ZFS Master NG schedules:\n15 * * * * $script run ffff0000 &> /dev/null\n7 3 * * * $script run 0a1b2c3d &> /dev/null\n0 23 * * 2 $script run 00000000 &> /dev/null\n30 13 * * 0,1,3,5 $script run 12345678 &> /dev/null\n\n",
 	zfsmScheduleCronText(array($hourly, $daily, $weekly, $some)), 'hourly, and at an hour every day, on one day and on some days');
 same('', zfsmScheduleCronText(array()), 'no schedules, no cron file');
 same(array('every hour at :15', 'every day at 03:07', 'every Tuesday at 23:00', 'every Monday, Wednesday, Friday and Sunday at 13:30'), array_map('zfsmScheduleWhen', array($hourly, $daily, $weekly, $some)), 'each says when it runs, Monday first');
@@ -93,6 +95,12 @@ same(array(true, true, false, false, false, false, false, false, false, false, f
 	array('server' => 'nas', 'dest' => 'a/b') + $hourly, array('dest' => 'data') + $hourly, array('every' => 'minutely') + $hourly, array('every' => 'weekly') + $weekly, array('hour' => 24) + $daily, array('hour' => '3') + $daily,
 	array('minute' => 60) + $daily, array('days' => array()) + $daily, array('days' => array(3, 1)) + $daily, array('days' => array(1, 1)) + $daily, array('days' => array('1')) + $daily, array('days' => array(7)) + $daily, array('days' => array('x' => 1)) + $daily)),
 	'a copy here is a dataset in a pool, one on a server a name in its area; nothing runs more often than hourly; a time is numbers, and days 0 to 6, in order, each once');
+$snapshots_job = array('dataset' => '', 'dest' => '') + $hourly;
+$under_job = array('dest' => 'backup/') + $hourly;
+same(array(true, true, true, false, false, false, false), array_map('zfsmScheduleValid', array(array('decrypted' => true) + $hourly, $snapshots_job, $under_job,
+	array('decrypted' => false) + $hourly, array('decrypted' => '1') + $hourly, array('decrypted' => true) + $snapshots_job, array('decrypted' => true) + $under_job)), 'only a copy\'s schedule saves decrypted, and only as true');
+same(array(true, true, false, false, false, false), array_map('zfsmScheduleValid', array(array('remake' => true) + $hourly, array('remake' => true, 'server' => 'nas', 'dest' => 'data') + $hourly,
+	array('remake' => false) + $hourly, array('remake' => 1) + $hourly, array('remake' => true) + $snapshots_job, array('remake' => true) + $under_job)), 'only a copy\'s schedule saves remake, here or on a server, and only as true');
 
 // One saved before start times and days of the week reads as one: its minute from its id, a daily one on each day and a weekly one
 // on its day, with its cron line as before; the next change saves it so, and keeps one it can't use as it was.
@@ -114,8 +122,8 @@ unlink(zfsmScheduleCronFile());
 // An hourly one's minute is one no other schedule of its dataset starts at; others may share it.
 $taken = array();
 foreach (range(0, 58) as $minute) $taken[] = array('minute' => $minute) + $daily;
-foreach (range(1, 20) as $try) same(59, zfsmScheduleFreeMinute($taken, 'tank/data'), 'the one minute left for tank/data');
-same(true, count(array_unique(array_map(function() use ($taken) { return zfsmScheduleFreeMinute($taken, 'tank/other'); }, range(1, 40)))) > 1, 'any minute for another dataset');
+foreach (range(1, 20) as $try) same(59, zfsmScheduleFreeMinute($taken, $hourly), 'the one minute left for tank/data');
+same(true, count(array_unique(array_map(function() use ($taken, $hourly) { return zfsmScheduleFreeMinute($taken, array('dataset' => 'tank/other') + $hourly); }, range(1, 40)))) > 1, 'any minute for another dataset');
 // Two of one dataset that start in one minute wait on one lock and can get one snapshot name, so Repeat refuses the second.
 same(array(true, true, false, false, true, false), array(zfsmScheduleSameTime($hourly, array('minute' => 15) + $daily), zfsmScheduleSameTime($hourly, $hourly),
 	zfsmScheduleSameTime($hourly, array('minute' => 16) + $hourly), zfsmScheduleSameTime($daily, array('hour' => 15) + $daily), zfsmScheduleSameTime($weekly, array('minute' => 0, 'hour' => 23) + $daily),
@@ -144,6 +152,37 @@ same(array('Snapshots Pattern would give the run at Mon 16 Nov 03:07 the same sn
 	array(zfsmScheduleClash($daily, array($daily, $other), $days, $at('2026-11-15 10:05'), false), zfsmScheduleClash($daily, array($daily, array('dataset' => 'tank/other') + $other), $days, $at('2026-11-15 10:05'), false),
 		zfsmScheduleClash($daily, array($daily, $other), $hours, $at('2026-11-15 10:05'), false), zfsmScheduleClash($daily, array($daily), $days, $at('2026-11-15 10:05'), false)),
 	'two daily ones of one dataset on a day\'s name; not of two datasets, with the hour in it, or on its own');
+// Sydney's clock goes back at 16:00 UTC on 4 April 2026: the run cron starts again at 02:15 there leaves out what the first took
+// (zfsmScheduleTakenBefore), so an hourly one made a week before clashes only where its pattern repeats a name in any case.
+date_default_timezone_set('Australia/Sydney');
+$local = array('snap_utc' => 0) + $cfg;
+same(array('', 'Snapshots Pattern would give the run at Sun 29 Mar 12:15 the same snapshot name as the run at Sun 29 Mar 11:15'),
+	array(zfsmScheduleClash($hourly, array(), $local, $at('2026-03-29 00:05'), false), zfsmScheduleClash($hourly, array(), array('snap_pattern' => 'Ymd') + $local, $at('2026-03-29 00:05'), false)),
+	'an hourly one with the time in its names across the change, and one with the day only');
+date_default_timezone_set('UTC');
+
+// A Custom (cron) line: its numbers go in the cron file and it is said as saved; it runs each minute it names, every minute too, and
+// twice in Sydney's hour that repeats; an hourly one of its dataset starts at none of its minutes.
+$custom = array('id' => 'c0c0c0c0', 'every' => 'cron', 'minute' => 0, 'cron' => '*/15 2 * * 1-5') + $hourly;
+same(array("# Generated ZFS Master NG schedules:\n0,15,30,45 2 * * 1,2,3,4,5 $script run c0c0c0c0 &> /dev/null\n\n", 'on the cron line */15 2 * * 1-5'),
+	array(zfsmScheduleCronText(array($custom)), zfsmScheduleWhen($custom)), 'a cron line in the cron file, and said');
+same(array(true, false, false, false, false), array_map('zfsmScheduleValid', array($custom, array_diff_key($custom, array('cron' => 0)), array('cron' => '*/15  2 * * 1-5') + $custom,
+	array('cron' => '0 0 1 * 1') + $custom, array('cron' => '* * * * *') + $hourly)), 'a cron one has its line with its spaces collapsed and one Save takes; no other kind has one');
+date_default_timezone_set('Australia/Sydney');
+same(array(array($at('2026-11-15 10:06'), $at('2026-11-15 10:07')), array($at('2026-04-04 15:30'), $at('2026-04-04 16:30'))),
+	array(zfsmScheduleRuns(array('cron' => '* * * * *') + $custom, $at('2026-11-15 10:05'), $at('2026-11-15 10:08')), zfsmScheduleRuns(array('cron' => '30 2 * * *') + $custom, $at('2026-04-04 14:00'), $at('2026-04-04 18:00'))),
+	'a cron line\'s runs: each minute, and at 02:30 Sydney time before and after the clock goes back');
+date_default_timezone_set('UTC');
+foreach (range(1, 20) as $try) same(59, zfsmScheduleFreeMinute(array(array('cron' => '0-58 * * * *') + $custom), $hourly), 'the one minute a cron line of tank/data leaves');
+same(array('on the cron line 0 3 1 * *, next at Tue 1 Dec 03:00', 'on the cron line 0 3 1 * *, next at Fri 1 Jan 2027 03:00', 'on the cron line 0 0 29 2 *, next at Tue 29 Feb 2028 00:00',
+	'every hour at :15'), array(zfsmScheduleWhenNext(array('cron' => '0 3 1 * *') + $custom, $at('2026-11-25 08:00')), zfsmScheduleWhenNext(array('cron' => '0 3 1 * *') + $custom, $at('2026-12-25 08:00')),
+	zfsmScheduleWhenNext(array('cron' => '0 0 29 2 *') + $custom, $at('2026-11-25 08:00')), zfsmScheduleWhenNext($hourly, $at('2026-11-25 08:00'))), 'a cron line\'s next run, with its year when that is not this one; no other kind has one');
+$kept = $hourly;
+$moved = $hourly;
+$taken = array('id' => '0b0b0b0b', 'dest' => 'backup/other', 'every' => 'days', 'minute' => 15, 'hour' => 3) + $hourly;
+$placed = zfsmScheduleAddTo(array($taken['id'] => $taken), $moved);
+same(array(15, true), array(zfsmScheduleAddTo(array(), $kept)[$kept['id']]['minute'], is_array($placed) && $moved['minute'] !== 15 && $placed[$moved['id']]['minute'] === $moved['minute']),
+	'an hourly one keeps its minute, or takes a free one when a save since took it');
 
 // Repeat saves the schedule and runs it now: the first run is the dialog's own, so it may send in full.
 $reset();
@@ -162,6 +201,77 @@ $reset();
 $every = '0,1,2,3,4,5,6';
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $cfg)['failed'], 'a second schedule for one copy');
 same(array('tank/data' => 'Nothing was scheduled: this copy already has a schedule ('.zfsmScheduleWhen($jobs[0]).'); remove it in Settings first'), zfsmScheduleAdd('tank/data', '', 'backup/data', '', 'days', '04:00', $every, 0, $days)['failed'], 'which says so even when their snapshot names would clash too');
+same('the copy of tank/data gets that name too ('.zfsmScheduleWhen($jobs[0]).'); give this copy another name', zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other') + $jobs[0]),
+	'nor one of another dataset into that copy');
+same(array('', '', ''), array(zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => 'backup/') + $jobs[0]), array('dest' => 'backup/') + $jobs[0]),
+	zfsmScheduleSame(array(array('dataset' => 'tank/other', 'dest' => '') + $jobs[0]), array('dest' => '') + $jobs[0]),
+	zfsmScheduleSame(array($jobs[0]), array('dataset' => 'tank/other', 'server' => 'nas') + $jobs[0])),
+	'while two datasets\' copies under one dataset, their snapshots alone, or copies of one name on two servers are not');
+same(array('tank/data' => 'Nothing was scheduled: the copy to backup/data ('.zfsmScheduleWhen($jobs[0]).') starts then too; pick another time'),
+	zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'cron', $jobs[0]['minute'].' 3 * * *', '', 0, $cfg)['failed'], 'nor a cron line of that dataset at its minute');
+// A repeat's copy with the name a copy under a dataset gets: refused whichever is saved second, unless ZFS says that dataset is gone.
+$under = array('id' => 'under', 'dataset' => '', 'dest' => 'backup/', 'minute' => ($jobs[0]['minute'] + 1) % 60) + $jobs[0];
+$into = array('id' => 'into', 'dataset' => 'tank/other', 'dest' => 'backup/tank/data') + $jobs[0];
+$gone = array('dest' => 'backup/tank/gone') + $into;
+putenv('ZFSM_TEST_LIST_FAIL=tank/gone');
+$unread = zfsmScheduleSame(array($under), $gone);
+putenv('ZFSM_TEST_LIST_FAIL');
+same(array('the copy of tank/data gets that name too (Replicate Every Dataset, '.zfsmScheduleWhen($under).'); give this copy another name',
+	'the copy of tank/other ('.zfsmScheduleWhen($into).') has the name this would give the copy of tank/data; remove that schedule in Settings first, or pick another Copy Under',
+	'the copy of tank/gone gets that name too (Replicate Every Dataset, '.zfsmScheduleWhen($under).'); give this copy another name'),
+	array(zfsmScheduleSame(array($under), $into), zfsmScheduleSame(array($into), $under), $unread), 'a repeat\'s copy where a copy under a dataset goes, or may go');
+$near = array('id' => 'near', 'dataset' => 'tank', 'dest' => 'elsewhere/', 'minute' => ($jobs[0]['minute'] + 2) % 60) + $under;
+same(array_fill(0, 10, ''), array(zfsmScheduleSame(array($under), array('dataset' => 'tank/data') + $into), zfsmScheduleSame(array(array('dataset' => 'tank/data') + $into), $under),
+	zfsmScheduleSame(array($under), $gone), zfsmScheduleSame(array($under, $near), $into), zfsmScheduleSame(array($into, $near), $under),
+	zfsmScheduleSame(array($under), array('dest' => 'backup/backup/data') + $into), zfsmScheduleSame(array($under), array('server' => 'nas') + $into),
+	zfsmScheduleSame(array(array('server' => 'nas') + $into), $under), zfsmScheduleSame(array(array('every' => 'none') + $under), $into), zfsmScheduleSame(array(array('every' => 'none') + $into), $under)),
+	'but not its own dataset\'s, a gone one\'s, one a nearer schedule copies elsewhere, one in the pool it copies into, on another server, or never run');
+// Two copies under a dataset: refused whichever is saved second where a copy of each gets one name (pool data's and tank/data's), or
+// where Replicate Every Dataset copies under another's copy; not when ZFS says the other dataset is gone (a failed read refuses).
+file_put_contents($work.'/pool/datasets', "data\tfilesystem\n", FILE_APPEND);
+$pooled = array('id' => 'pooled', 'dataset' => 'data', 'dest' => 'backup/tank/', 'minute' => ($jobs[0]['minute'] + 3) % 60) + $under;
+$deep = array('id' => 'deep', 'dest' => 'backup/tank/') + $under;
+$own = array('id' => 'own', 'dataset' => 'tank/data', 'dest' => 'backup/') + $pooled;
+$whole = array('id' => 'whole', 'dataset' => 'tank', 'dest' => 'backup/') + $pooled;
+$meets = function($of, $what, $job, $mine) { return 'the copy of '.$of.' ('.$what.', '.zfsmScheduleWhen($job).') has the name this would give the copy of '.$mine.'; remove that schedule in Settings first, or pick another Copy Under'; };
+$clash = ', so the copy of a pool there could get the name of the copy of a dataset in tank';
+putenv('ZFSM_TEST_LIST_FAIL=data');
+$unread = zfsmScheduleSame(array($under), $pooled);
+putenv('ZFSM_TEST_LIST_FAIL');
+same(array($meets('tank/data', 'Replicate Every Dataset', $under, 'data'), $meets('data', 'the copies of data and below', $pooled, 'tank/data'),
+	$meets('tank/data', 'the copies of tank/data and below', $own, 'data'), $meets('data', 'Replicate Every Dataset', $deep, 'tank/data'),
+	'Copy Under backup/tank is the copy of tank (the copies of tank and below, '.zfsmScheduleWhen($whole).')'.$clash.'; pick another Copy Under',
+	'Replicate Every Dataset copies under backup/tank ('.zfsmScheduleWhen($deep).'), which is the copy this would make of tank'.$clash.'; change it in Settings first, or pick another Copy Under',
+	$meets('tank/data', 'Replicate Every Dataset', $under, 'data')),
+	array(zfsmScheduleSame(array($under), $pooled), zfsmScheduleSame(array($pooled), $under), zfsmScheduleSame(array($own), $deep), zfsmScheduleSame(array($deep), $own),
+		zfsmScheduleSame(array($whole), $deep), zfsmScheduleSame(array($deep), $whole), $unread), 'two copies under a dataset where their copies meet');
+$apart = array(zfsmScheduleSame(array($under), array('dataset' => 'tank/data') + $pooled), zfsmScheduleSame(array(array('dataset' => 'other') + $pooled), $whole),
+	zfsmScheduleSame(array($under), array('server' => 'nas') + $pooled), zfsmScheduleSame(array(array('every' => 'none') + $under), $pooled),
+	zfsmScheduleSame(array(array('dest' => '') + $pooled), $under));
+$drop('data');
+same(array_fill(0, 7, ''), array_merge($apart, array(zfsmScheduleSame(array($under), $pooled), zfsmScheduleSame(array($pooled), $under))),
+	'but not where they don\'t, a Copy Under inside another\'s copy but for Replicate Every Dataset\'s, on another server, never run, a snapshot schedule, or once data is gone');
+// Replace reads the saved schedules too: the copy this one makes of tank/data is not replaced by tank/other's.
+file_put_contents($work.'/pool/datasets', "tank/other\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "tank/other@o\t31\t30\n", FILE_APPEND);
+$held = $names('backup/data', 'snapshot');
+$unmatched = end($held).' is not on this dataset, so backup/data can\'t be updated without destroying it';
+$replacing = function() { $plan = zfsmReplicatePlan('tank/other', 'o', 'backup/data', array('replace' => true)); return $plan['can_proceed'] ? $plan['replace'] : $plan['error']; };
+$saved = file_get_contents(zfsmScheduleFile());
+$by = $replacing();
+file_put_contents(zfsmScheduleFile(), '[');
+$unreadable = $replacing();
+file_put_contents(zfsmScheduleFile(), '[]');
+$free = $replacing();
+file_put_contents(zfsmScheduleFile(), $saved);
+$drop('tank/other');
+file_put_contents($work.'/pool/marks', "backup/data@stray\t99\t999\n", FILE_APPEND);
+$plan = zfsmReplicatePlan('tank/data', 'b', 'backup/data', array('replace' => true));
+$own = $plan['can_proceed'] ? $plan['replace'] : $plan['error'];
+$drop('backup/data@stray');
+same(array($unmatched.'; it has the name a schedule gives the copy of tank/data, so it is not replaced: give this copy another name', $unmatched.'; it is not replaced, as '.zfsmScheduleUnreadable(), 1, 1),
+	array($by, $unreadable, preg_match('/^backup\/data_replaced_\d{8}_\d{4}$/D', $free), preg_match('/^backup\/data_replaced_\d{8}_\d{4}$/D', $own)),
+	'Replace leaves a scheduled copy of another dataset, or any when the schedules can\'t be read, not that dataset\'s own: '.$free.', '.$own);
 $no_time = 'set the time it starts at';
 $no_day = 'tick at least one day';
 $no_repeat = 'Repeat has no such choice now; reload the page and pick again';
@@ -171,13 +281,27 @@ foreach (array(array('', '1', $no_time), array('24:00', '1', $no_time), array('4
 }
 same(array(array('tank/data' => 'Nothing was scheduled: '.$no_repeat), array('tank/data' => 'Nothing was scheduled: '.$no_repeat)),
 	array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'minutely', '', '', 0, $cfg)['failed'], zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'daily', '', '', 0, $cfg)['failed']), 'one more often than hourly, and one from a page opened before the update');
+same(array(array('tank/data' => 'Nothing was scheduled: under Cron line, in the minute, 5/15 needs * or a range before the /, such as 5-59/15'),
+		array('tank/data' => 'Nothing was scheduled: under Cron line, give five fields: minute, hour, day of the month, month and day of the week, such as */15 * * * *')),
+	array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'cron', '5/15 * * * *', '', 0, $cfg)['failed'], zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'cron', null, '', 0, $cfg)['failed']),
+	'a cron line Save does not take, and none, says what to fix');
 same(array('tank/data' => 'Nothing was scheduled: give the copy a name as Replicate does'), zfsmScheduleAdd('tank/data', '', 'backup', '', 'days', '04:00', '1', 0, $cfg)['failed'], 'one here whose copy is no dataset in a pool');
-same(array('tank/data' => 'Nothing was scheduled: '.$no_day.'; under Snapshots to keep, give a number up to 9999, or nothing to keep all'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '04:00', '', -1, $cfg)['failed'],
+same(array('tank/data' => 'Nothing was scheduled: '.$no_day.'; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all'), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '04:00', '', -1, $cfg)['failed'],
 	'one with no day ticked and no number to keep says both');
+same(array(array(null, 0, 0, 0, '30d 12m', 5, -1), array('', 'all', 'all', '5', '30d 12m')),
+	array(array_map('zfsmCopyKeepsParse', array(' ', ' ALL ', 'all', '0', ' 12M 30d ', '5', 'x')), array_map('zfsmCopyKeepsField', array(null, 0, '0', 5, '30d 12m'))),
+	'Copy Keeps: nothing, all (0 too), rules, and what it can\'t read; shown back as given');
+same(array(array('tank/data' => 'Nothing was scheduled: leave Copy Keeps empty: what a copy on another server keeps, its Keep Replicas decides'),
+	array('tank/data' => 'Nothing was scheduled: under Copy Keeps, give all to keep every snapshot, or give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep what its source keeps')),
+	array(zfsmScheduleAdd('tank/data', '', 'copy', 'nas', 'hourly', '', '', 0, $cfg, 0)['failed'], zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, $cfg, -1)['failed']),
+	'Copy Keeps on a copy on another server, and one it can\'t read');
 $listed = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), json_encode(array(array('minute' => 0) + $jobs[0])));
 same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'hourly', '', '', 0, $cfg)['failed'],
 	'an hourly one beside one of the dataset at :00 takes a minute of its own, so only its first run stops it');
+file_put_contents(zfsmScheduleFile(), json_encode(array(array('every' => 'cron', 'cron' => '* 3 * * *') + $jobs[0])));
+same(array('tank/data' => 'Nothing was scheduled: the copy to backup/data (on the cron line * 3 * * *) starts then too, and no minute of the hour is free for Every hour; pick On days of the week, or change that schedule'),
+	zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, $cfg)['failed'], 'an hourly one beside a cron line that starts in every minute of an hour');
 file_put_contents(zfsmScheduleFile(), $listed);
 same(array('tank/data' => 'Nothing was scheduled: the copy to backup/data ('.zfsmScheduleWhen($jobs[0]).') starts then too; pick another time'),
 	zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', sprintf('05:%02d', $jobs[0]['minute']), '3', 0, $cfg)['failed'], 'one that starts in the minute of another of the dataset');
@@ -185,34 +309,61 @@ same(1, preg_match('/^Nothing was scheduled: Snapshots Pattern would give the ru
 // Twelve hours off: the hourly schedule's run in that hour is the only snapshot it could share a name with.
 same(1, preg_match('/^Nothing was scheduled: Snapshots Pattern would give the run at .+ the same snapshot name as the run at .+ of the copy to backup\/data; add the time to it in Settings$/D',
 	zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', sprintf('%02d:%02d', ((int)date('G') + 12) % 24, ($jobs[0]['minute'] + 30) % 60), $every, 0, $hours)['failed']['tank/data'] ?? ''), 'a daily one whose names an hourly one of the dataset takes too');
+$untaken = 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long';
+same(array(array('tank/data' => 'Nothing was scheduled: '.$untaken), $listed), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, array('snap_pattern' => 'Y/m/d-His') + $cfg)['failed'],
+	file_get_contents(zfsmScheduleFile())), 'one whose new snapshots ZFS refuses the names of: none saved, no run started');
+// Azores' T is -01 in winter time and +00 in summer time, which ZFS refuses: refused in both, in winter time (late October to late March) by the half-year look only.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Atlantic/Azores');
+same(array('tank/data' => 'Nothing was scheduled: '.$untaken), zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'hourly', '', '', 0, array('snap_pattern' => 'Y-m-d-His-T', 'snap_utc' => 0) + $cfg)['failed'],
+	'and one whose names ZFS refuses in summer time only');
+date_default_timezone_set($zone);
 same(array('tank/data' => 'Nothing was scheduled: a schedule takes a new snapshot each run, so pick Take one now'), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'days', '03:00', '1', 0, $cfg)['failed'], 'one with a snapshot picked');
 same(array('tank/data' => 'Nothing was scheduled: '.$no_repeat), zfsmScheduleAdd('tank/data', 'b', 'backup/two', '', 'often', '03:00', '1', 0, $cfg)['failed'], 'and one that repeats no way it knows, with a snapshot picked too');
-same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'days', '03:00', '2', 0, $cfg)['failed'], 'one whose first run can\'t start says why');
+same(array('tank/data' => "Nothing was scheduled: The copy goes inside nowhere, which doesn't exist"), zfsmScheduleAdd('tank/data', '', 'nowhere/data', '', 'days', sprintf('03:%02d', ($jobs[0]['minute'] + 30) % 60), '2', 0, $cfg)['failed'],
+	'one whose first run can\'t start says why');
 same(array($jobs, array(), array(), $taken), array($stored(), $read('cron.log'), $sends(), count($names('tank/data', 'snapshot'))), 'and none of them saves, runs or takes a snapshot');
 
 // Cron's runs take a snapshot and send the changes; one that works sends no notification.
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, time() + 3600), 'a scheduled run');
-same(1, preg_match('/^send -P -v -i tank\/data@repl-[0-9]{14} tank\/data@repl-[0-9]{14}$/D', implode("\n", $sends())), 'sends only the changes: '.implode(' | ', $sends()));
+same(1, preg_match('/^send -P -v -L -i tank\/data@repl-[0-9]{14} tank\/data@repl-[0-9]{14}$/D', implode("\n", $sends())), 'sends only the changes: '.implode(' | ', $sends()));
 same(array($taken + 1, 2, array()), array(count($names('tank/data', 'snapshot')), count($names('backup/data', 'snapshot')), $read('notify-detail.log')), 'each side keeps the new snapshot, and nothing is notified');
+// Sydney's clock goes back at 16:00 UTC on 4 April 2026, so it shows 02:30:01 twice: before the change a taken name is a problem
+// as ever; after it, cron's run then does nothing, its dataset holding the name, and one a second later sends.
+$zone = date_default_timezone_get();
+date_default_timezone_set('Australia/Sydney');
+$reset();
+same(array(0, 1, array('warning: ZFS Replication')), array(zfsmScheduleRun($id, $local, 1775316601), zfsmScheduleRun($id, $local, 1775316601), $read('notify.log')),
+	'the run at 02:30:01, and one then again: its name taken, a problem as ever');
+$count = count($names('tank/data', 'snapshot'));
+$reset();
+same(array(0, $count, array(), array(), 1), array(zfsmScheduleRun($id, $local, 1775320201), count($names('tank/data', 'snapshot')), $sends(), $read('notify-detail.log'),
+	preg_match('/ Schedule '.$id.' not started: its dataset has a snapshot of the name this run gives, from before the clock went back$/m', (string)file_get_contents(zfsmLogFile()))), 'the one cron starts at 02:30:01 after the change takes no snapshot, sends nothing, notifies nothing, and logs why');
+$reset();
+same(array(0, 1), array(zfsmScheduleRun($id, $local, 1775320202), count($sends())), 'one cron starts a second later sends');
+date_default_timezone_set($zone);
+// tank/data keeps the two these took.
+$taken += 2;
 
 // With the copy gone, a run doesn't send it in full again: it notifies once, then logs, and Settings counts the runs.
 $reset();
 $drop('backup/data');
 same(1, zfsmScheduleRun($id, $cfg, time() + 7200), 'a run whose copy is gone');
-$gone = 'warning: Replication of tank/data to backup/data not started: backup/data is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy';
+$gone = 'warning: Replication of tank/data to backup/data not started: backup/data is gone, though this dataset made a copy there before; this schedule sends only changes, so replicate it once by hand to make a new copy';
 same(array($gone.'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'says why, once');
 same(array(array(), $taken + 1), array($sends(), count($names('tank/data', 'snapshot'))), 'sends nothing and removes the snapshot it took');
 same(1, zfsmScheduleRun($id, $cfg, time() + 10800), 'the next one fails too');
 same(array(1, 2), array(count($read('notify-detail.log')), zfsmScheduleFailures($id)), 'without another notification; the problems are counted');
-same(true, strpos(zfsmSchedulesHtml($cfg), '2 run(s) in a row with a problem') !== false, 'and Settings shows the count: '.zfsmSchedulesHtml($cfg));
+same(array('2 run(s) in a row with a problem: the first one\'s notification and /var/log/zfs.master.log say why'), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/data')[1] ?? null,
+	'and Settings shows the count on a line across, under its row: '.zfsmSchedulesHtml($cfg));
 same(array(false, 1), array(strpos(zfsmSchedulesHtml($cfg), 'Snapshots Pattern'), preg_match('/Snapshots Pattern would give the run at [^<]+ the same snapshot name as the run at [^<]+, so that run fails: add the time to Snapshots Pattern/', zfsmSchedulesHtml($days))), 'and, with Snapshots Pattern changed since, that its runs\' names repeat');
 // And with another schedule of the dataset whose runs share an hour's names with it, on both rows.
 $listed = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), json_encode(array_merge(json_decode($listed, true), array(array('id' => '001e0000', 'dataset' => 'tank/data', 'dest' => 'backup/two', 'server' => '', 'every' => 'daily', 'hour' => 5, 'day' => 0)))));
 same(array(1, 1), array(preg_match('/of the copy to backup\/two, so that run fails/', zfsmSchedulesHtml($hours)), preg_match('/of the copy to backup\/data, so that run fails/', zfsmSchedulesHtml($hours))), 'Settings shows a clash of two schedules on each');
 file_put_contents(zfsmScheduleFile(), $listed);
-same(1, preg_match('/Scheduled replication '.$id.': 2 run\(s\) in a row with a problem$/m', (string)@file_get_contents(zfsmLogFile())), 'each problem is logged with its count');
+same(1, preg_match('/Schedule '.$id.': 2 run\(s\) in a row with a problem$/m', (string)@file_get_contents(zfsmLogFile())), 'each problem is logged with its count');
 // Replicated once by hand, the next scheduled run works and says so.
 same(0, zfsmRunReplicate('tank/data', 'b', 'backup/data'), 'a run by hand makes a new copy');
 $reset();
@@ -250,6 +401,42 @@ same(1, zfsmScheduleRun($id, $cfg, time() + 15800), 'a run of a dataset that is 
 same(array('warning: Replication of tank/data to backup/data not started: it no longer exists; remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'says it is gone');
 foreach ($kept as $file => $text) file_put_contents($work.'/pool/'.$file, $text);
 @unlink(zfsmScheduleStateFile($id));
+// One made Read Only since its repeat was saved: a run takes no snapshot in it and says why; Save refuses another, as for one mounted legacy.
+$props = file_get_contents($work.'/pool/props');
+file_put_contents($work.'/pool/props', "tank/data\treadonly\ton\n", FILE_APPEND);
+$reset();
+same(1, zfsmScheduleRun($id, $cfg, time() + 15850), 'a run of a dataset made Read Only');
+same(array(array(), array('warning: Replication of tank/data to backup/data not started: tank/data is Read Only. Scheduled snapshots and copies skip it. Remove its schedule in Settings. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array(array_values(preg_grep('/^(snapshot|send) /', $read('calls.log'))), $read('notify-detail.log')), 'takes and sends nothing, and says why');
+$before = $stored();
+$refused = zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed'];
+file_put_contents($work.'/pool/props', $props."tank/data\tmountpoint\tlegacy\n");
+same(array(array('tank/data' => 'Nothing was scheduled: tank/data is Read Only. Scheduled snapshots and copies skip it'),
+	array('tank/data' => 'Nothing was scheduled: tank/data is mounted legacy. Scheduled snapshots and copies skip it'), $before),
+	array($refused, zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed'], $stored()), 'Save refuses both, and nothing is stored');
+file_put_contents($work.'/pool/props', $props);
+@unlink(zfsmScheduleStateFile($id));
+// One whose dataset, or its snapshot names, could not be read: a run sends nothing and says why, and Save refuses. The pool goes back after.
+$kept = array();
+foreach (glob($work.'/pool/*') as $file) $kept[$file] = file_get_contents($file);
+$before = $stored();
+$unread = array();
+foreach (array('ZFSM_TEST_COVER_FAIL', 'ZFSM_TEST_NAMES_FAIL') as $fail) {
+	$reset();
+	@unlink(zfsmScheduleStateFile($id));
+	putenv($fail.'=1');
+	$unread[] = array(zfsmScheduleRun($id, $cfg, time() + 15900), count($sends()), $read('notify-detail.log'), zfsmScheduleAdd('tank/data', '', 'backup/three', '', 'days', '04:00', '1', 0, $cfg)['failed']);
+	putenv($fail);
+}
+$later = '. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
+$names_unread = 'the snapshot names of tank/data could not be read, so it may be left to Sanoid or Syncoid';
+same(array(array(1, 0, array('warning: Replication of tank/data to backup/data not started: tank/data could not be read: cannot iterate filesystems: Input/output error'.$later),
+		array('tank/data' => 'Nothing was scheduled: tank/data could not be read: cannot iterate filesystems: Input/output error')),
+	array(1, 0, array('warning: Replication of tank/data to backup/data not started: '.$names_unread.$later), array('tank/data' => 'Nothing was scheduled: '.$names_unread)), $before),
+	array_merge($unread, array($stored())), 'a repeat whose dataset or snapshot names could not be read sends nothing and says why; Save refuses one');
+foreach (glob($work.'/pool/*') as $file) if (!isset($kept[$file])) unlink($file);
+foreach ($kept as $file => $text) file_put_contents($file, $text);
+@unlink(zfsmScheduleStateFile($id));
 // A run that finds the one before it stopped part-way carries that on, then sends its own snapshot.
 $reset();
 $at = time() + 16000;
@@ -259,7 +446,7 @@ putenv('ZFSM_TEST_SEND_CUT');
 list($stopped, $own) = array('tank/data@'.zfsmNewSnapshotName($cfg, $at), 'tank/data@'.zfsmNewSnapshotName($cfg, $at + 3600));
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $at + 3600), 'the next run');
-same(array('send -P -v -t tok:'.$stopped, 'send -P -v -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
+same(array('send -P -v -t tok:'.$stopped, 'send -P -v -L -i '.$stopped.' '.$own), $sends(), 'carries the stopped one on, then sends its own changes');
 same(array('backup/data@'.zfsmNewSnapshotName($cfg, $at + 3600)), array_slice($names('backup/data', 'snapshot'), -1), 'so the copy holds this run\'s snapshot');
 same(array('normal: Replication of '.$own.' to backup/data finished (changes since '.substr($stopped, strlen('tank/data@')).'). It works again after 1 run(s) with a problem.'), $read('notify-detail.log'), 'and says once, for its own snapshot, that it works again');
 // Until its own snapshot lands too, the run is a problem, and nothing says it works again.
@@ -279,19 +466,70 @@ same(1, zfsmScheduleRun($id, $cfg, $at + 14400), 'a run that an error ends');
 $error = 'warning: Replication of tank/data to backup/data failed: nchan is down. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
 same(array(array($error), 1, false), array($read('notify-detail.log'), zfsmScheduleFailures($id), zfsmJobRunning($lock_file)), 'says why, counts it and lets go of the lock');
 @unlink(zfsmScheduleStateFile($id));
+// A start while the run before still sends: nothing taken or sent, only logged until that one has gone on a day, then notified.
+$own_lock = zfsmJobDir('schedule').'/'.$id.'.lock';
+$own_held = zfsmJobLock($own_lock);
+touch($own_lock, $at + 18000);
+$reset();
+$own_count = count($names('tank/data', 'snapshot'));
+same(0, zfsmScheduleRun($id, $cfg, $at + 18000), 'a start while the run before still sends');
+same(array($own_count, array(), array(), 0, 1), array(count($names('tank/data', 'snapshot')), $sends(), $read('notify.log'), zfsmScheduleFailures($id),
+	preg_match('/ Schedule '.$id.': Replication of tank\/data to backup\/data not started: the run before is still going$/m', (string)file_get_contents(zfsmLogFile()))),
+	'takes and sends nothing, notifies and counts nothing, and logs why');
+touch($own_lock, $at + 18060 - 90000);
+same(1, zfsmScheduleRun($id, $cfg, $at + 18060), 'a start a day after it');
+same(array(array(), array('warning: Replication of tank/data to backup/data not started: the run before is still going, 25 hour(s) after it started. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.')),
+	array($sends(), $read('notify-detail.log')), 'sends nothing, and notifies');
+@unlink(zfsmScheduleStateFile($id));
+// In clock minutes: a daily repeat's start counts the day though the run before started later in its minute; one before that minute counts at once, with no age.
+$own_minute = (intdiv($at, 60) + 302) * 60;
+touch($own_lock, $own_minute + 50 - 86400);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going, 24 hour(s) after it started'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $own_minute + 5), $read('notify-detail.log')), 'a start a day of clock minutes after it, 45 seconds short of a day');
+@unlink(zfsmScheduleStateFile($id));
+touch($own_lock, $at + 18180 + 7200);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $at + 18180), $read('notify-detail.log')), 'a start after the clock was set back');
+@unlink(zfsmScheduleStateFile($id));
+touch($own_lock, $at + 18240 + 600);
+$reset();
+same(array(1, array('warning: Replication of tank/data to backup/data not started: the run before is still going'.$later)),
+	array(zfsmScheduleRun($id, $cfg, $at + 18240), $read('notify-detail.log')), 'a start after the clock was set back 10 minutes');
+zfsmJobUnlock($own_held);
+@unlink(zfsmScheduleStateFile($id));
+// Once it is done, the next run sends, marks its start on the lock file and lets go of it.
+touch($own_lock, time() - 90000);
+$reset();
+same(0, zfsmScheduleRun($id, $cfg, $at + 21600), 'the next run once that one is done');
+clearstatcache();
+$own_free = zfsmJobLock($own_lock);
+same(array(1, $at + 21600, true), array(count($sends()), filemtime($own_lock), is_resource($own_free)), 'sends, marks its start and lets go of its lock');
+zfsmJobUnlock($own_free);
+@unlink(zfsmScheduleStateFile($id));
 
-// Where the count can't be kept, each problem notifies, without saying later ones won't.
-$state = zfsmJobDir('schedule');
-rename($state, $state.'.away');
-touch($state);
+// Where the count can't be kept, each problem notifies, without saying later ones won't. A folder where the count's file goes: the run's lock still opens.
+$state = zfsmScheduleStateFile($id);
+@unlink($state);
+mkdir($state);
 $reset();
 $drop('backup/data');
 zfsmScheduleRun($id, $cfg, time() + 18000);
 zfsmScheduleRun($id, $cfg, time() + 21600);
 same(array($gone, $gone), $read('notify-detail.log'), 'a count that can\'t be kept notifies each time');
+rmdir($state);
+zfsmRunReplicate('tank/data', 'b', 'backup/data');
+// With a file where the schedules' folder goes, a run can't open its lock: it takes and sends nothing, and says why.
+$state = zfsmJobDir('schedule');
+rename($state, $state.'.away');
+touch($state);
+$reset();
+$own_count = count($names('tank/data', 'snapshot'));
+same(array(1, $own_count, array(), array('warning: Replication of tank/data to backup/data not started: the lock file could not be opened.')),
+	array(zfsmScheduleRun($id, $cfg, time() + 25200), count($names('tank/data', 'snapshot')), $sends(), $read('notify-detail.log')), 'a run whose lock can\'t be opened');
 unlink($state);
 rename($state.'.away', $state);
-zfsmRunReplicate('tank/data', 'b', 'backup/data');
 
 // A cron line that outlived its schedule runs nothing; cron's script runs a schedule by its id.
 $reset();
@@ -305,31 +543,69 @@ $run = function($args) {
 	return array($code, implode("\n", $said));
 };
 $before = count($names('backup/data', 'snapshot'));
-same(array(0, ''), $run('run '.$id), 'cron\'s script runs it');
+same(array(0, 'started'), $run('run '.$id), 'cron\'s script runs it, saying it started as zfsmStartJob waits for (cron drops it)');
 same(array($before + 1, 1), array(count($names('backup/data', 'snapshot')), count($sends())), 'and the copy gets its new snapshot');
-same(array(2, 'Usage: schedule.php run <schedule id>'), $run('run ../x'), 'anything but an id is refused');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal'), $run('run ../x'), 'anything but an id is refused');
+same(array(2, 'Usage: schedule.php run <schedule id> | schedule.php start | schedule.php heal'), $run('start now'), 'and start takes nothing after it');
 
 // A list that can't be read is never written over; records the plugin can't use are kept as they are.
 $saved = file_get_contents(zfsmScheduleFile());
 file_put_contents(zfsmScheduleFile(), '{"id":"'.$id.'"}');
 $unreadable = zfsmScheduleFile().' could not be read as a list of schedules; fix or remove it first';
-same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '01:00', $every, 0, $cfg)['failed'], zfsmScheduleRemove($id)['why'], file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
+same(array(array('tank/data' => 'Nothing was scheduled: '.$unreadable), $unreadable, '{"id":"'.$id.'"}'), array(zfsmScheduleAdd('tank/data', '', 'backup/two', '', 'days', '01:00', $every, 0, $cfg)['failed'], zfsmScheduleRemove($id, $cfg)['why'], file_get_contents(zfsmScheduleFile())), 'an object is no list: nothing is added or removed');
 same(true, strpos(zfsmSchedulesHtml($cfg), zfsmHtml($unreadable)) !== false, 'Settings says so');
 $reset();
 same(1, zfsmScheduleRun($id, $cfg, time()), 'and a run can\'t start');
-same(array('warning: Scheduled replication not started: '.zfsmSafeText($unreadable).'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'which it notifies');
+same(array('warning: Scheduled run not started: '.zfsmSafeText($unreadable).'. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.'), $read('notify-detail.log'), 'which it notifies');
 @unlink(zfsmScheduleStateFile($id));
 file_put_contents(zfsmScheduleFile(), '[{"id":"zz"},'.substr($saved, 1));
 same(true, strpos(zfsmSchedulesHtml($cfg), '1 record(s) in '.zfsmHtml(zfsmScheduleFile()).' are not schedules the plugin can use') !== false, 'a record it can\'t use is counted in Settings');
 
+// A record whose Copy Keeps can't apply is no schedule; Settings says what a copy keeps.
+$job = array_values(array_filter($stored(), function($job) use ($id) { return ($job['id'] ?? '') === $id; }))[0];
+same(false, array_key_exists('copy_keeps', $job), 'a schedule added with no Copy Keeps saves none');
+$kinds = zfsmScheduleRead(json_encode(array($job + array('copy_keeps' => '30d'), array('id' => '0badc0de', 'server' => 'nas', 'dest' => 'copy', 'copy_keeps' => 0) + $job,
+	array('id' => '0badc0df', 'dest' => 'backup/three', 'copy_keeps' => -1) + $job, array('id' => '0badc0e0', 'dataset' => '', 'dest' => '', 'copy_keeps' => 0) + $job,
+	array('id' => '0badc0e1', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none', 'copy_keeps' => 0) + $job, array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'every' => 'none') + $job)));
+same(array(array($id => $job + array('copy_keeps' => '30d'), '0badc0e2' => array('id' => '0badc0e2', 'dataset' => 'tank', 'dest' => '/', 'server' => '', 'every' => 'none') + $job), 4), array($kinds['valid'], count($kinds['other'])),
+	'kept on a copy here; a record with it on a server\'s copy, unread, with no copy, or on None is no schedule');
+same(array('keeps all its snapshots; its copy keeps 30 daily', 'keeps the newest 2 of the snapshots of each dataset it copies; each copy keeps all its snapshots', 'keeps all its snapshots'),
+	array(zfsmScheduleKeepText($job + array('copy_keeps' => '30d')), zfsmScheduleKeepText(array('dataset' => '', 'dest' => 'backup/', 'keep' => 2, 'copy_keeps' => 0) + $job), zfsmScheduleKeepText($job)),
+	'Settings says what a copy keeps, and nothing of one with no Copy Keeps');
+
+// Change Keep sets Keep and Copy Keeps in place: its id, time and cron line as they were.
+$mine = function() use ($stored, $id) { return array_values(array_filter($stored(), function($job) use ($id) { return ($job['id'] ?? '') === $id; }))[0] ?? null; };
+$cron_before = $cron();
+$reset();
+same(array('saved' => true, 'why' => ''), zfsmScheduleKeepChange($id, '7d', '30d 12m'), 'Change Keep saved');
+same(array(array_merge($job, array('keep' => '7d', 'copy_keeps' => '30d 12m')), true, $cron_before, array()),
+	array($mine(), in_array(array('id' => 'zz'), $stored(), true), $cron(), preg_grep('/^(snapshot|send) /', $read('calls.log'))),
+	'only Keep and Copy Keeps change: its id, time and cron line stay, the record it can\'t use too, and no run starts');
+same(array('7 daily | Copy Keeps: 30 daily and 12 monthly', '[Change Keep] [Remove]'), array_slice(zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), $job['dataset'])[0] ?? array(), 4), 'Settings says it');
+same(array(1, 0), array(substr_count(zfsmSchedulesHtml($cfg), '<input type="button" value="Change Keep" data-id="'.$id.'" data-dataset="'.$job['dataset'].'" data-to="'.$job['dest'].'" data-when="'
+	.zfsmScheduleWhen($job).'" data-keep="7d" data-copy-keeps="30d 12m" onclick="zfsmScheduleKeepDialog(this)">'), substr_count(zfsmScheduleKeepButton(array('server' => 'nas') + $mine(), '', ''), 'data-copy-keeps')),
+	'its row\'s Change Keep carries what its dialog shows, as saved; one on a server has no Copy Keeps');
+same(array(array('saved' => true, 'why' => ''), $job), array(zfsmScheduleKeepChange($id, 0, null), $mine()), 'Copy Keeps emptied is saved as none');
+$unchanged = $stored();
+$snapshots = array('id' => '0badc0e1', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 5, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
+file_put_contents(zfsmScheduleFile(), json_encode(array_merge($unchanged, array($snapshots))));
+same(1, substr_count(zfsmSchedulesHtml($cfg), 'value="Change Keep"'), 'Snapshot Every Dataset, which Settings sets, has no Change Keep');
+same(array('No such repeat set in Replicate; it may have been removed', 'No such repeat set in Replicate; it may have been removed', 'No such schedule', 'Nothing was saved: under Snapshots to keep, '.zfsmKeepFix(),
+	'Nothing was saved: under Copy Keeps, give all to keep every snapshot, or '.zfsmKeepFix('keep what its source keeps')),
+	array(zfsmScheduleKeepChange('0badc0de', 1, null)['why'], zfsmScheduleKeepChange('0badc0e1', 1, null)['why'], zfsmScheduleKeepChange('../x', 1, null)['why'], zfsmScheduleKeepChange($id, -1, null)['why'],
+		zfsmScheduleKeepChange($id, 1, -1)['why']),
+	'Change Keep of no such schedule, of Snapshot Every Dataset (Settings sets it), of no id, and with what it can\'t read');
+same(array_merge($unchanged, array($snapshots)), $stored(), 'none saved');
+file_put_contents(zfsmScheduleFile(), json_encode($unchanged));
+
 // Remove takes the schedule out of the list and the cron file, and Unraid rebuilds its crontab; Settings is refused while another change is saved.
 $lock = zfsmJobLock(zfsmJobDir('schedule').'/settings.lock', false);
-same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id), 'a change while another is being saved');
+same(array('saved' => false, 'why' => 'Another change to the schedules is being saved; try again'), zfsmScheduleRemove($id, $cfg), 'a change while another is being saved');
 zfsmJobUnlock($lock);
 $reset();
-same(array('saved' => true, 'why' => ''), zfsmScheduleRemove($id), 'removed');
+same(array('saved' => true, 'why' => ''), zfsmScheduleRemove($id, $cfg), 'removed');
 same(array(array(array('id' => 'zz')), null, array('ran')), array($stored(), $cron(), $read('cron.log')), 'the record it can\'t use stays; the cron file goes, and the crontab is rebuilt');
-same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id)['why'], zfsmScheduleRemove('../x')['why']), 'removing it again, or something that is no id');
+same(array('No such schedule; it may have been removed already', 'No such schedule'), array(zfsmScheduleRemove($id, $cfg)['why'], zfsmScheduleRemove('../x', $cfg)['why']), 'removing it again, or something that is no id');
 
 // A crontab that can't be rebuilt: the schedule is saved and its first run started, and the answer says cron runs the ones it had.
 $reset();
@@ -344,8 +620,206 @@ same(array(2, array(1, 6), 'every Monday and Saturday at 05:00'), array(count($s
 $weekly_id = $stored()[0]['id'];
 file_put_contents(zfsmScheduleStateFile($weekly_id), '{"failures":1}');
 touch($work.'/cron-fail');
-same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id), 'a removal whose crontab can\'t be rebuilt');
+same(array('saved' => true, 'why' => 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (crontab: cannot write), so it runs the ones it had until the server restarts'), zfsmScheduleRemove($weekly_id, $cfg), 'a removal whose crontab can\'t be rebuilt');
 unlink($work.'/cron-fail');
 same(array(array(array('id' => 'zz')), false, 0), array($stored(), strpos(zfsmSchedulesHtml($cfg), 'tank/data'), zfsmScheduleFailures($weekly_id)), 'is removed from the list and Settings, with its count');
+
+// Send's Decrypted is saved with a copy's schedule: the first run sends so (scripts/replicate.php), and so does a scheduled one that
+// makes the copy, as when that first run never landed. One without it sends raw.
+$pool('datasets', array("tank\tfilesystem", "tank/enc\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array("tank/enc@a\t11\t10"));
+$pool('props', array("tank/enc\tencryption\taes-256-gcm"));
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+$answer = zfsmScheduleAdd('tank/enc', '', 'backup/dec', '', 'hourly', '', '', 0, $cfg, null, array('decrypt' => true));
+for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/enc', 'replicate')); $waited++) usleep(50000);
+$GLOBALS['docroot'] = $work.'/docroot';
+$job = $stored()[0] ?? array();
+same(array(array(), true, 1), array($answer['failed'] ?? null, $job['decrypted'] ?? null, preg_match('/^send -P -v -L tank\/enc@repl-[0-9]{14}$/D', implode("\n", $sends()))), 'saved with the schedule, and its first run sends decrypted: '.implode(' | ', $sends()));
+$unsent = array('id' => '0badc0f0', 'dest' => 'backup/fresh') + $job;
+$raw = array('id' => '0badc0f1', 'dest' => 'backup/fresh-raw') + array_diff_key($job, array('decrypted' => 0));
+file_put_contents(zfsmScheduleFile(), json_encode(array($unsent, $raw)));
+$reset();
+same(array(0, 0), array(zfsmScheduleRun('0badc0f0', $cfg, time() + 3600), zfsmScheduleRun('0badc0f1', $cfg, time() + 7200)), 'scheduled runs whose copies were never made');
+same(array(1, 1), array(preg_match('/^send -P -v -L tank\/enc@repl-[0-9]{14}$/D', $sends()[0] ?? ''), preg_match('/^send -P -v -w tank\/enc@repl-[0-9]{14}$/D', $sends()[1] ?? '')), 'send decrypted as saved, else raw: '.implode(' | ', $sends()));
+
+// If the copy is gone, make it again (notifications show ' as ?, zfsmSafeText): saved with a copy's schedule, a run then sends a gone copy in full and first makes each
+// dataset missing between the pool and the copy a holder. Without it, the run refuses and makes nothing.
+$pool('datasets', array("tank\tfilesystem", "tank/re\tfilesystem", "backup\tfilesystem", "backup/a\tfilesystem", "backup/a/b\tfilesystem", "backup/a/b/c\tfilesystem"));
+$pool('marks', array("tank/re@a\t31\t10"));
+$pool('props', array());
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$answer = $add('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, array('remake' => true));
+$job = $stored()[0] ?? array();
+same(array(array(), true, 1, array(array('Copy', 'tank/re', 'backup/a/b/c/re | Makes its copy again if it is gone', 'every hour at :'.sprintf('%02d', $job['minute'] ?? -1), 'all', '[Change Keep] [Remove]'))),
+	array($answer['failed'] ?? null, $job['remake'] ?? null, count($sends()), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))),
+	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
+$taken = count($names('tank/re', 'snapshot'));
+$gone = function() use ($drop) { foreach (array('backup/a/b/c/re', 'backup/a/b/c', 'backup/a/b') as $dataset) $drop($dataset); };
+$creates = function() use ($read) { return array_values(preg_grep('/^create /', $read('calls.log'))); };
+$later = '. Later problems of this schedule are logged in /var/log/zfs.master.log, not notified, until a run works again.';
+$gone();
+file_put_contents(zfsmScheduleFile(), json_encode(array(array_diff_key($job, array('remake' => 0)))));
+$reset();
+same(1, zfsmScheduleRun($job['id'], $cfg, time() + 3600), 'without it, a run whose copy and two datasets above it are gone');
+same(array(array('warning: Replication of tank/re to backup/a/b/c/re not started: The copy goes inside backup/a/b/c, which doesn?t exist'.$later), array(), array(), $taken),
+	array($read('notify-detail.log'), $sends(), $creates(), count($names('tank/re', 'snapshot'))), 'refuses, makes nothing, sends nothing and removes the snapshot it took');
+file_put_contents(zfsmScheduleFile(), json_encode(array($job)));
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 7200), 'with it, the next run');
+$holder = array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/a/b', 'create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/a/b/c');
+same(array($holder, 1, true, array("backup/a/b\tcanmount\toff", "backup/a/b\treadonly\ton", "backup/a/b\tzfs.master:holder\ton"), array()),
+	array($creates(), preg_match('/^send -P -v -L tank\/re@repl-[0-9]{14}$/D', implode("\n", $sends())), zfsmDatasetExists('backup/a/b/c/re'), array_values(preg_grep('/^backup\/a\/b\t/', $read('pool/props'))),
+	array_values(preg_grep('/^backup\/a\t/', $read('pool/props')))), 'makes each missing dataset above it a holder, top first, leaves backup/a as it was, and sends it all: '.implode(' | ', $sends()));
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\. It works again after 1 run\(s\) with a problem\.$/D',
+	$read('notify-detail.log')[0] ?? ''), 'and says it sent it in full, and which datasets it made: '.implode(' | ', $read('notify-detail.log')));
+// A Copy Under run makes no level here: its own run made them, leaving any another copy is coming to (zfsmScheduleCopiesPlace).
+$gone();
+$reset();
+same(array(array('', array()), array()), array(zfsmReplicateLevels(array('remake' => true, 'under' => true), array('server' => ''), 'tank/re', 'backup/a/b/c/re'), $creates()),
+	'a Copy Under run, with its levels gone since, makes none');
+// A dataset that can't be made stops the run before it sends; the ones made before it stay.
+$taken = count($names('tank/re', 'snapshot'));
+putenv('ZFSM_TEST_CREATE_FAIL=backup/a/b/c');
+$reset();
+same(1, zfsmScheduleRun($job['id'], $cfg, time() + 10800), 'a run where backup/a/b/c can\'t be made');
+putenv('ZFSM_TEST_CREATE_FAIL');
+same(array(array('warning: Replication of tank/re to backup/a/b/c/re not started: The dataset to hold the copies below backup/a/b/c could not be made: cannot create ?backup/a/b/c?: dataset already exists. Made to hold the copy: backup/a/b'.$later),
+	array(), $holder, array(true, false), $taken), array($read('notify-detail.log'), $sends(), $creates(), array(zfsmDatasetExists('backup/a/b'), zfsmDatasetExists('backup/a/b/c')),
+	count($names('tank/re', 'snapshot'))), 'says why, sends nothing, keeps backup/a/b, and removes the snapshot it took');
+// A dataset another run makes first, as two copies below it run at once, is used.
+putenv('ZFSM_TEST_CREATE_RACE=backup/a/b/c');
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 12600), 'a run where another makes backup/a/b/c first');
+putenv('ZFSM_TEST_CREATE_RACE');
+same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/a/b/c'), 1, true), array($creates(), count($sends()), zfsmDatasetExists('backup/a/b/c/re')),
+	'sends the copy into it: '.implode(' | ', $read('notify-detail.log')));
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. It works again after 1 run\(s\) with a problem\.$/D', $read('notify-detail.log')[0] ?? ''),
+	'and names no dataset it made: '.implode(' | ', $read('notify-detail.log')));
+// A schedule that works tells of a run that made datasets, and stays quiet for one that made none (zfsmScheduleNotifier).
+$gone();
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 12900), 'a run of a schedule that works, whose copy and two datasets above it are gone');
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/a\/b\/c\/re finished \(in full\)\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\.$/D',
+	implode("\n", $read('notify-detail.log'))), 'says it sent it in full and which datasets it made: '.implode(' | ', $read('notify-detail.log')));
+$reset();
+same(array(0, array()), array(zfsmScheduleRun($job['id'], $cfg, time() + 13200), $read('notify-detail.log')), 'and nothing of the next run, which made none');
+// A run the plan refuses after the datasets were made says so, and leaves them for the next.
+$gone();
+$taken = count($names('tank/re', 'snapshot'));
+putenv('ZFSM_TEST_CRYPT_FAIL=tank/re');
+$reset();
+same(1, zfsmScheduleRun($job['id'], $cfg, time() + 13500), 'a run whose dataset\'s encryption can\'t be read');
+putenv('ZFSM_TEST_CRYPT_FAIL');
+same(array(1, array(), array(true, true), $taken), array(preg_match('/^warning: Replication of tank\/re to backup\/a\/b\/c\/re not started: .+\. Made to hold the copy: backup\/a\/b, backup\/a\/b\/c\. Later problems /',
+	$read('notify-detail.log')[0] ?? ''), $sends(), array(zfsmDatasetExists('backup/a/b'), zfsmDatasetExists('backup/a/b/c')), count($names('tank/re', 'snapshot'))),
+	'says why and which datasets it made, which stay, sends nothing, and removes the snapshot it took: '.implode(' | ', $read('notify-detail.log')));
+// A pool that is gone, or a copy inside its own dataset (a record edited by hand), makes nothing.
+$elsewhere = array(array('id' => '0badc0f2', 'dest' => 'gone/x/re') + $job, array('id' => '0badc0f3', 'dest' => 'tank/re/x/re') + $job);
+file_put_contents(zfsmScheduleFile(), json_encode($elsewhere));
+$reset();
+same(array(1, 1), array(zfsmScheduleRun('0badc0f2', $cfg, time() + 14400), zfsmScheduleRun('0badc0f3', $cfg, time() + 18000)), 'a run to a pool that is gone, and one inside its dataset');
+same(array(array('warning: Replication of tank/re to gone/x/re not started: The dataset to hold the copies below gone/x could not be made: cannot create ?gone/x?: parent does not exist'.$later,
+	'warning: Replication of tank/re to tank/re/x/re not started: The copy can?t be the dataset itself, go inside it, or replace one of its parents'.$later), array('create -o canmount=off -o readonly=on -o zfs.master:holder=on gone/x'), array()),
+	array($read('notify-detail.log'), $creates(), $sends()), 'each says why; only the one level below the missing pool is tried, and nothing is sent');
+
+// Replace a copy that no longer matches: saved with a copy's schedule here, only as true. A run then renames the copy aside and sends
+// the dataset in full, and tells of it while its schedule works (zfsmScheduleNotifier).
+same(array(true, false, false, false, false, false), array_map('zfsmScheduleValid', array(array('replace' => true) + $hourly, array('replace' => true, 'server' => 'nas', 'dest' => 'data') + $hourly,
+	array('replace' => false) + $hourly, array('replace' => 1) + $hourly, array('replace' => true) + $snapshots_job, array('replace' => true) + $under_job)), 'only a copy\'s schedule here saves replace, and only as true');
+same('Replace a copy that no longer matches is only for a copy on this server', zfsmScheduleWrong(array('replace' => true, 'server' => 'nas', 'dest' => 'data', 'keep' => 0) + $hourly), 'one on a server is told why');
+same('give the copy a name as Replicate does', zfsmScheduleWrong(array('replace' => true, 'dest' => '', 'keep' => 0) + $hourly), 'and one here with no copy named is told to name it');
+$pool('datasets', array("tank\tfilesystem", "tank/re\tfilesystem", "backup\tfilesystem"));
+$pool('marks', array("tank/re@a\t31\t10"));
+$pool('props', array());
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$answer = $add('tank/re', '', 'backup/re', '', 'hourly', '', '', 0, $cfg, null, array('replace' => true));
+$job = $stored()[0] ?? array();
+same(array(array(), true, 1, array(array('Copy', 'tank/re', 'backup/re | Replaces its copy if it no longer matches', 'every hour at :'.sprintf('%02d', $job['minute'] ?? -1), 'all', '[Change Keep] [Remove]'))),
+	array($answer['failed'] ?? null, $job['replace'] ?? null, count($sends()), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))),
+	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
+file_put_contents($work.'/pool/marks', "backup/re@stray\t998\t900\n", FILE_APPEND);
+$reset();
+same(0, zfsmScheduleRun($job['id'], $cfg, time() + 3600), 'a run of a schedule that works, whose copy went its own way');
+same(1, preg_match('/^normal: Replication of tank\/re@repl-[0-9]{14} to backup\/re finished \(in full\)\. The old copy is now backup\/re_replaced_[0-9]{8}_[0-9]{4}: destroy it when you no longer need it\.$/D',
+	implode("\n", $read('notify-detail.log'))), 'replaces it, and tells of it: '.implode(' | ', $read('notify-detail.log')));
+
+// A Custom (cron) line on a dataset of its own: a run of tank/re in this second would have its snapshot name.
+file_put_contents($work.'/pool/datasets', "tank/cr\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "tank/cr@a\t41\t10\n", FILE_APPEND);
+file_put_contents(zfsmScheduleFile(), '[]');
+$reset();
+$from = time();
+$answer = $add('tank/cr', '', 'backup/cron', '', 'cron', " */15  2 * *\t1-5 ", '', 0, $cfg);
+$job = $stored()[0] ?? array();
+$nextAt = function($at, $now) { return date(date('Y', $at) === date('Y', $now) ? 'D j M H:i' : 'D j M Y H:i', $at); };
+$said = function($now) use ($job, $nextAt) { return isset($job['cron']) ? 'Replication to backup/cron started; a notification says when it is done. It runs again on the cron line */15 2 * * 1-5, next at '.$nextAt(zfsmScheduleNext($job, $now), $now) : 'not saved'; };
+same(array(array('every' => 'cron', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'cron' => '*/15 2 * * 1-5', 'keep' => 0), array(), true, "# Generated ZFS Master NG schedules:\n0,15,30,45 2 * * 1,2,3,4,5 $script run ".($job['id'] ?? '')." &> /dev/null\n\n"),
+	array(array_intersect_key($job, array_flip(array('every', 'minute', 'hour', 'days', 'cron', 'keep'))), $answer['failed'], in_array($answer['succeeded']['tank/cr'] ?? '', array($said($from), $said(time())), true), $cron()),
+	'saved with its line, said with its next run, and its numbers in the cron file: '.var_export($answer, true));
+same(array(array('Copy', 'tank/cr', 'backup/cron', 'on the cron line */15 2 * * 1-5', 'all', '[Change Keep] [Remove]')), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/cr'), 'Settings says it');
+same(null, zfsmScheduleHeal(), 'the install leaves both files as they are');
+unlink(zfsmScheduleCronFile());
+same(array(array('saved' => true, 'why' => ''), "# Generated ZFS Master NG schedules:\n0,15,30,45 2 * * 1,2,3,4,5 $script run ".($job['id'] ?? '')." &> /dev/null\n\n"), array(zfsmScheduleHeal(), $cron()),
+	'and puts its line back in the cron file an older version wrote without it');
+$reset();
+$made = count($names('backup/cron', 'snapshot'));
+same(0, zfsmScheduleRun($job['id'] ?? '', $cfg, time() + 3600), 'a scheduled run of it: '.implode(' | ', $read('notify-detail.log')));
+same($made + 1, count($names('backup/cron', 'snapshot')), 'and that run sent its copy a new snapshot: '.implode(' | ', $names('backup/cron', 'snapshot')));
+
+// When the array starts, on a dataset of its own: its first run now, as any repeat's; no cron line, nor a second one of the dataset.
+file_put_contents($work.'/pool/datasets', "tank/st\tfilesystem\n", FILE_APPEND);
+file_put_contents($work.'/pool/marks', "tank/st@a\t51\t10\n", FILE_APPEND);
+$reset();
+$lines = $cron();
+$answer = $add('tank/st', '', 'backup/start', '', 'start', '13:30', '1,3', 0, $cfg);
+$job = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/st'; }))[0] ?? array();
+same(array(array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0), array(), 'Replication to backup/start started; a notification says when it is done. It runs again when the array starts', $lines, 1),
+	array(array_intersect_key($job, array_flip(array('every', 'minute', 'hour', 'days', 'cron', 'keep'))), $answer['failed'], $answer['succeeded']['tank/st'] ?? '', $cron(), count($names('backup/start', 'snapshot'))),
+	'saved with no time, said as when the array starts, its first run sent, and no line in the cron file: '.var_export($answer, true));
+same(array(array('Copy', 'tank/st', 'backup/start', 'when the array starts', 'all', '[Change Keep] [Remove]')), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/st'), 'Settings says it');
+same(array('tank/st' => 'Nothing was scheduled: the copy to backup/start (when the array starts) starts then too; pick another Repeat for one of them'),
+	$add('tank/st', '', 'backup/start2', '', 'start', '', '', 0, $cfg)['failed'], 'a second copy of tank/st when the array starts is refused');
+// A copy of tank/st at a time: with no seconds in Snapshots Pattern the two can get one name, so Save refuses it and Settings says so.
+$no_seconds = array('snap_pattern' => 'YmdHi') + $cfg;
+$st_daily = array_replace($job, array('id' => 'c0ffee00', 'dest' => 'backup/st-daily', 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 3)));
+$st_starts = 'the copy to backup/start runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute this schedule runs, both get one snapshot name';
+$st_listed = 'This schedule runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute the copy to backup/st-daily runs, both get one snapshot name, so that run fails: add the time to Snapshots Pattern';
+same(array(array('tank/st' => 'Nothing was scheduled: '.$st_starts.'; add the time to it in Settings'), '', 0),
+	array($add('tank/st', '', 'backup/st-daily', '', 'days', '04:00', '1,3', 0, $no_seconds)['failed'], zfsmScheduleClash($st_daily, zfsmScheduleRead()['valid'], $cfg, time(), false), count($names('backup/st-daily', 'snapshot'))),
+	'refused with no seconds, nothing sent; with seconds it clashes with none');
+zfsmScheduleChange(function($jobs) use ($st_daily) { return $jobs + array($st_daily['id'] => $st_daily); });
+same(array(1, 0), array(substr_count(zfsmSchedulesHtml($no_seconds), $st_listed), substr_count(zfsmSchedulesHtml($cfg), 'Snapshots Pattern has no seconds')),
+	'saved beside it anyway, Settings shows the clash on the row of the one when the array starts, and none with seconds');
+zfsmScheduleChange(function($jobs) { unset($jobs['c0ffee00']); return $jobs; });
+
+// The array starts (event/disks_mounted runs schedule.php start): its run alone starts, through the real script in ZFSM_TEST_DOCROOT.
+copy(zfsmScheduleFile(), '/boot/config/plugins/zfs.master/schedules.json');
+$reset();
+$copies = array('backup/start' => count($names('backup/start', 'snapshot')), 'backup/cron' => count($names('backup/cron', 'snapshot')));
+$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
+$GLOBALS['zfsm_php'] = PHP_BINARY;
+// In Maintenance mode none starts, and the log says why; Normal (var.ini) starts them.
+@mkdir($root.'/var/local/emhttp', 0700, true);
+file_put_contents($root.'/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nstartMode=\"Maintenance\"\n");
+same(array(0, 1), array(zfsmScheduleStartRuns(), preg_match('/ notice \[\d+\] Schedules not started when the array started: it started in Maintenance mode\n$/D', (string)file_get_contents($root.'/var/log/zfs.master.log'))),
+	'in Maintenance mode the array start starts none, and logs why');
+usleep(500000);
+same(array(array(), array()), array($sends(), $read('notify.log')), 'no run sends, nothing is notified');
+file_put_contents($root.'/var/local/emhttp/var.ini', "mdState=\"STARTED\"\nstartMode=\"Normal\"\n");
+same(0, zfsmScheduleStartRuns(), 'the array start starts its runs');
+for ($waited = 0; $waited < 100 && count($sends()) === 0; $waited++) usleep(50000);
+for ($waited = 0; $waited < 100 && zfsmJobRunning(zfsmJobLockFile('tank/st', 'replicate')); $waited++) usleep(50000);
+same(array('backup/start' => $copies['backup/start'] + 1, 'backup/cron' => $copies['backup/cron']), array('backup/start' => count($names('backup/start', 'snapshot')), 'backup/cron' => count($names('backup/cron', 'snapshot'))),
+	'tank/st\'s copy gets a new snapshot; the cron one runs nothing: '.implode(' | ', $sends()));
+file_put_contents('/boot/config/plugins/zfs.master/schedules.json', '{');
+$GLOBALS['docroot'] = $work.'/docroot';
+$reset();
+file_put_contents(zfsmScheduleFile(), '{');
+unlink($root.'/var/local/emhttp/var.ini');
+same(array(1, array('warning: Schedules not read when the array started, so no run for When the array starts started: '.zfsmSafeText($unreadable))), array(zfsmScheduleStartRuns(), $read('notify-detail.log')), 'with no var.ini it reads the list: one it can\'t read starts nothing and says so');
 
 echo "schedule tests passed\n";

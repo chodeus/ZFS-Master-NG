@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
+// The review runs first on ZFSMSize.js and ZFSMImpact.js alone, as the Snapshots Admin popup loads them; the forms join before their tests.
 const context = vm.createContext({});
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMSize.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMImpact.js'), 'utf8'), context);
@@ -32,7 +33,6 @@ assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroy
 context.zfsm_config = {size_units: 'decimal'};
 context.zfsm_display = {number: '.,', scale: -1};
 assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 2048}, 'destroys'), /frees about 2\.05 KB:/, 'in Unraid\'s units when Settings picks them');
-assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /about 2\.05 KB\./, 'and so is a replication\'s');
 delete context.zfsm_config;
 assert.doesNotMatch(context.zfsmImpactSummary({objects: ['a'], reclaim: null}, 'destroys'), /frees/, 'an unknown size is left out, not shown as 0');
 assert.match(context.zfsmImpactSummary({objects: ['a'], reclaim: 0}, 'destroys'), /frees about 0 B/, 'a real zero is shown');
@@ -57,6 +57,7 @@ assert.match(review({network: true}).error, /The request failed/);
 assert.match(html(review({network: true}), 'h'), /Nothing was changed/, 'and the dialog shows it');
 assert.equal(review({network: true, after: ''}).error, 'The request failed.', 'a read-only caller drops "Nothing was changed"');
 assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}', after: ''}).error, 'zfs timed out');
+assert.equal(review({answer: '{"failed":{"request":"zfs timed out"}}'}).error, 'zfs timed out. Nothing was changed.', 'a reason ends before what follows it');
 
 const page = fs.readFileSync(path.resolve(__dirname, '../zfs.master/ZFSMaster.page'), 'utf8');
 const popup = fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend/ZFSMAdminDatasetSnaps.php'), 'utf8');
@@ -70,21 +71,34 @@ assert.match(bulk, /cmd: 'destroysnapshot', 'snapshot': target,[^\n]*'token': pr
 const diff = popup.slice(popup.indexOf('function diffSnapshot('), popup.indexOf('function renameSnapshot('));
 assert.match(diff, /zfsmFetchReview\('[^']*', \{cmd: 'diffsnapshot'[\s\S]*\n\t\}, ''\);\n/, 'the changes dialog is read-only, so its failures do not say "Nothing was changed"');
 
+for (const file of require('./dialog_files.cjs')) vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../zfs.master/frontend', file), 'utf8'), context);
+context.zfsm_config = {size_units: 'decimal'};
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /about 2\.05 KB\./, 'a replication\'s size follows Settings too');
+delete context.zfsm_config;
+
 // The Replicate dialog (include/ZFSMReplicaPlan.php's preview): names and plans are escaped; no destination yet shows no plan.
 const replicate = context.zfsmReplicateHtml({snapshots: ['new<b>', 'old'], last_destination: {server: '', dest: 'backup/"data'}, servers: []}, 'tank/data');
 assert.doesNotMatch(replicate, /new<b>/, 'a snapshot name cannot inject markup');
 assert.match(replicate, /<option value="new&lt;b&gt;">[\s\S]*<option value="old">[\s\S]*<option value="">Take one now<\/option>/, 'newest snapshot first, Take one now last');
 assert.match(replicate, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value="backup\/&quot;data"/, 'the last destination is filled in');
 assert.doesNotMatch(replicate, /zfsm-replicate-server/, 'with no trusted servers there is no Server select');
+assert.doesNotMatch(replicate, /zfsm-replicate-send/, 'nor Send for a dataset that is not encrypted');
+const encrypted = context.zfsmReplicateHtml({snapshots: [], servers: [], encrypted: true}, 'tank/data');
+assert.match(encrypted, /<label[^>]*>Send:<select id="zfsm-replicate-send" aria-describedby="zfsm-replicate-send-hint"[^>]*><option value="">Raw: the copy stays encrypted with this dataset's key<\/option><option value="1">Decrypted: the copy is plain, or takes the key of the dataset it goes into<\/option><\/select><\/label><span id="zfsm-replicate-send-hint"[^>]*>Decrypted needs this dataset's key loaded\. <a [^>]*#encrypted-datasets"[^>]*>Guide<\/a><\/span>/,
+  'an encrypted one has Send, Raw first, with its hint');
 // Trusted servers: the last copy's server is picked, and its name inside that server's area filled in.
 const remote = context.zfsmReplicateHtml({snapshots: [], servers: ['nas', 'x<y'], last_destination: {server: 'nas', dest: 'backup/replicas/tower/da"ta'}}, 'tank/data');
 assert.match(remote, /<select id="zfsm-replicate-server"[^>]*><option value="">This server<\/option><option value="nas" selected>nas<\/option><option value="x&lt;y">x&lt;y<\/option><\/select>/,
   'This server, then each trusted server, escaped; the last copy\'s is picked');
 assert.match(remote, /id="zfsm-replicate-dest"[^>]*placeholder="name"[^>]*value="da&quot;ta"/, 'its name inside the area is filled in');
+assert.match(remote, /<p id="zfsm-replicate-replace-row" style="margin:\.5em 0;display:none">/, 'with Replace hidden, as only a copy on This server is replaced');
 const gone = context.zfsmReplicateHtml({snapshots: [], servers: ['nas'], last_destination: {server: 'old', dest: 'backup/replicas/tower/data'}}, 'tank/data');
 assert.match(gone, /<option value="">This server<\/option><option value="nas">nas<\/option>/, 'a last copy on a server no longer trusted picks This server');
 assert.match(gone, /id="zfsm-replicate-dest"[^>]*placeholder="pool\/dataset"[^>]*value=""/, 'with nothing filled in');
 assert.match(context.zfsmReplicateHtml({snapshots: [], servers: [], servers_error: 'remotes.json <bad>'}, 'tank/data'), /color:#e22828[^>]*>remotes\.json &lt;bad&gt;</, 'servers that can\'t be read say so, escaped');
+assert.match(context.zfsmReplicateHtml({snapshots: [], servers: ['nas'], servers_error: 'unread'}, 'tank/data'), /<select id="zfsm-replicate-server" aria-describedby="zfsm-replicate-server-error"[\s\S]*<p id="zfsm-replicate-server-error"[^>]*>unread<\/p>/,
+  'Replicate: the Server select names the line saying why its list is short');
+assert.doesNotMatch(remote, /aria-describedby="zfsm-replicate-server-error"/, 'and names none when the servers were read');
 assert.deepEqual([null, {server: '', dest: 'backup/data'}, {server: 'nas', dest: 'a/b/c'}, {server: 'nas', dest: 'a/b/c'}].map((last, at) => context.zfsmReplicateName(last, ['nas', 'nas', '', 'nas'][at], 'tank/media/photos')),
   ['photos', 'photos', '', 'c'], 'each server\'s name: the dataset\'s last part on a server it has no copy on, the last copy\'s where it has one');
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: '', server: 'n<s', area: 'a/b'}), '<p style="margin:.5em 0">On n&lt;s, copies go inside a/b.</p>', 'a trusted server picked: its area shows before a name is given');
@@ -92,12 +106,74 @@ assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', siz
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume', server: 'nas', area: 'a/b'}), /has no \/dev\/zvol device, so/, 'a volume\'s copy there never had a device to remove');
 assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: ''}), '', 'no destination yet: no plan');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'The copy goes <inside>'}), /color:#e22828[\s\S]*The copy goes &lt;inside&gt;/, 'a refusal shows, escaped');
+assert.equal(context.zfsmReplicatePlanHtml({can_proceed: false, error: 'b/<x> already holds d', server: 'nas', area: 'a/b',
+  refusal: {fact: 'b/<x> already holds d, which is newer than b', impact: 'Replicate can\'t send an older snapshot to it', guide: 'the-copy-holds-a-newer-snapshot'}}),
+  '<div id="zfsm-replicate-refusal" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> b/&lt;x&gt; already holds d, which is newer than b</b>'
+  + '<br>Replicate can&#039;t send an older snapshot to it. <a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#the-copy-holds-a-newer-snapshot" target="_blank" rel="noopener noreferrer">Guide</a></div>',
+  'one the wiki explains is amber, escaped, with Guide to its section of the Warnings page, and no red line');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 2048, raw: false}), /The first replication sends everything, about 2 KiB\./);
-assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset goes raw');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: true}), /It replaces the empty dataset there, made to hold the copies below it, which stay\./, 'a copy onto a holder says it replaces it');
+assert.doesNotMatch(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, holder: false}), /replaces the empty dataset/, 'only onto a holder');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'a<b', size: null, raw: true, how: 'copy'}), /changes since a&lt;b\.<\/p>[\s\S]*Sent raw/, 'a size not yet known is left out; an encrypted dataset\'s copy goes raw');
+// How an encrypted dataset goes, and why: as picked (only Raw needs saying), as its copy was made, as the stopped run went, or as picked
+// on a server that can't say how its copy was made. An unencrypted one says nothing.
+const sent = how => (context.zfsmReplicatePlanHtml(Object.assign({can_proceed: true, mode: 'incremental', since: 'a', size: null, server: 'n<s'}, how)).match(/<p[^>]*>((?:Sent|n&lt;s runs)[^<]*)<\/p>/) || [])[1] || '';
+assert.deepEqual([{how: 'choice', raw: true}, {how: 'choice', raw: false}, {how: 'copy', raw: true}, {how: 'copy', raw: false}, {how: 'token', raw: true}, {how: 'token', raw: false}, {how: 'old', raw: true}, {how: '', raw: false}].map(sent),
+  ['Sent raw: the copy stays locked with this dataset\'s key.', '', 'Sent raw, as this copy was made; to change that, replicate to a new name.', 'Sent decrypted, as this copy was made; to change that, replicate to a new name.',
+    'Sent raw, as the run that stopped was.', 'Sent decrypted, as the run that stopped was.', 'n&lt;s runs an older ZFS Master NG, so this copy goes as Send says: keep Raw for a copy this plugin made, or update the plugin there.', ''], 'each says how it goes');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, raw: false, replace: 'backup/d<x_replaced_20261124_1200'}),
+  /^<p[^>]*>The copy there no longer matches this dataset\. It is renamed to backup\/d&lt;x_replaced_20261124_1200 \(named for the time the run starts\), and everything is sent again\.<\/p>/,
+  'a copy that is replaced says so, and its new name, escaped');
+assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: null, raw: false, replace: 'b/d_replaced_20261124_1200', newer: 'b/d already holds t/d@<b>, which is newer than t/d@a'}),
+  /^<p[^>]*>b\/d already holds t\/d@&lt;b&gt;, which is newer than t\/d@a\. It is renamed to /, 'one only ahead of the snapshot says that instead, escaped');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 0, raw: false}), /Carries on from where the last run to this copy stopped, about 0 B\./);
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'filesystem'}), /The copy is unmounted and read-only/, 'a filesystem\'s copy is unmounted');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'full', size: 1, raw: false, type: 'volume'}), /The copy is read-only and has no \/dev\/zvol device, so/, 'a volume\'s first copy has no device');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'incremental', since: 'v', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'an incremental says a device the copy has now goes');
 assert.match(context.zfsmReplicatePlanHtml({can_proceed: true, mode: 'resume', size: 1, raw: false, type: 'volume'}), /has no \/dev\/zvol device \(one it has now is removed\), so/, 'so does a resumed run');
+
+// The Schedules and Replicate forms: a hint in each row it explains, linked to that section of the wiki's guide, in place of help paragraphs.
+const schedules = context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['a"<b>'], servers_error: '<i>unread</i>', inherited: 'y', skipped: ''}});
+const words = html => html.replace(/<select[\s\S]*?<\/select>/g, '').replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length;
+assert.ok(words(schedules) < 320 && words(encrypted) < 200, `the forms read in a glance, hidden lines too: ${words(schedules)} and ${words(encrypted)} words`);
+// A copy of the wiki headings these link to, as GitHub names them: change the wiki's Schedules page and this together.
+const sections = ['replication', 'snapshots-to-keep', 'copy-keeps', 'custom-times', 'datasets-left-out', 'replicate-repeats', 'copies-on-another-server', 'encrypted-datasets'];
+const guides = (schedules + encrypted).match(/<a [^>]*>Guide<\/a>/g);
+for (const guide of guides) {
+  const [, section] = guide.match(/^<a href="https:\/\/github\.com\/chodeus\/ZFS-Master-NG\/wiki\/Schedules#([a-z-]+)" target="_blank" rel="noopener noreferrer">Guide<\/a>$/) || [];
+  assert.ok(sections.includes(section), `${guide}: opens a section of the guide in a new tab, which can't reach back to this page`);
+}
+assert.equal(guides.length, 13, 'Snapshots to keep and Cron line three times each, Copy Keeps twice, Copy Under for this server and another, and the footer; Replicate\'s repeat line and Send');
+// A warning opens each dialog: amber, its fact and what that does as text, and Guide to its section of the wiki's Warnings page.
+const warning = {fact: 'tank/<i>x</i> is Read Only', impact: 'Scheduled snapshots and copies skip it', guide: 'read-only'};
+const box = id => '<div id="' + id + '" style="border-left:4px solid #f0a30a;padding:.2em .6em;margin:.5em 0"><b><i class="fa fa-exclamation-triangle" style="color:#f0a30a" aria-hidden="true"></i> tank/&lt;i&gt;x&lt;/i&gt; is Read Only</b>'
+  + '<br>Scheduled snapshots and copies skip it. <a href="https://github.com/chodeus/ZFS-Master-NG/wiki/Warnings#read-only" target="_blank" rel="noopener noreferrer">Guide</a></div>';
+assert.ok(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '', warning,
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'y', skipped: ''}}).startsWith('<div style="text-align:left">' + box('zfsm-schedules-skipped')), 'the Schedules dialog');
+assert.ok(context.zfsmReplicateHtml({snapshots: [], servers: [], warning}, 'tank/x').startsWith('<div style="text-align:left">' + box('zfsm-replicate-warning')), 'and the Replicate dialog');
+assert.ok(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', warning: null, skipped: 'tank/<i>x</i> is gone',
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: [], inherited: 'y', skipped: ''}})
+  .startsWith('<div style="text-align:left"><p id="zfsm-schedules-skipped" style="margin:.5em 0"><b>tank/&lt;i&gt;x&lt;/i&gt; is gone.</b></p>'), 'and why not, as text, of one gone or unread');
+const hinted = (html, prefix, row, label, text, section) => assert.match(html, new RegExp('<p id="' + prefix + '-' + row + '-row"[^>]*><label[^>]*>' + label + ':<input [^>]*aria-describedby="' + prefix + '-' + row
+  + '-hint"></label><span id="' + prefix + '-' + row + '-hint"[^>]*>' + text.replace(/[.()*]/g, '\\$&') + ' <a [^>]*#' + section + '"[^>]*>Guide</a></span></p>'), `${prefix}: ${label}'s hint shows and hides with its row, and its box names it`);
+for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'keep', 'Snapshots to keep', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep');
+for (const [html, prefix] of [[schedules, 'zfsm-schedules'], [schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'cron', 'Cron line', 'Minute, hour, day of the month, month and day of the week, as in the User Scripts plugin\'s Custom schedule: <code>*/15 * * * *</code> runs every 15 minutes.', 'custom-times');
+for (const [html, prefix] of [[schedules, 'zfsm-copies'], [replicate, 'zfsm-replicate']]) hinted(html, prefix, 'copy-keeps', 'Copy Keeps', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps');
+assert.match(schedules, new RegExp('<p id="zfsm-copies-under-row"[^>]*><label[^>]*>Copy Under:<input [^>]*aria-describedby="zfsm-copies-under-hint"></label><span id="zfsm-copies-under-hint">'
+  + '<span id="zfsm-copies-under-here"[^>]*>A dataset that already exists on this server, in another pool: tank/data is copied to backup/tank/data\\. <a [^>]*#replication"[^>]*>Guide</a></span>'
+  + '<span id="zfsm-copies-under-there"[^>]*>Inside the dataset that server keeps for this server\'s copies; a run makes it if it is missing\\. <a [^>]*#copies-on-another-server"[^>]*>Guide</a></span></span></p><div id="zfsm-copies-days-row"'),
+  'Copy Under: a hint for this server and one for another, in its row above Days, and its box names the one shown');
+assert.match(schedules, /<select id="zfsm-copies-every"[^>]*>(?:<option[^>]*>[^<]*<\/option>)*<\/select><\/label><\/p><p id="zfsm-copies-server-row" style="[^"]*display:none"><label[^>]*>Server:<select id="zfsm-copies-server" aria-describedby="zfsm-copies-server-error"[^>]*><option value="">This server<\/option><option value="a&quot;&lt;b&gt;">a&quot;&lt;b&gt;<\/option><\/select><\/label><span id="zfsm-copies-server-error"[^>]*>&lt;i&gt;unread&lt;\/i&gt;<\/span><\/p><p id="zfsm-copies-under-row"/,
+  'Server, below Replication\'s choice and above Copy Under: This server and each server, escaped, and why they can\'t be read, as text it names');
+assert.doesNotMatch(context.zfsmScheduleDialogHtml({every: 'default', time: '', days: [], keep: '', inherited: 'x', skipped: '',
+  copies: {every: 'default', time: '', days: [], keep: '', under: '', server: '', servers: ['nas'], inherited: 'y', skipped: ''}}), /zfsm-copies-server-error/,
+  'servers read: the Server select names no error line');
+assert.match(schedules, /^<div style="text-align:left"><div role="group" aria-label="Snapshots"[^>]*><p[^>]*><label[^>]*><b>Snapshots:<\/b><select id="zfsm-schedules-every"[\s\S]*<\/div><div role="group" aria-label="Replication"[^>]*><p[^>]*><label[^>]*><b>Replication:<\/b><select id="zfsm-copies-every"/,
+  'Snapshots and Replication each have their own labelled part');
+assert.match(replicate, /<p id="zfsm-replicate-repeat-help" style="[^"]*display:none">A repeat runs now, then at its time, and takes a new snapshot each run; Settings lists it\. On another server, that server's Keep Replicas decides what the copy keeps\. <a [^>]*#replicate-repeats"[^>]*>Guide<\/a><\/p><\/div>$/,
+  'Replicate says what a repeat does in one line, hidden until one is picked');
+assert.match(replicate, /id="zfsm-replicate-copy-keeps-row"[\s\S]*<\/p><p id="zfsm-replicate-remake-row" style="[^"]*display:none"><label><input id="zfsm-replicate-remake" type="checkbox"> If the copy is gone, make it again \(sends everything\)<\/label><\/p><p id="zfsm-replicate-replace-row" style="margin:\.5em 0"><label><input id="zfsm-replicate-replace" type="checkbox"> Replace a copy that no longer matches \(it is renamed, not destroyed\)<\/label><\/p><div id="zfsm-replicate-plan"/,
+  'If the copy is gone, after Copy Keeps, unticked and hidden until a repeat is picked; then Replace, unticked and shown for This server; each named by its label');
 
 console.log('destroy and rollback dialog tests passed');

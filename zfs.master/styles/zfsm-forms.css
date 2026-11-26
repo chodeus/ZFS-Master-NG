@@ -14,6 +14,24 @@
 /* On a phone a table scrolls sideways on its own, rather than widening the whole popup. */
 .zfsm-table-scroll{overflow-x:auto}
 .zfsm-section>.zfsm-table-scroll{padding:0}
+/* Settings' Schedules list, a tbody per schedule. Unraid's base sets each tbody td on one tall line. */
+.zfsm-sched-block{margin:14px 0 6px}
+.zfsm-sched-table{width:100%;border-collapse:collapse;margin:0;border:1px solid rgba(128,128,128,.3)}
+.zfsm-sched-table th{text-align:left;font-weight:600;font-size:.8em;text-transform:uppercase;letter-spacing:.06em;padding:9px 14px;background:rgba(128,128,128,.16);border:1px solid rgba(128,128,128,.3);white-space:nowrap}
+.zfsm-sched-table td{padding:9px 14px;border-left:1px solid rgba(128,128,128,.3);border-right:1px solid rgba(128,128,128,.3);vertical-align:middle;line-height:1.4;height:auto;white-space:normal}
+.zfsm-sched-table tbody{border-top:1px solid rgba(128,128,128,.3)}
+.zfsm-sched-table tbody:nth-of-type(even){background:rgba(128,128,128,.05)}
+.zfsm-sched-table tbody:hover{background:rgba(128,128,128,.1)}
+.zfsm-sched-table td:empty::before{content:'\2013';opacity:.35}
+.zfsm-sched-table th:first-child{width:1%}
+.zfsm-sched-table .zfsm-sched-what{display:inline-block;padding:1px 9px;border:1px solid rgba(128,128,128,.3);border-radius:10px;font-size:.85em;white-space:nowrap}
+.zfsm-sched-table .zfsm-sched-note{opacity:.65;font-size:.9em;margin-top:3px}
+.zfsm-sched-table .zfsm-sched-off td:not(.zfsm-sched-buttons){opacity:.55}
+.zfsm-sched-table .zfsm-sched-buttons{text-align:right;white-space:nowrap;width:1%}
+.zfsm-sched-table .zfsm-sched-buttons:empty::before{content:none}
+.zfsm-sched-table .zfsm-sched-buttons input{margin:0 0 0 6px;padding:3px 12px;min-width:0;font-size:.8em;line-height:1.6}
+/* The help of a Settings row hidden for its schedule's choice: !important, as Unraid's Help button shows every help with an inline display. */
+.inline_help.zfsm-row-off{display:none!important}
 
 /* A label with a hint shows the help cursor; hover or keyboard focus shows the hint, styled like Unraid's tooltips.
    :focus only where nothing hovers, as on a touch screen: a click focuses the label (on Settings, to open Unraid's help) and kept the hint up: tests/tip_focus_render_test.cjs. */

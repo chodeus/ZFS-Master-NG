@@ -14,6 +14,8 @@ mkdir -p /mnt/user
 mount -t tmpfs tmpfs /mnt/user
 # Every zfsmLog call, and each script a test starts, appends to /var/log/zfs.master.log: never the host's.
 mount -t tmpfs tmpfs /var/log
+# install_lock_test.php removes the install lock in /var/run and puts a folder in its place: never the host's.
+mount -t tmpfs tmpfs /var/run
 # The diagnostics tests write zips into /boot/logs and remove them: never the host's.
 mkdir -p /boot/logs
 mount -t tmpfs tmpfs /boot/logs
@@ -33,7 +35,7 @@ for mode in full lazy pool invalid missing gone pool_failure snapshot_failure re
 done
 "$zfsm_php" -n "$zfsm_repo/tests/inventory_timeout_test.php"
 ZFSM_TEST_LOG=/tmp/zfsm-backend-commands.log "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/backend_logic_test.php"
-for gate in rollback_newer destroy_recursive destroy_dataset rollback_plain destroy_plain destroy_unreviewed snapshot_route_dataset newer_with_mode invalid_exclusion lua_exclusion encrypt_no_passphrase encrypt_other_value encrypt_inherit_passphrase preview_destroy preview_rollback diff_snapshot preview_convert accept_inside_pool accept_pool_top accept_padded accept_missing accept_unread; do
+for gate in rollback_newer destroy_recursive destroy_dataset rename_dataset edit_property edit_with_mode rename_snapshot rollback_plain destroy_plain destroy_unreviewed snapshot_route_dataset newer_with_mode invalid_exclusion lua_exclusion encrypt_no_passphrase encrypt_other_value encrypt_inherit_passphrase preview_destroy preview_rollback diff_snapshot preview_convert accept_inside_pool accept_pool_top accept_padded accept_missing accept_unread keep_read keep_unread snapname_refused snapname_read snapname_blank; do
     "$zfsm_php" -n "$zfsm_repo/tests/admin_gate_test.php" "$gate"
 done
 "$zfsm_php" -n "$zfsm_repo/tests/impact_test.php"
@@ -42,12 +44,20 @@ done
 "$zfsm_php" -n "$zfsm_repo/tests/alerts_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/size_format_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/plugin_log_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/install_lock_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_bundle_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/diagnostics_page_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/rewrite_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/replicate_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/schedule_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_times_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_downgrade_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_snapshot_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_leave_out_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_copies_server_test.php"
+"$zfsm_php" -n "$zfsm_repo/tests/schedule_dialog_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/keep_test.php"
 # replica-serve.php fixes PATH, so the zfs it runs is the first on that PATH: this fake, only while its test runs.
 mount -t tmpfs tmpfs /usr/local/sbin
@@ -58,6 +68,6 @@ umount /usr/local/sbin
 "$zfsm_php" -n "$zfsm_repo/tests/replica_remote_test.php"
 "$zfsm_php" -n "$zfsm_repo/tests/pool_features_test.php"
 sh "$zfsm_repo/tests/directory_real_fs_test.sh" "$zfsm_php" "$zfsm_repo"
-for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate replicatedataset schedulepicked schedulenowhere schedulekeep scheduleremove scheduleremovesaved; do
+for route in createdataset editdatasetproperty snapshotdataset snapshotdataset_utc rollbacksnapshot renamesnapshot destroysnapshot destroydataset previewrewrite rewritedataset previewreplicate previewreplicateopen replicatedataset previewcryptopen previewdecrypt replicatedecrypt scheduledecrypt previewsendwrong replicatesendwrong schedulesendwrong scheduleremake previewreplace previewremakewrong previewreplacewrong replicatereplacewrong schedulereplace scheduletickswrong schedulepicked schedulenowhere schedulekeep schedulecopykeeps schedulekeepchange schedulekeepchangewrong scheduleremove scheduleremovesaved schedulesnapshots schedulesnapshotstiers schedulesnapshotswrong schedulesnapshotsown schedulecopies schedulecopiesnowhere schedulecopiesserver scheduledataset scheduledatasetwrong scheduledatasetserver previewschedules previewschedulesbad replicaremove; do
     "$zfsm_php" -n ${ZFSM_TEST_POSIX:+-d "extension=$ZFSM_TEST_POSIX"} "$zfsm_repo/tests/admin_route_test.php" "$route"
 done

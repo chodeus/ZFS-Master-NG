@@ -46,6 +46,7 @@ function zfsmDiagCollectors() {
 function zfsmDiagNotCollected() {
 	return array(
 		'/tmp/zfs.master-diag.' => 'the work folder of a diagnostics run itself',
+		'/var/run/zfs.master.install.lock' => 'an update\'s lock (include/ZFSMInstallLock.php), held only while upgradepkg runs: a run waits for it before it starts, or says in the plugin\'s log that it could not',
 		'/etc/zfs/compatibility.d' => 'OpenZFS\'s own feature lists, the same on every server with that OpenZFS (zfs/versions.txt)',
 	);
 }

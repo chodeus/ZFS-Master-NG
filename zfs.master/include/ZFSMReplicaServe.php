@@ -8,13 +8,16 @@ function zfsmReplicaAreaProps() {
 }
 
 // A request is "zfsm-replica 1 <verb> [<dataset as lowercase hex>]": hex, so a name never meets a shell or a split.
-// receive: -x keeps the stream from setting the area's properties or shares, whatever it holds.
+// receive: -x keeps the stream from setting the area's properties or shares; holder: no -p, so only where its parent exists.
 function zfsmReplicaVerbArgs($verb, $name) {
 	switch ($verb) {
 		case 'exists': return array('list', '-H', '-o', 'name,type', $name);
 		case 'snapshots': return array('list', '-H', '-p', '-d', '1', '-t', 'snapshot', '-o', 'name,guid,createtxg', '-s', 'createtxg', $name);
 		case 'token': return array('get', '-H', '-p', '-o', 'value', 'receive_resume_token', $name);
+		case 'holder': return zfsmReplicaHolderArgs($name);
+		case 'crypt': return zfsmReplicaCryptArgs($name);
 		case 'receive':
+		case 'receive-zstd':
 			$args = array('receive', '-s', '-u', '-o', 'readonly=on');
 			foreach (array_merge(array_keys(zfsmReplicaAreaProps()), array('sharenfs', 'sharesmb', 'snapdev')) as $property) array_push($args, '-x', $property);
 			$args[] = $name;
@@ -23,15 +26,27 @@ function zfsmReplicaVerbArgs($verb, $name) {
 	return null;
 }
 
-// '' when a stream's first record (OpenZFS include/sys/zfs_ioctl.h, dmu_replay_record) may go to zfs receive, else why not.
+// A stream's first record (OpenZFS include/sys/zfs_ioctl.h, dmu_replay_record) as DRR_BEGIN's fields; null when it is no record.
+function zfsmReplicaStreamBegin($record) {
+	return strlen($record) === 312 ? unpack('Vrecord/Vpayload/Pmagic/Pversion/Pcreated/Vobjset/Vflags', $record) : null;
+}
+
+// '' when a stream's first record may go to zfs receive, else why not.
 // One dataset's stream only: never a clone of another's snapshot, nor a -R or -p package, which this plugin's sender never makes.
 function zfsmReplicaStreamCheck($record) {
-	if (strlen($record) !== 312) return 'Not a send stream';
-	$begin = unpack('Vrecord/Vpayload/Pmagic/Pversion/Pcreated/Vobjset/Vflags', $record);
-	if ($begin['record'] !== 0 || $begin['magic'] !== 0x2F5BACBAC) return 'Not a send stream';
+	$begin = zfsmReplicaStreamBegin($record);
+	if ($begin === null || $begin['record'] !== 0 || $begin['magic'] !== 0x2F5BACBAC) return 'Not a send stream';
 	if (($begin['version'] & 3) !== 1) return 'A stream of several datasets (zfs send -R or -p) is not accepted';
 	if (($begin['flags'] & 1) !== 0) return 'A clone\'s stream is not accepted';
 	return in_array($begin['objset'], array(2, 3), true) ? '' : 'Only a filesystem or volume stream is accepted';
+}
+
+// $args for the receive of a checked stream: one without the raw feature (featureflags bit 24, above the 2 header bits) marks the copy
+// ZFSM_REPLICA_RAW=off. The stream decides, never the request; an unencrypted dataset's copy is marked too.
+function zfsmReplicaReceiveMarked($args, $record) {
+	if ((zfsmReplicaStreamBegin($record)['version'] & (1 << 26)) !== 0) return $args;
+	array_splice($args, -1, 0, array('-o', ZFSM_REPLICA_RAW.'=off'));
+	return $args;
 }
 
 // The Accept Replicas Into setting: a dataset inside a pool, never a pool's top dataset (the Settings page asks validateaccept).
@@ -59,10 +74,13 @@ function zfsmReplicaSenderName($sender) {
 	return is_string($sender) && preg_match('/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/D', $sender) === 1;
 }
 
+// The answer to a key this server takes nothing from; the sending side knows it (zfsmReplicaTargetRefusal).
+define('ZFSM_REPLICA_UNACCEPTED', 'This server does not accept replicas from this key');
+
 // What a request may run: array('verb', 'name', 'args'), or array('error' => why it is refused).
 function zfsmReplicaServeCheck($request, $area) {
-	if ($area === null) return array('error' => 'This server does not accept replicas from this key');
-	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|receive)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
+	if ($area === null) return array('error' => ZFSM_REPLICA_UNACCEPTED);
+	if (!is_string($request) || !preg_match('/^zfsm-replica 1 (hello|exists|snapshots|token|holder|crypt|receive|receive-zstd)(?: ([0-9a-f]{2,510}))?$/D', $request, $match)) {
 		return array('error' => 'Not a replication request');
 	}
 	$verb = $match[1];
@@ -70,8 +88,8 @@ function zfsmReplicaServeCheck($request, $area) {
 	if ($verb === 'hello') return $hex === '' ? array('verb' => 'hello', 'name' => $area, 'args' => null) : array('error' => 'Not a replication request');
 	$name = strlen($hex) % 2 === 0 ? hex2bin($hex) : false;
 	if (!is_string($name) || !zfsmValidDatasetName($name)) return array('error' => 'Not a dataset name');
-	// Only exists may ask about the area itself, as the parent of a first copy.
-	if (!zfsmStartsWith($name, $area.'/') && !($verb === 'exists' && $name === $area)) return array('error' => $name.' is not inside '.$area);
+	// Only exists and crypt may ask about the area itself, as the parent of a first copy.
+	if (!zfsmStartsWith($name, $area.'/') && !(in_array($verb, array('exists', 'crypt'), true) && $name === $area)) return array('error' => $name.' is not inside '.$area);
 	return array('verb' => $verb, 'name' => $name, 'args' => zfsmReplicaVerbArgs($verb, $name));
 }
 
@@ -103,8 +121,21 @@ function zfsmReplicaAreaHolds($area, $again = true) {
 		$field = explode("\t", $line);
 		if (count($field) === 2) $found[$field[0]] = $field[1];
 	}
+	return array_diff_assoc($props, $found) === array() ? '' : zfsmReplicaAreaChanged($area);
+}
+
+// Why every request is refused once a property of $area changed.
+function zfsmReplicaAreaChanged($area) {
+	$props = zfsmReplicaAreaProps();
 	$wanted = implode(', ', array_map(function($property) use ($props) { return $property.'='.$props[$property]; }, array_keys($props)));
-	return array_diff_assoc($props, $found) === array() ? '' : $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
+	return $area.' must keep '.$wanted.', so nothing replicated into it mounts or runs';
+}
+
+// The area a zfsmReplicaAreaChanged answer names, as the sending side reads it; null for any other answer.
+function zfsmReplicaAreaChangedIn($why) {
+	$at = strrpos($why, ' must keep ');
+	$area = $at === false ? '' : substr($why, 0, $at);
+	return $why === zfsmReplicaAreaChanged($area) ? $area : null;
 }
 
 // One of four receive slots per area, held until the receive ends, or why none is: named by the area's guid, as no name may be
@@ -147,6 +178,50 @@ function zfsmReplicaRun($args, $io, $first = null) {
 	return proc_close($process);
 }
 
+// receive-zstd's fixed zstd -d, or null without zstd or prlimit. Capped at 256 MiB: it reads xz and lzma too, whose headers may claim gigabytes.
+function zfsmReplicaUnzipCommand() {
+	$prlimit = zfsmToolPath('prlimit');
+	$zstd = zfsmToolPath('zstd');
+	return $prlimit === null || $zstd === null ? null : array($prlimit, '--as='.(256 << 20), '--', $zstd, '-d', '-q', '-c');
+}
+
+// That zstd -d, reading the sender's stream from $io: array(it, its output), or why it can't run.
+function zfsmReplicaUnzip($io) {
+	$command = zfsmReplicaUnzipCommand();
+	if ($command === null) return 'This server needs zstd and prlimit to read a compressed stream';
+	$process = @proc_open($command, array(0 => $io[0], 1 => array('pipe', 'w'), 2 => $io[2]), $pipes, null, null, array('bypass_shell' => true));
+	return is_resource($process) ? array($process, $pipes[1]) : 'Unable to start zstd';
+}
+
+// exists, snapshots, token, holder or crypt. A sender asks exists of the area itself, as no version before zstd does (zfsmReplicaTargetCan):
+// the answer adds whether this one reads zstd, and that it makes holders and reads encryption.
+function zfsmReplicaServeAsk($checked, $area, $io) {
+	$code = zfsmReplicaRun($checked['args'], $io);
+	if ($code !== 0 || $checked['verb'] !== 'exists' || $checked['name'] !== $area) return $code;
+	fwrite($io[1], (zfsmReplicaUnzipCommand() !== null ? "zstd\n" : '')."holder\ncrypt\n");
+	return $code;
+}
+
+// A stream's first record (zfsmReplicaStreamCheck), or what came before it ended.
+function zfsmReplicaFirstRecord($input) {
+	$record = '';
+	while (strlen($record) < 312) {
+		$chunk = fread($input, 312 - strlen($record));
+		if ($chunk === false || $chunk === '') break;
+		$record .= $chunk;
+	}
+	return $record;
+}
+
+// Stops zfsmReplicaUnzip's zstd before its output closes: it ignores SIGPIPE, as PHP does, so a write after that would print a broken
+// pipe to the sender.
+function zfsmReplicaUnzipStop($unzip) {
+	if (!is_array($unzip)) return;
+	proc_terminate($unzip[0]);
+	fclose($unzip[1]);
+	proc_close($unzip[0]);
+}
+
 // sshd's forced command (scripts/replica-serve.php): $sender's area and Keep Replicas, from $cfg (loadConfig's).
 function zfsmServeReplicaSettings($request, $cfg, $sender) {
 	return zfsmServeReplica($request, zfsmReplicaArea($cfg['replica_accept'], $sender), null, $cfg['replica_keep']);
@@ -164,20 +239,22 @@ function zfsmServeReplica($request, $area, $io = null, $keep = 0) {
 		fwrite($io[1], "zfsm-replica 1\narea ".$area."\n");
 		return 0;
 	}
-	if ($checked['verb'] !== 'receive') return zfsmReplicaRun($checked['args'], $io);
+	if ($checked['verb'] !== 'receive' && $checked['verb'] !== 'receive-zstd') return zfsmReplicaServeAsk($checked, $area, $io);
 	$slot = zfsmReplicaReceiveSlot($area);
 	if (is_string($slot)) return zfsmReplicaRefuse($slot, $request, $from, $io);
+	$unzip = null;
 	try {
-		$record = '';
-		while (strlen($record) < 312) {
-			$chunk = fread($io[0], 312 - strlen($record));
-			if ($chunk === false || $chunk === '') break;
-			$record .= $chunk;
+		if ($checked['verb'] === 'receive-zstd') {
+			$unzip = zfsmReplicaUnzip($io);
+			if (is_string($unzip)) return zfsmReplicaRefuse($unzip, $request, $from, $io);
+			$io[0] = $unzip[1];
 		}
+		$record = zfsmReplicaFirstRecord($io[0]);
 		$why = zfsmReplicaStreamCheck($record);
 		if ($why !== '') return zfsmReplicaRefuse($why, $request, $from, $io);
-		$code = zfsmReplicaRun($checked['args'], $io, $record);
+		$code = zfsmReplicaRun(zfsmReplicaReceiveMarked($checked['args'], $record), $io, $record);
 	} finally {
+		zfsmReplicaUnzipStop($unzip);
 		zfsmJobUnlock($slot);
 	}
 	zfsmLog('Replication from '.$from.' into '.$checked['name'].($code === 0 ? ' received' : ' failed with exit code '.$code), $code === 0 ? LOG_NOTICE : LOG_ERR);

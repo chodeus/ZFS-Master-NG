@@ -6,9 +6,13 @@
 // From a terminal or as the page's job only: as a page itself, any request to its address would start a run.
 if (PHP_SAPI !== 'cli') exit(1);
 $docroot = getenv('ZFSM_TEST_DOCROOT') ?: '/usr/local/emhttp';
+// Waits while an update installs (include/ZFSMInstallLock.php); here, as any file loaded first could be one it is replacing.
+$zfsm_install_hold = @fopen('/var/run/zfs.master.install.lock', 'ce');
+$zfsm_install_waited = $zfsm_install_hold !== false && flock($zfsm_install_hold, LOCK_SH);
 require_once "$docroot/webGui/include/Helpers.php";
 require_once "$docroot/plugins/zfs.master/backend/ZFSMOperations.php";
 require_once "$docroot/plugins/zfs.master/include/ZFSMDiagnostics.php";
+zfsmInstallDone($zfsm_install_hold, $zfsm_install_waited);
 // This run's own commands are no debug lines: they would bury what Debug Log was turned on to catch (timings.txt has them).
 $GLOBALS['zfsm_debug'] = false;
 
