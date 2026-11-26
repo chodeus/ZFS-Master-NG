@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- fix(settings): short help under each Schedules setting
+- fix(settings): Debug Log and Keep Replicas hints say only what holds
+- fix(settings): one short line of help under each setting
+
 ## 2026.11.26.3 (beta)
 
 **Settings**
