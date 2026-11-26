@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**Settings**
+
+- The Schedules list is a table, with columns for What, Dataset, Copy To, When and Keep; schedules set to None show greyed
+- Change Keep opens a dialog and stays open while it saves; a refusal shows in it, with what you typed
+- Plugin dialogs have larger text
+- The list has no Schedules label now: its help shows with the page's Help button
+- Keyboard focus comes back to Change Keep, Remove or Save when each one finishes
+
 ## 2026.11.26.2 (beta)
 
 **Fixes**
