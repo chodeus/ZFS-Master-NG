@@ -41,7 +41,11 @@ Each dataset row has an **Actions** menu. These items do more than their name sa
 
 ## Coming next
 
-- **Encryption passphrases** — change an encrypted dataset's passphrase
+- **Run now** — run a schedule straight away from Settings
+- **Array checks** — schedules wait while the array is stopped or starting, and copies that use an array disk wait during a parity check or rebuild
+- **Notifications** — choose which schedule runs notify you
+- **Skip empty snapshots** — no new snapshot when nothing changed since the last one
+- **More places to copy to** — any ZFS server over SSH, without ZFS Master NG there, or a folder on a disk without ZFS, as a mirror or as dated versions
 
 ## Requirements
 
