@@ -10,6 +10,7 @@ set_error_handler(function($severity, $message, $file, $line) {
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
 require_once __DIR__.'/../zfs.master/backend/ZFSMOperations.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 
 function same($expected, $actual, $message) {
 	if ($expected === $actual) return;
@@ -87,8 +88,8 @@ same(array('saved' => true, 'why' => '', 'said' => 'Saved: a snapshot of each of
 same(array_replace($every, array('id' => $id)), zfsmScheduleRead()['valid'][$id], 'as the record');
 same(array(array('id' => 'zz'), array('ran'), array()), array(array_slice($stored(), -1)[0], $read('cron.log'), $takes()), 'a record it can\'t use stays; the crontab is rebuilt; nothing is taken');
 same(1, substr_count((string)file_get_contents(zfsmScheduleCronFile()), "30 * * * * $script run $id &> /dev/null\n"), 'its cron line');
-same(true, strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, every hour at :30, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false, 'Settings lists it');
-same(false, strpos(zfsmSchedulesHtml($cfg), "zfsmScheduleRemove('$id')"), 'with no Remove: its own row turns it off');
+same(array(array(array('What', 'Dataset', 'Copy To', 'When', 'Keep', '')), array(array('Snapshots', 'Every dataset', '', 'every hour at :30', 'the newest 2', ''))),
+	array(zfsmTestScheduleRows(zfsmSchedulesHtml($cfg), 'thead'), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'Every dataset')), 'Settings lists it first, with no Remove: its own row turns it off');
 // A copy schedule can't take its minute now, nor start then.
 $but31 = array_filter(zfsmScheduleRead()['valid'], function($job) { return $job['minute'] !== 31; });
 same(array(31), array_values(array_unique(array_map(function() use ($but31, $copy) { return zfsmScheduleFreeMinute($but31, array('dest' => 'backup/new') + $copy); }, range(1, 20)))), 'an hourly copy\'s minute is never the snapshot schedule\'s');
@@ -99,10 +100,10 @@ $from = time();
 $said = zfsmScheduleSnapshotSave('', 'cron', ' 30  */6 * * *', '', 2, $cfg)['said'];
 $nextAt = function($at, $now) { return date(date('Y', $at) === date('Y', $now) ? 'D j M H:i' : 'D j M Y H:i', $at); };
 $next = function($now) use ($nextAt) { return 'Saved: a snapshot of each of 4 dataset(s) on the cron line 30 */6 * * *, next at '.$nextAt(zfsmScheduleNext(array('every' => 'cron', 'cron' => '30 */6 * * *'), $now), $now).'; it keeps the newest 2 scheduled snapshots of each dataset'; };
-same(array(true, array('every' => 'cron', 'minute' => 0, 'hour' => 0, 'cron' => '30 */6 * * *'), 1, true),
+same(array(true, array('every' => 'cron', 'minute' => 0, 'hour' => 0, 'cron' => '30 */6 * * *'), 1, array(array('Snapshots', 'Every dataset', '', 'on the cron line 30 */6 * * *', 'the newest 2', ''))),
 	array(in_array($said, array($next($from), $next(time())), true), array_intersect_key(zfsmScheduleRead()['valid'][$id], array_flip(array('every', 'minute', 'hour', 'cron'))),
 		substr_count((string)file_get_contents(zfsmScheduleCronFile()), "30 0,6,12,18 * * * $script run $id &> /dev/null\n"),
-		strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, on the cron line 30 */6 * * *, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false),
+		zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'Every dataset')),
 	'on a cron line, in place: '.$said);
 touch($work.'/cron-fail');
 $failed = zfsmScheduleSnapshotSave('', 'cron', '30 */6 * * *', '', 2, $cfg);
@@ -111,10 +112,10 @@ same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were
 	'saved while the crontab can\'t be rebuilt: no next run is said: '.$failed['said']);
 
 // When the array starts, in place: no line in the cron file, nor a next run, and a copy of a dataset it takes then is refused.
-same(array('Saved: a snapshot of each of 4 dataset(s) when the array starts; it keeps the newest 2 scheduled snapshots of each dataset', array('every' => 'start', 'minute' => 0, 'hour' => 0), 0, true,
-	'Snapshot Every Dataset (when the array starts) starts then too; pick another Repeat for one of them', ''),
+same(array('Saved: a snapshot of each of 4 dataset(s) when the array starts; it keeps the newest 2 scheduled snapshots of each dataset', array('every' => 'start', 'minute' => 0, 'hour' => 0), 0,
+	array(array('Snapshots', 'Every dataset', '', 'when the array starts', 'the newest 2', '')), 'Snapshot Every Dataset (when the array starts) starts then too; pick another Repeat for one of them', ''),
 	array(zfsmScheduleSnapshotSave('', 'start', '', '', 2, $cfg)['said'], array_intersect_key(zfsmScheduleRead()['valid'][$id], array_flip(array('every', 'minute', 'hour', 'cron'))),
-		substr_count((string)@file_get_contents(zfsmScheduleCronFile()), " run $id "), strpos(zfsmSchedulesHtml($cfg), '<span style="display:block">Snapshot Every Dataset, when the array starts, keeps the newest 2 scheduled snapshots of each dataset</span>') !== false,
+		substr_count((string)@file_get_contents(zfsmScheduleCronFile()), " run $id "), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'Every dataset'),
 		zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'start', 'dest' => 'backup/new') + $copy), zfsmScheduleSame(zfsmScheduleRead()['valid'], array('every' => 'days', 'minute' => 30, 'hour' => 4, 'dest' => 'backup/new') + $copy)),
 	'when the array starts, in place; a copy at :30, refused beside every hour at :30 above, is not now');
 
@@ -353,12 +354,13 @@ zfsmScheduleRun($ids['tank'], $cfg, $t + 43200);
 zfsmScheduleRun($ids[''], $cfg, $t + 46800);
 same(array('snapshot -o zfs.master:schedule=snapshots tank@'.$name($t + 43200).' tank/vm@'.$name($t + 43200), 'snapshot -o zfs.master:schedule=snapshots backup/media@'.$name($t + 46800)), $takes(), 'each dataset by the schedule it follows');
 
-// Settings lists each with Remove, but the default; the dialog starts at the dataset's own and says what Default follows.
+// Settings lists the default first, then by dataset, each with a Remove of its own but the default; the dialog starts at the dataset's
+// own and says what Default follows.
 $html = zfsmSchedulesHtml($cfg);
-$row = function($id, $text) use ($html) { return strpos($html, '<span style="display:block">'.$text.' <input type="button" value="Remove" onclick="zfsmScheduleRemove(\''.$id.'\')"></span>') !== false; };
-same(array(true, true, true, true, false), array($row($ids['tank/data'], 'Snapshots of tank/data and below, every Monday at 05:00, keeps the newest 1 scheduled snapshots of each dataset'),
-	$row($ids['tank/docker'], 'No scheduled snapshots of tank/docker and below'), $row($ids['tank'], 'Snapshots of tank and below, every Tuesday at 06:00, keeps all it takes'),
-	strpos($html, '<span style="display:block">Snapshot Every Dataset, every Monday at 05:00, keeps all it takes</span>') !== false, strpos($html, "zfsmScheduleRemove('{$ids['']}')")), 'Settings\' rows');
+preg_match_all("/zfsmScheduleRemove\\('([0-9a-f]{8})'\\)/", $html, $removes);
+same(array(array(array('Snapshots', 'Every dataset', '', 'every Monday at 05:00', 'all', ''), array('Snapshots', 'tank and below', '', 'every Tuesday at 06:00', 'all', '[Remove]'),
+	array('Snapshots', 'tank/data and below', '', 'every Monday at 05:00', 'the newest 1', '[Remove]'), array('No snapshots', 'tank/docker and below', '', '', '', '[Remove]')),
+	array($ids['tank'], $ids['tank/data'], $ids['tank/docker'])), array(zfsmTestScheduleRows($html), $removes[1]), 'Settings\' rows, and whose each Remove is');
 // Its snapshots' part; tests/schedule_dialog_test.php has the copies'.
 $preview = function($zdataset) use ($cfg) { return array_diff_key(zfsmScheduleDialogPreview($zdataset, $cfg), array('copies' => true)); };
 $previews = array_map($preview, array('tank/data', 'tank/docker', 'tank/docker/0a1b', 'tank', 'backup'));

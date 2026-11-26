@@ -62,6 +62,7 @@ $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'cron.log', 'ssh.log') as $name) @unlink($work.'/'.$name); };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $area = function() use ($read) { return array_values(preg_grep('~^backup/replicas/tower~', array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/datasets')))); };
 $calls = function($verb) use ($read) { return array_values(preg_grep('/^'.$verb.' /', $read('calls.log'))); };
@@ -106,7 +107,7 @@ same(array('saved' => true, 'why' => '', 'said' => 'Saved: a copy of each of 2 d
 same(array('dataset' => '', 'dest' => 'copies/', 'server' => 'nas', 'every' => 'hourly', 'keep' => 1), array_intersect_key($job, array_flip(array('dataset', 'dest', 'server', 'every', 'keep'))), 'as the record');
 same(array('copies/', 'nas'), array(zfsmScheduleShown('zfsmScheduleCopiesUnder')['dest'], zfsmScheduleShown('zfsmScheduleCopiesUnder')['server']), 'Settings shows it');
 same('', zfsmScheduleCopiesNot(array('dest' => 'tank/') + $job, array(), 'tank/data', array('off', '/mnt/tank/data', false), $name(1800000000)), 'a pool here named as its Copy Under is copied: the copies go on nas');
-same(1, preg_match('/>Replicate Every Dataset under copies on server nas, every hour at :\d\d, keeps the newest 1 /', zfsmSchedulesHtml($cfg)), 'the list names the server');
+same(array(array('Copies', 'Every dataset', 'under copies on server nas', 'every hour at :'.sprintf('%02d', $job['minute']), 'the newest 1', '')), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg)), 'the list names the server');
 same(array(array(), array()), array($read('ssh.log'), $calls('(snapshot|send|receive|create)')), 'no ssh, and nothing copied on saving');
 // Inside nas's area Copy Under's first part is no pool: it takes the names a repeat to nas takes (zfsmReplicaTargetDest).
 same(array('', '', ''), array_map(function($under) use ($cfg) { return zfsmScheduleCopiesSave($under, 'hourly', '', '', 1, $cfg, null, 'nas')['why']; }, array('2026', 'my copies', '_copies')), 'Copy Under on nas named as no pool is');

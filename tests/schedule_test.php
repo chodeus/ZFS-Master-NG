@@ -61,6 +61,7 @@ $drop = function($dataset) use ($work) {
 	}
 };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $cron = function() { return is_file(zfsmScheduleCronFile()) ? file_get_contents(zfsmScheduleCronFile()) : null; };
 // An add starts its first run as Replicate does, from the plugin in ZFSM_TEST_DOCROOT; it answers once that run is done.
@@ -354,7 +355,8 @@ same(array($gone.'. Later problems of this schedule are logged in /var/log/zfs.m
 same(array(array(), $taken + 1), array($sends(), count($names('tank/data', 'snapshot'))), 'sends nothing and removes the snapshot it took');
 same(1, zfsmScheduleRun($id, $cfg, time() + 10800), 'the next one fails too');
 same(array(1, 2), array(count($read('notify-detail.log')), zfsmScheduleFailures($id)), 'without another notification; the problems are counted');
-same(true, strpos(zfsmSchedulesHtml($cfg), '2 run(s) in a row with a problem') !== false, 'and Settings shows the count: '.zfsmSchedulesHtml($cfg));
+same(array('2 run(s) in a row with a problem: the first one\'s notification and /var/log/zfs.master.log say why'), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/data')[1] ?? null,
+	'and Settings shows the count on a line across, under its row: '.zfsmSchedulesHtml($cfg));
 same(array(false, 1), array(strpos(zfsmSchedulesHtml($cfg), 'Snapshots Pattern'), preg_match('/Snapshots Pattern would give the run at [^<]+ the same snapshot name as the run at [^<]+, so that run fails: add the time to Snapshots Pattern/', zfsmSchedulesHtml($days))), 'and, with Snapshots Pattern changed since, that its runs\' names repeat');
 // And with another schedule of the dataset whose runs share an hour's names with it, on both rows.
 $listed = file_get_contents(zfsmScheduleFile());
@@ -579,15 +581,15 @@ same(array('saved' => true, 'why' => ''), zfsmScheduleKeepChange($id, '7d', '30d
 same(array(array_merge($job, array('keep' => '7d', 'copy_keeps' => '30d 12m')), true, $cron_before, array()),
 	array($mine(), in_array(array('id' => 'zz'), $stored(), true), $cron(), preg_grep('/^(snapshot|send) /', $read('calls.log'))),
 	'only Keep and Copy Keeps change: its id, time and cron line stay, the record it can\'t use too, and no run starts');
-same(true, strpos(zfsmSchedulesHtml($cfg), 'keeps 7 daily of its snapshots; its copy keeps 30 daily and 12 monthly') !== false, 'Settings says it');
-same(array(1, 0), array(preg_match('~<details[^>]*><summary>Change Keep</summary> <label[^>]*>Snapshots To Keep: <input type="text" id="zfsm-keep-own-'.$id.'" maxlength="40" placeholder="all" value="7d"></label> '
-	.'<label[^>]*>Copy Keeps: <input type="text" id="zfsm-keep-copy-'.$id.'" maxlength="40" placeholder="same as source" value="30d 12m"></label> <input type="button" value="Save" onclick="zfsmScheduleKeepSave\(\''.$id.'\'\)"></details>~', zfsmSchedulesHtml($cfg)),
-	substr_count(zfsmScheduleKeepHtml(array('server' => 'nas', 'dest' => 'copy') + $mine()), 'zfsm-keep-copy-')), 'its row has Change Keep as saved; one on a server has no Copy Keeps');
+same(array('7 daily | Copy Keeps: 30 daily and 12 monthly', '[Change Keep] [Remove]'), array_slice(zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), $job['dataset'])[0] ?? array(), 4), 'Settings says it');
+same(array(1, 0), array(substr_count(zfsmSchedulesHtml($cfg), '<input type="button" value="Change Keep" data-id="'.$id.'" data-dataset="'.$job['dataset'].'" data-to="'.$job['dest'].'" data-when="'
+	.zfsmScheduleWhen($job).'" data-keep="7d" data-copy-keeps="30d 12m" onclick="zfsmScheduleKeepDialog(this)">'), substr_count(zfsmScheduleKeepButton(array('server' => 'nas') + $mine(), '', ''), 'data-copy-keeps')),
+	'its row\'s Change Keep carries what its dialog shows, as saved; one on a server has no Copy Keeps');
 same(array(array('saved' => true, 'why' => ''), $job), array(zfsmScheduleKeepChange($id, 0, null), $mine()), 'Copy Keeps emptied is saved as none');
 $unchanged = $stored();
 $snapshots = array('id' => '0badc0e1', 'dataset' => '', 'dest' => '', 'server' => '', 'every' => 'hourly', 'minute' => 5, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0);
 file_put_contents(zfsmScheduleFile(), json_encode(array_merge($unchanged, array($snapshots))));
-same(1, substr_count(zfsmSchedulesHtml($cfg), '<summary>Change Keep</summary>'), 'Snapshot Every Dataset, which Settings sets, has no Change Keep');
+same(1, substr_count(zfsmSchedulesHtml($cfg), 'value="Change Keep"'), 'Snapshot Every Dataset, which Settings sets, has no Change Keep');
 same(array('No such repeat set in Replicate; it may have been removed', 'No such repeat set in Replicate; it may have been removed', 'No such schedule', 'Nothing was saved: under Snapshots to keep, '.zfsmKeepFix(),
 	'Nothing was saved: under Copy Keeps, give all to keep every snapshot, or '.zfsmKeepFix('keep what its source keeps')),
 	array(zfsmScheduleKeepChange('0badc0de', 1, null)['why'], zfsmScheduleKeepChange('0badc0e1', 1, null)['why'], zfsmScheduleKeepChange('../x', 1, null)['why'], zfsmScheduleKeepChange($id, -1, null)['why'],
@@ -651,7 +653,8 @@ file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
 $answer = $add('tank/re', '', 'backup/a/b/c/re', '', 'hourly', '', '', 0, $cfg, null, array('remake' => true));
 $job = $stored()[0] ?? array();
-same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['remake'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/a\/b\/c\/re, every hour at :[0-9]{2}, keeps all its snapshots; makes its copy again if it is gone <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
+same(array(array(), true, 1, array(array('Copy', 'tank/re', 'backup/a/b/c/re | Makes its copy again if it is gone', 'every hour at :'.sprintf('%02d', $job['minute'] ?? -1), 'all', '[Change Keep] [Remove]'))),
+	array($answer['failed'] ?? null, $job['remake'] ?? null, count($sends()), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))),
 	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
 $taken = count($names('tank/re', 'snapshot'));
 $gone = function() use ($drop) { foreach (array('backup/a/b/c/re', 'backup/a/b/c', 'backup/a/b') as $dataset) $drop($dataset); };
@@ -735,7 +738,8 @@ file_put_contents(zfsmScheduleFile(), '[]');
 $reset();
 $answer = $add('tank/re', '', 'backup/re', '', 'hourly', '', '', 0, $cfg, null, array('replace' => true));
 $job = $stored()[0] ?? array();
-same(array(array(), true, 1, 1), array($answer['failed'] ?? null, $job['replace'] ?? null, count($sends()), preg_match('/>tank\/re to backup\/re, every hour at :[0-9]{2}, keeps all its snapshots; replaces its copy if it no longer matches <input type="button" value="Remove"/', zfsmSchedulesHtml($cfg))),
+same(array(array(), true, 1, array(array('Copy', 'tank/re', 'backup/re | Replaces its copy if it no longer matches', 'every hour at :'.sprintf('%02d', $job['minute'] ?? -1), 'all', '[Change Keep] [Remove]'))),
+	array($answer['failed'] ?? null, $job['replace'] ?? null, count($sends()), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))),
 	'saved with the schedule and said in Settings; its first run sends: '.zfsmSchedulesHtml($cfg));
 file_put_contents($work.'/pool/marks', "backup/re@stray\t998\t900\n", FILE_APPEND);
 $reset();
@@ -756,7 +760,7 @@ $said = function($now) use ($job, $nextAt) { return isset($job['cron']) ? 'Repli
 same(array(array('every' => 'cron', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'cron' => '*/15 2 * * 1-5', 'keep' => 0), array(), true, "# Generated ZFS Master NG schedules:\n0,15,30,45 2 * * 1,2,3,4,5 $script run ".($job['id'] ?? '')." &> /dev/null\n\n"),
 	array(array_intersect_key($job, array_flip(array('every', 'minute', 'hour', 'days', 'cron', 'keep'))), $answer['failed'], in_array($answer['succeeded']['tank/cr'] ?? '', array($said($from), $said(time())), true), $cron()),
 	'saved with its line, said with its next run, and its numbers in the cron file: '.var_export($answer, true));
-same(1, substr_count(zfsmSchedulesHtml($cfg), 'tank/cr to backup/cron, on the cron line */15 2 * * 1-5,'), 'Settings says it');
+same(array(array('Copy', 'tank/cr', 'backup/cron', 'on the cron line */15 2 * * 1-5', 'all', '[Change Keep] [Remove]')), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/cr'), 'Settings says it');
 same(null, zfsmScheduleHeal(), 'the install leaves both files as they are');
 unlink(zfsmScheduleCronFile());
 same(array(array('saved' => true, 'why' => ''), "# Generated ZFS Master NG schedules:\n0,15,30,45 2 * * 1,2,3,4,5 $script run ".($job['id'] ?? '')." &> /dev/null\n\n"), array(zfsmScheduleHeal(), $cron()),
@@ -776,14 +780,14 @@ $job = array_values(array_filter($stored(), function($job) { return $job['datase
 same(array(array('every' => 'start', 'minute' => 0, 'hour' => 0, 'days' => range(0, 6), 'keep' => 0), array(), 'Replication to backup/start started; a notification says when it is done. It runs again when the array starts', $lines, 1),
 	array(array_intersect_key($job, array_flip(array('every', 'minute', 'hour', 'days', 'cron', 'keep'))), $answer['failed'], $answer['succeeded']['tank/st'] ?? '', $cron(), count($names('backup/start', 'snapshot'))),
 	'saved with no time, said as when the array starts, its first run sent, and no line in the cron file: '.var_export($answer, true));
-same(1, substr_count(zfsmSchedulesHtml($cfg), 'tank/st to backup/start, when the array starts,'), 'Settings says it');
+same(array(array('Copy', 'tank/st', 'backup/start', 'when the array starts', 'all', '[Change Keep] [Remove]')), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/st'), 'Settings says it');
 same(array('tank/st' => 'Nothing was scheduled: the copy to backup/start (when the array starts) starts then too; pick another Repeat for one of them'),
 	$add('tank/st', '', 'backup/start2', '', 'start', '', '', 0, $cfg)['failed'], 'a second copy of tank/st when the array starts is refused');
 // A copy of tank/st at a time: with no seconds in Snapshots Pattern the two can get one name, so Save refuses it and Settings says so.
 $no_seconds = array('snap_pattern' => 'YmdHi') + $cfg;
 $st_daily = array_replace($job, array('id' => 'c0ffee00', 'dest' => 'backup/st-daily', 'every' => 'days', 'minute' => 0, 'hour' => 4, 'days' => array(1, 3)));
 $st_starts = 'the copy to backup/start runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute this schedule runs, both get one snapshot name';
-$st_listed = 'this schedule runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute the copy to backup/st-daily runs, both get one snapshot name, so that run fails: add the time to Snapshots Pattern';
+$st_listed = 'This schedule runs when the array starts, and Snapshots Pattern has no seconds: if that is in the minute the copy to backup/st-daily runs, both get one snapshot name, so that run fails: add the time to Snapshots Pattern';
 same(array(array('tank/st' => 'Nothing was scheduled: '.$st_starts.'; add the time to it in Settings'), '', 0),
 	array($add('tank/st', '', 'backup/st-daily', '', 'days', '04:00', '1,3', 0, $no_seconds)['failed'], zfsmScheduleClash($st_daily, zfsmScheduleRead()['valid'], $cfg, time(), false), count($names('backup/st-daily', 'snapshot'))),
 	'refused with no seconds, nothing sent; with seconds it clashes with none');

@@ -40,6 +40,7 @@ $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'cron.log') as $name) @unlink($work.'/'.$name); };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $datasets = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/datasets')); };
 $takes = function() use ($read) { return array_values(preg_grep('/^snapshot /', $read('calls.log'))); };
@@ -82,7 +83,7 @@ $at = ':'.sprintf('%02d', $job['minute']);
 same(array('appdata', 'backup_*'), $job['leave_out'], 'saved, each once');
 same(1, preg_match('/"leave_out": \[\s*"appdata",\s*"backup_\*"\s*\]/', (string)file_get_contents(zfsmScheduleFile())), 'as a list in schedules.json');
 same("Saved: a snapshot of each of 4 dataset(s) every hour at $at; it keeps all it takes. Leave Out leaves out 6 dataset(s)", $saved['said'], 'Save counts what it leaves out');
-same('Snapshot Every Dataset, every hour at '.$at.', keeps all it takes; leaves out appdata, backup_*', zfsmScheduleSnapshotText($job), 'the Settings row says it');
+same(array(array('Snapshots', 'Every dataset | Leaves out appdata, backup_*', '', 'every hour at '.$at, 'all', '')), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg)), 'the Settings row says it, under Every dataset');
 same('appdata, backup_*', zfsmLeaveOutField(zfsmScheduleShown()), 'and the field shows it');
 // A name no dataset at the top of a pool matches is said (plex is deeper), but only when zfs read every dataset.
 $save = function($text) use ($cfg, $wait) { return zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg, $wait, zfsmLeaveOutParse($text))['said']; };
@@ -118,7 +119,9 @@ $saved = zfsmScheduleCopiesSave('backup', 'hourly', '', '', 0, $cfg, null, '', $
 $copies = array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0];
 same(array('appdata', 'backup_*'), $copies['leave_out'] ?? null, 'saved on its record');
 same('Saved: a copy of each of 4 dataset(s) under backup every hour at :'.sprintf('%02d', $copies['minute']).'; it keeps all its snapshots. Leave Out leaves out 6 dataset(s)', $saved['said'], 'Save counts');
-same('Replicate Every Dataset under backup, every hour at :'.sprintf('%02d', $copies['minute']).', keeps all its snapshots; leaves out appdata, backup_*', zfsmScheduleCopiesText($copies), 'the Settings row');
+same(array(array('Snapshots', 'Every dataset | Leaves out appdata, backup_*', '', 'every hour at '.$at, 'all', ''),
+	array('Copies', 'Every dataset | Leaves out appdata, backup_*', 'under backup', 'every hour at :'.sprintf('%02d', $copies['minute']), 'all', '')),
+	zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'Every dataset'), 'the Settings row, after Snapshot Every Dataset\'s');
 $reset();
 same(0, zfsmScheduleRun($copies['id'], $cfg, $t + 7200), 'a run of copies works');
 same(array('backup/appdata', 'backup/appdata/data', 'backup/cache', 'backup/cache/vm1', 'backup/tank', 'backup/tank/media', 'backup/tank/media/appdata'),
@@ -162,6 +165,7 @@ zfsmScheduleSnapshotSave('', 'off', '', '', 0, $cfg, $wait, zfsmLeaveOutParse('a
 same(array(), array_values(array_filter($stored(), function($job) { return $job['dataset'] === '' && $job['dest'] === ''; })), 'Off removes it');
 zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg, $wait, array());
 $again = array_values(array_filter($stored(), function($job) { return $job['dataset'] === '' && $job['dest'] === ''; }))[0];
-same(array(false, ''), array(array_key_exists('leave_out', $again), zfsmScheduleLeaveOutText($again)), 'on again with none: no list');
+same(array(false, array('Snapshots', 'Every dataset', '', 'every hour at :'.sprintf('%02d', $again['minute']), 'all', ''), 'Copies'),
+	array(array_key_exists('leave_out', $again), zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))[0] ?? null, zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))[1][0] ?? null), 'on again with none: no list, nor a line under its row');
 
 echo "schedule leave out tests passed\n";

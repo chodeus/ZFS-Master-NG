@@ -404,15 +404,14 @@ _(Leave Out)_:
 &nbsp;
 : <input type="button" id="zfsm-copysched-save" value="_(Save)_" onclick="zfsmEverySave('zfsm-copysched', 'schedulecopies')"> <span id="zfsm-copysched-status" aria-live="polite"></span>
 
-_(Schedules)_:
-: <span id="zfsm-schedules"><?=zfsmSchedulesHtml($zfsm_cfg)?></span> <span id="zfsm-schedules-status" style="color:#e22828"></span>
+<div class="zfsm-sched-block"><div id="zfsm-schedules"><?=zfsmSchedulesHtml($zfsm_cfg)?></div><div id="zfsm-schedules-status" style="color:#e22828"></div></div>
 
 :zc_settings_schedules_plug:
 > Snapshot Every Dataset and Replicate Every Dataset, set above, each dataset's own snapshot schedule and copies (set under **Actions**, **Schedules** in the Main tab; Remove here sets it back to Default, unless the schedule it then follows would clash with one as saved), and the replications that run on their own. To add one of those, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again every hour at a minute of its own, at the time you set on the days you tick (all seven: every day), at the times of a cron line, in this server's time zone, or each time the array starts. This list shows when.
 >
 > - A repeat doesn't run on a dataset that is Read Only, mounted `legacy`, or has Sanoid or Syncoid snapshots, the ones Snapshot Every Dataset leaves out too. Replicate won't save a repeat on one. One saved before stops, and its notification says why.
 > - Each run takes a new snapshot, named by **Snapshots Pattern**, and sends the changes since the last one. If the run before it stopped part-way, it carries that on first.
-> - **Snapshots to keep** (set in Replicate; **Change Keep** under its row changes it for the runs after): from its second run on, once a run lands, only those it keeps of the snapshots this copy's schedules took stay, as **Snapshots To Keep** above reads it (such as `24 7d 4w 12m`), up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned, there or here, stays on both. With **Copy Keeps**, also set in Replicate and changed by **Change Keep**, a copy on this server keeps its own instead, and one held or cloned there no longer keeps its source: `all` keeps every snapshot, and rules count every snapshot in it, one sent by hand too, the newest and the one just sent always staying; emptied later, the copy's snapshots whose source is already gone stay. Snapshots made by hand, by Snapshot Every Dataset or by a schedule of another copy are never counted or removed, except in a copy by its **Copy Keeps**. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them, unless that server's **Keep Replicas** keeps fewer. Empty keeps all.
+> - **Snapshots to keep** (set in Replicate; **Change Keep** in its row changes it for the runs after): from its second run on, once a run lands, only those it keeps of the snapshots this copy's schedules took stay, as **Snapshots To Keep** above reads it (such as `24 7d 4w 12m`), up to 50 removed a run. In a copy on this server the same snapshots go first; one held or cloned, there or here, stays on both. With **Copy Keeps**, also set in Replicate and changed by **Change Keep**, a copy on this server keeps its own instead, and one held or cloned there no longer keeps its source: `all` keeps every snapshot, and rules count every snapshot in it, one sent by hand too, the newest and the one just sent always staying; emptied later, the copy's snapshots whose source is already gone stay. Snapshots made by hand, by Snapshot Every Dataset or by a schedule of another copy are never counted or removed, except in a copy by its **Copy Keeps**. The one just sent counts but always stays: the next run sends the changes since it. A copy on another server keeps all of them, unless that server's **Keep Replicas** keeps fewer. Empty keeps all.
 > - Each run holds its snapshot and the one it sends the changes since (`zfsm-resume-…`). One that stops part-way leaves them held, so nothing removes them before a run carries it on; a run to the copy that lands takes the hold off, and so does **Release** in Snapshots. When removing a snapshot fails, the run says which stays and why, and the next run tries again.
 > - A run that finds its copy gone sends it in full again only when **If the copy is gone, make it again** was ticked in Replicate. On this server, it then also makes any missing dataset between the pool and the copy, empty, read-only and unmounted, to hold it. Without it, replicate once by hand to make a new copy. A run knows the copy was there from the bookmarks earlier runs left on this dataset: if those were removed too, it sends in full, as a first run does. (Copies under a **Copy Under** are always made again.)
 > - A copy that no longer matches this dataset (its newest snapshot is not on this dataset, or it holds a newer one than the run sends) stops the run. When **Replace a copy that no longer matches** was ticked in Replicate, for a copy on this server, the run instead renames it to its name followed by `_replaced_` and the date and time it is renamed, then sends it in full. Only a read-only copy is replaced, and only when it is not mounted, has no dataset below it, and does not have the name a schedule gives another dataset's copy. The old copy stays: the notification names it, for you to destroy when you no longer need it. If the send fails and leaves nothing at the copy's name, the old copy gets its name back.
@@ -446,6 +445,12 @@ _(Diagnostics Zip)_:
 </details>
 
 <script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDiagnostics.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/assets/sweetalert2.all.min.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/assets/sweetalert2.min.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMDialogs.js'); ?>"></script>
+<link type="text/css" rel="stylesheet" href="<?php autov('/plugins/zfs.master/styles/zfsm-dialogs.css'); ?>">
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
+<script src="<?php autov('/plugins/zfs.master/frontend/ZFSMForm.js'); ?>"></script>
 <script>
 var zfsm_tips = <?=zfsmJson(array(
 	'refresh_interval' => _('How often the Main tab reloads pool and dataset details.'),
@@ -556,7 +561,7 @@ function zfsmSendRemove(name) {
 		if (!answer.error) zfsmSendServersShown(answer);
 	});
 }
-// Every Dataset's Saves, Remove and Change Keep, one at a time as each answer redraws the list: all their buttons are off until it lands.
+// Every Dataset's Saves and Remove, one at a time as each answer redraws the list: all their buttons, Change Keep's too, are off until it lands.
 function zfsmSchedulesSend(data, done) {
 	var buttons = $('#zfsm-snapsched-save, #zfsm-copysched-save, #zfsm-schedules input[type=button]').prop('disabled', true);
 	zfsmSendPost(data, function(answer) {
@@ -565,17 +570,37 @@ function zfsmSchedulesSend(data, done) {
 		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
 	});
 }
-// Remove and Change Keep: why not, under the list.
+// Remove: why not, under the list.
 function zfsmSchedulesPost(data) {
 	zfsmSchedulesSend(data, function(answer) { $('#zfsm-schedules-status').text(answer.error || ''); });
 }
 function zfsmScheduleRemove(id) {
 	zfsmSchedulesPost({cmd: 'scheduleremove', id: id});
 }
-// Change Keep of a repeat set in Replicate; one on another server has no Copy Keeps.
-function zfsmScheduleKeepSave(id) {
-	var copy = $(document.getElementById('zfsm-keep-copy-' + id));
-	zfsmSchedulesPost({cmd: 'schedulekeepchange', id: id, keep: $(document.getElementById('zfsm-keep-own-' + id)).val(), copy_keeps: copy.length ? copy.val() : ''});
+// Change Keep of a repeat set in Replicate, from its button's data (zfsmScheduleKeepButton); one on another server has no Copy Keeps.
+// A refusal shows in the dialog, with what was typed; one saved whose crontab was not rebuilt closes it, and says so under the list.
+function zfsmScheduleKeepDialog(button) {
+	var data = button.dataset, esc = zfsmEscape, copies = 'copyKeeps' in data;
+	zfsmFormDialog({
+		title: '<strong>Change Keep<br>' + esc(data.dataset) + '</strong>',
+		html: '<p style="margin:.2em 0 .8em">Copied to ' + esc(data.to) + ', ' + esc(data.when) + '.</p>' + zfsmKeepRowsHtml('zfsm-change', data.keep, data.copyKeeps, copies),
+		showCancelButton: true, confirmButtonText: 'Save', focusConfirm: false,
+		preConfirm: function() {
+			var field = function(id) { return Swal2.getPopup().querySelector('#zfsm-change-' + id).value; };
+			var sent = {cmd: 'schedulekeepchange', id: data.id, keep: field('keep'), copy_keeps: copies ? field('copy-keeps') : ''};
+			return new Promise(function(resolve) {
+				zfsmSendPost(sent, function(answer) {
+					if (answer.schedules_html !== undefined) return resolve(answer);
+					Swal2.showValidationMessage(esc(answer.error || 'The request failed'));
+					resolve(false);
+				});
+			});
+		}
+	}).then(function(result) {
+		if (!result.isConfirmed) return;
+		$('#zfsm-schedules-status').text(result.value.error || '');
+		$('#zfsm-schedules').html(result.value.schedules_html);
+	});
 }
 // Snapshot and Replicate Every Dataset, by their rows' id prefix: Days and Starts At for days of the week, Cron Line for Custom (cron),
 // the rest for any repeat.

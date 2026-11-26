@@ -85,14 +85,13 @@ function zfsmScheduleKeepChange($id, $keep, $copy_keeps) {
 	});
 }
 
-// Change Keep under a repeat set in Replicate in Settings' list: Snapshots To Keep, and Copy Keeps for a copy here; '' under the rest.
-function zfsmScheduleKeepHtml($job) {
+// Change Keep in the row of a repeat set in Replicate in Settings' list (zfsmScheduleRowHtml), with what its dialog shows: the copy $to,
+// $when, Snapshots To Keep, and Copy Keeps for a copy here; '' for the rest.
+function zfsmScheduleKeepButton($job, $to, $when) {
 	if (zfsmScheduleCovers($job)) return '';
-	$id = $job['id'];
-	$field = function($name, $label, $value, $empty) use ($id) {
-		return ' <label style="white-space:nowrap">'.$label.' <input type="text" id="zfsm-keep-'.$name.'-'.$id.'" maxlength="40" placeholder="'.$empty.'" value="'.zfsmHtml($value).'"></label>';
-	};
-	return '<details style="margin:0 0 .5em"><summary>Change Keep</summary>'.$field('own', 'Snapshots To Keep:', zfsmKeepField($job['keep']), 'all')
-		.($job['server'] === '' ? $field('copy', 'Copy Keeps:', zfsmCopyKeepsField($job['copy_keeps'] ?? null), 'same as source') : '')
-		.' <input type="button" value="Save" onclick="zfsmScheduleKeepSave(\''.$id.'\')"></details>';
+	$data = array('id' => $job['id'], 'dataset' => $job['dataset'], 'to' => $to, 'when' => $when, 'keep' => zfsmKeepField($job['keep']));
+	if ($job['server'] === '') $data['copy-keeps'] = zfsmCopyKeepsField($job['copy_keeps'] ?? null);
+	$attributes = '';
+	foreach ($data as $name => $value) $attributes .= ' data-'.$name.'="'.zfsmHtml($value).'"';
+	return '<input type="button" value="Change Keep"'.$attributes.' onclick="zfsmScheduleKeepDialog(this)">';
 }

@@ -119,13 +119,6 @@ function zfsmScheduleCopiesFollowedText($job, $zdataset) {
 	return $job['every'] === 'none' ? $whose.', None: no scheduled copies' : $whose.', under '.zfsmScheduleCopiesUnderText($job).' '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
 }
 
-// Settings' row of copies under a dataset.
-function zfsmScheduleCopiesText($job) {
-	if ($job['every'] === 'none') return 'No scheduled copies of '.$job['dataset'].' and below';
-	$whose = $job['dataset'] === '' ? 'Replicate Every Dataset' : 'Copies of '.$job['dataset'].' and below';
-	return $whose.' under '.zfsmScheduleCopiesUnderText($job).', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job).zfsmScheduleLeaveOutText($job);
-}
-
 // Why $job's copies can't go under its Copy Under here, from $listed (zfsmScheduleCoverRead): it is no dataset or a volume, or wasn't
 // read; '' when they can, and on a server, where a run makes it.
 function zfsmScheduleCopiesUnderNot($job, $listed) {

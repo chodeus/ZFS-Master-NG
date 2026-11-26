@@ -1,5 +1,9 @@
 /* With buttonsStyling off (ZFSMDialogs.js) the buttons take Unraid's own style; these rules only frame the dialog and space them. */
 .zfsm-dialog{border:1px solid rgba(128,128,128,.35)}
+/* Larger than the library's 1rem, which reads small on Unraid's 10px root; its own rule needs the container to be outranked. */
+.swal2-container .swal2-popup.zfsm-dialog{font-size:1.35rem}
+.zfsm-dialog input[type=text],.zfsm-dialog select{font-size:1.5rem}
+.zfsm-dialog .swal2-actions button{font-size:1.25rem}
 .zfsm-dialog .swal2-actions{gap:12px}
 .zfsm-dialog .swal2-actions button{margin:0}
 /* Unraid 7 justifies every <p>, which stretches the gaps on a phone. */
@@ -7,7 +11,8 @@
 /* Unraid 6 puts a right margin on each box, which pushes a full-width one past the dialog on a phone. */
 .zfsm-dialog label>select,.zfsm-dialog label>input[type=text]{margin-right:0}
 /* Mirrors Unraid 7's input[type=text] rule, which leaves time boxes out; the grey clock shows on light and dark themes. */
-.zfsm-dialog input[type=time]{color:inherit;font-family:clear-sans;font-size:1.3rem;background-color:transparent;border:0 solid var(--input-border-color,currentColor);border-bottom-width:1px;padding:.5rem;min-height:2rem;line-height:2rem;outline:none;margin:0;box-shadow:none;border-radius:0;box-sizing:border-box}
+.zfsm-dialog input[type=time]{color:inherit;font-family:clear-sans;font-size:1.5rem;background-color:transparent;border:0 solid var(--input-border-color,currentColor);border-bottom-width:1px;padding:.5rem;min-height:2rem;line-height:2rem;outline:none;margin:0;box-shadow:none;border-radius:0;box-sizing:border-box}
 .zfsm-dialog input[type=time]:focus{background-color:var(--focus-input-bg-color,rgba(128,128,128,.2))}
-.zfsm-dialog input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.5)}
+/* The clock's top and bottom padding grows with the text, past the text box's height: tests/phone_render_test.cjs. */
+.zfsm-dialog input[type=time]::-webkit-calendar-picker-indicator{filter:invert(.5);padding-block:0}
 .zfsm-dialog input[type=time]::-webkit-datetime-edit-fields-wrapper{padding:0}

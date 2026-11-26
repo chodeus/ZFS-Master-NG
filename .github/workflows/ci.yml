@@ -148,6 +148,9 @@ jobs:
       - name: Settings sections keep a gap under their last control in a real browser
         run: node tests/settings_render_test.cjs .webgui
 
+      - name: Settings' Schedules list and its Change Keep dialog fit in a real browser
+        run: node tests/schedules_render_test.cjs .webgui
+
       - name: Dialogs and popups read and fit at phone width in a real browser
         run: node tests/phone_render_test.cjs .webgui
 

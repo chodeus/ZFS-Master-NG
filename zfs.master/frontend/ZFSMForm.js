@@ -1,4 +1,4 @@
-// What the Schedules and Replicate forms share: the Server select, the Guide link, a warning, a hint, their wider dialog and Repeat's rows.
+// What the Schedules and Replicate forms share, and Settings' Change Keep: the Server select, the Guide link, a warning, a hint, their wider dialog, Repeat's rows and Keep's.
 
 // A Server select: This server, then each of servers (names), selected picked; error: the id of the line saying why the list is short.
 function zfsmServerSelect(id, servers, selected, error = '') {
@@ -43,9 +43,16 @@ function zfsmRepeatHtml(prefix, label, choices, start = {}, copies = false, afte
 		+'<p id="'+prefix+'-time-row" style="margin:.5em 0;display:none"><label style="display:block">Starts at (this server\'s time):<input id="'+prefix+'-time" type="time" value="'+esc(cron ? '00:00' : start.time || '00:00')+'" style="width:100%"></label></p>'
 		+'<p id="'+prefix+'-cron-row" style="margin:.5em 0;display:none"><label style="display:block">Cron line:<input id="'+prefix+'-cron" type="text" maxlength="255" style="width:100%" placeholder="*/15 * * * *" value="'+esc(cron ? start.time : '')+'" aria-describedby="'+prefix+'-cron-hint"></label>'
 		+zfsmHint(prefix+'-cron-hint', 'Minute, hour, day of the month, month and day of the week, as in the User Scripts plugin\'s Custom schedule: <code>*/15 * * * *</code> runs every 15 minutes.', 'custom-times')+'</p>'
-		+'<p id="'+prefix+'-keep-row" style="margin:.5em 0;display:none"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(start.keep)+'" aria-describedby="'+prefix+'-keep-hint"></label>'
+		+zfsmKeepRowsHtml(prefix, start.keep, start.copy_keeps, copies, false);
+}
+
+// Snapshots to keep, then with copies Copy Keeps: Repeat's rows (zfsmRepeatSync shows them) and Settings' Change Keep.
+function zfsmKeepRowsHtml(prefix, keep, copyKeeps, copies, shown = true) {
+	const esc = zfsmEscape;
+	const style = 'margin:.5em 0'+(shown ? '' : ';display:none');
+	return '<p id="'+prefix+'-keep-row" style="'+style+'"><label style="display:block">Snapshots to keep:<input id="'+prefix+'-keep" type="text" maxlength="40" style="width:100%" placeholder="all" value="'+esc(keep)+'" aria-describedby="'+prefix+'-keep-hint"></label>'
 		+zfsmHint(prefix+'-keep-hint', 'A number keeps the newest that many; 7d 4w 12m keep the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.', 'snapshots-to-keep')+'</p>'
-		+(copies ? '<p id="'+prefix+'-copy-keeps-row" style="margin:.5em 0;display:none"><label style="display:block">Copy Keeps:<input id="'+prefix+'-copy-keeps" type="text" maxlength="40" style="width:100%" placeholder="same as source" value="'+esc(start.copy_keeps)+'" aria-describedby="'+prefix+'-copy-keeps-hint"></label>'
+		+(copies ? '<p id="'+prefix+'-copy-keeps-row" style="'+style+'"><label style="display:block">Copy Keeps:<input id="'+prefix+'-copy-keeps" type="text" maxlength="40" style="width:100%" placeholder="same as source" value="'+esc(copyKeeps)+'" aria-describedby="'+prefix+'-copy-keeps-hint"></label>'
 			+zfsmHint(prefix+'-copy-keeps-hint', 'Empty: the copy loses what Snapshots to keep removes here. Type all to keep every snapshot in it, or rules such as 30d 12m, which count every snapshot in it.', 'copy-keeps')+'</p>' : '');
 }
 
