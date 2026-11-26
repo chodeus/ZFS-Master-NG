@@ -77,7 +77,8 @@ const important = [];
     const relative = path.join(directory, entry.name);
     if (entry.isDirectory()) { if (entry.name !== 'assets') scan(relative); continue; }
     if (!/\.(page|php|css|js)$/.test(entry.name)) continue;
-    const source = fs.readFileSync(path.join(root, relative), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    // But one: Unraid's Help button shows every help with an inline display, which only !important hides (zfsmEverySync).
+    const source = fs.readFileSync(path.join(root, relative), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace('.inline_help.zfsm-row-off{display:none!important}', '');
     if (/:[^;{}]*!\s*important/.test(source)) important.push(relative);
   }
 })('zfs.master');

@@ -341,14 +341,11 @@ switch ($check) {
 		$source = file_get_contents($docroot.'/plugins/zfs.master/ZFSMasterSettings.page');
 		if (strpos(Markdown(substr($source, strpos($source, "\n---\n") + 5)), '&lt;?') !== false) { fwrite(STDERR, "settings page has PHP inside Markdown code, which Unraid shows as text\n"); exit(1); }
 		if (!$row_has('This Server\'s Host Key', 'id="zfsm-replica-hostkey"')) { fwrite(STDERR, "settings page lost This Server's Host Key row\n"); exit(1); }
-		$from = strpos($rendered, 'Lets other servers running ZFS Master NG');
-		$help = $from === false ? '' : substr($rendered, $from, strpos($rendered, '</blockquote>', $from) - $from);
-		if (strpos($help, '<ol>') === false || substr_count($help, '<li>') !== 4) { fwrite(STDERR, "Accept Replicas Into help does not show its four steps as a list: $help\n"); exit(1); }
-		// As many list items show in the help blocks as the help source has list lines: a list Markdown missed is text.
-		$items = 0;
-		for ($at = 0; ($from = strpos($rendered, '<blockquote', $at)) !== false && ($to = strpos($rendered, '</blockquote>', $from)) !== false; $at = $to) $items += substr_count(substr($rendered, $from, $to - $from), '<li>');
-		$lines = preg_match_all('/^> (?:- |\d+\. )/m', $source);
-		if (!$lines || $items !== $lines) { fwrite(STDERR, "settings help has $lines list lines but shows $items list items\n"); exit(1); }
+		// As many wiki links show in the help blocks as the help source has: a link Markdown missed is text.
+		$links = 0;
+		for ($at = 0; ($from = strpos($rendered, '<blockquote', $at)) !== false && ($to = strpos($rendered, '</blockquote>', $from)) !== false; $at = $to) $links += substr_count(substr($rendered, $from, $to - $from), '<a href="https://github.com/chodeus/ZFS-Master-NG/wiki/');
+		$wiki = substr_count(implode("\n", preg_grep('/^> /', explode("\n", $source))), 'https://github.com/chodeus/ZFS-Master-NG/wiki/');
+		if (!$wiki || $links !== $wiki) { fwrite(STDERR, "settings help has $wiki wiki links but shows $links\n"); exit(1); }
 		// Saving runs this through update.php's #command, which needs a real executable under the docroot.
 		if (strpos($html, '<input type="hidden" name="#command" value="plugins/zfs.master/scripts/alerts.php"/>') === false || strpos($html, '<input type="hidden" name="#arg[1]" value="schedule"/>') === false) { fwrite(STDERR, "settings page does not schedule alerts on save\n"); exit(1); }
 		if (!is_executable($docroot.'/plugins/zfs.master/scripts/alerts.php')) { fwrite(STDERR, "the installed alert script is not executable\n"); exit(1); }
