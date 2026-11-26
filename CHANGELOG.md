@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- fix(schedules): no minute clash or read for a pool's own dataset a default leaves out
+- fix(schedules): leave out each pool's own dataset from Snapshot and Replicate Every Dataset
+
 ## 2026.11.26.1 (beta)
 
 **Schedules**
