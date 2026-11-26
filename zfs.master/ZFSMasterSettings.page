@@ -566,19 +566,24 @@ function zfsmSendRemove(name) {
 }
 // Every Dataset's Saves, Remove and Change Keep, one at a time as each answer redraws the list: all their buttons are off until it lands.
 function zfsmSchedulesSend(data, done) {
-	var buttons = $('#zfsm-snapsched-save, #zfsm-copysched-save, #zfsm-schedules input[type=button]').prop('disabled', true);
+	var pressed = document.activeElement, buttons = $('#zfsm-snapsched-save, #zfsm-copysched-save, #zfsm-schedules input[type=button]').prop('disabled', true);
 	zfsmSendPost(data, function(answer) {
 		buttons.prop('disabled', false);
-		done(answer);
 		if (answer.schedules_html !== undefined) $('#zfsm-schedules').html(answer.schedules_html);
+		// A browser may take focus from a button it turns off: the one pressed gets it back while it is still there and focus didn't move.
+		if (document.activeElement === document.body && buttons.is(pressed)) pressed.focus();
+		done(answer);
 	});
 }
-// Remove: why not, under the list.
-function zfsmSchedulesPost(data) {
-	zfsmSchedulesSend(data, function(answer) { $('#zfsm-schedules-status').text(answer.error || ''); });
-}
+// Remove: why not, under the list. Focus a redraw drops from a row goes to the last button (its Remove where it has one) of the row now
+// in that place, else of the last row, if that has any.
 function zfsmScheduleRemove(id) {
-	zfsmSchedulesPost({cmd: 'scheduleremove', id: id});
+	var rows = function() { return $('#zfsm-schedules tbody'); };
+	var at = rows().index($(document.activeElement).closest('#zfsm-schedules tbody'));
+	zfsmSchedulesSend({cmd: 'scheduleremove', id: id}, function(answer) {
+		$('#zfsm-schedules-status').text(answer.error || '');
+		if (at >= 0 && document.activeElement === document.body) rows().eq(Math.min(at, rows().length - 1)).find('input[type=button]').last().trigger('focus');
+	});
 }
 // Change Keep of a repeat set in Replicate, from its button's data (zfsmScheduleKeepButton); one on another server has no Copy Keeps.
 // Open until its answer lands; a refusal shows in it, with what was typed; one saved whose crontab was not rebuilt says so under the list.
@@ -599,6 +604,11 @@ function zfsmScheduleKeepDialog(button) {
 					resolve(false);
 				});
 			});
+		},
+		// Focus goes back to the button, or after a save, whose redraw drops it, to its row's new one, which the library can't find.
+		returnFocus: false,
+		didClose: function() {
+			$(button.isConnected ? button : $('#zfsm-schedules input[type=button]').filter(function() { return this.dataset.id === data.id; })).trigger('focus');
 		}
 	}).then(function(result) {
 		if (result.isConfirmed) $('#zfsm-schedules-status').text(result.value.error || '');
