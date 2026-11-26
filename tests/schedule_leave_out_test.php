@@ -81,12 +81,12 @@ $id = $job['id'];
 $at = ':'.sprintf('%02d', $job['minute']);
 same(array('appdata', 'backup_*'), $job['leave_out'], 'saved, each once');
 same(1, preg_match('/"leave_out": \[\s*"appdata",\s*"backup_\*"\s*\]/', (string)file_get_contents(zfsmScheduleFile())), 'as a list in schedules.json');
-same("Saved: a snapshot of each of 8 dataset(s) every hour at $at; it keeps all it takes. Leave Out leaves out 6 dataset(s)", $saved['said'], 'Save counts what it leaves out');
+same("Saved: a snapshot of each of 4 dataset(s) every hour at $at; it keeps all it takes. Leave Out leaves out 6 dataset(s)", $saved['said'], 'Save counts what it leaves out');
 same('Snapshot Every Dataset, every hour at '.$at.', keeps all it takes; leaves out appdata, backup_*', zfsmScheduleSnapshotText($job), 'the Settings row says it');
 same('appdata, backup_*', zfsmLeaveOutField(zfsmScheduleShown()), 'and the field shows it');
 // A name no dataset at the top of a pool matches is said (plex is deeper), but only when zfs read every dataset.
 $save = function($text) use ($cfg, $wait) { return zfsmScheduleSnapshotSave('', 'hourly', '', '', 0, $cfg, $wait, zfsmLeaveOutParse($text))['said']; };
-same("Saved: a snapshot of each of 11 dataset(s) every hour at $at; it keeps all it takes. Leave Out leaves out 3 dataset(s); nothing matches bkup_*, plex", $save('appdata, bkup_*, plex'),
+same("Saved: a snapshot of each of 7 dataset(s) every hour at $at; it keeps all it takes. Leave Out leaves out 3 dataset(s); nothing matches bkup_*, plex", $save('appdata, bkup_*, plex'),
 	'Save names each that matches none');
 putenv('ZFSM_TEST_COVER_FAIL=cache/vm1');
 $unread = $save('appdata, bkup_*, plex');
@@ -95,35 +95,37 @@ same(array(1, 0), array(preg_match('/; not every dataset could be read: /', $unr
 same(array($id, $job['minute']), array($stored()[0]['id'], $stored()[0]['minute']), 'its id and minute stay');
 $save('appdata, backup_*');
 
-// A run takes neither those nor any below them, in every pool, but the pool appdata and tank/media/appdata; the log says how many.
+// A run takes neither those nor any below them, in every pool, but tank/media/appdata, and no pool's own dataset; the log says how many.
 $reset();
 $t = 1800000000;
 same(0, zfsmScheduleRun($id, $cfg, $t), 'a run works');
 $n = $name($t);
 $snap = 'snapshot -o zfs.master:schedule=snapshots ';
-same(array("{$snap}tank@$n tank/media@$n tank/media/appdata@$n", "{$snap}cache@$n cache/vm1@$n", "{$snap}appdata@$n appdata/data@$n", "{$snap}backup@$n"), $takes(), 'what a run takes');
-same(1, $logged('/ Schedule '.$id.': Scheduled snapshots of 8 of 8 dataset\(s\) taken, 6 left out by Leave Out$/'), 'logged with the count');
+same(array("{$snap}tank/media@$n tank/media/appdata@$n", "{$snap}cache/vm1@$n", "{$snap}appdata/data@$n"), $takes(), 'what a run takes');
+same(1, $logged('/ Schedule '.$id.': Scheduled snapshots of 4 of 4 dataset\(s\) taken, 6 left out by Leave Out$/'), 'logged with the count');
 // One below with a schedule of its own: that one takes it, and the default no longer counts it.
 same(true, zfsmScheduleSnapshotSave('tank/appdata/plex', 'hourly', '', '', 0, $cfg)['saved'], 'its own saved');
 $own = array_values(array_filter($stored(), function($job) { return $job['dataset'] === 'tank/appdata/plex'; }))[0]['id'];
 $reset();
 same(array(0, 0), array(zfsmScheduleRun($id, $cfg, $t + 3600), zfsmScheduleRun($own, $cfg, $t + 3600)), 'both run');
 $n = $name($t + 3600);
-same(array("{$snap}tank@$n tank/media@$n tank/media/appdata@$n", "{$snap}cache@$n cache/vm1@$n", "{$snap}appdata@$n appdata/data@$n", "{$snap}backup@$n", "{$snap}tank/appdata/plex@$n"), $takes(),
+same(array("{$snap}tank/media@$n tank/media/appdata@$n", "{$snap}cache/vm1@$n", "{$snap}appdata/data@$n", "{$snap}tank/appdata/plex@$n"), $takes(),
 	'its own takes it');
-same(1, $logged('/ Schedule '.$id.': Scheduled snapshots of 8 of 8 dataset\(s\) taken, 5 left out by Leave Out$/'), 'one fewer left out');
+same(1, $logged('/ Schedule '.$id.': Scheduled snapshots of 4 of 4 dataset\(s\) taken, 5 left out by Leave Out$/'), 'one fewer left out');
 
 // Replicate Every Dataset: its own list; a run copies none it leaves out, nor their children.
 $saved = zfsmScheduleCopiesSave('backup', 'hourly', '', '', 0, $cfg, null, '', $wait, zfsmLeaveOutParse('appdata, backup_*'));
 $copies = array_values(array_filter($stored(), 'zfsmScheduleCopiesUnder'))[0];
 same(array('appdata', 'backup_*'), $copies['leave_out'] ?? null, 'saved on its record');
-same('Saved: a copy of each of 7 dataset(s) under backup every hour at :'.sprintf('%02d', $copies['minute']).'; it keeps all its snapshots. Leave Out leaves out 6 dataset(s)', $saved['said'], 'Save counts');
+same('Saved: a copy of each of 4 dataset(s) under backup every hour at :'.sprintf('%02d', $copies['minute']).'; it keeps all its snapshots. Leave Out leaves out 6 dataset(s)', $saved['said'], 'Save counts');
 same('Replicate Every Dataset under backup, every hour at :'.sprintf('%02d', $copies['minute']).', keeps all its snapshots; leaves out appdata, backup_*', zfsmScheduleCopiesText($copies), 'the Settings row');
 $reset();
 same(0, zfsmScheduleRun($copies['id'], $cfg, $t + 7200), 'a run of copies works');
 same(array('backup/appdata', 'backup/appdata/data', 'backup/cache', 'backup/cache/vm1', 'backup/tank', 'backup/tank/media', 'backup/tank/media/appdata'),
 	array_values(preg_grep('~^backup/~', $datasets())), 'what it copies');
-same(1, $logged('/ Schedule '.$copies['id'].': Scheduled copies under backup: 7 of 7 dataset\(s\) copied, 6 left out by Leave Out$/'), 'logged with the count');
+same(array(true, true, true, false), array_map(function($zdest) { return zfsmReplicaHolder(array('server' => ''), $zdest); }, array('backup/appdata', 'backup/cache', 'backup/tank', 'backup/tank/media')),
+	'each pool\'s own dataset held, not copied');
+same(1, $logged('/ Schedule '.$copies['id'].': Scheduled copies under backup: 4 of 4 dataset\(s\) copied, 6 left out by Leave Out$/'), 'logged with the count');
 // A dataset below one left out with copies of its own under backup: a holder takes the place of the one left out, as no copy is due there.
 $plex = array('id' => 'cccc0000', 'dataset' => 'tank/appdata/plex') + $copies;
 unset($plex['leave_out']);
@@ -132,11 +134,11 @@ $reset();
 same(0, zfsmScheduleRun('cccc0000', $cfg, $t + 10800), 'its own run works');
 same(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/tank/appdata'), array_values(preg_grep('/^create /', $read('calls.log'))), 'a holder in place of the one left out');
 same(array(true, true), array(in_array('backup/tank/appdata/plex', $datasets(), true), zfsmReplicaHolder(array('server' => ''), 'backup/tank/appdata')), 'and the copy under it');
-// The count leaves out what a run skips anyway: backup/appdata, the read-only copy of pool appdata, matches but is not counted.
+// The count leaves out what a run skips anyway: backup/appdata, the read-only holder of the copy of appdata/data, matches but is not counted.
 $reset();
 same(array(0, 0), array(zfsmScheduleRun($id, $cfg, $t + 14400), zfsmScheduleRun($copies['id'], $cfg, $t + 14460)), 'both defaults run again, a minute apart');
-same(array(1, 1), array($logged('/ Schedule '.$id.': Scheduled snapshots of 8 of 8 dataset\(s\) taken, 5 left out by Leave Out$/'),
-	$logged('/ Schedule '.$copies['id'].': Scheduled copies under backup: 7 of 7 dataset\(s\) copied, 5 left out by Leave Out$/')), 'counted: only those it would take');
+same(array(1, 1), array($logged('/ Schedule '.$id.': Scheduled snapshots of 4 of 4 dataset\(s\) taken, 5 left out by Leave Out$/'),
+	$logged('/ Schedule '.$copies['id'].': Scheduled copies under backup: 4 of 4 dataset\(s\) copied, 5 left out by Leave Out$/')), 'counted: only those it would take');
 
 // A rename the Leave Out of a default it follows matches on one side only says so; one below a dataset at the top, or with its own, doesn't.
 $renamed = function($from, $to) use ($cfg) { return renameDataset($from, $to, 0, $cfg)['failed']; };

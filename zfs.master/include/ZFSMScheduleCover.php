@@ -125,6 +125,11 @@ function zfsmScheduleLeaveOutBy($job, $zdataset) {
 	return null;
 }
 
+// Whether $job is a default and $zdataset a pool's own dataset: a default takes only the datasets in each pool.
+function zfsmScheduleRootOut($job, $zdataset) {
+	return $job['dataset'] === '' && strpos($zdataset, '/') === false;
+}
+
 // How many datasets in $listed $job, a default, would take among $jobs (zfsmScheduleCovered) but for its Leave Out: not those it
 // leaves out anyway, such as a copy received here.
 function zfsmScheduleLeaveOutCount($listed, $job, $jobs) {
@@ -162,8 +167,10 @@ function zfsmScheduleLeaveOutText($job) {
 	return empty($job['leave_out']) ? '' : '; leaves out '.zfsmLeaveOutField($job);
 }
 
-// What following $job, whose Leave Out leaves out $zdataset, means, $none saying what it then has; '' when its Leave Out does not.
-function zfsmScheduleLeaveOutFollowed($job, $zdataset, $none) {
+// What following $job means when it is a default that leaves out $zdataset as a pool's own dataset or by Leave Out, $none saying
+// what it then has; '' otherwise.
+function zfsmScheduleDefaultOutFollowed($job, $zdataset, $none) {
+	if ($job !== null && zfsmScheduleRootOut($job, $zdataset)) return zfsmScheduleWhat($job).', which leaves out a pool\'s own dataset: '.$none;
 	$by = $job === null ? null : zfsmScheduleLeaveOutBy($job, $zdataset);
 	return $by === null ? '' : zfsmScheduleWhat($job).', which leaves this dataset out (Leave Out: '.$by.'): '.$none;
 }
@@ -187,9 +194,10 @@ function zfsmScheduleLeaveOutMoved($before, $after, $from, $to) {
 	return $said;
 }
 
-// Why no run of $job takes $zdataset, listed as $row: its Leave Out, zfsmScheduleSkipped's reasons, and for copies under a dataset
-// zfsmScheduleCopiesNot's; '' when one can.
+// Why no run of $job takes $zdataset, listed as $row: a pool's own dataset under a default, its Leave Out, zfsmScheduleSkipped's
+// reasons, and for copies under a dataset zfsmScheduleCopiesNot's; '' when one can.
 function zfsmScheduleLeftOut($job, $jobs, $zdataset, $row, $name) {
+	if (zfsmScheduleRootOut($job, $zdataset)) return $zdataset.' is a pool\'s own dataset';
 	$by = zfsmScheduleLeaveOutBy($job, $zdataset);
 	if ($by !== null) return $zdataset.' is left out by Leave Out ('.$by.')';
 	$why = zfsmScheduleSkipped($zdataset, $row);

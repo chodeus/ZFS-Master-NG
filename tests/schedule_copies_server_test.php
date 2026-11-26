@@ -101,8 +101,8 @@ same(null, $stored(), 'and nothing is saved');
 $saved = zfsmScheduleCopiesSave('copies', 'hourly', '', '', 1, $cfg, null, 'nas');
 same('', $saved['why'], 'saved');
 $job = array_values($stored())[0];
-same(array('saved' => true, 'why' => '', 'said' => 'Saved: a copy of each of 3 dataset(s) under copies on server nas every hour at :'.sprintf('%02d', $job['minute']).'; it keeps the newest 1 of the snapshots of each dataset it copies'),
-	$saved, 'saved, counted: the pool backup is not left out for being the pool copies go into, only as read-only');
+same(array('saved' => true, 'why' => '', 'said' => 'Saved: a copy of each of 2 dataset(s) under copies on server nas every hour at :'.sprintf('%02d', $job['minute']).'; it keeps the newest 1 of the snapshots of each dataset it copies'),
+	$saved, 'saved, counted: tank/data and tank/san/kid, as no pool\'s own dataset is and backup/replicas is read-only');
 same(array('dataset' => '', 'dest' => 'copies/', 'server' => 'nas', 'every' => 'hourly', 'keep' => 1), array_intersect_key($job, array_flip(array('dataset', 'dest', 'server', 'every', 'keep'))), 'as the record');
 same(array('copies/', 'nas'), array(zfsmScheduleShown('zfsmScheduleCopiesUnder')['dest'], zfsmScheduleShown('zfsmScheduleCopiesUnder')['server']), 'Settings shows it');
 same('', zfsmScheduleCopiesNot(array('dest' => 'tank/') + $job, array(), 'tank/data', array('off', '/mnt/tank/data', false), $name(1800000000)), 'a pool here named as its Copy Under is copied: the copies go on nas');
@@ -116,7 +116,7 @@ same(array(), $stored(), 'removes it');
 same(true, zfsmScheduleCopiesSave('copies', 'hourly', '', '', 1, $cfg, null, 'nas')['saved'], 'saved again');
 $id = array_values($stored())[0]['id'];
 
-// The first run: in nas's area, Copy Under and tank/san's level are made as holders there, the copies parents first, none with -F.
+// The first run: in nas's area, Copy Under and tank's and tank/san's levels are made as holders there, the copies parents first, none with -F.
 // Each copy gets its own connection, the run one for the levels; each ends, its key with it.
 $t = 1800000000;
 $reset();
@@ -124,20 +124,20 @@ same(0, zfsmScheduleRun($id, $cfg, $t), 'a run to nas works');
 $n = $name($t);
 same(array('backup/replicas/tower', 'backup/replicas/tower/copies', 'backup/replicas/tower/copies/tank', 'backup/replicas/tower/copies/tank/data', 'backup/replicas/tower/copies/tank/san', 'backup/replicas/tower/copies/tank/san/kid'),
 	$area(), 'in order, parents first');
-same(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/copies', 'create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/copies/tank/san'),
-	array_values(preg_grep('/holder=on/', $calls('create'))), 'two holders');
+same(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/copies', 'create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/copies/tank',
+	'create -o canmount=off -o readonly=on -o zfs.master:holder=on backup/replicas/tower/copies/tank/san'), array_values(preg_grep('/holder=on/', $calls('create'))), 'three holders');
 same(array(true, false), array(zfsmReplicaHolder(array('server' => ''), 'backup/replicas/tower/copies/tank/san'), zfsmReplicaHolder(array('server' => ''), 'backup/replicas/tower/copies/tank/san/kid')), 'a holder marked, the copy below it not');
-same(array(3, 0), array(count($calls('receive')), count(preg_grep('/ -F /', $calls('receive')))), 'three received, none with -F');
+same(array(2, 0), array(count($calls('receive')), count(preg_grep('/ -F /', $calls('receive')))), 'two received, none with -F');
 same(array("tank/data@$n" => zfsmKeepTag('nas', 'copies/')), $snaps('tank/data'), 'its snapshot is tagged for the record and nas');
-same(array(4, 4), array(count(array_keys($read('ssh.log'), 'login', true)), count(array_keys($read('ssh.log'), 'connection ends', true))), 'four connections, each ended');
+same(array(3, 3), array(count(array_keys($read('ssh.log'), 'login', true)), count(array_keys($read('ssh.log'), 'connection ends', true))), 'three connections, each ended');
 same(array(), glob($work.'/state/replica-send/ssh-*') ?: array(), 'with no key left');
-same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 3 of 3 dataset\(s\) copied$/'), 'logged');
+same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 2 of 2 dataset\(s\) copied$/'), 'logged');
 same(array(), $read('notify.log'), 'only logged');
 
 // The next sends changes; Keep leaves the newest 1 on each dataset. Nothing is made.
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 3600), 'a run of changes');
-same(array(array(), 3), array(preg_grep('/holder=on/', $calls('create')), count(preg_grep('/^send -P -v -L -i /', $read('calls.log')))), 'each sends its changes, no holder made');
+same(array(array(), 2), array(preg_grep('/holder=on/', $calls('create')), count(preg_grep('/^send -P -v -L -i /', $read('calls.log')))), 'each sends its changes, no holder made');
 same(array("tank/data@".$name($t + 3600) => zfsmKeepTag('nas', 'copies/')), $snaps('tank/data'), 'Keep leaves the newest');
 
 // tank/san no longer Sanoid's: its copy would go where the holder stands on nas, over which nothing is received, so it is not copied
@@ -146,7 +146,7 @@ $marks = $read('pool/marks');
 $pool('marks', array_values(preg_grep('~^tank/san@autosnap_~', $marks, PREG_GREP_INVERT)));
 $reset();
 same(1, zfsmScheduleRun($id, $cfg, $t + 5400), 'a run with tank/san to copy');
-same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 3 of 4 dataset\(s\) copied\. Replication of tank\/san to copies\/tank\/san on server nas not started: backup\/replicas\/tower\/copies\/tank\/san on server nas already exists and holds no snapshot, such as an empty dataset made to hold the copies below it; nothing is received over a dataset on another server$/'), 'says why');
+same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 2 of 3 dataset\(s\) copied\. Replication of tank\/san to copies\/tank\/san on server nas not started: backup\/replicas\/tower\/copies\/tank\/san on server nas already exists and holds no snapshot, such as an empty dataset made to hold the copies below it; nothing is received over a dataset on another server$/'), 'says why');
 same(array(0, 1), array(count(preg_grep('/ -F /', $calls('receive'))), count(preg_grep('~ backup/replicas/tower/copies/tank/san/kid$~', $calls('receive')))), 'none with -F, the one below copied');
 $pool('marks', array_merge($read('pool/marks'), array_values(preg_grep('~^tank/san@autosnap_~', $marks))));
 $reset();
@@ -179,7 +179,8 @@ same(array(), $calls('(snapshot|send|receive|create)'), 'and copies nothing');
 // Left alone a while (ZFSM_REPLICA_RETRY), as Unraid's sshd shuts out quick failed logins.
 touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 
-// nas lost once tank's copy lands: tank/data's own connection fails, and the run asks nas nothing more, as it is left alone now.
+// nas lost once tank/da's copy lands: tank/data's own connection fails, and the run asks nas nothing more, as it is left alone now.
+$pool('datasets', array_merge($read('pool/datasets'), array("tank/da\tfilesystem")));
 file_put_contents($work.'/lost_serve.php', '<?php
 $command = (string)getenv("SSH_ORIGINAL_COMMAND");
 $lost = '.var_export($work.'/lost', true).';
@@ -195,6 +196,7 @@ same(array('zfsm-replica 1 hello'), $read('lost'), 'asks nas once after');
 same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 1 of 3 dataset\(s\) copied\. .*tank\/san\/kid and the datasets after it were not copied: .*It is tried again in \d+ seconds/'), 'and says the rest wait');
 putenv('ZFSM_TEST_SERVE='.__DIR__.'/fixtures/fake_ssh_serve.php');
 @unlink($work.'/lost');
+$pool('datasets', array_values(preg_grep('~^(backup/replicas/tower/copies/)?tank/da\t~', $read('pool/datasets'), PREG_GREP_INVERT)));
 touch(zfsmReplicaDownFile('nas'), time() - ZFSM_REPLICA_RETRY);
 
 // A repeat set in Replicate here, to the path a copy on nas has, is not due there: tank/new, left to Sanoid, gets a holder on nas
@@ -206,7 +208,7 @@ file_put_contents(zfsmScheduleFile(), json_encode(array_merge(array_values($stor
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 14400), 'the next run works');
 same(array('backup/replicas/tower/copies/tank/new', 'backup/replicas/tower/copies/tank/new/kid'), array_values(preg_grep('~/tank/new~', $area())), 'tank/new held there, its child copied');
-same(array('normal: Scheduled copies under copies on server nas: 4 of 4 dataset(s) copied. It works again after 3 run(s) with a problem.'), $read('notify-detail.log'), 'none waits');
+same(array('normal: Scheduled copies under copies on server nas: 3 of 3 dataset(s) copied. It works again after 3 run(s) with a problem.'), $read('notify-detail.log'), 'none waits');
 file_put_contents(zfsmScheduleFile(), json_encode(array_values(array_filter($stored(), function($job) { return $job['id'] !== '1a2b3c4d'; }))));
 
 // A dataset whose bookmark fits with its copy's name but not once nas's area is in it: left out, and said.
@@ -214,7 +216,7 @@ $long = 'tank/'.str_repeat('l', 55);
 $pool('datasets', array_merge($read('pool/datasets'), array("$long\tfilesystem")));
 $reset();
 same(0, zfsmScheduleRun($id, $cfg, $t + 14700), 'a run with a name too long there');
-same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 4 of 4 dataset\(s\) copied\. Left out, as the names of each and its copy there are too long for the bookmark a copy keeps \('.preg_quote($long, '/').'\)$/'), 'leaves it out, and says so');
+same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 3 of 3 dataset\(s\) copied\. Left out, as the names of each and its copy there are too long for the bookmark a copy keeps \('.preg_quote($long, '/').'\)$/'), 'leaves it out, and says so');
 same(array(array(), array()), array(preg_grep('~/'.$long.'$~', $area()), preg_grep('~^'.$long.'@~', array_keys($snaps($long)))), 'nothing of it copied or taken');
 $pool('datasets', array_values(preg_grep('~^'.$long.'~', $read('pool/datasets'), PREG_GREP_INVERT)));
 
@@ -225,7 +227,7 @@ putenv('ZFSM_TEST_LIST_FAIL=backup/replicas/tower/copies/tank/zz');
 $reset();
 same(1, zfsmScheduleRun($id, $cfg, $t + 15000), 'a run that can\'t read a level there');
 putenv('ZFSM_TEST_LIST_FAIL');
-same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 4 of 5 dataset\(s\) copied\. whether backup\/replicas\/tower\/copies\/tank\/zz on server nas is there could not be read: cannot open .backup\/replicas\/tower\/copies\/tank\/zz.: Input\/output error$/'), 'says which');
+same(1, $logged('/ Schedule '.$id.': Scheduled copies under copies on server nas: 3 of 4 dataset\(s\) copied\. whether backup\/replicas\/tower\/copies\/tank\/zz on server nas is there could not be read: cannot open .backup\/replicas\/tower\/copies\/tank\/zz.: Input\/output error$/'), 'says which');
 same(array(), preg_grep('~/tank/zz~', $area()), 'and makes nothing there');
 $pool('datasets', array_values(preg_grep('~^tank/zz~', $read('pool/datasets'), PREG_GREP_INVERT)));
 
@@ -268,7 +270,7 @@ same(array(array('create -o canmount=off -o readonly=on -o zfs.master:holder=on 
 // A run whose record is saved since to copy here copies no more; the dialog starts at the Copy Under and Server Default follows, or its own.
 $listed = zfsmScheduleCoverRead($cfg, ZFSM_SCHEDULE_COVER_WAIT);
 $valid = zfsmScheduleRead()['valid'];
-$still = function($job) use ($listed) { return zfsmScheduleCopiesStill($job, 'tank', zfsmScheduleListed($listed)[0]['tank'], $listed['name']); };
+$still = function($job) use ($listed) { return zfsmScheduleCopiesStill($job, 'tank/san/kid', zfsmScheduleListed($listed)[0]['tank/san/kid'], $listed['name']); };
 same(array('nas', false), array($still($valid[$id])['server'] ?? null, $still(array('server' => '') + $valid[$id])), 'a run whose server was changed since');
 same(array(array('default', 'copies', 'nas'), array('hourly', 'copies', '')), array_map(function($zdataset) use ($valid, $listed) {
 	return array_values(array_intersect_key(zfsmScheduleDialogCopies($zdataset, $valid, $listed), array('every' => 1, 'under' => 1, 'server' => 1)));

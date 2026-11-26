@@ -84,7 +84,7 @@ if (in_array($route, $replication, true)) {
 	@mkdir($pool);
 	// For Replace, a read-only copy that went its own way.
 	$replaced = $route === 'previewreplace';
-	file_put_contents($pool.'/datasets', "tank/data\tfilesystem\nbackup\tfilesystem\n".($replaced ? "backup/data\tfilesystem\n" : ''));
+	file_put_contents($pool.'/datasets', "tank/data\tfilesystem\nbackup\tfilesystem\nbackup/media\tfilesystem\n".($replaced ? "backup/data\tfilesystem\n" : ''));
 	file_put_contents($pool.'/marks', "tank/data@a\t11\t10\ntank/data@b\t12\t20\n".($replaced ? "backup/data@x\t99\t30\n" : ''));
 	// Encrypted for Send's Decrypted; its key not loaded where only Decrypted is then refused, which shows the choice got there.
 	$crypt = array('previewcryptopen' => "tank/data\tencryption\taes-256-gcm\n", 'previewdecrypt' => "tank/data\tencryption\taes-256-gcm\n", 'replicatedecrypt' => "tank/data\tencryption\taes-256-gcm\ntank/data\tkeystatus\tunavailable\n");
