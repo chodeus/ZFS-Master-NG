@@ -4,7 +4,11 @@
 // One lock file per dataset and job, named by the dataset's guid: the lock follows a renamed dataset, and a long name can't make the file name too long.
 // The file stays after a run, so two runs never lock different files for one dataset; a crashed run's lock goes with its process.
 function zfsmJobLockFile($zdataset, $job) {
-	$guid = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid');
+	return zfsmJobGuidLock(getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'guid'), $job);
+}
+
+// zfsmJobLockFile of the dataset zfs gave $guid; null when that is no guid.
+function zfsmJobGuidLock($guid, $job) {
 	return is_string($guid) && preg_match('/^[0-9]+$/D', $guid) ? zfsmJobDir($job).'/'.$guid.'.lock' : null;
 }
 

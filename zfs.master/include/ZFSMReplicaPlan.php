@@ -48,21 +48,26 @@ function zfsmReplicaShortName($zdataset, $mark) {
 	return substr($mark, strlen($zdataset) + 1);
 }
 
-// The send for a plan: progress on stderr (-v -P), raw for an encrypted dataset, incremental from the plan's base, or resumed from its token.
+// The send for a plan: progress on stderr (-v -P), raw as zfsmReplicatePlan decides, incremental from the plan's base, or resumed from its token.
+// Records over 128K go whole (-L; raw keeps them too). Keep it on: a copy holding one refuses a later stream without -L.
 function zfsmReplicateSendArgs($plan, $dry_run = false) {
 	$args = array_merge(array('send', '-P', '-v'), $dry_run ? array('-n') : array());
 	if ($plan['mode'] === 'resume') return array_merge($args, array('-t', $plan['token']));
 	if ($plan['raw']) $args[] = '-w';
+	else $args[] = '-L';
 	if ($plan['base'] !== null) array_push($args, '-i', $plan['base']);
 	$args[] = $plan['snapshot'];
 	return $args;
 }
 
 // -s: a stopped run resumes. -u and canmount=noauto keep a filesystem's copy unmounted, even after a reboot; volmode=none keeps a volume's
-// copy from being a second block device of the same data. Resumed and incremental receives apply them too.
+// copy from being a second block device of the same data. Resumed and incremental receives apply them too. -F only onto a holder.
 function zfsmReplicateReceiveArgs($plan) {
 	$args = array('receive', '-s', '-u', '-o', 'readonly=on');
+	if ($plan['holder']) $args[] = '-F';
 	array_push($args, '-o', $plan['type'] === 'filesystem' ? 'canmount=noauto' : 'volmode=none');
+	// An encrypted dataset's copy received decrypted is marked so, as a server's checker marks one (zfsmReplicaReceiveMarked).
+	if ($plan['how'] !== '' && !$plan['raw']) array_push($args, '-o', ZFSM_REPLICA_RAW.'=off');
 	$args[] = $plan['dest'];
 	return $args;
 }
@@ -77,84 +82,258 @@ function zfsmReplicateEstimate($plan) {
 	return ($estimate['code'] ?? 1) === 0 ? zfsmReplicateSize($estimate['output']) : null;
 }
 
+// A plan's refusal: $why for the log, the notification and the dialog's red line. With $fact, $impact and $guide (its section of the
+// wiki's Warnings page) the dialog shows those instead, as a warning (zfsmWarningHtml).
+function zfsmReplicaRefusal($why, $fact = '', $impact = '', $guide = '') {
+	$refused = array('can_proceed' => false, 'error' => $why);
+	if ($fact !== '') $refused['refusal'] = array('fact' => $fact, 'impact' => $impact, 'guide' => $guide);
+	return $refused;
+}
+
+// $answer, a step's plan or why not (a string or a zfsmReplicaRefusal), as the refusal the plan answers; null for a plan that goes on.
+function zfsmReplicaRefusalIn($answer) {
+	if (is_string($answer)) return zfsmReplicaRefusal($answer);
+	return $answer['can_proceed'] === true ? null : $answer;
+}
+
+// Why $target could not open (zfsmReplicaTargetOpen): a refusal the dialog guides when this server's key is missing or unusable, or
+// the other server takes nothing from it or its area changed; else one with only its red line.
+function zfsmReplicaTargetRefusal($target) {
+	$why = $target['error'];
+	if ($why === ZFSM_REPLICA_NO_KEY) {
+		$fact = is_file(zfsmReplicaSshDir().'/id_ed25519') ? 'This server\'s key could not be used' : 'This server has no key yet';
+		return zfsmReplicaRefusal($why, $fact, 'Replicate can\'t send to another server', 'no-key-or-the-key-could-not-be-used');
+	}
+	if ($why === ZFSM_REPLICA_UNACCEPTED) return zfsmReplicaRefusal($why, $target['server'].' doesn\'t accept copies from this server', 'Replicate can\'t send to it', 'copies-not-accepted');
+	$area = zfsmReplicaAreaChangedIn($why);
+	if ($area === null) return zfsmReplicaRefusal($why);
+	return zfsmReplicaRefusal($why, 'A setting of '.$area.' on '.$target['server'].' was changed', $target['server'].' refuses every copy into it', 'the-copies-dataset-was-changed');
+}
+
+define('ZFSM_REPLICA_TOO_LONG', 'The names are too long for the bookmark that keeps the next replication incremental');
+
+function zfsmReplicaTooLong() {
+	return zfsmReplicaRefusal(ZFSM_REPLICA_TOO_LONG, 'The names are too long for this copy\'s bookmark', 'Replicate can\'t send it', 'names-too-long');
+}
+
 function zfsmReplicaBookmarkFits($zdataset, $mark, $snapshot) {
 	return strlen($zdataset.'#'.zfsmReplicaBookmarkPrefix($mark).$snapshot) <= 255;
 }
 
 // What a run from $snapshot to $zdest would do, or why it can't: mode 'full', 'incremental' (from 'base') or 'resume' (from 'token'), with an estimated size.
 // A null $snapshot is one the run takes first, named $with['new_name']: newer than all the others, its size unknown until then.
-// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest).
+// $with['marks'] passes the dataset's marks already read; $with['estimate'] false skips the zfs send -n; $with['target'] is where the copy lives (zfsmReplicaTargetDest), $with['under'] a copy under a dataset; $with['decrypt'] true sends a new copy decrypted (zfsmReplicaPlanCrypt); $with['replace'] true replaces a copy here that no longer matches (zfsmReplicaPlanReplace).
 function zfsmReplicatePlan($zdataset, $snapshot, $zdest, $with = array()) {
-	$refuse = function($why) { return array('can_proceed' => false, 'error' => $why); };
-	$too_long = 'The names are too long for the bookmark that keeps the next replication incremental';
 	$target = $with['target'] ?? array('server' => '');
-	if (isset($target['error'])) return $refuse($target['error']);
-	if (!isset($with['marks']) && !zfsmDatasetExists($zdataset)) return $refuse('Only an existing dataset can be replicated');
+	if (isset($target['error'])) return zfsmReplicaTargetRefusal($target);
+	if (!isset($with['marks']) && !zfsmDatasetExists($zdataset)) return zfsmReplicaRefusal('Only an existing dataset can be replicated');
 	$from = $snapshot === null ? null : $zdataset.'@'.$snapshot;
-	if ($from !== null && !zfsmValidSnapshotName($from)) return $refuse('Pick one of the dataset\'s snapshots');
-	list($named, $why) = zfsmReplicaTargetDest($target, $zdataset, $zdest);
-	if ($named === null) return $refuse($why);
+	if ($from !== null && !zfsmValidSnapshotName($from)) return zfsmReplicaRefusal('Pick one of the dataset\'s snapshots');
+	list($named, $why) = zfsmReplicaTargetDest($target, $zdataset, $zdest, $with['under'] ?? false);
+	if ($named === null) return zfsmReplicaRefusal($why);
 	$zdest = $named;
 	$marks = $with['marks'] ?? zfsmReplicaMarks($zdataset);
-	if ($marks === null) return $refuse('The dataset\'s snapshots could not be read');
+	if ($marks === null) return zfsmReplicaRefusal('The dataset\'s snapshots could not be read');
 	$pool = explode('/', $zdataset, 2)[0];
 	$encryption = getDatasetProperty($pool, $zdataset, 'encryption');
 	$type = getDatasetProperty($pool, $zdataset, 'type');
-	if (!is_string($encryption) || !in_array($type, array('filesystem', 'volume'), true)) return $refuse('The dataset\'s properties could not be read');
+	if (!is_string($encryption) || !in_array($type, array('filesystem', 'volume'), true)) return zfsmReplicaRefusal('The dataset\'s properties could not be read');
 	$where = zfsmReplicaTargetWhere($target, $zdest);
 	$because = function($why) { return $why !== '' ? ': '.$why : ''; };
 	list($missing, $why) = zfsmReplicaTargetMissing($target, $zdest);
-	if ($missing === null) return $refuse('Could not check whether '.$where.' exists'.$because($why));
+	if ($missing === null) return zfsmReplicaRefusal('Could not check whether '.$where.' exists'.$because($why));
 	$key = zfsmReplicaTargetMark($target, $zdest);
-	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off', 'type' => $type, 'base' => null, 'token' => null);
+	$plan = array('can_proceed' => true, 'mode' => 'full', 'snapshot' => $from, 'dest' => $zdest, 'server' => $target['server'], 'mark' => $key, 'raw' => $encryption !== 'off' && !($with['decrypt'] ?? false),
+		'how' => $encryption !== 'off' ? 'choice' : '', 'type' => $type, 'base' => null, 'token' => null, 'holder' => false, 'replace' => null);
 	list($token, $why) = $missing ? array('', '') : zfsmReplicaTargetToken($target, $zdest);
-	if ($token === null) return $refuse('Could not check whether '.$where.' holds a part-received replication'.$because($why));
+	if ($token === null) return zfsmReplicaRefusal('Could not check whether '.$where.' holds a part-received replication'.$because($why));
 	if ($token !== '') {
-		// A run that stopped part-way left a token on the copy: zfs send -t carries on from there, whatever snapshot is picked now.
-		$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
-		if (($info['code'] ?? 1) !== 0 || !preg_match('/^\s*toname = (.+?)\s*$/m', (string)$info['output'], $match)) {
-			return $refuse($where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A '.$zdest.' discards it'.($target['server'] === '' ? '' : ' there'));
-		}
-		if (strncmp($match[1], $zdataset.'@', strlen($zdataset) + 1) !== 0) return $refuse($where.' holds a part-received replication of '.$match[1].', not of this dataset');
-		if (!zfsmReplicaBookmarkFits($zdataset, $key, substr($match[1], strlen($zdataset) + 1))) return $refuse($too_long);
-		return array_merge($plan, array('mode' => 'resume', 'snapshot' => $match[1], 'token' => $token, 'size' => zfsmReplicateSize($info['output'])));
+		$plan = zfsmReplicaPlanResume($plan, $target, $zdataset, $token);
+		if (zfsmReplicaRefusalIn($plan) === null) $plan = zfsmReplicaPlanCrypt($plan, $target, $zdataset);
+		return zfsmReplicaRefusalIn($plan) ?? $plan;
 	}
 	$snap = $from === null ? array('name' => null, 'guid' => '', 'txg' => PHP_INT_MAX) : null;
 	foreach ($marks as $mark) if ($from !== null && $mark['name'] === $from) $snap = $mark;
-	if ($snap === null) return $refuse('The snapshot '.$from.' no longer exists');
-	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return $refuse($too_long);
-	if (!$missing) {
-		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
-		if ($held === null) return $refuse('The snapshots of '.$where.' could not be read'.$because($why));
-		if (!$held) return $refuse($where.' already exists and holds no snapshot, so it can\'t be updated without destroying it');
-		$newest = end($held);
-		$base = null;
-		// The snapshot or bookmark the copy's newest snapshot came from; a snapshot first, as older OpenZFS can't send raw from some bookmarks.
-		foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
-		if ($base === null) return $refuse($newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it');
-		if ($base['guid'] === $snap['guid']) return $refuse($where.' already holds '.$from);
-		if ($base['txg'] > $snap['txg']) return $refuse($where.' already holds '.$base['name'].', which is newer than '.$from);
-		$plan = array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
-	}
-	// A bookmark for this copy means a run made it before: a schedule's full send there would refill what someone removed.
-	if ($missing && ($with['scheduled'] ?? false)) {
+	if ($snap === null) return zfsmReplicaRefusal('The snapshot '.$from.' no longer exists');
+	$untaken = $from === null ? zfsmNewSnapshotNameWhy($with['new_name'] ?? '') : '';
+	if ($untaken !== '') return zfsmReplicaRefusal($untaken);
+	if (!zfsmReplicaBookmarkFits($zdataset, $key, $from !== null ? $snapshot : ($with['new_name'] ?? ''))) return zfsmReplicaTooLong();
+	if (!$missing) $plan = zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap, $with['replace'] ?? false);
+	$refused = zfsmReplicaRefusalIn($plan);
+	if ($refused !== null) return $refused;
+	// A bookmark for this copy means a run made it before: a schedule's full send there, or onto a holder made there since, would
+	// refill what someone removed.
+	if (($missing || $plan['holder']) && ($with['scheduled'] ?? false)) {
 		$prefix = $zdataset.'#'.zfsmReplicaBookmarkPrefix($key);
-		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return $refuse($where.' is gone, though this dataset made a copy there before; a scheduled run sends only changes, so replicate it once by hand to make a new copy');
+		$now = $missing ? ' is gone' : ' only holds the copies of datasets below this one';
+		foreach ($marks as $mark) if (strncmp($mark['name'], $prefix, strlen($prefix)) === 0) return zfsmReplicaRefusal($where.$now.', though this dataset made a copy there before; this schedule sends only changes, so replicate it once by hand to make a new copy');
 	}
+	$plan = zfsmReplicaPlanCrypt($plan, $target, $zdataset);
+	if (is_string($plan)) return zfsmReplicaRefusal($plan);
 	return array_merge($plan, array('size' => $from === null || ($with['estimate'] ?? true) === false ? null : zfsmReplicateEstimate($plan)));
 }
 
-// What the Replicate dialog shows: the snapshots to pick from, newest first, the last destination, the trusted servers, and the plan
-// when a destination is given; for a trusted server ($server) also its area, or why it can't be reached.
-function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '') {
+// $plan carrying on the run that stopped part-way and left $token on the copy (zfs send -t), whatever snapshot is picked now, raw
+// when it was (the token says rawok); onto a holder with -F again, which zfs asks for there. Else why not.
+function zfsmReplicaPlanResume($plan, $target, $zdataset, $token) {
+	$zdest = $plan['dest'];
+	$where = zfsmReplicaTargetWhere($target, $zdest);
+	$stuck = function($why) use ($where) {
+		return zfsmReplicaRefusal($why, $where.' holds a stopped replication that can\'t carry on', 'Replicate can\'t send to it until that is discarded', 'a-stopped-replication-that-cant-carry-on');
+	};
+	$info = runProcess('zfs', array('send', '-P', '-v', '-n', '-t', $token));
+	$snapshot = ($info['code'] ?? 1) === 0 ? zfsmReplicaResumeSnapshot($info['output']) : null;
+	if ($snapshot === null) return $stuck($where.' holds a part-received replication that can\'t be resumed ('.zfsmOneLine($info['output'] ?? '').'); zfs receive -A on that dataset discards it');
+	if (strncmp($snapshot, $zdataset.'@', strlen($zdataset) + 1) !== 0) {
+		return zfsmReplicaRefusal($where.' holds a part-received replication of '.$snapshot.', not of this dataset', $where.' holds a stopped replication of '.explode('@', $snapshot, 2)[0],
+			'Replicate can\'t send to it until that one is finished or discarded', 'a-stopped-replication-of-another-dataset');
+	}
+	// A new pick or a shorter prefix can't help: the run carries on its own snapshot.
+	if (!zfsmReplicaBookmarkFits($zdataset, $plan['mark'], substr($snapshot, strlen($zdataset) + 1))) return $stuck(ZFSM_REPLICA_TOO_LONG);
+	$holder = false;
+	if (zfsmReplicaHolder($target, $zdest)) {
+		list($held, $why) = zfsmReplicaTargetSnapshots($target, $zdest);
+		if ($held === null) return zfsmReplicaUnread($where, $why);
+		$holder = $held === array();
+		$mounted = $holder ? zfsmReplicaHolderMounted($zdest) : '';
+		if ($mounted !== '') return $where.' only holds the copies of datasets below this one, and '.$mounted;
+	}
+	return array_merge($plan, array('mode' => 'resume', 'snapshot' => $snapshot, 'token' => $token, 'size' => zfsmReplicateSize($info['output']), 'holder' => $holder,
+		'raw' => preg_match('/^\s*rawok = 1\s*$/m', (string)$info['output']) === 1, 'how' => $plan['how'] === '' ? '' : 'token'));
+}
+
+// How $plan sends an encrypted dataset, or why it can't: into a copy as it was made (zfsmReplicaPlanMade), else as picked or as the
+// stopped run went (zfsmReplicaPlanResume); decrypted once its keys are loaded (zfsmReplicaPlanKeys), and a new copy only where it is marked.
+function zfsmReplicaPlanCrypt($plan, $target, $zdataset) {
+	if ($plan['how'] === '') return $plan;
+	$into = $plan['mode'] === 'full' ? substr($plan['dest'], 0, strrpos($plan['dest'], '/')) : $plan['dest'];
+	$crypt = false;
+	if ($plan['mode'] === 'incremental' || !$plan['raw']) {
+		list($crypt, $why) = zfsmReplicaTargetCrypt($target, $into);
+		if ($crypt === null) return 'Whether '.zfsmReplicaTargetWhere($target, $into).' is encrypted could not be read'.($why !== '' ? ': '.$why : '');
+	}
+	if ($plan['mode'] === 'incremental') $plan = zfsmReplicaPlanMade($plan, $crypt);
+	if ($plan['raw']) return $plan;
+	if ($crypt === false && $plan['mode'] === 'full') return $target['server'].' runs an older ZFS Master NG, which can\'t mark a decrypted copy: update it there, or pick Raw';
+	return zfsmReplicaPlanKeys($plan, $target, $zdataset, $crypt, $into);
+}
+
+// $plan into a copy that is there, as it was made: decrypted when it is plain or marked so (ZFSM_REPLICA_RAW), else raw. As picked
+// when $crypt is false: an older checker can't say.
+function zfsmReplicaPlanMade($plan, $crypt) {
+	if ($crypt === false) return array_merge($plan, array('how' => 'old'));
+	return array_merge($plan, array('how' => 'copy', 'raw' => $crypt['encryption'] !== 'off' && !$crypt['decrypted']));
+}
+
+// Decrypted $plan once $zdataset's key is loaded, and there the key of $into, which the copy takes ($crypt: zfsmReplicaTargetCrypt's,
+// false unread); else why not.
+function zfsmReplicaPlanKeys($plan, $target, $zdataset, $crypt, $into) {
+	$key = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'keystatus');
+	if ($key === null) return 'Whether the key of '.$zdataset.' is loaded could not be read';
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	$made = array('copy' => ', and '.$where.' was made decrypted, so it takes only that', 'token' => ', and the run that stopped at '.$where.' was decrypted, so only that carries it on');
+	if ($key !== 'available') return 'The key of '.$zdataset.' is not loaded'.($made[$plan['how']] ?? ', so only Raw can send it').': unlock it first';
+	if (!is_array($crypt) || $crypt['encryption'] === 'off' || $crypt['keystatus'] === 'available') return $plan;
+	$locked = 'The key of '.zfsmReplicaTargetWhere($target, $into).' is not loaded, so ';
+	return $locked.($into === $plan['dest'] ? 'nothing decrypted can be received into it: unlock it there first' : 'a decrypted copy can\'t be received into it: unlock it there, or pick Raw');
+}
+
+// The snapshot zfs send -P -v -n -t $token sends, by the name zfs finds it under by guid; the token's toname keeps the one it had
+// before a rename. Null when $output names none.
+function zfsmReplicaResumeSnapshot($output) {
+	return preg_match('/^(?:full|incremental\t[^\t\n]+)\t([^\t\n]+)\t[0-9]+\s*$/m', (string)$output, $match) ? $match[1] : null;
+}
+
+// $plan into a copy that is there: the changes since the snapshot or bookmark its newest snapshot came from, else in full onto a holder
+// (zfsmReplicaPlanHolder), or in place of one here that no longer matches when $replace; or why not. $snap: the mark it sends.
+function zfsmReplicaPlanOnto($plan, $target, $zdataset, $marks, $snap, $replace = false) {
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	list($held, $why) = zfsmReplicaTargetSnapshots($target, $plan['dest']);
+	if ($held === null) return zfsmReplicaUnread($where, $why);
+	if (!$held) return zfsmReplicaPlanHolder($plan, $target);
+	$newest = end($held);
+	$base = zfsmReplicaPlanBase($marks, $newest);
+	if ($base !== null && $base['guid'] === $snap['guid']) return $where.' already holds '.$snap['name'];
+	$newer = $base !== null && $base['txg'] > $snap['txg'] ? $where.' already holds '.$base['name'].', which is newer than '.$snap['name'] : '';
+	$unmatched = $base === null ? $newest['name'].' is not on this dataset, so '.$where.' can\'t be updated without destroying it' : $newer;
+	if ($unmatched === '') return array_merge($plan, array('mode' => 'incremental', 'base' => $base['name'], 'since' => zfsmReplicaShortName($zdataset, $base['name'])));
+	if ($replace) return zfsmReplicaPlanReplace($plan, $target, $zdataset, $unmatched, $newer);
+	if ($newer === '') return zfsmReplicaRefusal($unmatched, $where.' no longer matches this dataset', 'Replicate can\'t add to it', 'the-copy-no-longer-matches');
+	// By short names: the copy's own, as $base may be another tool's bookmark, and the one picked, as the Snapshot list shows it.
+	$fact = $where.' already holds '.substr(strrchr($newest['name'], '@'), 1).', which is newer than '.zfsmReplicaShortName($zdataset, $snap['name']);
+	return zfsmReplicaRefusal($newer, $fact, 'Replicate can\'t send an older snapshot to it', 'the-copy-holds-a-newer-snapshot');
+}
+
+// The mark in $marks that $newest, the copy's newest snapshot, came from: a snapshot first, as older OpenZFS can't send raw from some
+// bookmarks; null when none.
+function zfsmReplicaPlanBase($marks, $newest) {
+	$base = null;
+	foreach ($marks as $mark) if ($mark['guid'] === $newest['guid'] && ($base === null || strpos($mark['name'], '@') !== false)) $base = $mark;
+	return $base;
+}
+
+// $plan to send in full once the run renames aside the copy that no longer matches (zfsmReplicateAside), with $newer when the copy is
+// only ahead of the snapshot; else $unmatched and why it stays.
+function zfsmReplicaPlanReplace($plan, $target, $zdataset, $unmatched, $newer) {
+	if ($target['server'] !== '') return $unmatched.'; only a copy on this server is replaced';
+	$readonly = getDatasetProperty('', $plan['dest'], 'readonly');
+	if ($readonly === null) return $unmatched.'; whether it is read-only could not be read';
+	if ($readonly !== 'on') return $unmatched.'; it is not read-only, so it is not replaced: only a read-only copy is';
+	list($listed, $why) = zfsmReplicaListed($plan['dest']);
+	if ($listed === null) return $unmatched.'; whether it is mounted or has datasets below it could not be read: '.$why;
+	// The rename would take a dataset below it, which may be another schedule's copy.
+	$below = array_values(array_diff(array_keys($listed), array($plan['dest'])));
+	if ($below !== array()) return $unmatched.'; '.$below[0].(count($below) > 1 ? ' and '.(count($below) - 1).' more are' : ' is').' below it, so it is not replaced: only a copy with nothing below it is';
+	if (($listed[$plan['dest']] ?? '') === 'yes') return $unmatched.'; '.$plan['dest'].' is mounted, so it is not replaced: unmount it first';
+	$read = zfsmScheduleRead();
+	if ($read === null) return $unmatched.'; it is not replaced, as '.zfsmScheduleUnreadable();
+	$by = zfsmScheduleCopyOf($read['valid'], $zdataset, $plan['dest'], '');
+	if ($by !== null) return $unmatched.'; it has the name a schedule gives the copy of '.$by[1].', so it is not replaced: give this copy another name';
+	return array_merge($plan, array('replace' => $plan['dest'].'_replaced_'.date('Ymd_Hi'), 'newer' => $newer));
+}
+
+// Why the snapshots of the copy at $where (zfsmReplicaTargetSnapshots) could not be read.
+function zfsmReplicaUnread($where, $why) {
+	return 'The snapshots of '.$where.' could not be read'.($why !== '' ? ': '.$why : '');
+}
+
+// $plan into a copy that holds no snapshot: in full with -F when it is a holder here, which keeps the copies below it; zfs
+// refuses a raw stream there, and any stream onto an encrypted holder. Else (and on a server) why not.
+function zfsmReplicaPlanHolder($plan, $target) {
+	$where = zfsmReplicaTargetWhere($target, $plan['dest']);
+	$taken = function($why) use ($where) { return zfsmReplicaRefusal($why, $where.' already exists and has no snapshots', 'Replicate can\'t put a copy there', 'the-name-is-taken'); };
+	if ($target['server'] !== '') return $taken($where.' already exists and holds no snapshot, such as an empty dataset made to hold the copies below it; nothing is received over a dataset on another server');
+	if (!zfsmReplicaHolder($target, $plan['dest'])) return $taken($where.' already exists and holds no snapshot, so it can\'t be updated without destroying it');
+	$held = $where.' only holds the copies of datasets below this one, and ';
+	$fix = 'copy it elsewhere instead, or, as a copy destroyed loses the snapshots only it had, move aside (zfs rename) each copy below it you want to keep, such as one of a dataset since destroyed, then destroy that dataset and the rest below it for the next run to send them all (one a repeat set in Replicate made asks for one Replicate by hand)';
+	$crypt = getDatasetProperty('', $plan['dest'], 'encryption');
+	if ($crypt === null) return $held.'whether it is encrypted could not be read';
+	if ($crypt !== 'off') return $held.'zfs cannot receive a copy over it, as it is encrypted: '.$fix;
+	if ($plan['raw']) return $held.'zfs cannot receive the raw copy of this encrypted dataset over it: pick Decrypted under Send in Replicate, '.$fix;
+	$mounted = zfsmReplicaHolderMounted($plan['dest']);
+	return $mounted === '' ? array_merge($plan, array('holder' => true)) : $held.$mounted;
+}
+
+// The ticks of $choices (zfsmPostChoices) a plan takes in its $with: 'decrypt' (zfsmReplicaPlanCrypt) and 'replace' (zfsmReplicaPlanReplace).
+function zfsmReplicateTicks($choices) {
+	return array('decrypt' => ($choices['decrypt'] ?? false) === true, 'replace' => ($choices['replace'] ?? false) === true);
+}
+
+// What the Replicate dialog shows: snapshots newest first, the last destination, the trusted servers, on $opening the warning if a repeat
+// leaves it out and whether Send shows, and the plan once a destination is given ($choices: Replicate's ticks, zfsmPostChoices); for a
+// server also its area, or why not.
+function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '', $opening = false, $choices = array()) {
 	if (!zfsmDatasetExists($zdataset)) return array('can_proceed' => false, 'error' => 'Only an existing dataset can be replicated');
 	$marks = zfsmReplicaMarks($zdataset);
 	if ($marks === null) return array('can_proceed' => false, 'error' => 'The dataset\'s snapshots could not be read');
 	$snapshots = array();
 	foreach (array_reverse($marks) as $mark) if (strpos($mark['name'], '@') !== false) $snapshots[] = substr($mark['name'], strlen($zdataset) + 1);
 	$remotes = zfsmReplicaRemotes();
-	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => array_map('strval', array_keys($remotes ?? array())), 'server' => $server, 'area' => null);
+	$options = array('snapshots' => $snapshots, 'last_destination' => zfsmReplicaLastDestination($marks), 'servers' => zfsmReplicaServerNames('', $remotes), 'server' => $server, 'area' => null);
 	if ($remotes === null) $options['servers_error'] = zfsmReplicaRemotesUnreadable();
+	if ($opening) $options['warning'] = zfsmScheduleRepeatRead($zdataset, $cfg, ZFSM_SCHEDULE_COUNT_WAIT)['warning'];
+	// The dialog builds Send's row once, from this answer; an unread encryption offers it too, as the plan reads it again.
+	if ($opening) $options['encrypted'] = getDatasetProperty(explode('/', $zdataset, 2)[0], $zdataset, 'encryption') !== 'off';
 	$lock_file = zfsmJobLockFile($zdataset, 'replicate');
 	if ($lock_file !== null && zfsmJobRunning($lock_file)) return array_merge($options, array('can_proceed' => false, 'error' => 'A replication of this dataset is already running'));
 	if ($zdest === '' && $server === '') return array_merge($options, array('can_proceed' => false, 'error' => ''));
@@ -163,7 +342,7 @@ function zfsmReplicatePreview($zdataset, $snapshot, $zdest, $cfg, $server = '') 
 		$options['area'] = $target['area'] ?? null;
 		if ($zdest === '' && !isset($target['error'])) return array_merge($options, array('can_proceed' => false, 'error' => ''));
 		// No snapshot picked means the run takes one first (zfsmStartReplicate).
-		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target)));
+		return array_merge($options, zfsmReplicatePlan($zdataset, $snapshot !== '' ? $snapshot : null, $zdest, array('marks' => $marks, 'new_name' => zfsmNewSnapshotName($cfg, time()), 'target' => $target) + zfsmReplicateTicks($choices)));
 	} finally {
 		zfsmReplicaDisconnect($target);
 	}

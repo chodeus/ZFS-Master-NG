@@ -149,6 +149,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMDiagRecord.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMInventory.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMImpact.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMForm.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMReplicateDialog.js'); ?>"></script>
+<script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMScheduleDialog.js'); ?>"></script>
 <script type="text/javascript" src="<?php autov('/plugins/zfs.master/frontend/ZFSMKeys.js'); ?>"></script>
 
 <script>
@@ -661,6 +664,15 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 		},
 	});
 
+	opts.push({
+		text: _('Schedules'),
+		icon: 'fa-clock-o',
+		action: function(e) {
+			e.preventDefault();
+			scheduleDataset(zdataset);
+		},
+	});
+
 	if (encryption == 'available') {
 		opts.push({
 			text: _('Lock Dataset'),
@@ -766,18 +778,19 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 
   // Each change asks for a new plan; Replicate waits for the plan of what is on screen, and the server plans again before it starts.
   function replicateDataset(zdataset) {
-	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: '', destination: ''}, function(options) {
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: '', destination: '', opening: '1'}, function(options) {
 		if (!Array.isArray(options.snapshots)) {
 			Swal2.fire({title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>', icon: 'error', html: zfsmReplicatePlanHtml(options)});
 			return;
 		}
 		let asked = 0;
 		let timer = null;
-		// Without trusted servers there is no Server select: the copy stays on this server.
-		const choices = (popup) => ({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value.trim(),
-			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value, every: popup.querySelector('#zfsm-replicate-every').value,
-			time: popup.querySelector('#zfsm-replicate-time').value, days: Array.from(popup.querySelectorAll('.zfsm-replicate-day:checked'), box => box.value).join(','), keep: popup.querySelector('#zfsm-replicate-keep').value.trim()});
-		Swal2.fire({
+		// Without trusted servers there is no Server select: the copy stays on this server. Send shows only for an encrypted dataset.
+		const send = (popup) => { const select = popup.querySelector('#zfsm-replicate-send'); return select ? {decrypt: select.value} : {}; };
+		const choices = (popup) => Object.assign({snapshot: popup.querySelector('#zfsm-replicate-snapshot').value, destination: popup.querySelector('#zfsm-replicate-dest').value,
+			server: (popup.querySelector('#zfsm-replicate-server') || {value: ''}).value}, send(popup), zfsmRepeatChoices(popup, 'zfsm-replicate'), zfsmReplicateRemake(popup),
+			zfsmReplicateReplace(popup));
+		zfsmFormDialog({
 			title: '<strong>Replicate<br>'+escapeHtml(zdataset)+'</strong>',
 			html: zfsmReplicateHtml(options, zdataset),
 			showCancelButton: true,
@@ -788,7 +801,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					const ask = ++asked;
 					const chosen = choices(popup);
 					confirm.disabled = true;
-					zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination, server: chosen.server}, function(answer) {
+					zfsmFetchReview('<?=$urlzmadmin?>', Object.assign({cmd: 'previewreplicate', zdataset: zdataset, snapshot: chosen.snapshot, destination: chosen.destination, server: chosen.server}, send(popup), zfsmReplicateReplace(popup)), function(answer) {
 						if (ask !== asked) return;
 						popup.querySelector('#zfsm-replicate-plan').innerHTML = zfsmReplicatePlanHtml(answer);
 						confirm.disabled = answer.can_proceed !== true;
@@ -796,6 +809,9 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 				};
 				popup.querySelector('#zfsm-replicate-dest').addEventListener('input', () => { ++asked; confirm.disabled = true; clearTimeout(timer); timer = setTimeout(plan, 400); });
 				popup.querySelector('#zfsm-replicate-snapshot').addEventListener('change', plan);
+				const decrypt = popup.querySelector('#zfsm-replicate-send');
+				if (decrypt) decrypt.addEventListener('change', plan);
+				popup.querySelector('#zfsm-replicate-replace').addEventListener('change', plan);
 				popup.querySelector('#zfsm-replicate-every').addEventListener('change', () => {
 					const snapshot = popup.querySelector('#zfsm-replicate-snapshot').value;
 					// Repeat sets Snapshot to Take one now: the plan changes only when Snapshot did.
@@ -809,6 +825,7 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 					// A name typed in stays; one the dialog filled in follows the server.
 					if (dest.value === filled) dest.value = filled = zfsmReplicateName(options.last_destination, server.value, zdataset);
 					dest.placeholder = server.value === '' ? 'pool/dataset' : 'name';
+					zfsmReplicateRepeatSync(popup);
 					plan();
 				});
 				plan();
@@ -822,6 +839,35 @@ $is_unraid7 = version_compare($zfsm_cfg['version'], '7.0.0', '>=');
 			});
 		});
 	});
+  }
+
+  // The server checks the dataset again on Save, and answers what it follows or takes now.
+  function scheduleDataset(zdataset) {
+	const title = '<strong>Schedules<br>'+escapeHtml(zdataset)+'</strong>';
+	zfsmFetchReview('<?=$urlzmadmin?>', {cmd: 'previewschedules', zdataset: zdataset}, function(preview) {
+		if (preview.error) return Swal2.fire({title: title, icon: 'error', html: zfsmEscape(preview.error)});
+		zfsmFormDialog({
+			title: title,
+			html: zfsmScheduleDialogHtml(preview),
+			showCancelButton: true,
+			confirmButtonText: 'Save',
+			didOpen: (popup) => {
+				// Only with a server to pick is there a Server select.
+				['#zfsm-schedules-every', '#zfsm-copies-every', '#zfsm-copies-server'].forEach(id => {
+					const field = popup.querySelector(id);
+					if (field) field.addEventListener('change', () => zfsmScheduleDialogSync(popup));
+				});
+				zfsmScheduleDialogSync(popup);
+			},
+			preConfirm: () => zfsmScheduleDialogChoices(Swal2.getPopup())
+		}).then((result) => {
+			if (!result.isConfirmed) return;
+			zfsmFetchReview('<?=$urlzmadmin?>', $.extend({cmd: 'scheduledataset', zdataset: zdataset}, result.value), function(answer) {
+				const text = [answer.said, answer.error].filter(Boolean).join('. ') || 'The answer could not be read.';
+				Swal2.fire({title: 'Schedules Result', icon: answer.error || !answer.said ? 'error' : 'info', html: zfsmEscape(text)});
+			}, ' Reload the page and open Schedules to see what was saved.');
+		});
+	}, '');
   }
 
   function takeDatasetSnapshot(zdataset) {

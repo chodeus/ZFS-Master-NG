@@ -10,20 +10,99 @@ function zfsmReplicaTargetOpen($server) {
 	return is_string($remote) ? array('error' => $remote) : zfsmReplicaConnect($remote) + array('server' => $server);
 }
 
+// $name on $target: as it is here, inside its area on a trusted server.
+function zfsmReplicaTargetName($target, $name) {
+	return $target['server'] === '' ? $name : $target['area'].'/'.$name;
+}
+
 // $zdataset's copy named $name: array(its dataset, ''), or array(null, why not). Here a dataset in a pool, apart from $zdataset's own
-// line, inside one that exists; on a trusted server one name inside its area, the only place the checker takes a copy.
-function zfsmReplicaTargetDest($target, $zdataset, $name) {
-	if ($target['server'] !== '') {
-		$dest = $target['area'].'/'.$name;
-		if ($name !== '' && strpos($name, '/') === false && zfsmValidDatasetName($dest)) return array($dest, '');
-		return array(null, 'On '.$target['server'].' the copy goes inside '.$target['area'].', so give it one name with no slash, such as '.basename($zdataset));
-	}
-	if (!zfsmValidDatasetName($name) || strpos($name, '/') === false) return array(null, 'The copy needs a dataset name inside a pool, such as backup/'.basename($zdataset));
-	if ($name === $zdataset || strncmp($name, $zdataset.'/', strlen($zdataset) + 1) === 0 || strncmp($zdataset, $name.'/', strlen($name) + 1) === 0) {
-		return array(null, 'The copy can\'t be the dataset itself, go inside it, or replace one of its parents');
-	}
+// line, inside one that exists; on a trusted server one name inside its area, or with $nested (copies under a dataset) a path there.
+function zfsmReplicaTargetDest($target, $zdataset, $name, $nested = false) {
+	if ($target['server'] !== '') return zfsmReplicaTargetDestServer($target, $zdataset, $name, $nested);
+	$wrong = zfsmReplicaTargetNameWrong($zdataset, $name);
+	if ($wrong !== '') return array(null, $wrong);
 	$parent = substr($name, 0, strrpos($name, '/'));
 	return zfsmDatasetExists($parent, 'filesystem') ? array($name, '') : array(null, 'The copy goes inside '.$parent.', which doesn\'t exist');
+}
+
+// Why $name can't be $zdataset's copy here, by the name alone; '' when it can.
+function zfsmReplicaTargetNameWrong($zdataset, $name) {
+	if (!zfsmValidDatasetName($name) || strpos($name, '/') === false) return 'The copy needs a dataset name inside a pool, such as backup/'.basename($zdataset);
+	if ($name === $zdataset || strncmp($name, $zdataset.'/', strlen($zdataset) + 1) === 0 || strncmp($zdataset, $name.'/', strlen($name) + 1) === 0) {
+		return 'The copy can\'t be the dataset itself, go inside it, or replace one of its parents';
+	}
+	return '';
+}
+
+// zfsmReplicaTargetDest on a trusted server.
+function zfsmReplicaTargetDestServer($target, $zdataset, $name, $nested) {
+	$dest = zfsmReplicaTargetName($target, $name);
+	if ($name !== '' && ($nested || strpos($name, '/') === false) && zfsmValidDatasetName($dest)) return array($dest, '');
+	if ($nested) return array(null, 'On '.$target['server'].' the copy would be '.$dest.', which is no dataset name ZFS takes');
+	return array(null, 'On '.$target['server'].' the copy goes inside '.$target['area'].', so give it one name with no slash, such as '.basename($zdataset));
+}
+
+// Marks a holder (zfsmReplicaHolderMake). The copies below one inherit it: only its own value (source local) makes one.
+define('ZFSM_REPLICA_HOLDER', 'zfs.master:holder');
+
+// zfs's arguments to make $zdest a holder, here or by a trusted server's checker (zfsmReplicaVerbArgs).
+function zfsmReplicaHolderArgs($zdest) {
+	return array('create', '-o', 'canmount=off', '-o', 'readonly=on', '-o', ZFSM_REPLICA_HOLDER.'=on', $zdest);
+}
+
+// Set off by a checker at each receive that isn't raw (zfsmReplicaReceiveMarked), here only on an encrypted dataset's decrypted copy
+// (zfsmReplicateReceiveArgs): that copy takes only decrypted streams. A raw copy below one inherits it: only source local counts.
+define('ZFSM_REPLICA_RAW', 'zfs.master:raw');
+
+// Makes $zdest on $target an empty dataset, unmounted and read-only, that holds copies of datasets below the one whose copy it stands
+// for (a trusted server's checker makes it: zfsmReplicaTargetHolders); '' or why not.
+function zfsmReplicaHolderMake($target, $zdest) {
+	$here = $target['server'] === '';
+	$made = $here ? runProcess('zfs', zfsmReplicaHolderArgs($zdest)) : zfsmReplicaAsk($target, zfsmReplicaRequest('holder', $zdest));
+	if (($made['code'] ?? 1) === 0) return '';
+	return 'The dataset to hold the copies below '.zfsmReplicaTargetWhere($target, $zdest).' could not be made: '.($here ? zfsmCommandError($made, 'zfs create failed') : $made['error']);
+}
+
+// Whether $zdest on $target is a filesystem, which holds copies below it: array(true or false, ''); on a trusted server array(null,
+// why) when that could not be read. Here one not read counts as missing, and making a holder there then says why.
+function zfsmReplicaTargetFilesystem($target, $zdest) {
+	if ($target['server'] === '') return array(zfsmDatasetExists($zdest, 'filesystem'), '');
+	$answer = zfsmReplicaAsk($target, zfsmReplicaRequest('exists', $zdest));
+	if ($answer['code'] === 0) return array(zfsmLines($answer['output']) === array($zdest."\tfilesystem"), '');
+	return zfsmDatasetMissingSaid($answer['output']) ? array(false, '') : array(null, $answer['error']);
+}
+
+// After a copy landed in a holder's place (zfsmReplicaPlanHolder), which keeps the holder's mark: clears it. '' or why not.
+function zfsmReplicaHolderClear($zdest) {
+	$cleared = runProcess('zfs', array('inherit', ZFSM_REPLICA_HOLDER, $zdest));
+	return ($cleared['code'] ?? 1) === 0 ? '' : 'The copy still carries the mark of the empty dataset it replaced: '.zfsmCommandError($cleared, 'zfs inherit failed');
+}
+
+// Each filesystem and volume at and below $zdest with whether it is mounted (a volume's is -): array(name => mounted, ''), or array(null, why not).
+function zfsmReplicaListed($zdest) {
+	$listed = runProcess('zfs', array('list', '-H', '-o', 'name,mounted', '-t', 'filesystem,volume', '-r', $zdest));
+	if (($listed['code'] ?? 1) !== 0) return array(null, zfsmCommandError($listed, 'zfs list failed'));
+	$mounted = array();
+	foreach (zfsmLines($listed['output']) as $line) {
+		list($name, $state) = explode("\t", $line, 2) + array(1 => '');
+		$mounted[$name] = $state;
+	}
+	return array($mounted, '');
+}
+
+// Why a copy received over the holder $zdest would unmount one below it, which zfs leaves so (-u); '' when none is.
+function zfsmReplicaHolderMounted($zdest) {
+	list($listed, $why) = zfsmReplicaListed($zdest);
+	if ($listed === null) return 'whether a copy below it is mounted could not be read: '.$why;
+	$name = array_search('yes', $listed, true);
+	return $name === false ? '' : $name.' below it is mounted, which receiving this copy over it would unmount: unmount it first';
+}
+
+// Whether $zdest on $target is a holder; false on a trusted server, which makes none, and when it can't be read.
+function zfsmReplicaHolder($target, $zdest) {
+	if ($target['server'] !== '') return false;
+	$read = runProcess('zfs', array('get', '-H', '-p', '-o', 'source', ZFSM_REPLICA_HOLDER, $zdest));
+	return ($read['code'] ?? 1) === 0 && trim((string)$read['output']) === 'local';
 }
 
 // The copy as messages name it. "on server <name>" is how diagnostics learn a server's name (zfsmDiagLearnPools).
@@ -64,10 +143,78 @@ function zfsmReplicaTargetSnapshots($target, $zdest) {
 	return $answer['code'] === 0 ? array(zfsmReplicaMarksIn($zdest, $answer['output']), '') : array(null, $answer['error']);
 }
 
+// zfs's arguments to read $zdest's encryption, keystatus and ZFSM_REPLICA_RAW, here or by a trusted server's checker (zfsmReplicaVerbArgs).
+function zfsmReplicaCryptArgs($zdest) {
+	return array('get', '-H', '-p', '-o', 'property,value,source', 'encryption,keystatus,'.ZFSM_REPLICA_RAW, $zdest);
+}
+
+// $zdest's encryption and keystatus (- when it is off), and 'decrypted' when it carries its own ZFSM_REPLICA_RAW=off: array(them, ''),
+// array(null, why) when unread, or array(false, '') on a server whose older checker can't read them.
+function zfsmReplicaTargetCrypt($target, $zdest) {
+	$here = $target['server'] === '';
+	if (!$here) {
+		$can = zfsmReplicaTargetCan($target);
+		if (is_string($can)) return array(null, $can);
+		if (!in_array('crypt', $can, true)) return array(false, '');
+	}
+	$answer = $here ? runProcess('zfs', zfsmReplicaCryptArgs($zdest)) : zfsmReplicaAsk($target, zfsmReplicaRequest('crypt', $zdest));
+	if (($answer['code'] ?? 1) !== 0) return array(null, $here ? zfsmCommandError($answer, 'zfs get failed') : $answer['error']);
+	$read = array();
+	foreach (zfsmLines($answer['output']) as $line) {
+		$field = explode("\t", $line);
+		if (count($field) === 3) $read[$field[0]] = $field;
+	}
+	if (!isset($read['encryption'], $read['keystatus'], $read[ZFSM_REPLICA_RAW])) return array(null, 'the answer left part out');
+	$mark = $read[ZFSM_REPLICA_RAW];
+	return array(array('encryption' => $read['encryption'][1], 'keystatus' => $read['keystatus'][1], 'decrypted' => $mark[1] === 'off' && $mark[2] === 'local'), '');
+}
+
+// zstd's options for a stream to a server: its default level, on every core.
+define('ZFSM_REPLICA_ZSTD', array('-q', '-c', '-3', '-T0'));
+
+// What a trusted server's checker does besides receiving: the lines of its answer to exists on its area (zfsmReplicaServeAsk), kept
+// on $target once zfsmReplicaTargetZstd has it, or why it could not be asked.
+function zfsmReplicaTargetCan($target) {
+	if (isset($target['can'])) return $target['can'];
+	$answer = zfsmReplicaAsk($target, zfsmReplicaRequest('exists', $target['area']));
+	return $answer['code'] === 0 ? zfsmLines($answer['output']) : $answer['error'];
+}
+
+// $target with 'zstd', zstd here when the stream to it goes through it: that server's checker reads zstd, as one with zstd and prlimit
+// does (zfsmServeReplica). Else null, a failed ask included: the stream goes as it is, and only an answer is kept ('can').
+function zfsmReplicaTargetZstd($target) {
+	$target['zstd'] = null;
+	if (($target['server'] ?? '') === '' || isset($target['error'])) return $target;
+	$zstd = zfsmToolPath('zstd');
+	if ($zstd === null) return $target;
+	$can = zfsmReplicaTargetCan($target);
+	if (!is_array($can)) return $target;
+	return array_merge($target, array('can' => $can, 'zstd' => in_array('zstd', $can, true) ? $zstd : null));
+}
+
+// '' when $target, opened, makes holders for copies under a dataset (here, or a server's checker since this version), else why not.
+function zfsmReplicaTargetHolders($target) {
+	if (isset($target['error'])) return $target['error'];
+	if ($target['server'] === '') return '';
+	$can = zfsmReplicaTargetCan($target);
+	if (is_string($can)) return $can;
+	return in_array('holder', $can, true) ? '' : $target['server'].' runs an older ZFS Master NG, which takes no copies under a dataset: update it there';
+}
+
+// zstd's step in $plan's stream to $target, or null: none without it at both ends, or for a raw stream, which it can't make smaller.
+function zfsmReplicaTargetZstdStep($target, $plan) {
+	return ($target['zstd'] ?? null) === null || $plan['raw'] ? null : array_merge(array($target['zstd']), ZFSM_REPLICA_ZSTD);
+}
+
+// The checker's receive for $target's stream: receive-zstd when it goes through zstd.
+function zfsmReplicaTargetReceiveRequest($target, $plan) {
+	return zfsmReplicaRequest(zfsmReplicaTargetZstdStep($target, $plan) !== null ? 'receive-zstd' : 'receive', $plan['dest']);
+}
+
 // The receive a plan's stream goes into (zfsmReplicateStream): zfs here, or the checker's receive on the connection.
 function zfsmReplicaTargetReceive($target, $plan) {
 	if ($target['server'] === '') return array_merge(array(zfsmCommandPath('zfs')), zfsmReplicateReceiveArgs($plan));
-	return array_merge(array(zfsmCommandPath('ssh')), zfsmReplicaSshArgs($target['remote'], $target['files'], zfsmReplicaRequest('receive', $plan['dest'])));
+	return array_merge(array(zfsmCommandPath('ssh')), zfsmReplicaSshArgs($target['remote'], $target['files'], zfsmReplicaTargetReceiveRequest($target, $plan)));
 }
 
 // Why ssh, not the checker, ended that receive (exit 255): what ssh said, or that the connection dropped, as ssh riding it says
@@ -77,10 +224,11 @@ function zfsmReplicaTargetLost($target, $code, $error) {
 	return trim($error) !== '' ? $error : 'The connection to '.$target['server'].' dropped';
 }
 
-// That receive as the log shows it.
+// That receive as the log shows it, after any zstd.
 function zfsmReplicaTargetReceiveText($target, $plan) {
 	if ($target['server'] === '') return 'zfs '.implode(' ', zfsmReplicateReceiveArgs($plan));
-	return 'ssh '.$target['remote']['host'].' '.zfsmReplicaRequest('receive', $plan['dest']);
+	$zstd = zfsmReplicaTargetZstdStep($target, $plan);
+	return ($zstd !== null ? 'zstd '.implode(' ', array_slice($zstd, 1)).' | ' : '').'ssh '.$target['remote']['host'].' '.zfsmReplicaTargetReceiveRequest($target, $plan);
 }
 
 // A request to the checker: its verb, and the dataset as hex.
@@ -124,6 +272,9 @@ function zfsmReplicaAsk($link, $request, $keep_bytes = ZFSM_KEEP_OUTPUT) {
 	return $answer;
 }
 
+// The dialog tells its two causes apart (zfsmReplicaTargetRefusal).
+define('ZFSM_REPLICA_NO_KEY', 'This server has no key yet, or its RAM copy could not be made');
+
 // hello on the other server, with the connection kept for more requests: array('remote', 'files', 'area' its copies go into),
 // or array('error' => why: the wait after a failure, this server's name, ssh's own failure or the checker's refusal). zfsmReplicaDisconnect ends it.
 function zfsmReplicaConnect($remote) {
@@ -133,7 +284,7 @@ function zfsmReplicaConnect($remote) {
 	$this_name = zfsmReplicaThisName();
 	if ($this_name === null) return array('error' => 'This server\'s name must be '.ZFSM_REPLICA_NAME_RULE.'; rename it under Settings, Identification, then give '.$remote['name'].' its new line');
 	$files = zfsmReplicaSshFiles($remote);
-	if ($files === null) return array('error' => 'This server has no key yet, or its RAM copy could not be made');
+	if ($files === null) return array('error' => ZFSM_REPLICA_NO_KEY);
 	$link = array('remote' => $remote, 'files' => $files + array('control' => $files['dir'].'/cm'));
 	try {
 		$hello = zfsmReplicaAsk($link, zfsmReplicaRequest('hello'));

@@ -223,8 +223,9 @@
 - Initial Release.
 </CHANGES>
 
-<!-- A failed download never reaches upgradepkg: the running install and the archive the next boot needs stay intact -->
-<FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="upgradepkg --install-new --reinstall">
+<!-- A failed download never reaches upgradepkg: the running install and the archive the next boot needs stay intact.
+     The lock (include/ZFSMInstallLock.php) keeps scripts/ from loading while upgradepkg replaces the plugin's files. -->
+<FILE Name="/boot/config/plugins/&name;/&pkgname;.txz" Run="flock /var/run/zfs.master.install.lock upgradepkg --install-new --reinstall">
 <URL>https://github.com/&github;/releases/download/v&version;/&pkgname;.txz</URL>
 <MD5>&md5;</MD5>
 </FILE>
@@ -246,6 +247,8 @@ rm -f $(ls /boot/config/plugins/&name;/&name;-*.t?z 2>/dev/null | grep -vF '&pkg
 rm -f &plugdir;/nchan/zfs_master &plugdir;/scripts/zfs_*.lua
 rmdir &plugdir;/nchan 2>/dev/null || true
 rm -f /tmp/zfsm_reload
+# An older version's schedule change drops what it can't read from the cron file and the schedules: put back as this one reads them
+/usr/bin/php &plugdir;/scripts/schedule.php heal
 echo ""
 echo "-----------------------------------------------------------"
 echo " ZFS Master NG has been installed."

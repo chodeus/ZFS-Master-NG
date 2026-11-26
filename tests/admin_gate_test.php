@@ -13,6 +13,10 @@ $cases = array(
 	'rollback_newer' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '1'), '0', '', 'blocked'),
 	'destroy_recursive' => array(array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '1'), '0', '', 'blocked'),
 	'destroy_dataset' => array(array('cmd' => 'destroydataset', 'zdataset' => 'tank/data', 'force' => '0'), '0', '', 'blocked'),
+	'rename_dataset' => array(array('cmd' => 'renamedataset', 'zdataset' => 'tank/data', 'newname' => 'tank/data2', 'force' => '0'), '0', '', 'blocked'),
+	'edit_property' => array(array('cmd' => 'editdatasetproperty', 'zdataset' => 'tank/data', 'property' => 'compression', 'value' => 'lz4'), '0', '', 'blocked'),
+	'edit_with_mode' => array(array('cmd' => 'editdatasetproperty', 'zdataset' => 'tank/data', 'property' => 'compression', 'value' => 'lz4'), '1', '', 'allowed'),
+	'rename_snapshot' => array(array('cmd' => 'renamesnapshot', 'snapshot' => 'tank/data@daily', 'newname' => 'weekly'), '0', '', 'allowed'),
 	'rollback_plain' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '0'), '0', '', 'allowed'),
 	'destroy_plain' => array(array('cmd' => 'destroysnapshot', 'snapshot' => 'tank/data@daily', 'recursive' => '0'), '0', '', 'allowed'),
 	'newer_with_mode' => array(array('cmd' => 'rollbacksnapshot', 'snapshot' => 'tank/data@daily', 'destroy_newer' => '1'), '1', '', 'allowed'),
@@ -32,6 +36,11 @@ $cases = array(
 	'accept_padded' => array(array('cmd' => 'validateaccept', 'dataset' => " backup/replicas \n"), '0', '', 'accept_valid'),
 	'accept_missing' => array(array('cmd' => 'validateaccept', 'dataset' => 'tank/secure'), '0', '', 'accept_missing'),
 	'accept_unread' => array(array('cmd' => 'validateaccept', 'dataset' => 'tank/locked'), '0', '', 'accept_unread'),
+	'keep_read' => array(array('cmd' => 'validatekeep', 'keep' => ' 24 7D, 4w '), '0', '', 'keep_read'),
+	'keep_unread' => array(array('cmd' => 'validatekeep', 'keep' => ' 7d 7d '), '0', '', 'keep_unread'),
+	'snapname_refused' => array(array('cmd' => 'validatesnapname', 'pattern' => '\\x/', 'prefix' => 'a', 'utc' => '1'), '0', '', 'snapname_refused'),
+	'snapname_read' => array(array('cmd' => 'validatesnapname', 'pattern' => 'Y-m-d-His', 'prefix' => 'auto-', 'utc' => '0'), '0', '', 'snapname_read'),
+	'snapname_blank' => array(array('cmd' => 'validatesnapname', 'pattern' => '', 'prefix' => '', 'utc' => ''), '0', '', 'snapname_read'),
 );
 
 // ZFSMAdmin.php sets its own $name, so the case name needs another variable.
@@ -67,6 +76,10 @@ if ($expected === 'allowed') $passed = !empty($answer['succeeded']) && empty($an
 $accept = array('accept_valid' => array('valid' => true, 'missing' => false), 'accept_invalid' => array('valid' => false, 'missing' => null),
 	'accept_missing' => array('valid' => true, 'missing' => true), 'accept_unread' => array('valid' => true, 'missing' => null));
 if (isset($accept[$expected])) $passed = $answer === $accept[$expected];
+if ($expected === 'keep_read') $passed = $answer === array('warning' => '');
+if ($expected === 'keep_unread') $passed = $answer === array('warning' => '"7d 7d" is not read, so all stay: give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all');
+if ($expected === 'snapname_read') $passed = $answer === array('warning' => '');
+if ($expected === 'snapname_refused') $passed = $answer === array('warning' => 'Snapshots Pattern and Prefix in Settings give new snapshots a name ZFS refuses, such as @ax/: a name may hold only letters, digits, spaces and _ . : -, and with its dataset and @ be up to 255 long');
 if ($expected === 'warned') $passed = !empty($answer['data']['warning']) && isset($answer['data']['datasets']['tank']['child']['tank/data']);
 if ($expected === 'filtered') $passed = !isset($answer['data']['datasets']['tank']['child']['tank/data']) && isset($answer['data']['datasets']['tank']['child']['tank/vol']);
 if (!$passed) {

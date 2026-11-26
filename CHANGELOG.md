@@ -1,5 +1,157 @@
 # Changelog
 
+## Unreleased
+
+- Snapshot Every Dataset snapshots your datasets hourly, on chosen days, on a cron line, or each time the array starts
+- Replicate Every Dataset copies your datasets under one dataset here, or on another ZFS Master NG server
+- A dataset can have its own snapshot schedule and copies, or None, under Actions > Schedules
+- Every Dataset settings leave out each pool's own dataset, such as `cache`, and the names under Leave Out
+- Read-only, legacy-mounted and Sanoid/Syncoid datasets are left out, with a warning and a Guide link
+- Snapshots to keep, Copy Keeps and Keep Replicas take periods, such as `24 7d 4w 12m`
+- Replicate can send an encrypted dataset decrypted, make a gone copy again, and replace a copy here that no longer matches
+- Unencrypted copies to another server travel zstd-compressed when both have it
+- Copies keep records larger than 128K whole
+- Renaming a dataset moves its schedules and its copies here; destroying one removes its schedules, and its copies stay
+- A scheduled run is skipped and logged while the one before still goes
+- A new dataset gets nobody:users 777, so share users can write to it over SMB; for one made before, run Tools > New Permissions on its share
+- A Convert that stops part-way keeps the folder's owner and permissions; one whose new dataset can't get the share owner puts the folder back
+- Settings refuses a Snapshots Pattern or Prefix that gives snapshot names ZFS rejects
+- Dataset names that end in a space now work in Replicate and renames
+- Schedules and Replicate open wider, with a hint under each field; plugin dialogs have larger text
+- Each Settings help is one short line; the detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
+- After going back to v2026.11.16, the new schedules wait; updating again restarts them and brings back Copy Keeps and Keep Replicas' periods
+
+## 2026.11.26.4 (beta)
+
+- Each Settings help is one short line under its own setting
+- The detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
+
+## 2026.11.26.3 (beta)
+
+**Settings**
+
+- The Schedules list is a table, with columns for What, Dataset, Copy To, When and Keep; schedules set to None show greyed
+- Change Keep opens a dialog and stays open while it saves; a refusal shows in it, with what you typed
+- Plugin dialogs have larger text
+- The list has no Schedules label now: its help shows with the page's Help button
+- Keyboard focus comes back to Change Keep, Remove or Save when each one finishes
+
+## 2026.11.26.2 (beta)
+
+**Fixes**
+
+- Snapshot Every Dataset and Replicate Every Dataset leave out each pool's own dataset, such as `cache`; its snapshots and copies made before stay
+
+## 2026.11.26.1 (beta)
+
+**Schedules**
+
+- Schedules can run each time the array starts: pick When the array starts
+- A start in Maintenance mode runs none of them
+
+**Fixes**
+
+- A new dataset gets nobody:users 777, as Unraid's Add Share gives a share, so share users can write to it over SMB
+- A dataset made before keeps 755: run Tools > New Permissions on its share, or `chmod 777` on its folder
+- A Convert that stops part-way leaves the new dataset with the folder's owner and permissions
+- A Convert whose new dataset can't get the share owner removes it and puts the folder back, instead of leaving it renamed aside
+
+**After going back to an older version**
+
+- When the array starts schedules wait until you update; Settings counts them as records it can't use
+
+## 2026.11.25.1 (beta)
+
+**Schedules**
+
+- Schedules can run on a cron line, such as `0 3 1 * *`: pick Custom (cron)
+- Every Dataset settings can leave datasets out by name, under Leave Out
+- Schedules and Replicate warn of read-only, legacy-mounted and Sanoid/Syncoid datasets
+- Replicate repeats of those datasets stop with one notification; Save refuses new ones
+- A scheduled run is skipped and logged while the one before still goes
+
+**Replicate**
+
+- An encrypted dataset can be sent decrypted: pick Decrypted under Send
+- A new decrypted copy on another server needs this version there
+- A repeat can make its copy again if it is gone
+- A copy here that no longer matches can be renamed aside and sent again
+- Replicate shows why it can't send a copy, with a Guide link
+
+**Fixes**
+
+- Save refuses two schedules whose copies would get the same name
+- Scheduled runs wait while an update installs, from the update after this one
+
+**After going back to an older version**
+
+- Custom (cron) schedules wait until you update; Settings counts them as records it can't use
+- Leave Out is ignored, so Every Dataset settings take every dataset again
+- If the copy is gone and Replace are ignored, so those runs stop as before
+
+## 2026.11.20.1 (beta)
+
+**Copies to another server**
+
+- Replicate Every Dataset can copy to another ZFS Master NG server: pick it under Server
+- A dataset can have its own copies to a server too, under Actions > Schedules > Replication
+- That server needs this version too; a run makes Copy Under there if it is missing
+- Renaming a dataset leaves its copies there under the old name, and the next copy is sent in full
+
+**Dialogs**
+
+- Schedules and Replicate open wider, with a short hint under each field and a Guide link to the new Schedules guide
+
+**Fixes**
+
+- Updating again after going back to v2026.11.16 restarts the schedules it stopped, and brings back Copy Keeps and Keep Replicas' periods
+
+**After going back to an older version**
+
+- Every Dataset or per-dataset copies to a server wait until you update; Settings counts them as records it can't use
+- On v2026.11.16, snapshot schedules, copies under Copy Under and schedules whose keep uses periods wait too
+- On v2026.11.16, a copy with records over 128K fails each run, and the first failure is notified
+- On v2026.11.16, Copy Keeps is ignored, so copies lose what their source loses, and Keep Replicas with periods keeps all
+- Keep Replicas with periods, cleared there, comes back when you update: clear it again after updating
+
+## 2026.11.19.1 (beta)
+
+**Snapshot schedules**
+
+- New Snapshot Every Dataset setting: snapshots your datasets hourly or on chosen days
+- A dataset can have its own schedule, or None, under Actions > Schedules
+- Read-only, legacy-mounted and Sanoid/Syncoid datasets are left out; the dialog says why
+- Snapshots to keep also takes periods, such as `24 7d 4w 12m`
+
+**Replication**
+
+- New Replicate Every Dataset setting: copies your datasets under one dataset here
+- A dataset can have its own scheduled copies, or None, under Actions > Schedules
+- A copy in another pool here can keep more or fewer snapshots (Copy Keeps)
+- Change Keep, under a Replicate repeat in Settings, changes what it keeps in place
+- Keep Replicas also takes periods, by when the sender took each snapshot
+- Unencrypted copies to another server travel zstd-compressed when both have it
+- Copies keep records larger than 128K whole
+
+**Renames and destroys**
+
+- Renaming a dataset moves its schedules, repeats and copies under Copy Under
+- Destroying a dataset removes its schedules and repeats; its copies stay
+
+**Fixes**
+
+- Settings refuses a Snapshots Pattern or Prefix that makes names ZFS rejects
+- Snapshot names too long for ZFS are refused up front, with the reason
+- When summer time ends, the hour's second run no longer reports a problem
+- Dataset names that end in a space now work in Replicate and renames
+
+**After going back to an older version**
+
+- Snapshot schedules and Every Dataset or per-dataset copies wait until you update
+- A schedule whose Snapshots to keep uses periods waits too
+- A copy with records over 128K takes no new runs until you update
+- Copy Keeps is ignored, so copies lose what their source loses
+
 ## 2026.11.16
 
 - Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings

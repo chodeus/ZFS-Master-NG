@@ -1,0 +1,10 @@
+resume token contents:
+nvlist version: 0
+	fromguid = 0x0123456789abcdef
+	object = 0x80
+	offset = 0x100000
+	bytes = 0x200000
+	toguid = 0xfedcba9876543210
+	toname = tank/src@b
+incremental	tank/new@a	tank/new@b	12345678
+size	12345678
