@@ -6,13 +6,18 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.26.1">
-<!ENTITY md5 "c42142c1908d18386a0b74d8553b03d0">
+<!ENTITY version "2026.11.26.2">
+<!ENTITY md5 "4f33565764fa4842073ba4c16c8c6c2d">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.26.2
+**Fixes**
+
+- Snapshot Every Dataset and Replicate Every Dataset leave out each pool's own dataset, such as `cache`; its snapshots and copies made before stay
 
 ###2026.11.26.1
 **Schedules**

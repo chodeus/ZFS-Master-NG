@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.26.2 (beta)
 
 **Fixes**
 
