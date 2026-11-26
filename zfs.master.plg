@@ -6,13 +6,17 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/beta/&name;.plg">
-<!ENTITY version "2026.11.26.3">
-<!ENTITY md5 "76c338b6fff594e572c745948078d2d1">
+<!ENTITY version "2026.11.26.4">
+<!ENTITY md5 "96090a6bc45a6b050f766f9d34113594">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.26.4
+- Each Settings help is one short line under its own setting
+- The detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
 
 ###2026.11.26.3
 **Settings**
