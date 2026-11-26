@@ -46,6 +46,7 @@ $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'cron.log') as $name) @unlink($work.'/'.$name); };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $datasets = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/datasets')); };
 $cfg = array('snap_prefix' => 'auto-', 'snap_pattern' => 'YmdHis', 'snap_utc' => 1);
@@ -98,7 +99,8 @@ same(array(1, array()), array(count($read('cron.log')), preg_grep('/^(snapshot|s
 same($fields('hourly', '00:00', null, '2') + array('under' => 'usb', 'server' => '', 'servers' => array(), 'inherited' => $every, 'skipped' => ''), $copies('tank/data'), 'the dialog starts at its own');
 same(array('default', 'usb', 'the copies of tank/data and below, under usb every hour at '.$at.'; it keeps the newest 2 of the snapshots of each dataset it copies'),
 	array($copies('tank/data/sub')['every'], $copies('tank/data/sub')['under'], $copies('tank/data/sub')['inherited']), 'the one below follows it');
-same(1, preg_match('/>Copies of tank\/data and below under usb, every hour at '.$at.', keeps the newest 2 of the snapshots of each dataset it copies </', zfsmSchedulesHtml($cfg)), 'Settings lists it');
+same(array(array('Snapshots', 'tank/data and below', '', 'every Monday at '.$free, 'the newest 1', '[Remove]'), array('Copies', 'tank/data and below', 'under usb', 'every hour at '.$at, 'the newest 2', '[Remove]')),
+	zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/data and below'), 'Settings lists both, snapshots first');
 // Snapshots on a cron line: one Save does not take is said by part; saved, said with its next run, and the dialog shows its line.
 $line = (int)substr($free, 3).' 5 * * 1';
 same('Nothing was saved: Snapshots: under Cron line, in the minute, 50-10 goes from high to low: write the low number first', $save('tank/data', $part('cron', '50-10 * * * *'), $part('hourly', '', '', 2, 'usb'))['why'],

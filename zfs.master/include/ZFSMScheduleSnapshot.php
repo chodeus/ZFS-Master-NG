@@ -56,12 +56,6 @@ function zfsmScheduleFollowedText($job, $zdataset) {
 	return $job['every'] === 'none' ? $whose.', None: no scheduled snapshots' : $whose.', '.zfsmScheduleWhen($job).'; it '.zfsmScheduleKeepText($job);
 }
 
-// Settings' row of a snapshot schedule.
-function zfsmScheduleSnapshotText($job) {
-	if ($job['every'] === 'none') return 'No scheduled snapshots of '.$job['dataset'].' and below';
-	return ($job['dataset'] === '' ? 'Snapshot Every Dataset' : 'Snapshots of '.$job['dataset'].' and below').', '.zfsmScheduleWhen($job).', '.zfsmScheduleKeepText($job).zfsmScheduleLeaveOutText($job);
-}
-
 // What Settings' row of the default of $kind shows: it (an hourly one with Off's Starts At, which it doesn't use), or Off when there
 // is none or schedules.json can't be read (the list under it says so).
 function zfsmScheduleShown($kind = 'zfsmScheduleSnapshotsOnly') {

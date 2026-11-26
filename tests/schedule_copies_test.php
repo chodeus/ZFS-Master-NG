@@ -48,6 +48,7 @@ $pool = function($file, $lines) use ($work) { file_put_contents($work.'/pool/'.$
 $read = function($name) use ($work) { return is_file($work.'/'.$name) ? file($work.'/'.$name, FILE_IGNORE_NEW_LINES) : array(); };
 $reset = function() use ($work) { foreach (array('notify.log', 'notify-detail.log', 'calls.log', 'cron.log') as $name) @unlink($work.'/'.$name); };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $datasets = function() use ($read) { return array_map(function($line) { return explode("\t", $line)[0]; }, $read('pool/datasets')); };
 $snaps = function($dataset) { return array_column(zfsmKeepSnapshots($dataset) ?? array(), 'tag', 'name'); };
@@ -141,7 +142,8 @@ same(array_replace($every, array('id' => $job['id'], 'minute' => $job['minute'])
 same(true, $job['minute'] !== $taken, 'at a minute of its own');
 same(array(), preg_grep('/^(snapshot|send|receive|create) /', $read('calls.log')), 'nothing copied on saving');
 same(array('hourly', 'backup/'), array(zfsmScheduleShown('zfsmScheduleCopiesUnder')['every'], zfsmScheduleShown('zfsmScheduleCopiesUnder')['dest']), 'Settings shows it');
-same(1, preg_match('/>Replicate Every Dataset under backup, every hour at :\d\d, keeps all its snapshots</', zfsmSchedulesHtml($cfg)), 'the list names it');
+same(array(array('Snapshots', 'Every dataset', '', 'every hour at :'.sprintf('%02d', $taken), 'all', ''), array('Copies', 'Every dataset', 'under backup', 'every hour at :'.sprintf('%02d', $job['minute']), 'all', '')),
+	zfsmTestScheduleRows(zfsmSchedulesHtml($cfg)), 'the list names it, after Snapshot Every Dataset');
 // On days at the time Snapshot Every Dataset runs then: refused; saved again it keeps its id.
 $at = sprintf('04:%02d', ($job['minute'] + 1) % 60);
 same(true, zfsmScheduleSnapshotSave('', 'days', $at, '1', 0, $cfg)['saved'], 'Snapshot Every Dataset moved');
@@ -163,6 +165,9 @@ same(array(true, 1, 0), array($failed['saved'], preg_match('/^The schedules were
 // Off: removed, the snapshot schedule left.
 same(array('saved' => true, 'why' => '', 'said' => 'Replicate Every Dataset is off; the copies it made and their snapshots stay'), zfsmScheduleCopiesSave('', 'off', '', '', 0, $cfg), 'off');
 same(array(''), array_column($stored(), 'dest'), 'only the snapshot schedule stays');
+// A dataset's copies set to None: its row says so, with no time or Keep, and its Remove.
+file_put_contents(zfsmScheduleFile(), json_encode(array($every, array('id' => 'eeee0000', 'dataset' => 'tank/data', 'dest' => '/', 'every' => 'none') + $every)));
+same(array(array('No copies', 'tank/data and below', '', '', '', '[Remove]')), zfsmTestScheduleRowsOf(zfsmSchedulesHtml($cfg), 'tank/data and below'), 'a dataset\'s copies set to None');
 
 // Runs: Replicate Every Dataset alone, keeping the newest 1.
 $id = '0a1b2c3d';

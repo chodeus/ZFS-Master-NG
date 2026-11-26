@@ -157,14 +157,9 @@ function zfsmScheduleLeaveOutSaid($job, $jobs, $listed) {
 	return $said.($unmatched ? '; nothing matches '.implode(', ', $unmatched) : '');
 }
 
-// Leave Out as Settings' field shows it, and its list row after "leaves out".
+// Leave Out as Settings' field shows it, and its list row after "Leaves out".
 function zfsmLeaveOutField($job) {
 	return implode(', ', $job['leave_out'] ?? array());
-}
-
-// Settings' row's words on $job's Leave Out; '' with none.
-function zfsmScheduleLeaveOutText($job) {
-	return empty($job['leave_out']) ? '' : '; leaves out '.zfsmLeaveOutField($job);
 }
 
 // What following $job means when it is a default that leaves out $zdataset as a pool's own dataset or by Leave Out, $none saying

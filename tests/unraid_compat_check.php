@@ -332,7 +332,11 @@ switch ($check) {
 		}
 		// The Diagnostics section is after the form, so its tick box never arms Apply; its button and link are there for the script.
 		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-diag-unraid"') || !$row_has('Diagnostics Zip', 'id="zfsm-diag-start"') || strpos($rendered, 'id="zfsm-diag-link"') === false) { fwrite(STDERR, "settings page lost the Diagnostics controls, or they are inside the form\n"); exit(1); }
-		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-schedules"') || !$row_has('Schedules', 'None yet')) { fwrite(STDERR, "settings page lost the Schedules list, or it is inside the form\n"); exit(1); }
+		// The Schedules list is a block of its own after the section's rows, so its table takes the section's width.
+		$from = preg_match('#<summary>[^<]*Schedules[^<]*</summary>#', $rendered, $found, PREG_OFFSET_CAPTURE) === 1 ? $found[0][1] : 0;
+		$section = substr($rendered, $from, (int)strpos($rendered, '</details>', $from) - $from);
+		$block = strpos($section, '<div class="zfsm-sched-block"><div id="zfsm-schedules">None yet</div>');
+		if (strpos($rendered, '</form>') > strpos($rendered, 'id="zfsm-schedules"') || $block === false || $block < strrpos($section, '</dd>')) { fwrite(STDERR, "settings page lost the Schedules list, or it is inside the form or a row\n"); exit(1); }
 		// Unraid runs Markdown before the page's PHP (generateContent), so PHP inside a code span would show as text.
 		$source = file_get_contents($docroot.'/plugins/zfs.master/ZFSMasterSettings.page');
 		if (strpos(Markdown(substr($source, strpos($source, "\n---\n") + 5)), '&lt;?') !== false) { fwrite(STDERR, "settings page has PHP inside Markdown code, which Unraid shows as text\n"); exit(1); }

@@ -51,6 +51,7 @@ $short = function($dataset) { return array_map(function($mark) { return substr($
 $destroys = function() use ($read) { return array_values(array_filter($read('calls.log'), function($line) { return strpos($line, 'destroy ') === 0 && strpos($line, '#') === false; })); };
 $log = function() { return (string)@file_get_contents(zfsmLogFile()); };
 require_once __DIR__.'/fixtures/schedules_stored.php';
+require_once __DIR__.'/fixtures/schedule_rows.php';
 $stored = 'zfsmTestStored';
 $add = function(...$args) use ($work) {
 	$GLOBALS['docroot'] = getenv('ZFSM_TEST_DOCROOT');
@@ -87,7 +88,8 @@ $reset();
 $add('tank/data', '', 'backup/data', '', 'hourly', '', '', 2, $cfg);
 $jobs = $stored();
 $id = $jobs[0]['id'];
-same(array(2, true), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($cfg), 'every hour at :'.sprintf('%02d', $jobs[0]['minute']).', keeps the newest 2 of its snapshots') !== false), 'Keep is saved, and Settings says it');
+same(array(2, array(array('Copy', 'tank/data', 'backup/data', 'every hour at :'.sprintf('%02d', $jobs[0]['minute']), 'the newest 2', '[Change Keep] [Remove]'))),
+	array($jobs[0]['keep'], zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))), 'Keep is saved, and Settings says it');
 $first = array_slice($short('tank/data'), -1)[0];
 same(array(array('snapshot -o zfs.master:schedule='.$tag.' tank/data@'.$first), array($first)), array(array_values(preg_grep('/^snapshot /', $read('calls.log'))), $short('backup/data')), 'the first run tags its snapshot and makes the copy');
 $t0 = time();
@@ -377,7 +379,7 @@ same(true, zfsmScheduleRemove($again, $cfg)['saved'], 'that schedule is removed'
 $reset();
 $add('tank/data', '', 'backup/data', '', 'hourly', '', '', zfsmKeepParse(' 1D, 1 '), $cfg);
 $jobs = $stored();
-same(array('1 1d', true, 2), array($jobs[0]['keep'], strpos(zfsmSchedulesHtml($cfg), 'keeps the newest 1 and 1 daily of its snapshots') !== false, $tagged()), 'saved as text, said in words; its first run removes none');
+same(array('1 1d', 'the newest 1 and 1 daily', 2), array($jobs[0]['keep'], zfsmTestScheduleRows(zfsmSchedulesHtml($cfg))[0][4] ?? null, $tagged()), 'saved as text, said in words; its first run removes none');
 $reset();
 same(array(0, 4, 1, 4), array(zfsmScheduleRun($jobs[0]['id'], $cfg, (int)($t0 + 3600 * 22)), count($destroys()), $tagged(), substr_count($log(), ' (not among the newest 1 and 1 daily its schedule keeps)')),
 	'its next run keeps the newest, removing the other two here and in the copy, each said');

@@ -7,6 +7,7 @@ set_error_handler(function($severity, $message, $file, $line) {
 });
 
 require __DIR__.'/fixtures/fake_bin_guard.php';
+require __DIR__.'/fixtures/schedule_rows.php';
 
 $routes = array(
 	'createdataset' => array('cmd' => 'createdataset', 'data' => array('zpool' => 'tank', 'name' => 'new', 'mount' => 'yes', 'encryption' => 'no', 'quota' => '', 'quotaunit' => 'G')),
@@ -140,6 +141,10 @@ for ($waited = 0; in_array($route, array('scheduleremake', 'schedulereplace'), t
 // Snapshot schedules say what they saved, and the list; one that can't be saved says why and saves nothing. The dialog's start, or why not.
 if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') === 0) {
 	$failed = $answer['failed']['tank/data'] ?? '';
+	// The answer's list as Settings shows it, the rows of $dataset (tests/fixtures/schedule_rows.php); an hourly run's minute as :MM.
+	$shown = function($dataset) use ($answer) {
+		return array_map(function($row) { return preg_replace('/ at :[0-5][0-9]$/', ' at :MM', $row); }, zfsmTestScheduleRowsOf($answer['schedules_html'] ?? '', $dataset));
+	};
 	$ok = array(
 		'previewreplicate' => ($answer['snapshots'] ?? null) === array('b', 'a') && ($answer['can_proceed'] ?? null) === true && ($answer['mode'] ?? '') === 'full'
 			&& !array_key_exists('warning', $answer) && !array_key_exists('encrypted', $answer) && ($answer['how'] ?? null) === '',
@@ -167,28 +172,29 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'scheduleremove' => $answer === array('error' => 'No such schedule'),
 		'schedulecopykeeps' => $failed === 'Nothing was scheduled: under Copy Keeps, give all to keep every snapshot, or give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep what its source keeps' && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulekeepchange' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0
-			&& strpos($answer['schedules_html'] ?? '', 'keeps 7 daily of its snapshots; its copy keeps all its snapshots') !== false
+			// A record from before minutes takes one from its id (ZFSMSchedule.php's reader): 0a1b, :07.
+			&& $shown('tank/data') === array(array('Copy', 'tank/data', 'backup/data', 'every day at 03:07', '7 daily | Copy Keeps: all its snapshots', '[Change Keep] [Remove]'))
 			&& array_map(null, ...array_map(function($key) { return array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), $key); }, array('id', 'keep', 'copy_keeps'))) === array(array('0a1b2c3d', '7d', 0)),
 		'schedulekeepchangewrong' => $answer === array('error' => 'Nothing was saved: under Copy Keeps, give all to keep every snapshot, or give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep what its source keeps')
 			&& array_keys(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true)[0]) === array('id', 'dataset', 'dest', 'server', 'every', 'hour', 'day'),
 		'scheduleremovesaved' => strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && ($answer['schedules_html'] ?? null) === 'None yet'
 			&& file_get_contents('/boot/config/plugins/zfs.master/schedules.json') === "[]\n",
 		'schedulesnapshots' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps the newest 3 scheduled snapshots of each dataset$/D', $answer['said'] ?? '') === 1
-			&& strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && strpos($answer['schedules_html'] ?? '', '>Snapshot Every Dataset, every hour at :') !== false
+			&& strpos($answer['error'] ?? '', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (') === 0 && $shown('Every dataset') === array(array('Snapshots', 'Every dataset', '', 'every hour at :MM', 'the newest 3', ''))
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array(''),
 		'schedulesnapshotstiers' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps the newest 24, 7 daily and 4 weekly scheduled snapshots of each dataset$/D', $answer['said'] ?? '') === 1
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'keep') === array('24 7d 4w'),
 		'schedulesnapshotswrong' => $answer === array('error' => 'Nothing was saved: set the time it starts at; tick at least one day; under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
 			&& !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulesnapshotsown' => ($answer['said'] ?? '') === 'Saved: a snapshot of each of 1 dataset(s) (tank/data and below) every Monday at 04:00; it keeps all it takes'
-			&& strpos($answer['schedules_html'] ?? '', '>Snapshots of tank/data and below, every Monday at 04:00, keeps all it takes <input type="button" value="Remove"') !== false
+			&& $shown('tank/data and below') === array(array('Snapshots', 'tank/data and below', '', 'every Monday at 04:00', 'all', '[Remove]'))
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dataset') === array('tank/data'),
 		'schedulecopies' => preg_match('/^Saved: a copy of each of 1 dataset\(s\) under backup every hour at :[0-5][0-9]; it keeps the newest 3 of the snapshots of each dataset it copies; each copy keeps 30 daily$/D', $answer['said'] ?? '') === 1
-			&& strpos($answer['schedules_html'] ?? '', '>Replicate Every Dataset under backup, every hour at :') !== false
+			&& $shown('Every dataset') === array(array('Copies', 'Every dataset', 'under backup', 'every hour at :MM', 'the newest 3 | Copy Keeps: 30 daily', ''))
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'dest') === array('backup/')
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array('30d'),
 		'schedulesnapshotsleaveout' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) every hour at :[0-5][0-9]; it keeps all it takes\. Leave Out leaves out 1 dataset\(s\); nothing matches x\*$/D', $answer['said'] ?? '') === 1
-			&& strpos($answer['schedules_html'] ?? '', ', keeps all it takes; leaves out data, x*</span>') !== false
+			&& $shown('Every dataset') === array(array('Snapshots', 'Every dataset | Leaves out data, x*', '', 'every hour at :MM', 'all', ''))
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'leave_out') === array(array('data', 'x*')),
 		'schedulesnapshotsleaveoutshape' => preg_match('/^Saved: a snapshot of each of 2 dataset\(s\) every hour at :[0-5][0-9]; it keeps all it takes$/D', $answer['said'] ?? '') === 1
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'leave_out') === array(),
@@ -197,7 +203,8 @@ if (in_array($route, $replication, true) || strpos($route, 'scheduleremove') ===
 		'schedulecopiesnowhere' => $answer === array('error' => 'Nothing was saved: nowhere does not exist on this server') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'schedulecopiesserver' => $answer === array('error' => 'Nothing was saved: No server here is named gone') && !is_file('/boot/config/plugins/zfs.master/schedules.json'),
 		'scheduledataset' => preg_match('/^Saved: a snapshot of each of 1 dataset\(s\) \(tank\/data and below\) every Monday at 04:00; it keeps all it takes\. Saved: a copy of each of 1 dataset\(s\) \(tank\/data and below\) under backup every hour at :[0-5][0-9]; it keeps the newest 24 and 7 daily of the snapshots of each dataset it copies; each copy keeps all its snapshots$/D', $answer['said'] ?? '') === 1
-			&& strpos($answer['schedules_html'] ?? '', '>Copies of tank/data and below under backup, every hour at :') !== false
+			&& $shown('tank/data and below') === array(array('Snapshots', 'tank/data and below', '', 'every Monday at 04:00', 'all', '[Remove]'),
+				array('Copies', 'tank/data and below', 'under backup', 'every hour at :MM', 'the newest 24 and 7 daily | Copy Keeps: all its snapshots', '[Remove]'))
 			&& array_map(null, ...array_map(function($key) { return array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), $key); }, array('dest', 'keep'))) === array(array('', 0), array('backup/', '24 7d'))
 			&& array_column(json_decode(file_get_contents('/boot/config/plugins/zfs.master/schedules.json'), true), 'copy_keeps') === array(0),
 		'scheduledatasetwrong' => $answer === array('error' => 'Nothing was saved: Snapshots: set the time it starts at; tick at least one day. Replication: under Snapshots to keep, give a number up to 9999, periods such as 7d 4w 12m (h, d, w, m or y, each once), both, or nothing to keep all')
