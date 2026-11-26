@@ -403,7 +403,7 @@ var zfsm_tips = <?=zfsmJson(array(
 	'znapzend_data' => _('Show ZnapZend backup plans on each dataset.'),
 	'size_units' => _('Show sizes in ZFS units (GiB) or Unraid units (GB).'),
 	'destructive_mode' => _('Show rename, edit and destroy, and allow deletes of folders and newer snapshots.'),
-	'debug_log' => _('Also write the commands the plugin runs, and the requests it gets, to a debug log.'),
+	'debug_log' => _('Also write most commands the plugin runs, and the requests to its page, to a debug log.'),
 	'exclusion' => _('Hide datasets and listed folders whose names match this pattern.'),
 	'directory_listing' => _('Datasets whose folders are listed on the Main tab, one per line.'),
 	'snap_max_days_alert' => _('Days since the last snapshot before the camera icon turns orange.'),
@@ -413,7 +413,7 @@ var zfsm_tips = <?=zfsmJson(array(
 	'alert_interval' => _('How often to check pool health and send Unraid notifications.'),
 	'alert_stale' => _('Also notify when snapshots are older than the Max Days setting.'),
 	'replica_accept' => _('An existing dataset other servers may send copies into. Empty turns this off.'),
-	'replica_keep' => _('Which snapshots of each copy received here stay: a number keeps the newest that many; 7d, 4w and 12m the newest of each of the last 7 days, 4 weeks and 12 months that have one. Empty keeps all.'),
+	'replica_keep' => _('Which snapshots each copy received here keeps, by the rules of Snapshots To Keep. Empty keeps all.'),
 ), JSON_HEX_TAG | JSON_HEX_AMP)?>;
 $('details.zfsm-section dl').each(function() {
 	var name = $(this).find('[name]').attr('name');
