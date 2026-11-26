@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+**Fixes**
+
+- Snapshot Every Dataset and Replicate Every Dataset leave out each pool's own dataset, such as `cache`; its snapshots and copies made before stay
+
 ## 2026.11.26.1 (beta)
 
 **Schedules**
