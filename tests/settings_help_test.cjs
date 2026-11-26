@@ -50,17 +50,14 @@ const schedules = helps.find(help => words(help) === 'Every schedule on this ser
 assert.ok(schedules, 'no Schedules help');
 assert.deepEqual([...labels].filter(([, by]) => by.length !== 1).map(([help, by]) => [words(help), by]), [['Every schedule on this server.', []]],
   'every help but the Schedules help opens from one label, and that one from none');
-// Each help under Schedules opens from the setting it is about, and no help is a wall: those not cut yet are named until they are.
+// Each help under Schedules opens from the setting it is about, and no help is over 40 words.
 const section = [...$('#zfsm-snapsched-every').closest('details').find('blockquote.inline_help').get()];
 assert.deepEqual(section.map(help => [labels.get(help)[0] ?? null, words(help)]), [
   ['Snapshot Every Dataset:', 'Snapshots every dataset in every'], ['Cron Line:', 'Five fields, as in the'], ['Snapshots To Keep:', 'A number keeps the newest'],
   ['Leave Out:', 'Datasets at the top of'], ['Replicate Every Dataset:', 'Copies every dataset in every'], ['Copy Under:', 'The dataset the copies go'],
   ['Cron Line:', 'Five fields, as in the'], ['Snapshots To Keep:', 'A number keeps the newest'], ['Copy Keeps:', 'What each copy keeps. Empty'],
   ['Leave Out:', 'Datasets at the top of'], [null, 'Every schedule on this server.']], 'each Schedules help opens from its own setting');
-assert.deepEqual([...helps.filter(help => help.textContent.trim().split(/\s+/).length > 60).map(words)], ['ZFS shows sizes in powers',
-  'Yes also writes a debug', 'Hides datasets whose names match', 'Date format for new snapshot', 'The clock used for the', 'Checks the pools this often',
-  'Lets other servers running ZFS', 'After each copy a server', "The lines in root's SSH", 'The servers this one may', 'Collects what a bug report'],
-  'no help is over 60 words, but these, still to be cut');
+assert.deepEqual([...helps.filter(help => help.textContent.trim().split(/\s+/).length > 40).map(words)], [], 'no help is over 40 words');
 
 // The page's own script on that render: each help hides with its row, even once Unraid's Help button has shown every help.
 window.$.post = () => ({fail() { return this; }});

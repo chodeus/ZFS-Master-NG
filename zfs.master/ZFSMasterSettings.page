@@ -46,8 +46,7 @@ _(Refresh Interval)_:
   </select>
 
 :zc_settings_refresh_interval_plug:
-> How often the Main tab reloads pools, datasets and snapshots. It pauses while the tab is in the background.
-> Choose **No refresh** to reload only when you click the refresh button or an action succeeds.
+> How often the Main tab reloads. It pauses while the tab is in the background.
 :end
 
 
@@ -58,8 +57,7 @@ _(Lazy Load)_:
   </select>
 
 :zc_settings_lazy_load_plug:
-> **Yes** shows datasets straight away, then fills in snapshots one pool at a time.
-> Use it when a pool with many snapshots makes the Main tab slow to appear.
+> **Yes** shows datasets first, then loads snapshots one pool at a time.
 :end
 
 _(Load ZnapZend Data)_:
@@ -69,8 +67,7 @@ _(Load ZnapZend Data)_:
   </select>
   
 :zc_settings_znapzend_data_plug:
-> **Yes** reads the ZnapZend backup plans stored on each dataset and shows them in its details.
-> Leave it on **No** if you don't use ZnapZend.
+> **Yes** shows each dataset's ZnapZend backup plans.
 :end
 
 _(Size Units)_:
@@ -80,9 +77,7 @@ _(Size Units)_:
   </select>
 
 :zc_settings_size_units_plug:
-> **ZFS** shows sizes in powers of 1024 (GiB, TiB), the units zfs and zpool print.
-> **Unraid** shows them in powers of 1000 (GB, TB), rounded as Unraid's Main page does, so the same pool reads the same in both tables.
-> Either way, a pool's Size, Used and Free are the space you can use, as in Unraid's pool tables. The raw size zpool prints, which on raidz counts parity too, shows only while the pool's top dataset can't be read.
+> **Unraid** shows sizes as Unraid's Main page does.
 :end
 
 
@@ -93,9 +88,7 @@ _(Destructive Mode)_:
   </select>
   
 :zc_settings_destructive_mode_plug:
-> **Yes** adds Rename, Edit and Destroy to dataset menus, and Convert and Delete to folder menus.
-> It also lets a rollback remove newer snapshots, and a snapshot delete include child datasets. Each action still asks first.
-> Snapshots to keep and Keep Replicas remove old snapshots by their own rules whatever this is set to.
+> **Yes** adds Rename, Edit, Destroy, Convert and Delete to the menus, and lets rollback and snapshot delete remove more. Each still asks first.
 :end
 
 _(Debug Log)_:
@@ -105,14 +98,7 @@ _(Debug Log)_:
   </select>
 
 :zc_settings_debug_log_plug:
-> **Yes** also writes a debug log, `/var/log/zfs.master.debug.log`: the commands the plugin runs, how each ended and how long it took, and the name of each request to its admin page.
-> Turn it on to reproduce a problem, make the diagnostics zip, then turn it off again.
->
-> - A replication and a rewrite run their copy or rewrite commands outside the debug log, and log their own lines in `/var/log/zfs.master.log` whether this is on or not.
-> - On a server receiving copies, a sender's requests run outside the debug log too: `/var/log/zfs.master.log` has each copy received or failed, and each request refused.
-> - The rsync that copies a folder into a dataset, and a diagnostics run's own commands, are in neither log.
-> - The arguments of rsync, and of a command that loads a key or names where one is kept, are left out.
-> - Each log keeps about 1 MB at most, its oldest lines going first. A diagnostics zip holds both.
+> **Yes** logs most commands the plugin runs to `/var/log/zfs.master.debug.log`, for a bug report. Copies between servers and rewrites always log to `/var/log/zfs.master.log`.
 :end
 
 
@@ -125,21 +111,14 @@ _(Dataset Exclusion Pattern)_:
 : <textarea name="exclusion" cols="40" rows="1" placeholder="/dockerfiles/.*"><?=zfsmHtml($zfsm_cfg['dataset_exclusion'])?></textarea> <span id="zfsm-exclusion-warning" style="color:#e22828"></span>
 
 :zc_settings_datasets_exclusion_plug:
-> Hides datasets whose names match this regular expression, with their child datasets, their snapshots and any matching folders. Leave it empty to hide nothing.
->
-> - `/docker` hides every dataset with `/docker` in its name, such as `cache/system/docker`.
-> - It is one pattern: join several with `|`, such as `/docker|/vms`.
-> - Case is ignored. A `.` matches any character, so write `\.` for a dot.
-> - A pattern with `%` is read as a Lua pattern, the format older versions used: there a dot is `%.`, `|` is a plain character, and case counts.
->
-> A pattern that isn't valid is ignored, and the Main tab says so.
+> Hides datasets whose names match this regular expression, such as `/docker|/vms`, with their child datasets and snapshots. Empty hides nothing. [Dataset Exclusion Pattern](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#dataset-exclusion-pattern)
 :end
 
 _(Directory Listing)_:
 : <textarea name="directory_listing" cols="40" rows="10" placeholder="mypool/docker&#10;mypool/otherdataset"><?=zfsmHtml(implode(PHP_EOL, $zfsm_cfg['directory_listing']))?></textarea>
 
 :zc_settings_directory_listing_plug:
-> One dataset name per line, such as `cache/appdata`. The Main tab then lists the folders directly inside each one, with a menu to move or rename each folder; with **Destructive Mode** on, also to convert it into a dataset or delete it.
+> One dataset per line, such as `cache/appdata`: the Main tab lists the folders inside it.
 :end
 
 
@@ -152,15 +131,14 @@ _(Dataset Icon Alert Max Days)_:
 : <input type="text" name="snap_max_days_alert" value="<?=$zfsm_cfg['snap_max_days_alert']?>">
 
 :zc_settings_dataset_icon_color_plug:
-> Days since a dataset's last snapshot before its camera icon turns orange. Datasets with no snapshots stay grey. **Stale Snapshot Alerts** use the same number.
+> Days since a dataset's last snapshot before its camera icon turns orange.
 :end
 
 _(Snapshots Pattern)_:
 : <input type="text" name="snap_pattern" value="<?=zfsmHtml($zfsm_cfg['snap_pattern'])?>" placeholder="default Y-m-d-His"> <span id="zfsm-snap-name-warning" style="color:#e22828"><?=zfsmHtml($zfsm_name_warning)?></span>
 
 :zc_settings_snapshots_pattern_plug:
-> Date format for new snapshot names, written with [PHP date letters](https://www.php.net/manual/en/function.date.php): `Y` year, `m` month, `d` day, `H` hour, `i` minute, `s` second. It names snapshots taken from the Main tab, those **Replicate** takes, and each scheduled run's.
-> `Y-m-d-His` gives names like `tank/data@2026-11-03-181920`. With the prefix, a name may hold only letters, digits, spaces and `_ . : -`, and with its dataset and @ be up to 255 long. Typing a pattern or prefix that gives another character, or a name too long even after a one-letter pool, now or in half a year, names it in red beside this field, and then Apply is refused. If the check itself fails, it says so there instead, and Apply is not refused. One saved all the same is named there too, and a new or changed schedule is not saved. A name too long only after a longer dataset is not named here but in diagnostics; a snapshot whose name ZFS refuses is not taken, and what would take it says why.
+> The date in new snapshot names, in PHP date letters: `Y-m-d-His` gives `tank/data@2026-11-03-181920`. [Snapshots Pattern](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#snapshots-pattern)
 :end
 
 _(Snapshot Time)_:
@@ -170,16 +148,14 @@ _(Snapshot Time)_:
   </select>
 
 :zc_settings_snapshots_utc_plug:
-> The clock used for the date in new snapshot names. UTC names sort the same on every server and across daylight-saving changes.
-> With Local time, where the clock goes back at the end of summer time, it shows the times before the change again, and cron starts a schedule due then at each. The second run leaves out each dataset that already has a snapshot of the name it would give: the first run's, when Snapshots Pattern has no seconds or the two start in the same second. Add `I` (1 in summer time) to **Snapshots Pattern** to keep both.
+> The clock for the date in new snapshot names. [Local time and summer time](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#local-time-and-summer-time)
 :end
 
 _(Snapshots Prefix (Do not include the '@'))_:
 : <input type="text" name="snap_prefix" value="<?=zfsmHtml($zfsm_cfg['snap_prefix'])?>" placeholder="default blank">
 
 :zc_settings_snapshots_prefix_plug:
-> Text placed before the date in new snapshot names. Leave out `@`.
-> With `zfs-master-`, names look like `tank/data@zfs-master-2026-11-03-181920`.
+> Text before the date in new snapshot names, without `@`.
 :end
 
 </details>
@@ -196,13 +172,7 @@ _(Pool Health Alerts)_:
   </select>
 
 :zc_settings_alerts_interval_plug:
-> Checks the pools this often and sends an Unraid notification when a pool:
->
-> - is not ONLINE,
-> - has read, write or checksum errors, or damaged files,
-> - or is not imported while the array is started, once 10 minutes have passed since the server booted or a check last saw the array stopped.
->
-> It notifies again when the pool recovers. Checks start once the array has started. With **Off**, nothing checks the pools on a schedule, so none of these notifications is sent.
+> How often to check the pools, and send an Unraid notification when one has a problem.
 :end
 
 _(Stale Snapshot Alerts)_:
@@ -212,8 +182,7 @@ _(Stale Snapshot Alerts)_:
   </select>
 
 :zc_settings_alerts_stale_plug:
-> With pool health alerts on, also notifies when a dataset's newest snapshot is older than **Dataset Icon Alert Max Days**.
-> Datasets with no snapshots, and datasets the exclusion pattern hides, are left out.
+> With **Pool Health Alerts** on, also notifies when a dataset's newest snapshot is older than **Dataset Icon Alert Max Days**.
 :end
 
 </details>
@@ -225,44 +194,28 @@ _(Accept Replicas Into)_:
 : <input type="text" name="replica_accept" value="<?=zfsmHtml($zfsm_cfg['replica_accept'])?>" placeholder="off"> <span id="zfsm-replica-accept-warning" style="color:#e22828"></span>
 
 :zc_settings_replica_accept_plug:
-> Lets other servers running ZFS Master NG send copies of their datasets here. To set it up:
->
-> 1. Create the dataset the copies go into, such as `backup/replicas` (Main, **Create Dataset** on its pool), type its name here and Apply. A pool's top dataset isn't accepted.
-> 2. On the sending server, open ZFS Master NG's Settings and add this server under **Add A Server**. Compare the host key it reads with **This Server's Host Key** below, tick that they match, then Add.
-> 3. The sender then shows one line under this server's name. Copy it unchanged into this server's Users, root, **SSH authorized keys**, and Apply there. Unraid 6.9 has no such field: add the line to `/boot/config/ssh/root/authorized_keys` instead.
-> 4. Press Test beside this server on the sender. It makes the sender's own dataset inside this one, and shows its name.
->
-> That line lets the sender's key only list, check and receive copies inside its own dataset here: it can't destroy, roll back or replace anything, or run anything else. Paste it unchanged: the sender's key on a line without these limits, such as the key alone, can run anything as root here.
-> Copies never mount or show as block devices, and run with setuid, devices and exec off. A quota on this dataset caps the space all copies use. Leave this empty to accept none.
->
-> When both servers have zstd, as current Unraid does, copies of unencrypted datasets travel compressed with it and land just as they would without; with an earlier version of ZFS Master NG at either end they travel as they are.
+> The dataset that other servers running ZFS Master NG send their copies into, such as `backup/replicas`. Empty accepts none. [Copies between servers](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#copies-between-servers)
 :end
 
 _(Keep Replicas)_:
 : <input type="text" name="replica_keep" maxlength="40" pattern="[ \t,]*([0-9]+[hdwmyHDWMY]?([ \t,]+[0-9]+[hdwmyHDWMY]?)*[ \t,]*)?" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>" placeholder="all"><input type="hidden" name="replica_keep_rules" value="<?=zfsmHtml(zfsmKeepField($zfsm_cfg['replica_keep']))?>"> <span id="zfsm-replica-keep-warning" style="color:#e22828"><?=zfsmHtml($zfsm_keep_warning)?></span>
 
 :zc_settings_replica_keep_plug:
-> After each copy a server sends lands here, only the snapshots of that copy it keeps stay, up to 50 removed a time; the rest go with the next one. It reads as **Snapshots To Keep** under Schedules does: a number keeps the newest that many, and `7d`, `4w` and `12m` the newest of each of the last 7 days, 4 weeks and 12 months that have one (such as `24 7d 4w 12m`), by when the sender took each, in this server's time zone. Every snapshot of a copy counts, whichever run sent it, but one held or cloned here stays. The newest always stays: the sender's next run sends the changes since it. A copy that stops part-way loses nothing. When one can't be removed, this server's log and a notification say which and why. Empty keeps all.
+> Which snapshots each copy received here keeps, by the rules of **Snapshots To Keep**, such as `24 7d 4w 12m`. Empty keeps all. [Keep Replicas](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#keep-replicas)
 :end
 
 _(This Server's Host Key)_:
 : <span id="zfsm-replica-hostkey"><?=zfsmHtml(zfsmHostKeyFingerprint() ?? 'could not be read')?></span>
 
 :zc_settings_replica_hostkey_plug:
-> The fingerprint of this server's SSH host key. A server adding this one reads the key over the network and shows its fingerprint: if the two differ, something else is answering at this server's address, so don't add it.
+> A server adding this one shows this key's fingerprint. If the two differ, don't add it.
 :end
 
 _(Sender Keys)_:
 : <span id="zfsm-replica-keys"><?=zfsmReplicaKeysHtml(zfsmReplicaKeys())?></span>
 
 :zc_settings_replica_keys_plug:
-> The lines in root's SSH authorized keys that run replica-serve.php, which receives copies here. A line limits its key to replication only when it has all three:
->
-> - `restrict`, and none of `pty`, `port-forwarding`, `agent-forwarding`, `x11-forwarding` or `user-rc`: each gives back something `restrict` takes away.
-> - `from=` with the sender's exact IP addresses, commas between several: no ranges, wildcards, `!` or host names.
-> - `command=` with exactly `/usr/local/emhttp/plugins/zfs.master/scripts/replica-serve.php`, a space and the sender's name.
->
-> A line shown in red lacks one of these: replace it with the line the sender shows, unchanged.
+> The lines in root's SSH authorized keys that let other servers send copies here. A line in red is missing a limit, which the red text names: replace it with the line the sender shows. [Sender Keys](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#sender-keys)
 :end
 
 </details>
@@ -278,27 +231,21 @@ _(This Server's Key)_:
 : <span id="zfsm-send-key"><?=zfsmReplicaKeyHtml()?></span> <span id="zfsm-send-key-status" style="color:#e22828"></span>
 
 :zc_settings_send_key_plug:
-> This server's own SSH key for sending copies, made here once. Its private half is kept on the flash drive, unencrypted: keep the flash share and every flash backup private. To set up a server to send to, follow the steps under **Accept Replicas Into** in that server's ZFS Master NG Settings.
+> This server's own SSH key for sending copies. Its private half is on the flash drive, unencrypted: keep the flash share and every flash backup private. [Copies between servers](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#copies-between-servers)
 :end
 
 _(Servers)_:
 : <span id="zfsm-send-servers"><?=zfsmReplicaRemotesHtml(zfsmReplicaRemotes())?></span> <span id="zfsm-send-servers-status" style="color:#e22828"></span>
 
 :zc_settings_send_servers_plug:
-> The servers this one may send copies to. Under each is the line to add to that server's SSH authorized keys (see **Accept Replicas Into** there), or what stops this server showing it.
->
-> - Test makes this server's dataset there if it is missing, and shows its name.
-> - Each server's host key is kept from when it was added. If it changes, that server is refused until you remove it and add it again.
-> - The line's `from=` is the address this server sends from to reach that server. If this server's address changes, replace the line there with the new one. If a router between them changes the address (source NAT), that server refuses the key: set `from=` there to the exact address it sees.
->
-> To send a copy, choose **Actions**, **Replicate** or **Schedules** on a dataset in the Main tab, and pick the server under **Server**.
+> The servers this one may send copies to. Under each is the line to paste into that server's **Users**, **root**, **SSH authorized keys**. **Test** checks that server, and makes this server's dataset there if it is missing. [Servers](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings#servers)
 :end
 
 _(Add A Server)_:
 : <input type="text" id="zfsm-send-name" placeholder="name" aria-label="Name" style="width:8em"> <input type="text" id="zfsm-send-host" placeholder="IP address" aria-label="IP address"> <input type="text" id="zfsm-send-port" value="22" aria-label="SSH port" style="width:4em"> <input type="button" value="Read Host Key" onclick="zfsmSendScan()"> <span id="zfsm-send-found" aria-live="polite"></span>
 
 :zc_settings_send_add_plug:
-> Give the server a name for this list and the Replicate dialog, its IP address and its SSH port, then press **Read Host Key**. Compare the host key read here with **This Server's Host Key** in that server's ZFS Master NG Settings, under Replication; tick that they match, then Add.
+> Its name, IP address and SSH port, then **Read Host Key**. Add it only if the key matches **This Server's Host Key** on that server.
 :end
 
 </details>
@@ -430,17 +377,14 @@ _(Unraid Diagnostics)_:
 : <input type="checkbox" id="zfsm-diag-unraid" checked>
 
 :zc_settings_diag_unraid_plug:
-> Put Unraid's own diagnostics zip inside the plugin's. It goes in as Unraid made it: this plugin changes nothing in it, and its system log can name datasets.
-> Its disk list (`system/df.txt`) can show mounted datasets by name.
+> Adds Unraid's own diagnostics zip, as Unraid made it. It can show dataset names.
 :end
 
 _(Diagnostics Zip)_:
 : <input type="button" id="zfsm-diag-start" value="_(Generate)_"> <span id="zfsm-diag-status"></span><a id="zfsm-diag-link" href="#" style="display:none"></a>
 
 :zc_settings_diag_zip_plug:
-> Collects what a bug report needs into one zip: the plugin's settings, install and log, the pools and datasets as it reads them, what this browser shows, and what it finds wrong. The zip is kept in `/boot/logs`, the newest three of them.
-> Dataset, snapshot and folder names, addresses and keys are replaced by tokens before anything is packed; pool names stay.
-> If this page does not load, run `/usr/local/emhttp/plugins/zfs.master/scripts/diagnostics.php` in a terminal: it prints what it finds and the zip's path.
+> Makes a zip for a bug report in `/boot/logs`. The plugin's part replaces dataset names with tokens.
 :end
 
 </details>
