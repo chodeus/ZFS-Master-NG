@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Each Settings help is one short line under its own setting
+- The detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
+
 ## 2026.11.26.3 (beta)
 
 **Settings**
