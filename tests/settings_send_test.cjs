@@ -330,9 +330,8 @@ window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
 assert.equal(posts.pop().data.every, 'start', 'and its Save sends it');
 
 
-// Change Keep: a dialog with its row's Keep and Copy Keeps as saved, from the buttons Settings' list makes (zfsmScheduleKeepButton). Save
-// sends them as typed; a refusal shows in the dialog, as text, with what was typed and the list kept; one saved closes it and shows the
-// list it answers, and one whose crontab was not rebuilt says so under it. One on a server has no Copy Keeps, and sends it empty.
+// Change Keep from the buttons Settings' list makes (zfsmScheduleKeepButton): what it opens with and sends, a refusal in it as text, a save,
+// the crontab line under the list, Esc, a click outside and Cancel before and while it saves, a copy on a server, and Cancel sending nothing.
 const dialogFiles = ['assets/sweetalert2.all.min.js', 'frontend/ZFSMDialogs.js', 'frontend/ZFSMImpact.js', 'frontend/ZFSMForm.js'];
 const pageLoads = [...page.matchAll(/autov\('\/plugins\/zfs\.master\/((?:assets|frontend)\/[\w.]+\.js)'\)/g)].map(match => match[1]);
 assert.deepEqual(pageLoads.filter(file => dialogFiles.includes(file)), dialogFiles, 'ZFSMasterSettings.page loads the dialog files, in this order');
@@ -382,6 +381,25 @@ const keepButtons = execFileSync('php', ['-n', '-r', 'function publish($c, $m) {
   await settle();
   assert.deepEqual([shown(), text('zfsm-schedules'), text('zfsm-schedules-status')], [false, 'tank/a to backup/a', 'The schedules were saved, but Unraid\'s crontab could not be rebuilt (x)'],
     'one saved whose crontab was not rebuilt closes it, shows the list it saved and says so under it');
+  const escape = () => popup().dispatchEvent(new window.KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+  const outside = () => window.document.querySelector('.swal2-container').click();
+  for (const [how, close] of [['Esc', escape], ['a click outside', outside], ['Cancel', () => window.Swal2.clickCancel()]]) {
+    await open(0);
+    close();
+    await settle();
+    assert.equal(shown(), false, how + ' closes it before Save');
+    await open(0);
+    assert.equal($('#zfsm-copysched-save').prop('disabled'), false, 'the Every Dataset Saves are on before it saves');
+    const saving = await save();
+    close();
+    await settle();
+    assert.deepEqual([shown(), $('#zfsm-schedules input[type=button]').prop('disabled'), $('#zfsm-copysched-save').prop('disabled')], [true, true, true],
+      how + ' while it saves leaves it open, with the list\'s buttons and the Every Dataset Saves off');
+    saving.done({schedules_html: 'kept'});
+    await settle();
+    assert.deepEqual([shown(), text('zfsm-schedules'), text('zfsm-schedules-status'), $('#zfsm-copysched-save').prop('disabled')], [false, 'kept', '', false],
+      'and its answer then closes it, shows the list and clears the line under it');
+  }
   await open(1);
   assert.deepEqual([popup().querySelector('.swal2-html-container p').textContent, field('keep').value, field('copy-keeps')], ['Copied to data on server nas, when the array starts.', '3', null],
     'one on a server has no Copy Keeps');

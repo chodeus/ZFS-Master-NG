@@ -1,6 +1,5 @@
-// Real browser, every Unraid theme, phone and desktop: Settings' Schedules list as the plugin makes it (zfsmSchedulesHtml) stays inside
-// the page, its buttons on one line, a short Keep on one line on a desktop; Change Keep's button opens its dialog, larger text and inside the page.
-// Usage: schedules_render_test.cjs <webgui-tree>. Set CHROME to override the browser path; php must be on PATH.
+// Settings' Schedules list as zfsmSchedulesHtml makes it, and the Change Keep dialog it opens, in every Unraid theme at phone and desktop width.
+// Usage: schedules_render_test.cjs <webgui-tree>; php on PATH, CHROME to override the browser.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -23,7 +22,7 @@ assert.ok(from > 0 && !script.includes('<?'), 'the Settings script is in ZFSMast
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'zfsm-schedules-'));
 let checked = 0;
 try {
-  // One schedule of each kind, long names, Leave Out and Keep, and the copy with Change Keep has a warning.
+  // Snapshot and Replicate Every Dataset, a dataset's copy with notes, Change Keep and a warning, a cron line and a None, with long names.
   const root = path.join(work, 'root');
   const jobs = path.join(work, 'jobs');
   fs.mkdirSync(path.join(root, 'boot/config/plugins/zfs.master'), {recursive: true});

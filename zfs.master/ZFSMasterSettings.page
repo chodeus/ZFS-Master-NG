@@ -406,6 +406,9 @@ _(Leave Out)_:
 
 <div class="zfsm-sched-block"><div id="zfsm-schedules"><?=zfsmSchedulesHtml($zfsm_cfg)?></div><div id="zfsm-schedules-status" style="color:#e22828"></div></div>
 
+<!-- Unraid opens a help from the last label of the list before it: this empty list leaves the Schedules help to the Help button. -->
+<dl style="display:none"></dl>
+
 :zc_settings_schedules_plug:
 > Snapshot Every Dataset and Replicate Every Dataset, set above, each dataset's own snapshot schedule and copies (set under **Actions**, **Schedules** in the Main tab; Remove here sets it back to Default, unless the schedule it then follows would clash with one as saved), and the replications that run on their own. To add one of those, choose **Actions**, **Replicate** on a dataset in the Main tab and pick how often under Repeat: it runs then, and again every hour at a minute of its own, at the time you set on the days you tick (all seven: every day), at the times of a cron line, in this server's time zone, or each time the array starts. This list shows when.
 >
@@ -561,7 +564,7 @@ function zfsmSendRemove(name) {
 		if (!answer.error) zfsmSendServersShown(answer);
 	});
 }
-// Every Dataset's Saves and Remove, one at a time as each answer redraws the list: all their buttons, Change Keep's too, are off until it lands.
+// Every Dataset's Saves, Remove and Change Keep, one at a time as each answer redraws the list: all their buttons are off until it lands.
 function zfsmSchedulesSend(data, done) {
 	var buttons = $('#zfsm-snapsched-save, #zfsm-copysched-save, #zfsm-schedules input[type=button]').prop('disabled', true);
 	zfsmSendPost(data, function(answer) {
@@ -578,18 +581,19 @@ function zfsmScheduleRemove(id) {
 	zfsmSchedulesPost({cmd: 'scheduleremove', id: id});
 }
 // Change Keep of a repeat set in Replicate, from its button's data (zfsmScheduleKeepButton); one on another server has no Copy Keeps.
-// A refusal shows in the dialog, with what was typed; one saved whose crontab was not rebuilt closes it, and says so under the list.
+// Open until its answer lands; a refusal shows in it, with what was typed; one saved whose crontab was not rebuilt says so under the list.
 function zfsmScheduleKeepDialog(button) {
 	var data = button.dataset, esc = zfsmEscape, copies = 'copyKeeps' in data;
+	var idle = function() { return !Swal2.isLoading(); };
 	zfsmFormDialog({
 		title: '<strong>Change Keep<br>' + esc(data.dataset) + '</strong>',
 		html: '<p style="margin:.2em 0 .8em">Copied to ' + esc(data.to) + ', ' + esc(data.when) + '.</p>' + zfsmKeepRowsHtml('zfsm-change', data.keep, data.copyKeeps, copies),
-		showCancelButton: true, confirmButtonText: 'Save', focusConfirm: false,
+		showCancelButton: true, confirmButtonText: 'Save', focusConfirm: false, showLoaderOnConfirm: true, allowEscapeKey: idle, allowOutsideClick: idle,
 		preConfirm: function() {
 			var field = function(id) { return Swal2.getPopup().querySelector('#zfsm-change-' + id).value; };
 			var sent = {cmd: 'schedulekeepchange', id: data.id, keep: field('keep'), copy_keeps: copies ? field('copy-keeps') : ''};
 			return new Promise(function(resolve) {
-				zfsmSendPost(sent, function(answer) {
+				zfsmSchedulesSend(sent, function(answer) {
 					if (answer.schedules_html !== undefined) return resolve(answer);
 					Swal2.showValidationMessage(esc(answer.error || 'The request failed'));
 					resolve(false);
@@ -597,9 +601,7 @@ function zfsmScheduleKeepDialog(button) {
 			});
 		}
 	}).then(function(result) {
-		if (!result.isConfirmed) return;
-		$('#zfsm-schedules-status').text(result.value.error || '');
-		$('#zfsm-schedules').html(result.value.schedules_html);
+		if (result.isConfirmed) $('#zfsm-schedules-status').text(result.value.error || '');
 	});
 }
 // Snapshot and Replicate Every Dataset, by their rows' id prefix: Days and Starts At for days of the week, Cron Line for Custom (cron),

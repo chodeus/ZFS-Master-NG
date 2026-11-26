@@ -168,6 +168,12 @@ jobs:
           node snapshot_admin_page_test.cjs ../.webgui
           node settings_send_test.cjs ../.webgui
 
+      - name: Settings helps open from their own labels, the Schedules help from none, on this version's Markdown and help code
+        working-directory: tests
+        env:
+          PHP_IMAGE: php:${{ matrix.php }}-cli
+        run: node settings_help_test.cjs ../.webgui
+
       - name: Installer, CSRF, backend and pages on real webGUI code
         env:
           PHP_VERSION: ${{ matrix.php }}

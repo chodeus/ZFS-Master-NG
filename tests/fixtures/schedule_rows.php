@@ -20,7 +20,7 @@ function zfsmTestScheduleRows($html, $part = 'tbody') {
 	return $rows;
 }
 
-// zfsmTestScheduleRows' rows whose Dataset cell starts $dataset, each with its warnings (rows of one cell) after it.
+// zfsmTestScheduleRows' rows whose Dataset cell's first line is $dataset, each with its warnings (rows of one cell) after it.
 function zfsmTestScheduleRowsOf($html, $dataset) {
 	$found = array();
 	$mine = false;
