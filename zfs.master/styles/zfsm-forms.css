@@ -30,6 +30,8 @@
 .zfsm-sched-table .zfsm-sched-buttons{text-align:right;white-space:nowrap;width:1%}
 .zfsm-sched-table .zfsm-sched-buttons:empty::before{content:none}
 .zfsm-sched-table .zfsm-sched-buttons input{margin:0 0 0 6px;padding:3px 12px;min-width:0;font-size:.8em;line-height:1.6}
+/* The help of a Settings row hidden for its schedule's choice: !important, as Unraid's Help button shows every help with an inline display. */
+.inline_help.zfsm-row-off{display:none!important}
 
 /* A label with a hint shows the help cursor; hover or keyboard focus shows the hint, styled like Unraid's tooltips.
    :focus only where nothing hovers, as on a touch screen: a click focuses the label (on Settings, to open Unraid's help) and kept the hint up: tests/tip_focus_render_test.cjs. */
