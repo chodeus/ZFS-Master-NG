@@ -327,7 +327,10 @@ assert.deepEqual({...posts.pop().data}, {cmd: 'schedulecopies', every: 'cron', t
 $('#zfsm-copysched-every').val('start').trigger('change');
 assert.deepEqual(copyShown(), ['', '', 'none', 'none', '', '', '', 'none'], 'When the array starts shows Server, Copy Under, Keep, Copy Keeps and Leave Out only');
 window.zfsmEverySave('zfsm-copysched', 'schedulecopies');
-assert.equal(posts.pop().data.every, 'start', 'and its Save sends it');
+const onStart = posts.pop();
+assert.equal(onStart.data.every, 'start', 'and its Save sends it');
+// Its answer turns the Saves back on, which Change Keep's tests below expect.
+onStart.done({said: 'Saved'});
 
 
 // Change Keep from the buttons Settings' list makes (zfsmScheduleKeepButton): what it opens with and sends, a refusal in it as text, a save,
@@ -343,7 +346,13 @@ const keepButtons = execFileSync('php', ['-n', '-r', 'function publish($c, $m) {
   path.join(__dirname, '../zfs.master/backend/ZFSMOperations.php'), JSON.stringify({id: '0a1b2c3d', dataset: 'tank/data', dest: 'backup/data', server: '', every: 'hourly', minute: 5, hour: 0,
     days: [0, 1, 2, 3, 4, 5, 6], keep: '7d', copy_keeps: '30d 12m'})], {encoding: 'utf8'});
 (async () => {
-  const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => window.setTimeout(resolve, 0)); };
+  // jsdom 31 reads the library's CSS but runs no animation: end a closing dialog's, as a browser does, or it never closes.
+  const settle = async () => {
+    for (let i = 0; i < 5; i++) {
+      await new Promise(resolve => window.setTimeout(resolve, 0));
+      window.document.querySelector('.swal2-popup.swal2-hide')?.dispatchEvent(new window.Event('animationend'));
+    }
+  };
   const popup = () => window.Swal2.getPopup();
   const field = id => popup()?.querySelector('#zfsm-change-' + id);
   // jsdom lays nothing out, so Swal2.isVisible() is always false: a dialog is open while its container is in the page.
