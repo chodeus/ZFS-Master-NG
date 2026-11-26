@@ -6,13 +6,33 @@
 <!ENTITY launch "Settings/ZFSMasterSettings">
 <!ENTITY plugdir "/usr/local/emhttp/plugins/&name;">
 <!ENTITY pluginURL "https://raw.githubusercontent.com/&github;/main/&name;.plg">
-<!ENTITY version "2026.11.16">
-<!ENTITY md5 "218b9602eba36e6f829f4fa40a77e634">
+<!ENTITY version "2026.11.26">
+<!ENTITY md5 "6c854afbfaa94e81ab81599428731e67">
 <!ENTITY pkgname "&name;-&version;-x86_64-1">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/122261-plugin-zfs-master/" icon="database" min="6.9.2">
 <CHANGES>
+
+###2026.11.26
+- Snapshot Every Dataset snapshots your datasets hourly, on chosen days, on a cron line, or each time the array starts
+- Replicate Every Dataset copies your datasets under one dataset here, or on another ZFS Master NG server
+- A dataset can have its own snapshot schedule and copies, or None, under Actions &gt; Schedules
+- Every Dataset settings leave out each pool's own dataset, such as `cache`, and the names under Leave Out
+- Read-only, legacy-mounted and Sanoid/Syncoid datasets are left out, with a warning and a Guide link
+- Snapshots to keep, Copy Keeps and Keep Replicas take periods, such as `24 7d 4w 12m`
+- Replicate can send an encrypted dataset decrypted, make a gone copy again, and replace a copy here that no longer matches
+- Unencrypted copies to another server travel zstd-compressed when both have it
+- Copies keep records larger than 128K whole
+- Renaming a dataset moves its schedules and its copies here; destroying one removes its schedules, and its copies stay
+- A scheduled run is skipped and logged while the one before still goes
+- A new dataset gets nobody:users 777, so share users can write to it over SMB; for one made before, run Tools &gt; New Permissions on its share
+- A Convert that stops part-way keeps the folder's owner and permissions; one whose new dataset can't get the share owner puts the folder back
+- Settings refuses a Snapshots Pattern or Prefix that gives snapshot names ZFS rejects
+- Dataset names that end in a space now work in Replicate and renames
+- Schedules and Replicate open wider, with a hint under each field; plugin dialogs have larger text
+- Each Settings help is one short line; the detail is on the new wiki page [Settings](https://github.com/chodeus/ZFS-Master-NG/wiki/Settings)
+- After going back to v2026.11.16, the new schedules wait; updating again restarts them and brings back Copy Keeps and Keep Replicas' periods
 
 ###2026.11.16
 - Renamed to ZFS Master NG; installs over ZFS Master and keeps your settings

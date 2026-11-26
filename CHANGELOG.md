@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.11.26
 
 - Snapshot Every Dataset snapshots your datasets hourly, on chosen days, on a cron line, or each time the array starts
 - Replicate Every Dataset copies your datasets under one dataset here, or on another ZFS Master NG server
